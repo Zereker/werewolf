@@ -6,39 +6,39 @@ import (
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
-// Poison 女巫毒药技能
+// Poison represents witch's poison skill
 type Poison struct {
-	hasUsed bool // 是否已经使用过
+	hasUsed bool // Whether skill has been used
 }
 
-// NewPoisonSkill 创建毒药技能
+// NewPoisonSkill creates new poison skill
 func NewPoisonSkill() *Poison {
 	return &Poison{
 		hasUsed: false,
 	}
 }
 
-// GetName 获取技能名称
+// GetName returns skill name
 func (p *Poison) GetName() string {
 	return string(game.SkillTypePoison)
 }
 
-// Put 使用毒药技能
+// Put uses poison skill
 func (p *Poison) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
-		return errors.New("只能在夜晚使用毒药")
+		return errors.New("poison can only be used at night")
 	}
 
 	if p.hasUsed {
-		return errors.New("毒药已经使用过了")
+		return errors.New("poison has already been used")
 	}
 
 	if !target.IsAlive() {
-		return errors.New("目标已经死亡")
+		return errors.New("target is already dead")
 	}
 
 	if target.IsProtected() {
-		return errors.New("目标被保护，无法使用毒药")
+		return errors.New("target is protected")
 	}
 
 	target.SetAlive(false)
@@ -46,7 +46,7 @@ func (p *Poison) Put(currentPhase game.Phase, caster game.Player, target game.Pl
 	return nil
 }
 
-// Reset 重置技能状态
+// Reset resets skill state
 func (p *Poison) Reset() {
 	p.hasUsed = false
 }

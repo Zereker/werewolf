@@ -6,42 +6,42 @@ import (
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
-// Speak 发言技能
+// Speak represents speak skill
 type Speak struct {
-	hasUsed map[game.Player]bool // 记录每个玩家是否已经发言
+	hasUsed bool // Whether skill has been used
 }
 
-// NewSpeakSkill 创建发言技能
+// NewSpeakSkill creates new speak skill
 func NewSpeakSkill() *Speak {
 	return &Speak{
-		hasUsed: make(map[game.Player]bool),
+		hasUsed: false,
 	}
 }
 
-// GetName 获取技能名称
+// GetName returns skill name
 func (s *Speak) GetName() string {
 	return string(game.SkillTypeSpeak)
 }
 
-// Put 使用发言技能
+// Put uses speak skill
 func (s *Speak) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseDay {
-		return errors.New("只能在白天发言阶段发言")
+		return errors.New("speak can only be used during day")
 	}
 
 	if !caster.IsAlive() {
-		return errors.New("死亡玩家不能发言")
+		return errors.New("caster is dead")
 	}
 
-	if s.hasUsed[caster] {
-		return errors.New("本轮已经发过言了")
+	if s.hasUsed {
+		return errors.New("speak has already been used")
 	}
 
-	s.hasUsed[caster] = true
+	s.hasUsed = true
 	return nil
 }
 
-// Reset 重置技能状态
+// Reset resets skill state
 func (s *Speak) Reset() {
-	s.hasUsed = make(map[game.Player]bool)
+	s.hasUsed = false
 }

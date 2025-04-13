@@ -6,35 +6,35 @@ import (
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
-// Check 预言家查验技能
+// Check represents seer's check skill
 type Check struct {
-	hasUsed bool // 是否已经使用过
+	hasUsed bool // Whether skill has been used
 }
 
-// NewCheckSkill 创建查验技能
+// NewCheckSkill creates new check skill
 func NewCheckSkill() *Check {
 	return &Check{
 		hasUsed: false,
 	}
 }
 
-// GetName 获取技能名称
+// GetName returns skill name
 func (c *Check) GetName() string {
 	return string(game.SkillTypeCheck)
 }
 
-// Put 使用查验技能
+// Put uses check skill
 func (c *Check) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
-		return errors.New("只能在夜晚使用查验技能")
+		return errors.New("check can only be used at night")
 	}
 
 	if c.hasUsed {
-		return errors.New("今晚已经使用过查验技能")
+		return errors.New("check has already been used")
 	}
 
 	if !target.IsAlive() {
-		return errors.New("目标已经死亡")
+		return errors.New("target is already dead")
 	}
 
 	// 这里应该返回查验结果，但为了保持接口一致性，我们只返回 nil
@@ -43,7 +43,7 @@ func (c *Check) Put(currentPhase game.Phase, caster game.Player, target game.Pla
 	return nil
 }
 
-// Reset 重置技能状态
+// Reset resets skill state
 func (c *Check) Reset() {
 	c.hasUsed = false
 }

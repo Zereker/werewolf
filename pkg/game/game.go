@@ -1,55 +1,56 @@
 package game
 
-// Camp 阵营
+// Camp represents player's camp
 type Camp int
 
 const (
-	CampGood Camp = iota // 好人阵营
-	CampBad              // 坏人阵营
+	CampGood Camp = iota // Good camp
+	CampBad              // Bad camp
 )
 
+// Phase represents game phase
 type Phase string
 
 const (
-	PhaseNight Phase = "night" // 夜晚
-	PhaseDay   Phase = "day"   // 白天发言阶段
-	PhaseVote  Phase = "vote"  // 投票阶段
+	PhaseNight Phase = "night" // Night phase
+	PhaseDay   Phase = "day"   // Day phase
+	PhaseVote  Phase = "vote"  // Vote phase
 )
 
-// Player 玩家接口
+// Player interface defines player behavior
 type Player interface {
+	GetID() string
+	GetName() string
 	GetRole() Role
-	GetCamp() Camp
-
 	IsAlive() bool
 	SetAlive(alive bool)
 	IsProtected() bool
 	SetProtected(protected bool)
-
-	AddSkill(skill Skill)
-	UseSkill(phase Phase, target Player, skill Skill) error
+	GetVotes() int
+	AddVote()
+	ResetVotes()
 }
 
-// RoleType 角色类型
+// RoleType represents role type
 type RoleType string
 
 const (
-	RoleTypeWerewolf RoleType = "werewolf" // 狼人
-	RoleTypeSeer     RoleType = "seer"     // 预言家
-	RoleTypeWitch    RoleType = "witch"    // 女巫
-	RoleTypeHunter   RoleType = "hunter"   // 猎人
-	RoleTypeVillager RoleType = "villager" // 村民
-	RoleTypeGuard    RoleType = "guard"    // 守卫
+	RoleTypeWerewolf RoleType = "werewolf" // Werewolf
+	RoleTypeSeer     RoleType = "seer"     // Seer
+	RoleTypeWitch    RoleType = "witch"    // Witch
+	RoleTypeHunter   RoleType = "hunter"   // Hunter
+	RoleTypeVillager RoleType = "villager" // Villager
+	RoleTypeGuard    RoleType = "guard"    // Guard
 )
 
-// Role 角色接口
+// Role interface defines role behavior
 type Role interface {
-	// GetName 获取技能名称
+	// GetName returns role name
 	GetName() string
-	// GetCamp 获取角色所属阵营
+	// GetCamp returns role's camp
 	GetCamp() Camp
-	// GetAvailableSkills 获取角色可用的技能类型
-	GetAvailableSkills() []string
+	// GetAvailableSkills returns available skill types
+	GetAvailableSkills() []SkillType
 }
 
 // SkillType 技能类型

@@ -6,39 +6,39 @@ import (
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
-// Protect 守护技能
+// Protect represents guard's protect skill
 type Protect struct {
-	hasUsed bool // 是否已经使用过
+	hasUsed bool // Whether skill has been used
 }
 
-// NewProtectSkill 创建守护技能
+// NewProtectSkill creates new protect skill
 func NewProtectSkill() *Protect {
 	return &Protect{
 		hasUsed: false,
 	}
 }
 
-// GetName 获取技能名称
+// GetName returns skill name
 func (p *Protect) GetName() string {
 	return string(game.SkillTypeProtect)
 }
 
-// Put 使用守护技能
+// Put uses protect skill
 func (p *Protect) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
-		return errors.New("只能在夜晚使用守护技能")
+		return errors.New("protect can only be used at night")
 	}
 
 	if p.hasUsed {
-		return errors.New("今晚已经使用过守护技能")
+		return errors.New("protect has already been used")
 	}
 
 	if !target.IsAlive() {
-		return errors.New("目标已经死亡")
+		return errors.New("target is already dead")
 	}
 
 	if target.IsProtected() {
-		return errors.New("目标已经被保护")
+		return errors.New("target is already protected")
 	}
 
 	target.SetProtected(true)
@@ -46,7 +46,7 @@ func (p *Protect) Put(currentPhase game.Phase, caster game.Player, target game.P
 	return nil
 }
 
-// Reset 重置技能状态
+// Reset resets skill state
 func (p *Protect) Reset() {
 	p.hasUsed = false
 }

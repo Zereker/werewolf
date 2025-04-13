@@ -6,39 +6,39 @@ import (
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
-// Kill 狼人杀人技能
+// Kill represents werewolf's kill skill
 type Kill struct {
-	hasUsed bool // 是否已经使用过
+	hasUsed bool // Whether skill has been used
 }
 
-// NewKillSkill 创建杀人技能
+// NewKillSkill creates new kill skill
 func NewKillSkill() *Kill {
 	return &Kill{
 		hasUsed: false,
 	}
 }
 
-// GetName 获取技能名称
+// GetName returns skill name
 func (k *Kill) GetName() string {
 	return string(game.SkillTypeKill)
 }
 
-// Put 使用杀人技能
+// Put uses kill skill
 func (k *Kill) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
-		return errors.New("只能在夜晚使用杀人技能")
+		return errors.New("kill can only be used at night")
 	}
 
 	if k.hasUsed {
-		return errors.New("今晚已经使用过杀人技能")
+		return errors.New("kill has already been used")
 	}
 
 	if !target.IsAlive() {
-		return errors.New("目标已经死亡")
+		return errors.New("target is already dead")
 	}
 
 	if target.IsProtected() {
-		return errors.New("目标被保护，无法击杀")
+		return errors.New("target is protected")
 	}
 
 	target.SetAlive(false)
@@ -46,7 +46,7 @@ func (k *Kill) Put(currentPhase game.Phase, caster game.Player, target game.Play
 	return nil
 }
 
-// Reset 重置技能状态
+// Reset resets skill state
 func (k *Kill) Reset() {
 	k.hasUsed = false
 }
