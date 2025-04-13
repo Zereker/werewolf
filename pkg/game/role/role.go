@@ -6,18 +6,6 @@ import (
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
-// Type 角色类型
-type Type string
-
-const (
-	TypeWerewolf Type = "werewolf" // 狼人
-	TypeSeer     Type = "seer"     // 预言家
-	TypeWitch    Type = "witch"    // 女巫
-	TypeHunter   Type = "hunter"   // 猎人
-	TypeVillager Type = "villager" // 村民
-	TypeGuard    Type = "guard"    // 守卫
-)
-
 // baseRole 基础角色结构体
 type baseRole struct {
 	camp game.Camp
@@ -36,19 +24,19 @@ func (r *baseRole) GetCamp() game.Camp {
 }
 
 // New 通过角色类型创建角色对象
-func New(role string) (game.Role, error) {
-	switch Type(role) {
-	case TypeWerewolf:
+func New(role game.RoleType) (game.Role, error) {
+	switch role {
+	case game.RoleTypeWerewolf:
 		return NewWerewolf(), nil
-	case TypeSeer:
+	case game.RoleTypeSeer:
 		return NewSeer(), nil
-	case TypeWitch:
+	case game.RoleTypeWitch:
 		return NewWitch(), nil
-	case TypeHunter:
+	case game.RoleTypeHunter:
 		return NewHunter(), nil
-	case TypeVillager:
+	case game.RoleTypeVillager:
 		return NewVillager(), nil
-	case TypeGuard:
+	case game.RoleTypeGuard:
 		return NewGuard(), nil
 	default:
 		return nil, fmt.Errorf("unknown role type: %s", role)

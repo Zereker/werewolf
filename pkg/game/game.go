@@ -4,8 +4,8 @@ package game
 type Camp int
 
 const (
-	CampGood Camp = iota
-	CampBad
+	CampGood Camp = iota // 好人阵营
+	CampBad              // 坏人阵营
 )
 
 type Phase string

@@ -7,8 +7,8 @@ import (
 )
 
 // New 通过技能名称创建技能对象
-func New(name string) (game.Skill, error) {
-	switch game.SkillType(name) {
+func New(name game.SkillType) (game.Skill, error) {
+	switch name {
 	case game.SkillTypeKill:
 		return NewKillSkill(), nil
 	case game.SkillTypeCheck:
