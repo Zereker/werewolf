@@ -14,17 +14,17 @@ func NewSeer() *Seer {
 	}
 }
 
-// GetAvailableSkills 获取可用技能
-func (r *Seer) GetAvailableSkills() []string {
-	return []string{
-		string(game.SkillTypeCheck),
-		string(game.SkillTypeSpeak),
-		string(game.SkillTypeVote),
-		string(game.SkillTypeLastWords),
-	}
-}
-
 // GetName 获取角色名称
 func (r *Seer) GetName() string {
 	return string(game.RoleTypeSeer)
+}
+
+// GetAvailableSkills 获取可用技能
+func (r *Seer) GetAvailableSkills() []game.SkillType {
+	return []game.SkillType{
+		game.SkillTypeCheck,
+		game.SkillTypeSpeak,
+		game.SkillTypeVote,
+		game.SkillTypeLastWords,
+	}
 }

@@ -14,17 +14,17 @@ func NewHunter() *Hunter {
 	}
 }
 
-// GetAvailableSkills 获取可用技能
-func (r *Hunter) GetAvailableSkills() []string {
-	return []string{
-		string(game.SkillTypeHunter),
-		string(game.SkillTypeSpeak),
-		string(game.SkillTypeVote),
-		string(game.SkillTypeLastWords),
-	}
-}
-
 // GetName 获取角色名称
 func (r *Hunter) GetName() string {
 	return string(game.RoleTypeHunter)
+}
+
+// GetAvailableSkills 获取可用技能
+func (r *Hunter) GetAvailableSkills() []game.SkillType {
+	return []game.SkillType{
+		game.SkillTypeHunter,
+		game.SkillTypeSpeak,
+		game.SkillTypeVote,
+		game.SkillTypeLastWords,
+	}
 }

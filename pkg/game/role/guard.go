@@ -14,17 +14,17 @@ func NewGuard() *Guard {
 	}
 }
 
-// GetAvailableSkills 获取可用技能
-func (r *Guard) GetAvailableSkills() []string {
-	return []string{
-		string(game.SkillTypeProtect),
-		string(game.SkillTypeSpeak),
-		string(game.SkillTypeVote),
-		string(game.SkillTypeLastWords),
-	}
-}
-
 // GetName 获取角色名称
 func (r *Guard) GetName() string {
 	return string(game.RoleTypeGuard)
+}
+
+// GetAvailableSkills 获取可用技能
+func (r *Guard) GetAvailableSkills() []game.SkillType {
+	return []game.SkillType{
+		game.SkillTypeProtect,
+		game.SkillTypeSpeak,
+		game.SkillTypeVote,
+		game.SkillTypeLastWords,
+	}
 }

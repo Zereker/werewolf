@@ -1,0 +1,7 @@
+github.com/Zereker/socket v0.0.0-20230312114038-fab27cbbee82 h1:TrdODGnRVvlshu6zWv3rSccsIvdBbvI2x4sM1bB3Bts=
+github.com/Zereker/socket v0.0.0-20230312114038-fab27cbbee82/go.mod h1:y9XWVdxxOZfUWsgRz/TRhPt8DJwr96TFRRrkSSpolQU=
+github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
+github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+golang.org/x/sync v0.0.0-20190423024810-112230192c58 h1:8gQV6CLnAEikrhgkHFbMAEhagSSnXWGV915qUMm9mrU=
+golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=

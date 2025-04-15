@@ -14,16 +14,16 @@ func NewVillager() *Villager {
 	}
 }
 
-// GetAvailableSkills 获取可用技能
-func (r *Villager) GetAvailableSkills() []string {
-	return []string{
-		string(game.SkillTypeSpeak),
-		string(game.SkillTypeVote),
-		string(game.SkillTypeLastWords),
-	}
-}
-
 // GetName 获取角色名称
 func (r *Villager) GetName() string {
 	return string(game.RoleTypeVillager)
+}
+
+// GetAvailableSkills 获取可用技能
+func (r *Villager) GetAvailableSkills() []game.SkillType {
+	return []game.SkillType{
+		game.SkillTypeSpeak,
+		game.SkillTypeVote,
+		game.SkillTypeLastWords,
+	}
 }

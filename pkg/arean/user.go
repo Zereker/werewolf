@@ -2,17 +2,17 @@ package arean
 
 import (
 	"github.com/Zereker/werewolf/pkg/game"
+	"github.com/Zereker/werewolf/pkg/game/player"
 )
 
 type User struct {
-	id string
-
-	game.Player
+	id     string
+	player game.Player
 }
 
-func NewUser(id string, player game.Player) (User, error) {
+func NewUser(id string, role game.Role, skills ...game.Skill) (User, error) {
 	return User{
 		id:     id,
-		Player: player,
+		player: player.New(role, skills...),
 	}, nil
 }
