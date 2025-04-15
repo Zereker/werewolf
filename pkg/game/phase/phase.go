@@ -1,7 +1,14 @@
 package phase
 
 import (
+	"errors"
+
 	"github.com/Zereker/werewolf/pkg/game"
+)
+
+var (
+	// ErrInvalidAction is returned when action is invalid
+	ErrInvalidAction = errors.New("invalid action")
 )
 
 // Phase interface defines game phase behavior
@@ -10,22 +17,20 @@ type Phase interface {
 	GetName() string
 	// GetNextPhase returns next phase
 	GetNextPhase() Phase
-	// GetAvailableActions returns available actions
-	GetAvailableActions() []game.SkillType
 	// ValidateAction validates if action is legal
 	ValidateAction(skill game.Skill) error
 }
 
-// BasePhase implements basic phase functionality
-type BasePhase struct {
+// phase implements basic phase functionality
+type phase struct {
 	name             string
 	nextPhase        Phase
-	availableActions []game.SkillType
+	availableActions []game.Skill
 }
 
-// NewBasePhase creates a new base phase
-func NewBasePhase(name string, nextPhase Phase, actions []game.SkillType) *BasePhase {
-	return &BasePhase{
+// NewPhase creates a new base phase
+func NewPhase(name string, actions []game.Skill, nextPhase Phase) Phase {
+	return &phase{
 		name:             name,
 		nextPhase:        nextPhase,
 		availableActions: actions,
@@ -33,27 +38,21 @@ func NewBasePhase(name string, nextPhase Phase, actions []game.SkillType) *BaseP
 }
 
 // GetName returns phase name
-func (p *BasePhase) GetName() string {
+func (p *phase) GetName() string {
 	return p.name
 }
 
 // GetNextPhase returns next phase
-func (p *BasePhase) GetNextPhase() Phase {
+func (p *phase) GetNextPhase() Phase {
 	return p.nextPhase
 }
 
-// GetAvailableActions returns available actions
-func (p *BasePhase) GetAvailableActions() []game.SkillType {
-	return p.availableActions
-}
-
-// ValidateAction validates if action is legal
-func (p *BasePhase) ValidateAction(skill game.Skill) error {
+func (p *phase) ValidateAction(skill game.Skill) error {
 	for _, action := range p.availableActions {
-		if skill.GetName() == string(action) {
+		if skill.GetName() == action.GetName() {
 			return nil
 		}
 	}
 
-	return game.ErrInvalidAction
+	return ErrInvalidAction
 }

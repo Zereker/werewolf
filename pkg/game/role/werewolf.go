@@ -14,17 +14,17 @@ func NewWerewolf() *Werewolf {
 	}
 }
 
-// GetAvailableSkills 获取可用技能
-func (r *Werewolf) GetAvailableSkills() []string {
-	return []string{
-		string(game.SkillTypeKill),
-		string(game.SkillTypeSpeak),
-		string(game.SkillTypeVote),
-		string(game.SkillTypeLastWords),
-	}
-}
-
 // GetName 获取角色名称
 func (r *Werewolf) GetName() string {
 	return string(game.RoleTypeWerewolf)
+}
+
+// GetAvailableSkills 获取可用技能
+func (r *Werewolf) GetAvailableSkills() []game.SkillType {
+	return []game.SkillType{
+		game.SkillTypeKill,
+		game.SkillTypeSpeak,
+		game.SkillTypeVote,
+		game.SkillTypeLastWords,
+	}
 }

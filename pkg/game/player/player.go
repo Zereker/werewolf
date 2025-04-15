@@ -5,8 +5,6 @@ import (
 )
 
 type player struct {
-	id        string
-	name      string
 	alive     bool
 	protected bool
 
@@ -14,15 +12,13 @@ type player struct {
 	skills []game.Skill
 }
 
-func New(role game.Role) game.Player {
-	p := &player{
+func New(role game.Role, skills ...game.Skill) game.Player {
+	return &player{
 		alive:     true,
 		protected: false,
 		role:      role,
-		skills:    make([]game.Skill, 0),
+		skills:    skills,
 	}
-
-	return p
 }
 
 func (p *player) GetRole() game.Role {
@@ -47,10 +43,6 @@ func (p *player) IsProtected() bool {
 
 func (p *player) SetProtected(protected bool) {
 	p.protected = protected
-}
-
-func (p *player) AddSkill(skill game.Skill) {
-	p.skills = append(p.skills, skill)
 }
 
 func (p *player) UseSkill(phase game.Phase, target game.Player, skill game.Skill) error {

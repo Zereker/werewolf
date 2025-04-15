@@ -19,16 +19,15 @@ const (
 
 // Player interface defines player behavior
 type Player interface {
-	GetID() string
-	GetName() string
+	GetCamp() Camp
 	GetRole() Role
 	IsAlive() bool
 	SetAlive(alive bool)
+
 	IsProtected() bool
 	SetProtected(protected bool)
-	GetVotes() int
-	AddVote()
-	ResetVotes()
+
+	UseSkill(phase Phase, target Player, skill Skill) error
 }
 
 // RoleType represents role type

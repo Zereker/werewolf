@@ -14,18 +14,18 @@ func NewWitch() *Witch {
 	}
 }
 
-// GetAvailableSkills 获取可用技能
-func (r *Witch) GetAvailableSkills() []string {
-	return []string{
-		string(game.SkillTypeAntidote),
-		string(game.SkillTypePoison),
-		string(game.SkillTypeSpeak),
-		string(game.SkillTypeVote),
-		string(game.SkillTypeLastWords),
-	}
-}
-
 // GetName 获取角色名称
 func (r *Witch) GetName() string {
 	return string(game.RoleTypeWitch)
+}
+
+// GetAvailableSkills 获取可用技能
+func (r *Witch) GetAvailableSkills() []game.SkillType {
+	return []game.SkillType{
+		game.SkillTypeAntidote,
+		game.SkillTypePoison,
+		game.SkillTypeSpeak,
+		game.SkillTypeVote,
+		game.SkillTypeLastWords,
+	}
 }
