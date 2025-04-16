@@ -24,7 +24,7 @@ func (h *Hunter) GetName() string {
 }
 
 // Put 使用猎人开枪技能
-func (h *Hunter) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (h *Hunter) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
 		return errors.New("只能在夜晚使用猎人技能")
 	}
@@ -49,4 +49,14 @@ func (h *Hunter) Put(currentPhase game.Phase, caster game.Player, target game.Pl
 // Reset 重置技能状态
 func (h *Hunter) Reset() {
 	h.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (h *Hunter) UseInPhase() game.PhaseType {
+	return game.PhaseNight
+}
+
+// IsUsed 技能是否已使用
+func (h *Hunter) IsUsed() bool {
+	return h.hasUsed
 }

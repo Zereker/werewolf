@@ -24,7 +24,7 @@ func (v *Vote) GetName() string {
 }
 
 // Put uses vote skill
-func (v *Vote) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (v *Vote) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseVote {
 		return errors.New("vote can only be used during vote phase")
 	}
@@ -41,7 +41,6 @@ func (v *Vote) Put(currentPhase game.Phase, caster game.Player, target game.Play
 		return errors.New("vote has already been used")
 	}
 
-	target.AddVote()
 	v.hasUsed = true
 	return nil
 }
@@ -49,4 +48,14 @@ func (v *Vote) Put(currentPhase game.Phase, caster game.Player, target game.Play
 // Reset resets skill state
 func (v *Vote) Reset() {
 	v.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (v *Vote) UseInPhase() game.PhaseType {
+	return game.PhaseVote
+}
+
+// IsUsed 技能是否已使用
+func (v *Vote) IsUsed() bool {
+	return v.hasUsed
 }

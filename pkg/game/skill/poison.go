@@ -24,7 +24,7 @@ func (p *Poison) GetName() string {
 }
 
 // Put uses poison skill
-func (p *Poison) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (p *Poison) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
 		return errors.New("poison can only be used at night")
 	}
@@ -49,4 +49,14 @@ func (p *Poison) Put(currentPhase game.Phase, caster game.Player, target game.Pl
 // Reset resets skill state
 func (p *Poison) Reset() {
 	p.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (p *Poison) UseInPhase() game.PhaseType {
+	return game.PhaseNight
+}
+
+// IsUsed 技能是否已使用
+func (p *Poison) IsUsed() bool {
+	return p.hasUsed
 }

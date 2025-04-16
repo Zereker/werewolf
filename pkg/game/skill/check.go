@@ -24,7 +24,7 @@ func (c *Check) GetName() string {
 }
 
 // Put uses check skill
-func (c *Check) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (c *Check) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
 		return errors.New("check can only be used at night")
 	}
@@ -46,4 +46,14 @@ func (c *Check) Put(currentPhase game.Phase, caster game.Player, target game.Pla
 // Reset resets skill state
 func (c *Check) Reset() {
 	c.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (c *Check) UseInPhase() game.PhaseType {
+	return game.PhaseNight
+}
+
+// IsUsed 技能是否已使用
+func (c *Check) IsUsed() bool {
+	return c.hasUsed
 }

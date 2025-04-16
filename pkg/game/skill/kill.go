@@ -24,7 +24,7 @@ func (k *Kill) GetName() string {
 }
 
 // Put uses kill skill
-func (k *Kill) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (k *Kill) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
 		return errors.New("kill can only be used at night")
 	}
@@ -49,4 +49,14 @@ func (k *Kill) Put(currentPhase game.Phase, caster game.Player, target game.Play
 // Reset resets skill state
 func (k *Kill) Reset() {
 	k.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (k *Kill) UseInPhase() game.PhaseType {
+	return game.PhaseNight
+}
+
+// IsUsed 技能是否已使用
+func (k *Kill) IsUsed() bool {
+	return k.hasUsed
 }

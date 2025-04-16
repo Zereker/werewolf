@@ -11,42 +11,37 @@ var (
 	ErrInvalidAction = errors.New("invalid action")
 )
 
-// Phase interface defines game phase behavior
-type Phase interface {
-	// GetName returns phase name
-	GetName() string
-	// GetNextPhase returns next phase
-	GetNextPhase() Phase
-	// ValidateAction validates if action is legal
-	ValidateAction(skill game.Skill) error
-}
-
 // phase implements basic phase functionality
 type phase struct {
-	name             string
-	nextPhase        Phase
-	availableActions []game.Skill
+	name             string       // 阶段名称
+	availableActions []game.Skill // 可用技能列表
+	next             game.Phase   // 下一个阶段
 }
 
 // NewPhase creates a new base phase
-func NewPhase(name string, actions []game.Skill, nextPhase Phase) Phase {
+func NewPhase(name string, actions []game.Skill) game.Phase {
 	return &phase{
 		name:             name,
-		nextPhase:        nextPhase,
 		availableActions: actions,
 	}
 }
 
 // GetName returns phase name
-func (p *phase) GetName() string {
-	return p.name
+func (p *phase) GetName() game.PhaseType {
+	return game.PhaseType(p.name)
 }
 
 // GetNextPhase returns next phase
-func (p *phase) GetNextPhase() Phase {
-	return p.nextPhase
+func (p *phase) GetNextPhase() game.Phase {
+	return p.next
 }
 
+// SetNextPhase sets next phase
+func (p *phase) SetNextPhase(next game.Phase) {
+	p.next = next
+}
+
+// ValidateAction validates if action is legal
 func (p *phase) ValidateAction(skill game.Skill) error {
 	for _, action := range p.availableActions {
 		if skill.GetName() == action.GetName() {

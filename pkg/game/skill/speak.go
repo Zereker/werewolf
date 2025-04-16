@@ -24,7 +24,7 @@ func (s *Speak) GetName() string {
 }
 
 // Put uses speak skill
-func (s *Speak) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (s *Speak) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseDay {
 		return errors.New("speak can only be used during day")
 	}
@@ -44,4 +44,14 @@ func (s *Speak) Put(currentPhase game.Phase, caster game.Player, target game.Pla
 // Reset resets skill state
 func (s *Speak) Reset() {
 	s.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (s *Speak) UseInPhase() game.PhaseType {
+	return game.PhaseDay
+}
+
+// IsUsed 技能是否已使用
+func (s *Speak) IsUsed() bool {
+	return s.hasUsed
 }

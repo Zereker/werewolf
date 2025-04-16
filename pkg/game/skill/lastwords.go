@@ -24,7 +24,7 @@ func (l *LastWords) GetName() string {
 }
 
 // Put uses last words skill
-func (l *LastWords) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (l *LastWords) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if !caster.IsAlive() {
 		return errors.New("caster is dead")
 	}
@@ -40,4 +40,14 @@ func (l *LastWords) Put(currentPhase game.Phase, caster game.Player, target game
 // Reset resets skill state
 func (l *LastWords) Reset() {
 	l.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (l *LastWords) UseInPhase() game.PhaseType {
+	return game.PhaseDay
+}
+
+// IsUsed 技能是否已使用
+func (l *LastWords) IsUsed() bool {
+	return l.hasUsed
 }

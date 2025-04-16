@@ -24,7 +24,7 @@ func (a *Antidote) GetName() string {
 }
 
 // Put uses antidote skill
-func (a *Antidote) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (a *Antidote) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
 		return errors.New("antidote can only be used at night")
 	}
@@ -49,4 +49,14 @@ func (a *Antidote) Put(currentPhase game.Phase, caster game.Player, target game.
 // Reset resets skill state
 func (a *Antidote) Reset() {
 	a.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (a *Antidote) UseInPhase() game.PhaseType {
+	return game.PhaseNight
+}
+
+// IsUsed 技能是否已使用
+func (a *Antidote) IsUsed() bool {
+	return a.hasUsed
 }

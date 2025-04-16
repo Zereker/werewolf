@@ -24,7 +24,7 @@ func (p *Protect) GetName() string {
 }
 
 // Put uses protect skill
-func (p *Protect) Put(currentPhase game.Phase, caster game.Player, target game.Player) error {
+func (p *Protect) Put(currentPhase game.PhaseType, caster game.Player, target game.Player) error {
 	if currentPhase != game.PhaseNight {
 		return errors.New("protect can only be used at night")
 	}
@@ -49,4 +49,14 @@ func (p *Protect) Put(currentPhase game.Phase, caster game.Player, target game.P
 // Reset resets skill state
 func (p *Protect) Reset() {
 	p.hasUsed = false
+}
+
+// UseInPhase 技能使用阶段
+func (p *Protect) UseInPhase() game.PhaseType {
+	return game.PhaseNight
+}
+
+// IsUsed 技能是否已使用
+func (p *Protect) IsUsed() bool {
+	return p.hasUsed
 }
