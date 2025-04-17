@@ -42,14 +42,22 @@ type Runtime struct {
 
 	// 游戏结果
 	winner game.Camp
+
+	// 事件通道
+	userEventChan   chan *Event // 用户事件通道
+	systemEventChan chan *Event // 系统事件通道
+	stopChan        chan struct{}
 }
 
 // NewRuntime 创建新的游戏运行时
 func NewRuntime() *Runtime {
 	return &Runtime{
-		round:   1,
-		skills:  make([]game.Skill, 0),
-		players: make(map[int64]game.Player),
+		round:           1,
+		skills:          make([]game.Skill, 0),
+		players:         make(map[int64]game.Player),
+		userEventChan:   make(chan *Event, 100),
+		systemEventChan: make(chan *Event, 100),
+		stopChan:        make(chan struct{}),
 	}
 }
 
@@ -249,136 +257,316 @@ func (r *Runtime) checkGameEnd() bool {
 	return false
 }
 
+// eventLoop 事件处理循环
+func (r *Runtime) eventLoop() {
+	for {
+		select {
+		case evt := <-r.userEventChan:
+			r.handleEvent(evt)
+		case <-r.stopChan:
+			return
+		}
+	}
+}
+
+// handleEvent 处理事件
+func (r *Runtime) handleEvent(evt *Event) {
+	r.Lock()
+	defer r.Unlock()
+
+	switch evt.Type {
+	case EventUserSkill:
+		r.handleUserSkill(evt)
+	case EventUserVote:
+		r.handleUserVote(evt)
+	case EventUserSpeak:
+		r.handleUserSpeak(evt)
+	case EventUserReady:
+		r.handleUserReady(evt)
+	case EventUserUnready:
+		r.handleUserUnready(evt)
+	}
+}
+
+// handleUserSkill 处理用户技能事件
+func (r *Runtime) handleUserSkill(evt *Event) {
+	if data, ok := evt.Data.(*UserSkillData); ok {
+		// 处理技能使用
+		err := r.useSkill(evt.PlayerID, data.TargetID, data.SkillType)
+
+		// 发送技能使用结果
+		resultData := &SystemSkillResultData{
+			SkillType: data.SkillType,
+			Success:   err == nil,
+			Message:   r.getSkillResultMessage(err),
+		}
+		r.emitSystemEvent(EventSystemSkillResult, evt.PlayerID, data.TargetID, resultData)
+
+		// 检查阶段是否完成
+		if r.isPhaseCompleted() {
+			r.completeCurrentPhase()
+		}
+	}
+}
+
+// handleUserVote 处理用户投票事件
+func (r *Runtime) handleUserVote(evt *Event) {
+	if data, ok := evt.Data.(*UserVoteData); ok {
+		err := r.useSkill(evt.PlayerID, data.TargetID, game.SkillTypeVote)
+
+		// 发送投票结果
+		resultData := &SystemSkillResultData{
+			SkillType: game.SkillTypeVote,
+			Success:   err == nil,
+			Message:   r.getSkillResultMessage(err),
+		}
+		r.emitSystemEvent(EventSystemSkillResult, evt.PlayerID, data.TargetID, resultData)
+
+		// 检查阶段是否完成
+		if r.isPhaseCompleted() {
+			r.completeCurrentPhase()
+		}
+	}
+}
+
+// handleUserSpeak 处理用户发言事件
+func (r *Runtime) handleUserSpeak(evt *Event) {
+	if _, ok := evt.Data.(*UserSpeakData); ok {
+		err := r.useSkill(evt.PlayerID, evt.PlayerID, game.SkillTypeSpeak)
+
+		// 发送发言结果
+		resultData := &SystemSkillResultData{
+			SkillType: game.SkillTypeSpeak,
+			Success:   err == nil,
+			Message:   r.getSkillResultMessage(err),
+		}
+		r.emitSystemEvent(EventSystemSkillResult, evt.PlayerID, evt.PlayerID, resultData)
+	}
+}
+
+// handleUserReady 处理用户准备事件
+func (r *Runtime) handleUserReady(evt *Event) {
+	// TODO: 实现玩家准备逻辑
+}
+
+// handleUserUnready 处理用户取消准备事件
+func (r *Runtime) handleUserUnready(evt *Event) {
+	// TODO: 实现玩家取消准备逻辑
+}
+
+// getSkillResultMessage 获取技能使用结果消息
+func (r *Runtime) getSkillResultMessage(err error) string {
+	if err == nil {
+		return "操作成功"
+	}
+	return err.Error()
+}
+
+// completeCurrentPhase 完成当前阶段
+func (r *Runtime) completeCurrentPhase() {
+	// 发送阶段结束事件
+	phaseEndData := &SystemPhaseData{
+		Phase:     r.phase.GetName(),
+		Round:     r.round,
+		Timestamp: time.Now(),
+	}
+	r.emitSystemEvent(EventSystemPhaseEnd, 0, 0, phaseEndData)
+
+	// 检查游戏是否结束
+	if r.checkGameEnd() {
+		gameEndData := &SystemGameEndData{
+			Winner:    r.winner,
+			Round:     r.round,
+			Timestamp: time.Now(),
+		}
+		r.emitSystemEvent(EventSystemGameEnd, 0, 0, gameEndData)
+		return
+	}
+
+	// 进入下一阶段
+	r.nextPhase()
+
+	// 发送新阶段开始事件
+	phaseStartData := &SystemPhaseData{
+		Phase:     r.phase.GetName(),
+		Round:     r.round,
+		Timestamp: time.Now(),
+		Duration:  r.getPhaseDefaultDuration(r.phase.GetName()),
+	}
+	r.emitSystemEvent(EventSystemPhaseStart, 0, 0, phaseStartData)
+}
+
+// getPhaseDefaultDuration 获取阶段默认持续时间（秒）
+func (r *Runtime) getPhaseDefaultDuration(phase game.PhaseType) int {
+	switch phase {
+	case game.PhaseNight:
+		return 30 // 夜晚阶段30秒
+	case game.PhaseDay:
+		return 120 // 白天阶段120秒
+	case game.PhaseVote:
+		return 30 // 投票阶段30秒
+	default:
+		return 60
+	}
+}
+
+// getPlayersInfo 获取玩家信息列表
+func (r *Runtime) getPlayersInfo() []PlayerInfo {
+	players := make([]PlayerInfo, 0, len(r.players))
+	for _, p := range r.players {
+		players = append(players, PlayerInfo{
+			ID:      p.GetID(),
+			Role:    p.GetRole(),
+			IsAlive: p.IsAlive(),
+		})
+	}
+	return players
+}
+
+// 用户接口方法
+func (r *Runtime) UseSkill(playerID int64, targetID int64, skillType game.SkillType) {
+	data := &UserSkillData{
+		SkillType: skillType,
+		TargetID:  targetID,
+	}
+	evt := NewEvent(EventUserSkill, playerID, targetID, data)
+	r.emitUserEvent(evt)
+}
+
+func (r *Runtime) Vote(playerID int64, targetID int64) {
+	data := &UserVoteData{
+		TargetID: targetID,
+	}
+	evt := NewEvent(EventUserVote, playerID, targetID, data)
+	r.emitUserEvent(evt)
+}
+
+func (r *Runtime) Speak(playerID int64, message string) {
+	data := &UserSpeakData{
+		Message: message,
+	}
+	evt := NewEvent(EventUserSpeak, playerID, 0, data)
+	r.emitUserEvent(evt)
+}
+
+// emitSystemEvent 发送系统事件
+func (r *Runtime) emitSystemEvent(eventType EventType, playerID int64, targetID int64, data interface{}) {
+	evt := NewEvent(eventType, playerID, targetID, data)
+	select {
+	case r.systemEventChan <- evt:
+	default:
+		// 通道已满，可以记录日志
+	}
+}
+
+// emitUserEvent 发送用户事件
+func (r *Runtime) emitUserEvent(evt *Event) {
+	select {
+	case r.userEventChan <- evt:
+	default:
+		// 通道已满，可以记录日志
+	}
+}
+
 // Start 开始游戏
 func (r *Runtime) Start() error {
-	// 初始化游戏
 	if err := r.init(); err != nil {
 		return err
 	}
 
-	// 游戏主循环
-	return r.gameLoop()
-}
-
-// gameLoop 游戏主循环
-func (r *Runtime) gameLoop() error {
-	for !r.IsEnded() {
-		// 等待当前阶段完成
-		if err := r.waitPhaseComplete(); err != nil {
-			return err
-		}
-
-		// 检查游戏是否结束
-		if r.checkGameEnd() {
-			break
-		}
-
-		// 进入下一阶段
-		r.nextPhase()
+	// 发送游戏开始事件
+	startData := &SystemGameStartData{
+		Players: r.getPlayersInfo(),
+		Phase: PhaseInfo{
+			Type:      r.phase.GetName(),
+			Round:     r.round,
+			StartTime: time.Now(),
+			Duration:  r.getPhaseDefaultDuration(r.phase.GetName()),
+		},
 	}
+	r.emitSystemEvent(EventSystemGameStart, 0, 0, startData)
 
+	// 启动事件处理循环
+	go r.eventLoop()
 	return nil
 }
 
-// waitPhaseComplete 等待当前阶段所有行动完成
-func (r *Runtime) waitPhaseComplete() error {
-	for {
-		if r.isPhaseActionsCompleted() {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+// Stop 停止游戏
+func (r *Runtime) Stop() {
+	close(r.stopChan)
+	close(r.userEventChan)
+	close(r.systemEventChan)
 }
 
-// isPhaseActionsCompleted 检查当前阶段的所有行动是否完成
-func (r *Runtime) isPhaseActionsCompleted() bool {
-	r.RLock()
-	defer r.RUnlock()
+// isPhaseCompleted 检查当前阶段是否完成
+func (r *Runtime) isPhaseCompleted() bool {
+	currentPhase := r.phase.GetName()
 
-	// 遍历所有存活玩家
+	// 检查所有存活玩家是否都完成了当前阶段的必要操作
 	for _, p := range r.players {
 		if !p.IsAlive() {
 			continue
 		}
 
-		// 检查玩家在当前阶段的行动是否完成
-		if !r.isPlayerActionsCompleted(p) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// isPlayerActionsCompleted 检查玩家在当前阶段的行动是否完成
-func (r *Runtime) isPlayerActionsCompleted(p game.Player) bool {
-	// 获取玩家在当前阶段可用的技能
-	availableSkills := r.getPlayerAvailableSkills(p)
-	if len(availableSkills) == 0 {
-		return true
-	}
-
-	return true
-}
-
-// getPlayerAvailableSkills 获取玩家在当前阶段可用的技能
-func (r *Runtime) getPlayerAvailableSkills(p game.Player) []game.Skill {
-	var availableSkills []game.Skill
-
-	// 获取玩家角色可用的技能类型
-	roleSkillTypes := p.GetRole().GetAvailableSkills()
-
-	// 遍历所有技能实例
-	for _, s := range r.skills {
-		// 检查技能是否属于该玩家角色
-		isRoleSkill := false
-		for _, skillType := range roleSkillTypes {
-			if s.GetName() == string(skillType) {
-				isRoleSkill = true
-				break
+		// 根据不同阶段检查必要操作
+		switch currentPhase {
+		case game.PhaseNight:
+			// 夜晚阶段检查
+			if !r.isNightPhaseCompleted(p) {
+				return false
 			}
-		}
-		if !isRoleSkill {
+		case game.PhaseVote:
+			// 投票阶段检查
+			if !r.isVotePhaseCompleted(p) {
+				return false
+			}
+		case game.PhaseDay:
+			// 白天阶段无强制操作
 			continue
 		}
+	}
+	return true
+}
 
-		// 检查技能是否可在当前阶段使用
-		if err := r.phase.ValidateAction(s); err == nil {
-			availableSkills = append(availableSkills, s)
+// isNightPhaseCompleted 检查夜晚阶段玩家是否完成必要操作
+func (r *Runtime) isNightPhaseCompleted(p game.Player) bool {
+	role := p.GetRole()
+	availableSkills := role.GetAvailableSkills()
+
+	// 检查必要技能是否已使用
+	for _, skillType := range availableSkills {
+		switch skillType {
+		case game.SkillTypeKill:
+			// 狼人必须杀人
+			if role.GetName() == string(game.RoleTypeWerewolf) {
+				if !r.isSkillUsed(p, skillType) {
+					return false
+				}
+			}
+		case game.SkillTypeCheck:
+			// 预言家必须验人
+			if role.GetName() == string(game.RoleTypeSeer) {
+				if !r.isSkillUsed(p, skillType) {
+					return false
+				}
+			}
 		}
 	}
-
-	return availableSkills
+	return true
 }
 
-// GetPhase 获取当前阶段
-func (r *Runtime) GetPhase() game.PhaseType {
-	r.RLock()
-	defer r.RUnlock()
-
-	return game.PhaseType(r.phase.GetName())
+// isVotePhaseCompleted 检查投票阶段玩家是否完成必要操作
+func (r *Runtime) isVotePhaseCompleted(p game.Player) bool {
+	// 所有玩家都必须投票
+	return r.isSkillUsed(p, game.SkillTypeVote)
 }
 
-// GetRound 获取当前回合数
-func (r *Runtime) GetRound() int {
-	r.RLock()
-	defer r.RUnlock()
-
-	return r.round
-}
-
-// GetWinner 获取获胜阵营
-func (r *Runtime) GetWinner() game.Camp {
-	r.RLock()
-	defer r.RUnlock()
-
-	return r.winner
-}
-
-// IsEnded 游戏是否结束
-func (r *Runtime) IsEnded() bool {
-	r.RLock()
-	defer r.RUnlock()
-
-	return r.ended
+// isSkillUsed 检查玩家是否已使用某个技能
+func (r *Runtime) isSkillUsed(p game.Player, skillType game.SkillType) bool {
+	for _, s := range r.skills {
+		if s.GetName() == string(skillType) {
+			return s.IsUsed()
+		}
+	}
+	return false
 }
