@@ -44,8 +44,9 @@ type Runtime struct {
 	winner game.Camp
 
 	// 事件通道
-	userEventChan   chan *Event // 用户事件通道
-	systemEventChan chan *Event // 系统事件通道
+	eventChan       chan *Event
+	systemEventChan chan *Event
+	subscribers     []func(*Event) // 添加订阅者列表
 	stopChan        chan struct{}
 }
 
@@ -55,23 +56,11 @@ func NewRuntime() *Runtime {
 		round:           1,
 		skills:          make([]game.Skill, 0),
 		players:         make(map[int64]game.Player),
-		userEventChan:   make(chan *Event, 100),
+		eventChan:       make(chan *Event, 100),
 		systemEventChan: make(chan *Event, 100),
+		subscribers:     make([]func(*Event), 0),
 		stopChan:        make(chan struct{}),
 	}
-}
-
-// AddPlayer 添加玩家
-func (r *Runtime) AddPlayer(id int64, role game.Role) error {
-	r.Lock()
-	defer r.Unlock()
-
-	if r.started {
-		return ErrGameAlreadyStarted
-	}
-
-	r.players[id] = player.New(id, role)
-	return nil
 }
 
 func (r *Runtime) initSkills() ([]game.Skill, error) {
@@ -98,6 +87,28 @@ func (r *Runtime) initSkills() ([]game.Skill, error) {
 	return result, nil
 }
 
+// buildPhaseList 构建游戏阶段链表
+func (r *Runtime) buildPhaseList() game.Phase {
+	// 按技能使用阶段分类
+	skillMap := make(map[game.PhaseType][]game.Skill)
+	for _, s := range r.skills {
+		p := s.UseInPhase()
+		skillMap[p] = append(skillMap[p], s)
+	}
+
+	// 创建各个阶段
+	night := phase.NewPhase(string(game.PhaseNight), skillMap[game.PhaseNight])
+	day := phase.NewPhase(string(game.PhaseDay), skillMap[game.PhaseDay])
+	vote := phase.NewPhase(string(game.PhaseVote), skillMap[game.PhaseVote])
+
+	// 构建循环链表
+	night.SetNextPhase(day)
+	day.SetNextPhase(vote)
+	vote.SetNextPhase(night)
+
+	return night
+}
+
 // init 游戏初始化
 func (r *Runtime) init() error {
 	r.Lock()
@@ -120,26 +131,17 @@ func (r *Runtime) init() error {
 	return nil
 }
 
-// buildPhaseList 构建游戏阶段链表
-func (r *Runtime) buildPhaseList() game.Phase {
-	// 按技能使用阶段分类
-	skillMap := make(map[game.PhaseType][]game.Skill)
-	for _, s := range r.skills {
-		p := s.UseInPhase()
-		skillMap[p] = append(skillMap[p], s)
+// AddPlayer 添加玩家
+func (r *Runtime) AddPlayer(id int64, role game.Role) error {
+	r.Lock()
+	defer r.Unlock()
+
+	if r.started {
+		return ErrGameAlreadyStarted
 	}
 
-	// 创建各个阶段
-	night := phase.NewPhase(string(game.PhaseNight), skillMap[game.PhaseNight])
-	day := phase.NewPhase(string(game.PhaseDay), skillMap[game.PhaseDay])
-	vote := phase.NewPhase(string(game.PhaseVote), skillMap[game.PhaseVote])
-
-	// 构建循环链表
-	night.SetNextPhase(day)
-	day.SetNextPhase(vote)
-	vote.SetNextPhase(night)
-
-	return night
+	r.players[id] = player.New(id, role)
+	return nil
 }
 
 // nextPhase 进入下一阶段
@@ -261,7 +263,7 @@ func (r *Runtime) checkGameEnd() bool {
 func (r *Runtime) eventLoop() {
 	for {
 		select {
-		case evt := <-r.userEventChan:
+		case evt := <-r.eventChan:
 			r.handleEvent(evt)
 		case <-r.stopChan:
 			return
@@ -449,9 +451,40 @@ func (r *Runtime) Speak(playerID int64, message string) {
 	r.emitUserEvent(evt)
 }
 
+// Subscribe 订阅事件
+func (r *Runtime) Subscribe(handler func(*Event)) {
+	r.Lock()
+	defer r.Unlock()
+	r.subscribers = append(r.subscribers, handler)
+}
+
+// Unsubscribe 取消订阅
+func (r *Runtime) Unsubscribe(handler func(*Event)) {
+	r.Lock()
+	defer r.Unlock()
+	for i, h := range r.subscribers {
+		if &h == &handler {
+			r.subscribers = append(r.subscribers[:i], r.subscribers[i+1:]...)
+			break
+		}
+	}
+}
+
 // emitSystemEvent 发送系统事件
 func (r *Runtime) emitSystemEvent(eventType EventType, playerID int64, targetID int64, data interface{}) {
 	evt := NewEvent(eventType, playerID, targetID, data)
+
+	// 通知所有订阅者
+	r.RLock()
+	subscribers := make([]func(*Event), len(r.subscribers))
+	copy(subscribers, r.subscribers)
+	r.RUnlock()
+
+	for _, handler := range subscribers {
+		handler(evt)
+	}
+
+	// 发送到系统事件通道
 	select {
 	case r.systemEventChan <- evt:
 	default:
@@ -461,8 +494,19 @@ func (r *Runtime) emitSystemEvent(eventType EventType, playerID int64, targetID 
 
 // emitUserEvent 发送用户事件
 func (r *Runtime) emitUserEvent(evt *Event) {
+	// 通知所有订阅者
+	r.RLock()
+	subscribers := make([]func(*Event), len(r.subscribers))
+	copy(subscribers, r.subscribers)
+	r.RUnlock()
+
+	for _, handler := range subscribers {
+		handler(evt)
+	}
+
+	// 发送到用户事件通道
 	select {
-	case r.userEventChan <- evt:
+	case r.eventChan <- evt:
 	default:
 		// 通道已满，可以记录日志
 	}
@@ -494,7 +538,7 @@ func (r *Runtime) Start() error {
 // Stop 停止游戏
 func (r *Runtime) Stop() {
 	close(r.stopChan)
-	close(r.userEventChan)
+	close(r.eventChan)
 	close(r.systemEventChan)
 }
 

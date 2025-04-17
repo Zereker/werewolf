@@ -17,12 +17,12 @@ var (
 
 // Room 游戏房间
 type Room struct {
+	sync.RWMutex
+
 	id       string
 	runtime  *werewolf.Runtime
 	capacity int
-
-	sync.RWMutex
-	players map[int64]struct{}
+	players  map[int64]*Player
 }
 
 // NewRoom 创建新房间
@@ -30,13 +30,13 @@ func NewRoom(id string, capacity int) *Room {
 	return &Room{
 		id:       id,
 		runtime:  werewolf.NewRuntime(),
-		players:  make(map[int64]struct{}),
 		capacity: capacity,
+		players:  make(map[int64]*Player),
 	}
 }
 
 // Join 玩家加入房间
-func (r *Room) Join(playerID int64) error {
+func (r *Room) Join(id int64, conn Connection) error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -44,16 +44,37 @@ func (r *Room) Join(playerID int64) error {
 		return ErrRoomFull
 	}
 
-	r.players[playerID] = struct{}{}
+	// 分配角色（这里简化处理，实际应该有更复杂的角色分配逻辑）
+	roleType := r.assignRole()
+	playerRole, err := role.New(roleType)
+	if err != nil {
+		return err
+	}
+
+	// 创建玩家
+	player := NewPlayer(id, playerRole, conn, r)
+	r.players[id] = player
+
+	// 添加到游戏运行时
+	if err := r.runtime.AddPlayer(id, playerRole); err != nil {
+		delete(r.players, id)
+		return err
+	}
+
+	// 启动玩家消息处理
+	player.Start()
 	return nil
 }
 
 // Leave 玩家离开房间
-func (r *Room) Leave(playerID int64) {
+func (r *Room) Leave(id int64) {
 	r.Lock()
 	defer r.Unlock()
 
-	delete(r.players, playerID)
+	if player, exists := r.players[id]; exists {
+		player.Stop()
+		delete(r.players, id)
+	}
 }
 
 // Start 开始游戏
@@ -61,40 +82,37 @@ func (r *Room) Start() error {
 	r.Lock()
 	defer r.Unlock()
 
-	// 分配角色
-	roles := r.assignRoles(len(r.players))
-	i := 0
-	for playerID := range r.players {
-		if err := r.runtime.AddPlayer(playerID, roles[i]); err != nil {
-			return err
-		}
-		i++
-	}
+	// 订阅游戏事件
+	r.runtime.Subscribe(r.broadcastEvent)
 
 	return r.runtime.Start()
 }
 
-// assignRoles 分配角色
-func (r *Room) assignRoles(playerCount int) []game.Role {
-	// 这里简化了角色分配逻辑，实际应该根据玩家数量有不同的配置
-	roles := make([]game.Role, 0, playerCount)
+// Stop 停止游戏
+func (r *Room) Stop() {
+	r.Lock()
+	defer r.Unlock()
 
-	// 添加狼人
-	roles = append(roles, role.NewWerewolf())
-
-	// 添加预言家
-	roles = append(roles, role.NewSeer())
-
-	// 添加女巫
-	roles = append(roles, role.NewWitch())
-
-	// 其余都是村民
-	for i := len(roles); i < playerCount; i++ {
-		roles = append(roles, role.NewVillager())
+	r.runtime.Stop()
+	for _, player := range r.players {
+		player.Stop()
 	}
+}
 
-	// TODO: 随机打乱角色顺序
-	return roles
+// broadcastEvent 广播游戏事件给所有玩家
+func (r *Room) broadcastEvent(evt *werewolf.Event) {
+	r.RLock()
+	defer r.RUnlock()
+
+	for _, player := range r.players {
+		player.OnEvent(evt)
+	}
+}
+
+// assignRole 分配角色（简化版本）
+func (r *Room) assignRole() game.RoleType {
+	// 这里应该实现更复杂的角色分配逻辑
+	return game.RoleTypeVillager
 }
 
 // GetRuntime 获取游戏运行时
