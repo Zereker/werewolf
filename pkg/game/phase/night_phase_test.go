@@ -48,8 +48,7 @@ func TestNightPhase_Handle(t *testing.T) {
 					Skill:  skill.NewKillSkill(),
 				}
 			},
-			wantErr:     true,
-			targetAlive: true,
+			wantErr: true,
 		},
 		{
 			name: "女巫使用毒药",
@@ -62,22 +61,21 @@ func TestNightPhase_Handle(t *testing.T) {
 					Skill:  skill.NewPoisonSkill(),
 				}
 			},
-			wantErr:     false,
-			targetAlive: false,
+			wantErr: false,
 		},
 		{
 			name: "预言家查验",
 			setupAction: func() *game.Action {
 				seerRole, _ := role.New(game.RoleTypeSeer)
 				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
+				target := player.New(werewolfRole)
 				return &game.Action{
 					Caster: player.New(seerRole),
-					Target: player.New(werewolfRole),
+					Target: target,
 					Skill:  skill.NewCheckSkill(),
 				}
 			},
-			wantErr:     false,
-			targetAlive: true,
+			wantErr: false,
 		},
 		{
 			name: "守卫保护",
@@ -90,8 +88,7 @@ func TestNightPhase_Handle(t *testing.T) {
 					Skill:  skill.NewProtectSkill(),
 				}
 			},
-			wantErr:     false,
-			targetAlive: true,
+			wantErr: false,
 		},
 	}
 
@@ -102,68 +99,72 @@ func TestNightPhase_Handle(t *testing.T) {
 			if err := phase.Handle(action); (err != nil) != tt.wantErr {
 				t.Errorf("Handle() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
-			if action.Target.IsAlive() != tt.targetAlive {
-				t.Errorf("Target alive status = %v, want %v", action.Target.IsAlive(), tt.targetAlive)
-			}
 		})
 	}
 }
 
 func TestNightPhase_GetPhaseResult(t *testing.T) {
 	tests := []struct {
-		name         string
-		setupActions func() []*game.Action
-		checkResult  func(*testing.T, *game.PhaseResult[game.SkillResultMap])
+		name           string
+		setupActions   func() []*game.Action
+		expectedDeaths int
+		checkResult    func(*testing.T, *game.PhaseResult[game.SkillResultMap])
 	}{
 		{
 			name: "狼人杀人场景",
 			setupActions: func() []*game.Action {
 				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
 				villagerRole, _ := role.New(game.RoleTypeVillager)
-				witchRole, _ := role.New(game.RoleTypeWitch)
-
+				target := player.New(villagerRole)
 				return []*game.Action{
 					{
 						Caster: player.New(werewolfRole),
-						Target: player.New(villagerRole),
+						Target: target,
+						Skill:  skill.NewKillSkill(),
+					},
+				}
+			},
+			expectedDeaths: 1,
+			checkResult: func(t *testing.T, result *game.PhaseResult[game.SkillResultMap]) {
+				if len(result.Deaths) != 1 {
+					t.Errorf("Expected 1 death, got %d", len(result.Deaths))
+				}
+
+				// 检查死亡玩家是否是村民
+				if len(result.Deaths) > 0 {
+					deadPlayer := result.Deaths[0]
+					if deadPlayer.GetRole().GetName() != game.RoleTypeVillager {
+						t.Errorf("Expected dead player to be villager, got %s", deadPlayer.GetRole().GetName())
+					}
+				}
+			},
+		},
+		{
+			name: "狼人杀人被女巫救场景",
+			setupActions: func() []*game.Action {
+				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
+				villagerRole, _ := role.New(game.RoleTypeVillager)
+				witchRole, _ := role.New(game.RoleTypeWitch)
+
+				target := player.New(villagerRole)
+				return []*game.Action{
+					{
+						Caster: player.New(werewolfRole),
+						Target: target,
 						Skill:  skill.NewKillSkill(),
 					},
 					{
 						Caster: player.New(witchRole),
-						Target: player.New(villagerRole),
-						Skill:  skill.NewSaveSkill(),
+						Target: target,
+						Skill:  skill.NewAntidoteSkill(),
 					},
 				}
 			},
+			expectedDeaths: 0,
 			checkResult: func(t *testing.T, result *game.PhaseResult[game.SkillResultMap]) {
-				// ... 检查逻辑
-			},
-		},
-		{
-			name: "正常发言",
-			setupActions: func() []*game.Action {
-				villagerRole1, _ := role.New(game.RoleTypeVillager)
-				villagerRole2, _ := role.New(game.RoleTypeVillager)
-				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
-
-				return []*game.Action{
-					{
-						Caster: player.New(villagerRole1),
-						Skill:  skill.NewSpeakSkill(),
-					},
-					{
-						Caster: player.New(villagerRole2),
-						Skill:  skill.NewSpeakSkill(),
-					},
-					{
-						Caster: player.New(werewolfRole),
-						Skill:  skill.NewSpeakSkill(),
-					},
+				if len(result.Deaths) != 0 {
+					t.Errorf("Expected no deaths due to witch save, got %d", len(result.Deaths))
 				}
-			},
-			checkResult: func(t *testing.T, result *game.PhaseResult[game.SkillResultMap]) {
-				// ... 检查逻辑
 			},
 		},
 	}
@@ -173,11 +174,17 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 			phase := NewNightPhase()
 			actions := tt.setupActions()
 			for _, action := range actions {
-				if err := phase.Handle(action); err != nil {
+				err := phase.Handle(action)
+				if err != nil {
 					t.Errorf("Handle() error = %v", err)
 				}
 			}
+
 			result := phase.GetPhaseResult()
+			if len(result.Deaths) != tt.expectedDeaths {
+				t.Errorf("Expected %d deaths, got %d", tt.expectedDeaths, len(result.Deaths))
+			}
+
 			tt.checkResult(t, result)
 		})
 	}
@@ -191,7 +198,6 @@ func TestNightPhase_Reset(t *testing.T) {
 	werewolf := player.New(werewolfRole)
 	villager := player.New(villagerRole)
 
-	// 添加一些动作
 	action := &game.Action{
 		Caster: werewolf,
 		Target: villager,
@@ -199,10 +205,8 @@ func TestNightPhase_Reset(t *testing.T) {
 	}
 	phase.Handle(action)
 
-	// 重置
 	phase.Reset()
 
-	// 验证重置后的状态
 	if len(phase.actions) != 0 {
 		t.Error("Actions should be empty after reset")
 	}
