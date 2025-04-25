@@ -25,6 +25,9 @@ type Action struct {
 	Target Player
 	// Skill 使用的技能
 	Skill Skill
+
+	// Content 发言内容
+	Content string
 }
 
 // Phase 游戏阶段接口
@@ -102,6 +105,10 @@ type SkillResult struct {
 	Data interface{}
 }
 
+type PutOption struct {
+	Content string
+}
+
 // Skill 技能接口
 type Skill interface {
 	// GetName 获取技能名称
@@ -110,10 +117,10 @@ type Skill interface {
 	GetPhase() PhaseType
 	// GetPriority 获取技能优先级
 	GetPriority() int
-	// Check 检查技能是否可以使用
+	// Check 检查技能条件
 	Check(phase PhaseType, caster Player, target Player) error
 	// Put 使用技能
-	Put(caster Player, target Player)
+	Put(caster Player, target Player, option PutOption)
 	// Reset 重置技能状态
 	Reset()
 }

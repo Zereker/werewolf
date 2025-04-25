@@ -59,7 +59,7 @@ func (v *Vote) Check(phase game.PhaseType, caster game.Player, target game.Playe
 }
 
 // Put uses vote skill
-func (v *Vote) Put(caster game.Player, target game.Player) {
+func (v *Vote) Put(caster game.Player, target game.Player, option game.PutOption) {
 	v.hasUsed = true
 }
 

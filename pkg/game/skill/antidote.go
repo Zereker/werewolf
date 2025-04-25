@@ -58,21 +58,11 @@ func (a *Antidote) Check(phase game.PhaseType, caster game.Player, target game.P
 	return nil
 }
 
-func (a *Antidote) Put(caster game.Player, target game.Player) {
+func (a *Antidote) Put(caster game.Player, target game.Player, option game.PutOption) {
 	a.hasUsed = true
 	target.SetProtected(true)
 }
 
 func (a *Antidote) Reset() {
 	a.hasUsed = false
-}
-
-// UseInPhase 技能使用阶段
-func (a *Antidote) UseInPhase() game.PhaseType {
-	return game.PhaseNight
-}
-
-// IsUsed 技能是否已使用
-func (a *Antidote) IsUsed() bool {
-	return a.hasUsed
 }

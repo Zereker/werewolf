@@ -63,7 +63,7 @@ func (p *Poison) Check(phase game.PhaseType, caster game.Player, target game.Pla
 }
 
 // Put uses poison skill
-func (p *Poison) Put(caster game.Player, target game.Player) {
+func (p *Poison) Put(caster game.Player, target game.Player, option game.PutOption) {
 	p.hasUsed = true
 	target.SetAlive(false)
 }

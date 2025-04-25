@@ -63,7 +63,7 @@ func (p *Protect) Check(phase game.PhaseType, caster game.Player, target game.Pl
 }
 
 // Put 使用保护技能
-func (p *Protect) Put(caster game.Player, target game.Player) {
+func (p *Protect) Put(caster game.Player, target game.Player, option game.PutOption) {
 	p.hasUsed = true
 	target.SetProtected(true)
 }

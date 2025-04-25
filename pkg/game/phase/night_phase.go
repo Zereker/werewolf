@@ -47,7 +47,9 @@ func (n *NightPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	// 执行所有行为
 	for _, action := range n.actions {
 		// 执行技能
-		action.Skill.Put(action.Caster, action.Target)
+		action.Skill.Put(action.Caster, action.Target, game.PutOption{
+			Content: action.Content,
+		})
 
 		// 记录死亡玩家
 		if !action.Target.IsAlive() {

@@ -12,6 +12,7 @@ type LastWords struct {
 	phase    game.PhaseType
 	priority int
 	hasUsed  bool
+	content  string
 }
 
 func NewLastWordsSkill() *LastWords {
@@ -50,10 +51,15 @@ func (l *LastWords) Check(phase game.PhaseType, caster game.Player, target game.
 	return nil
 }
 
-func (l *LastWords) Put(caster game.Player, target game.Player) {
+func (l *LastWords) Put(caster game.Player, target game.Player, option game.PutOption) {
 	l.hasUsed = true
+	l.content = option.Content
 }
 
 func (l *LastWords) Reset() {
 	l.hasUsed = false
+}
+
+func (l *LastWords) GetContent() string {
+	return l.content
 }

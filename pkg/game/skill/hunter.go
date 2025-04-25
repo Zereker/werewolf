@@ -62,7 +62,7 @@ func (h *Hunter) Check(phase game.PhaseType, caster game.Player, target game.Pla
 	return nil
 }
 
-func (h *Hunter) Put(caster game.Player, target game.Player) {
+func (h *Hunter) Put(caster game.Player, target game.Player, option game.PutOption) {
 	h.hasUsed = true
 	target.SetAlive(false)
 }

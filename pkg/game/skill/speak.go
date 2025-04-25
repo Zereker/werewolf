@@ -12,6 +12,7 @@ type Speak struct {
 	phase    game.PhaseType
 	priority int
 	hasUsed  bool
+	content  string
 }
 
 // NewSpeakSkill creates new speak skill
@@ -55,8 +56,9 @@ func (s *Speak) Check(phase game.PhaseType, caster game.Player, target game.Play
 }
 
 // Put uses speak skill
-func (s *Speak) Put(caster game.Player, target game.Player) {
+func (s *Speak) Put(caster game.Player, target game.Player, option game.PutOption) {
 	s.hasUsed = true
+	s.content = option.Content
 }
 
 // Reset resets skill state
@@ -66,4 +68,9 @@ func (s *Speak) Reset() {
 
 func (s *Speak) GetPriority() int {
 	return s.priority
+}
+
+// GetContent 获取发言内容
+func (s *Speak) GetContent() string {
+	return s.content
 }

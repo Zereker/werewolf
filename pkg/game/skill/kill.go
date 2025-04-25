@@ -69,7 +69,7 @@ func (k *Kill) Check(phase game.PhaseType, caster game.Player, target game.Playe
 }
 
 // Put 使用技能
-func (k *Kill) Put(caster game.Player, target game.Player) {
+func (k *Kill) Put(caster game.Player, target game.Player, option game.PutOption) {
 	k.hasUsed = true
 	target.SetAlive(false)
 }

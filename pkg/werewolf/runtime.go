@@ -173,7 +173,7 @@ func (r *Runtime) useSkill(casterID string, targetID string, skillType game.Skil
 	}
 
 	// 检查技能是否可以在当前阶段使用
-	if s.UseInPhase() != r.phase.GetName() {
+	if s.GetPhase() != r.phase.GetName() {
 		return ErrInvalidPhase
 	}
 

@@ -58,7 +58,7 @@ func (c *Check) Check(phase game.PhaseType, caster game.Player, target game.Play
 	return nil
 }
 
-func (c *Check) Put(caster game.Player, target game.Player) {
+func (c *Check) Put(caster game.Player, target game.Player, option game.PutOption) {
 	c.hasUsed = true
 }
 

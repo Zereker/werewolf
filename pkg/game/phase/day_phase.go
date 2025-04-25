@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"github.com/Zereker/werewolf/pkg/game"
+	"github.com/Zereker/werewolf/pkg/game/skill"
 )
 
 // DayPhase 白天阶段
@@ -43,19 +44,25 @@ func (d *DayPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	})
 
 	// 执行所有行为
-	speakResults := make(map[game.Player]bool)     // 记录每个玩家的发言状态
-	lastWordsResults := make(map[game.Player]bool) // 记录每个玩家的遗言状态
+	speakResults := make(map[game.Player]string)
+	lastWordsResults := make(map[game.Player]string)
 
 	for _, action := range d.actions {
-		// 执行技能
-		action.Skill.Put(action.Caster, action.Target)
+		// 执行技能，传入内容选项
+		action.Skill.Put(action.Caster, action.Target, game.PutOption{
+			Content: action.Content,
+		})
 
 		// 根据技能类型记录结果
 		switch action.Skill.GetName() {
 		case game.SkillTypeSpeak:
-			speakResults[action.Caster] = true
+			if speak, ok := action.Skill.(*skill.Speak); ok {
+				speakResults[action.Caster] = speak.GetContent()
+			}
 		case game.SkillTypeLastWords:
-			lastWordsResults[action.Caster] = true
+			if lastWords, ok := action.Skill.(*skill.LastWords); ok {
+				lastWordsResults[action.Caster] = lastWords.GetContent()
+			}
 		}
 	}
 
