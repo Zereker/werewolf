@@ -5,18 +5,24 @@ import (
 )
 
 type player struct {
+	id        string
 	alive     bool
 	protected bool
 
 	role game.Role
 }
 
-func New(role game.Role) game.Player {
+func New(id string, role game.Role) game.Player {
 	return &player{
+		id:        id,
 		alive:     true,
 		protected: false,
 		role:      role,
 	}
+}
+
+func (p *player) GetID() string {
+	return p.id
 }
 
 func (p *player) GetRole() game.Role {

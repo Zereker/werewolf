@@ -69,7 +69,7 @@ func (r *Runtime) AddPlayer(id string, role game.Role) error {
 		return ErrGameAlreadyStarted
 	}
 
-	r.players[id] = New(id, player.New(role))
+	r.players[id] = New(id, player.New("", role))
 	return nil
 }
 

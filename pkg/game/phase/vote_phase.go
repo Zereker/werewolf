@@ -8,7 +8,8 @@ import (
 
 // VotePhase 投票阶段
 type VotePhase struct {
-	actions      []*game.Action
+	actions []*game.Action
+
 	deaths       []game.Player
 	skillResults game.SkillResultMap
 }
@@ -48,6 +49,7 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	voteCount := make(map[game.Player]int)
 	voteRecord := make(map[game.Player]game.Player)
 
+	// 执行投票并记录
 	for _, action := range v.actions {
 		// 执行技能
 		action.Skill.Put(action.Caster, action.Target, game.PutOption{
@@ -71,11 +73,18 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 		}
 	}
 
-	// 如果只有一个最高票，则该玩家死亡
-	if len(votedOut) == 1 {
+	// 只有在以下条件都满足时才处理出局：
+	// 1. 有最高票的玩家
+	// 2. 不是平票
+	// 3. 总投票数超过最小阈值（这里设置为2票）
+	const minVotesRequired = 2
+	if len(votedOut) == 1 && maxVotes > minVotesRequired {
 		player := votedOut[0]
 		player.SetAlive(false)
 		v.deaths = append(v.deaths, player)
+	} else {
+		// 如果条件不满足，清空出局列表
+		votedOut = nil
 	}
 
 	// 记录投票结果
@@ -83,9 +92,9 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 		Success: true,
 		Message: "投票结果",
 		Data: map[string]interface{}{
-			"votes":     voteRecord, // 每个玩家的投票记录
-			"voteCount": voteCount,  // 每个玩家获得的票数
-			"votedOut":  votedOut,   // 被投出的玩家列表
+			"votes":     voteRecord, // 投票记录
+			"voteCount": voteCount,  // 票数统计
+			"votedOut":  votedOut,   // 被投出的玩家
 		},
 	}
 

@@ -49,6 +49,7 @@ type SkillResultMap map[SkillType]*SkillResult
 
 // Player interface defines player behavior
 type Player interface {
+	GetID() string
 	GetRole() Role
 
 	IsAlive() bool

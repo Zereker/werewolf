@@ -38,23 +38,19 @@ func (n *NightPhase) Handle(action *game.Action) error {
 	return nil
 }
 
+// GetPhaseResult 获取阶段结果
 func (n *NightPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
-	// 按优先级排序所有行为
+	// 按优先级排序所有行为（优先级数字大的先执行）
 	sort.Slice(n.actions, func(i, j int) bool {
-		return n.actions[i].Skill.GetPriority() < n.actions[j].Skill.GetPriority()
+		return n.actions[i].Skill.GetPriority() > n.actions[j].Skill.GetPriority()
 	})
 
 	// 执行所有行为
 	for _, action := range n.actions {
-		// 执行技能
+		// 执行技能，技能自己负责修改玩家状态
 		action.Skill.Put(action.Caster, action.Target, game.PutOption{
 			Content: action.Content,
 		})
-
-		// 记录死亡玩家
-		if !action.Target.IsAlive() {
-			n.deaths = append(n.deaths, action.Target)
-		}
 
 		// 记录技能结果
 		n.skillResults[action.Skill.GetName()] = &game.SkillResult{
@@ -63,6 +59,22 @@ func (n *NightPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 			Data: map[string]interface{}{
 				"target": action.Target.GetRole().GetName(),
 			},
+		}
+	}
+
+	// 所有技能执行完后，收集死亡玩家
+	n.deaths = make([]game.Player, 0)
+	targetPlayers := make(map[game.Player]struct{})
+
+	// 收集所有涉及到的目标玩家
+	for _, action := range n.actions {
+		targetPlayers[action.Target] = struct{}{}
+	}
+
+	// 检查所有涉及到的玩家的最终状态
+	for player := range targetPlayers {
+		if !player.IsAlive() {
+			n.deaths = append(n.deaths, player)
 		}
 	}
 
