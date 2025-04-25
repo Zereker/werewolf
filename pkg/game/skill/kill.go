@@ -60,17 +60,17 @@ func (k *Kill) Check(phase game.PhaseType, caster game.Player, target game.Playe
 		return fmt.Errorf("target is already dead")
 	}
 
-	// 检查目标是否被保护
-	if target.IsProtected() {
-		return fmt.Errorf("target is protected")
-	}
-
 	return nil
 }
 
 // Put 使用技能
 func (k *Kill) Put(caster game.Player, target game.Player, option game.PutOption) {
 	k.hasUsed = true
+
+	if target.IsProtected() {
+		return
+	}
+
 	target.SetAlive(false)
 }
 

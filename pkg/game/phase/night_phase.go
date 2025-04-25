@@ -40,9 +40,9 @@ func (n *NightPhase) Handle(action *game.Action) error {
 
 // GetPhaseResult 获取阶段结果
 func (n *NightPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
-	// 按优先级排序所有行为（优先级数字大的先执行）
+	// 按优先级排序所有行为（优先级数字小的先执行）
 	sort.Slice(n.actions, func(i, j int) bool {
-		return n.actions[i].Skill.GetPriority() > n.actions[j].Skill.GetPriority()
+		return n.actions[i].Skill.GetPriority() < n.actions[j].Skill.GetPriority()
 	})
 
 	// 执行所有行为

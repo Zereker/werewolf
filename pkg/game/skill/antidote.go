@@ -60,7 +60,7 @@ func (a *Antidote) Check(phase game.PhaseType, caster game.Player, target game.P
 
 func (a *Antidote) Put(caster game.Player, target game.Player, option game.PutOption) {
 	a.hasUsed = true
-	target.SetProtected(true)
+	target.SetAlive(true)
 }
 
 func (a *Antidote) Reset() {

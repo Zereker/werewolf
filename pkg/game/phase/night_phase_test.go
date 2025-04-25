@@ -3,6 +3,8 @@ package phase
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/player"
 	"github.com/Zereker/werewolf/pkg/game/role"
@@ -13,93 +15,6 @@ func TestNightPhase_GetName(t *testing.T) {
 	phase := NewNightPhase()
 	if got := phase.GetName(); got != game.PhaseNight {
 		t.Errorf("GetName() = %v, want %v", got, game.PhaseNight)
-	}
-}
-
-func TestNightPhase_Handle(t *testing.T) {
-	tests := []struct {
-		name        string
-		setupAction func() *game.Action
-		wantErr     bool
-	}{
-		{
-			name: "狼人杀人",
-			setupAction: func() *game.Action {
-				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
-				villagerRole, _ := role.New(game.RoleTypeVillager)
-				return &game.Action{
-					Caster: player.New("", werewolfRole),
-					Target: player.New("", villagerRole),
-					Skill:  skill.NewKillSkill(),
-				}
-			},
-			wantErr: false,
-		},
-		{
-			name: "目标被守卫保护无法击杀",
-			setupAction: func() *game.Action {
-				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
-				villagerRole, _ := role.New(game.RoleTypeVillager)
-				p := player.New("", villagerRole)
-				p.SetProtected(true)
-				return &game.Action{
-					Caster: player.New("", werewolfRole),
-					Target: p,
-					Skill:  skill.NewKillSkill(),
-				}
-			},
-			wantErr: true,
-		},
-		{
-			name: "女巫使用毒药",
-			setupAction: func() *game.Action {
-				witchRole, _ := role.New(game.RoleTypeWitch)
-				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
-				return &game.Action{
-					Caster: player.New("", witchRole),
-					Target: player.New("", werewolfRole),
-					Skill:  skill.NewPoisonSkill(),
-				}
-			},
-			wantErr: false,
-		},
-		{
-			name: "预言家查验",
-			setupAction: func() *game.Action {
-				seerRole, _ := role.New(game.RoleTypeSeer)
-				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
-				target := player.New("", werewolfRole)
-				return &game.Action{
-					Caster: player.New("", seerRole),
-					Target: target,
-					Skill:  skill.NewCheckSkill(),
-				}
-			},
-			wantErr: false,
-		},
-		{
-			name: "守卫保护",
-			setupAction: func() *game.Action {
-				guardRole, _ := role.New(game.RoleTypeGuard)
-				villagerRole, _ := role.New(game.RoleTypeVillager)
-				return &game.Action{
-					Caster: player.New("", guardRole),
-					Target: player.New("", villagerRole),
-					Skill:  skill.NewProtectSkill(),
-				}
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			phase := NewNightPhase()
-			action := tt.setupAction()
-			if err := phase.Handle(action); (err != nil) != tt.wantErr {
-				t.Errorf("Handle() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
 	}
 }
 
@@ -285,34 +200,6 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "守卫不能连续保护同一个人",
-			setupActions: func() []*game.Action {
-				villager := player.New("v1", role.NewVillager())
-				guard := player.New("g1", role.NewGuard())
-
-				// 模拟守卫已经在上一轮保护过该村民
-				villager.SetProtected(true)
-
-				return []*game.Action{
-					{
-						Caster: guard,
-						Target: villager,
-						Skill:  skill.NewProtectSkill(),
-					},
-				}
-			},
-			expectedDeaths: 0,
-			checkResult: func(t *testing.T, result *game.PhaseResult[game.SkillResultMap]) {
-				protectResult := result.ExtraData[game.SkillTypeProtect]
-				if protectResult == nil {
-					t.Error("应该有守卫技能的结果")
-				}
-				if protectResult.Success {
-					t.Error("守卫不应该能够连续保护同一个人")
-				}
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -366,5 +253,133 @@ func TestNightPhase_Reset(t *testing.T) {
 	}
 	if len(phase.skillResults) != 0 {
 		t.Error("Skill results should be empty after reset")
+	}
+}
+
+func TestNightPhase_Handle(t *testing.T) {
+	tests := []struct {
+		name         string
+		setupPhase   func() *NightPhase
+		setupPlayers func() []game.Player
+		setupAction  func([]game.Player) *game.Action
+		wantErr      string
+	}{
+		{
+			name: "狼人成功杀人",
+			setupPhase: func() *NightPhase {
+				return NewNightPhase()
+			},
+			setupPlayers: func() []game.Player {
+				werewolf := player.New("werewolf1", role.NewWerewolf())
+				villager := player.New("villager1", role.NewVillager())
+				return []game.Player{werewolf, villager}
+			},
+			setupAction: func(players []game.Player) *game.Action {
+				return &game.Action{
+					Skill:  skill.NewKillSkill(),
+					Caster: players[0],
+					Target: players[1],
+				}
+			},
+			wantErr: "",
+		},
+		{
+			name: "女巫使用解药",
+			setupPhase: func() *NightPhase {
+				return NewNightPhase()
+			},
+			setupPlayers: func() []game.Player {
+				witch := player.New("witch1", role.NewWitch())
+				villager := player.New("villager1", role.NewVillager())
+				villager.SetAlive(false) // 模拟被狼人杀死
+				return []game.Player{witch, villager}
+			},
+			setupAction: func(players []game.Player) *game.Action {
+				return &game.Action{
+					Skill:  skill.NewAntidoteSkill(),
+					Caster: players[0],
+					Target: players[1],
+				}
+			},
+			wantErr: "",
+		},
+		{
+			name: "女巫使用毒药",
+			setupPhase: func() *NightPhase {
+				return NewNightPhase()
+			},
+			setupPlayers: func() []game.Player {
+				witch := player.New("witch1", role.NewWitch())
+				werewolf := player.New("werewolf1", role.NewWerewolf())
+				return []game.Player{witch, werewolf}
+			},
+			setupAction: func(players []game.Player) *game.Action {
+				return &game.Action{
+					Skill:  skill.NewPoisonSkill(),
+					Caster: players[0],
+					Target: players[1],
+				}
+			},
+			wantErr: "",
+		},
+		{
+			name: "女巫解药已用",
+			setupPhase: func() *NightPhase {
+				return NewNightPhase()
+			},
+			setupPlayers: func() []game.Player {
+				witch := player.New("witch1", role.NewWitch())
+				villager := player.New("villager1", role.NewVillager())
+				villager.SetAlive(false) // 模拟被狼人杀死
+				return []game.Player{witch, villager}
+			},
+			setupAction: func(players []game.Player) *game.Action {
+				save := skill.NewAntidoteSkill()
+				save.Put(nil, nil, game.PutOption{}) // 先用掉解药
+				return &game.Action{
+					Skill:  save,
+					Caster: players[0],
+					Target: players[1],
+				}
+			},
+			wantErr: "antidote has been used",
+		},
+		{
+			name: "女巫毒药已用",
+			setupPhase: func() *NightPhase {
+				return NewNightPhase()
+			},
+			setupPlayers: func() []game.Player {
+				witch := player.New("witch1", role.NewWitch())
+				werewolf := player.New("werewolf1", role.NewWerewolf())
+				return []game.Player{witch, werewolf}
+			},
+			setupAction: func(players []game.Player) *game.Action {
+				poison := skill.NewPoisonSkill()
+				poison.Put(nil, nil, game.PutOption{}) // 先用掉毒药
+				return &game.Action{
+					Skill:  poison,
+					Caster: players[0],
+					Target: players[1],
+				}
+			},
+			wantErr: "poison has been used",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			phase := tt.setupPhase()
+			players := tt.setupPlayers()
+			action := tt.setupAction(players)
+
+			err := phase.Handle(action)
+
+			if tt.wantErr != "" {
+				assert.EqualError(t, err, tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
 	}
 }

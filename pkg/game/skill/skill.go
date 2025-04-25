@@ -8,8 +8,8 @@ import (
 
 const (
 	PriorityProtect  = 100 // 守卫技能
-	PriorityAntidote = 200 // 女巫救人
-	PriorityKill     = 300 // 狼人杀人
+	PriorityKill     = 200 // 狼人杀人
+	PriorityAntidote = 300 // 女巫救人
 	PriorityPoison   = 400 // 女巫毒人
 	PriorityCheck    = 500 // 预言家查验
 	PriorityHunter   = 600 // 猎人技能（被动）
