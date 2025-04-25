@@ -6,6 +6,7 @@ type Camp int
 const (
 	CampGood Camp = iota // Good camp
 	CampEvil             // Bad camp
+	CampNone
 )
 
 func (c Camp) String() string {
@@ -14,6 +15,8 @@ func (c Camp) String() string {
 		return "good"
 	case CampEvil:
 		return "evil"
+	case CampNone:
+		return "none"
 	default:
 		return ""
 	}
@@ -45,6 +48,7 @@ type Action struct {
 type Phase interface {
 	GetName() PhaseType
 	Handle(action *Action) error
+	IsCompleted() bool
 	GetPhaseResult() *PhaseResult[SkillResultMap]
 	Reset()
 }

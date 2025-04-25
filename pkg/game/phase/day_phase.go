@@ -36,6 +36,10 @@ func (d *DayPhase) Handle(action *game.Action) error {
 	return nil
 }
 
+func (d *DayPhase) IsCompleted() bool {
+	return true
+}
+
 // GetPhaseResult 获取阶段结果
 func (d *DayPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	// 按优先级排序所有行为

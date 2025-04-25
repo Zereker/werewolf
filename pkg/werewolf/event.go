@@ -55,9 +55,10 @@ type SystemGameStartData struct {
 }
 
 type SystemGameEndData struct {
-	Winner    game.Camp `json:"winner"`    // 获胜阵营
-	Round     int       `json:"round"`     // 结束回合
-	Timestamp time.Time `json:"timestamp"` // 结束时间
+	Winner    game.Camp    `json:"winner"`    // 获胜阵营
+	Round     int          `json:"round"`     // 结束回合
+	Timestamp time.Time    `json:"timestamp"` // 结束时间
+	Players   []PlayerInfo `json:"players"`   // 玩家信息列表
 }
 
 type SystemPhaseData struct {

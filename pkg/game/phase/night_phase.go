@@ -38,6 +38,28 @@ func (n *NightPhase) Handle(action *game.Action) error {
 	return nil
 }
 
+func (n *NightPhase) IsCompleted() bool {
+	// 检查所有夜晚技能是否都已使用
+	usedSkills := make(map[game.SkillType]bool)
+	for _, action := range n.actions {
+		usedSkills[action.Skill.GetName()] = true
+	}
+
+	// 检查必须使用的技能是否都已使用
+	requiredSkills := []game.SkillType{
+		game.SkillTypeKill,  // 狼人必须杀人
+		game.SkillTypeCheck, // 预言家必须验人
+	}
+
+	for _, s := range requiredSkills {
+		if !usedSkills[s] {
+			return false
+		}
+	}
+
+	return true
+}
+
 // GetPhaseResult 获取阶段结果
 func (n *NightPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	// 按优先级排序所有行为（优先级数字小的先执行）

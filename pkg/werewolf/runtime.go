@@ -96,6 +96,10 @@ func (r *Runtime) Init() error {
 	return nil
 }
 
+func (r *Runtime) Start(ctx context.Context) error {
+
+}
+
 // initPhase 初始化游戏阶段
 func (r *Runtime) initPhase() error {
 	// 按顺序创建阶段
@@ -138,144 +142,6 @@ func (r *Runtime) getCurrentPhase() game.Phase {
 	}
 
 	return r.phases[r.phaseIdx]
-}
-
-// completeCurrentPhase 完成当前阶段
-func (r *Runtime) completeCurrentPhase() {
-	currentPhase := r.getCurrentPhase()
-
-	// 获取阶段结果
-	result := currentPhase.GetPhaseResult()
-
-	// 存储阶段结果
-	if _, exists := r.phaseResults[r.round]; !exists {
-		r.phaseResults[r.round] = make(map[game.PhaseType]*game.PhaseResult[game.SkillResultMap])
-	}
-
-	r.phaseResults[r.round][currentPhase.GetName()] = result
-
-	// 处理阶段结果
-	switch currentPhase.GetName() {
-	case game.PhaseNight:
-		r.handleNightPhaseEnd(result)
-	case game.PhaseDay:
-		r.handleDayPhaseEnd(result)
-	case game.PhaseVote:
-		r.handleVotePhaseEnd(result)
-	}
-
-	// 检查游戏是否结束
-	if r.checkGameEnd() {
-		r.endGame()
-		return
-	}
-
-	// 进入下一阶段
-	r.nextPhase()
-}
-
-// handleNightPhaseEnd 处理夜晚阶段结束
-func (r *Runtime) handleNightPhaseEnd(result *game.PhaseResult[game.SkillResultMap]) {
-	// 死亡通知事件 - 所有玩家可见
-	for _, p := range result.Deaths {
-		var receivers []string
-		for id := range r.players {
-			receivers = append(receivers, id)
-		}
-
-		r.broadcastEvent(Event{
-			Type: EventSystemPlayerDeath,
-			Data: map[string]interface{}{
-				"player_id": p,
-				"round":     r.round,
-			},
-			Receivers: receivers, // 设置所有玩家为接收者
-			Timestamp: time.Now(),
-		})
-	}
-
-	// 夜晚结束事件 - 所有玩家可见
-	var receivers []string
-	for id := range r.players {
-		receivers = append(receivers, id)
-	}
-
-	r.broadcastEvent(Event{
-		Type: EventSystemPhaseEnd,
-		Data: &SystemPhaseData{
-			Phase:     game.PhaseNight,
-			Round:     r.round,
-			Timestamp: time.Now(),
-		},
-		Receivers: receivers, // 设置所有玩家为接收者
-	})
-}
-
-// handleDayPhaseEnd 处理白天阶段结束
-func (r *Runtime) handleDayPhaseEnd(result *game.PhaseResult[game.SkillResultMap]) {
-	// 广播白天结果
-	r.broadcastEvent(Event{
-		Type: EventSystemPhaseEnd,
-		Data: &SystemPhaseData{
-			Phase:     game.PhaseDay,
-			Round:     r.round,
-			Timestamp: time.Now(),
-		},
-	})
-}
-
-// handleVotePhaseEnd 处理投票阶段结束
-func (r *Runtime) handleVotePhaseEnd(result *game.PhaseResult[game.SkillResultMap]) {
-	for _, p := range result.Deaths {
-		r.broadcastEvent(Event{
-			Type: EventSystemPlayerDeath,
-			Data: map[string]interface{}{
-				"player_id": p,
-				"round":     r.round,
-			},
-			Timestamp: time.Now(),
-		})
-	}
-
-	// 广播阶段结束
-	r.broadcastEvent(Event{
-		Type: EventSystemPhaseEnd,
-		Data: &SystemPhaseData{
-			Phase:     game.PhaseVote,
-			Round:     r.round,
-			Timestamp: time.Now(),
-		},
-	})
-}
-
-// checkGameEnd 检查游戏是否结束
-func (r *Runtime) checkGameEnd() bool {
-	goodCount := 0
-	badCount := 0
-
-	for _, p := range r.players {
-		if !p.IsAlive() {
-			continue
-		}
-
-		if p.GetRole().GetCamp() == game.CampGood {
-			goodCount++
-		} else {
-			badCount++
-		}
-	}
-
-	// 如果某一阵营人数为0，游戏结束
-	if goodCount == 0 {
-		r.winner = game.CampEvil
-		return true
-	}
-	if badCount == 0 {
-		r.winner = game.CampGood
-		return true
-	}
-
-	return false
 }
 
 func (r *Runtime) useSkill(casterID string, targetID string, skillType game.SkillType) error {
@@ -324,146 +190,152 @@ func (r *Runtime) useSkill(casterID string, targetID string, skillType game.Skil
 	return currentPhase.Handle(action)
 }
 
-// handleUserSkill 处理用户技能事件
-func (r *Runtime) handleUserSkill(evt Event) {
-	data, ok := evt.Data.(*UserSkillData)
-	if !ok {
-		return
-	}
+func (r *Runtime) broadcastEvent(evt Event) {
+	r.RLock()
+	defer r.RUnlock()
 
-	err := r.useSkill(evt.PlayerID, data.TargetID, data.SkillType)
-	if err != nil {
-		// 技能使用失败事件 - 只有使用技能的玩家可见
-		r.broadcastEvent(Event{
-			Type: EventSystemSkillResult,
-			Data: &SystemSkillResultData{
-				SkillType: data.SkillType,
-				Success:   false,
-				Message:   err.Error(),
-			},
-			PlayerID:  evt.PlayerID,
-			Receivers: []string{evt.PlayerID}, // 只设置技能使用者为接收者
-			Timestamp: time.Now(),
-		})
-		return
-	}
-
-	// 技能使用成功事件 - 根据技能类型决定接收者
-	var receivers []string
-	switch data.SkillType {
-	case game.SkillTypeVote:
-		// 投票结果所有存活玩家可见
-		for id, p := range r.players {
-			if p.IsAlive() {
-				receivers = append(receivers, id)
-			}
+	// 如果没有设置接收者，默认发送给所有玩家
+	if len(evt.Receivers) == 0 {
+		for id := range r.players {
+			evt.Receivers = append(evt.Receivers, id)
 		}
+	}
+
+	select {
+	case r.systemEventChan <- evt:
 	default:
-		// 默认只有使用者可见
-		receivers = []string{evt.PlayerID}
+		// 记录日志或其他处理
 	}
-
-	r.broadcastEvent(Event{
-		Type: EventSystemSkillResult,
-		Data: &SystemSkillResultData{
-			SkillType: data.SkillType,
-			Success:   true,
-			Message:   "技能使用成功",
-		},
-		PlayerID:  evt.PlayerID,
-		Receivers: receivers,
-		Timestamp: time.Now(),
-	})
 }
 
-// handleUserSpeak 处理用户发言事件
-func (r *Runtime) handleUserSpeak(evt Event) {
-	data, ok := evt.Data.(*UserSpeakData)
-	if !ok {
-		return
+func (r *Runtime) getEventReceivers(eventType EventType, playerID string) []string {
+	switch eventType {
+	case EventUserSpeak:
+		// 发言所有人可见
+		return r.getAllPlayerIDs()
+	case EventUserSkill:
+		// 技能使用结果只有使用者可见
+		return []string{playerID}
+	case EventUserVote:
+		// 投票信息所有存活玩家可见
+		return r.getAlivePlayerIDs()
+	default:
+		return []string{playerID}
 	}
-
-	// 检查是否是当前发言玩家
-	if r.getCurrentPhase().GetName() != game.PhaseDay {
-		return
-	}
-
-	// 广播发言内容
-	r.broadcastEvent(Event{
-		Type:      EventUserSpeak,
-		PlayerID:  evt.PlayerID,
-		Data:      data,
-		Timestamp: time.Now(),
-	})
 }
 
-// handleUserVote 处理用户投票事件
-func (r *Runtime) handleUserVote(evt Event) {
-	data, ok := evt.Data.(*UserVoteData)
-	if !ok {
+func (r *Runtime) getAllPlayerIDs() []string {
+	ids := make([]string, 0, len(r.players))
+	for id := range r.players {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (r *Runtime) getAlivePlayerIDs() []string {
+	ids := make([]string, 0, len(r.players))
+	for id, p := range r.players {
+		if p.IsAlive() {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+func (r *Runtime) completeCurrentPhase() {
+	currentPhase := r.getCurrentPhase()
+	if currentPhase == nil || !currentPhase.IsCompleted() {
 		return
 	}
 
-	// 检查是否在投票阶段
-	if r.getCurrentPhase().GetName() != game.PhaseVote {
+	result := currentPhase.GetPhaseResult()
+	r.storePhaseResult(result)
+	r.handlePhaseEnd(currentPhase.GetName(), result)
+
+	if r.checkGameEnd() {
+		r.endGame()
 		return
 	}
 
-	// 使用投票技能
-	err := r.useSkill(evt.PlayerID, data.TargetID, game.SkillTypeVote)
-	if err != nil {
-		// 发送投票失败事件
+	r.nextPhase()
+}
+
+func (r *Runtime) storePhaseResult(result *game.PhaseResult[game.SkillResultMap]) {
+	if _, exists := r.phaseResults[r.round]; !exists {
+		r.phaseResults[r.round] = make(map[game.PhaseType]*game.PhaseResult[game.SkillResultMap])
+	}
+
+	r.phaseResults[r.round][r.getCurrentPhase().GetName()] = result
+}
+
+func (r *Runtime) handlePhaseEnd(phaseType game.PhaseType, result *game.PhaseResult[game.SkillResultMap]) {
+	// 处理死亡玩家
+	for _, p := range result.Deaths {
 		r.broadcastEvent(Event{
-			Type: EventSystemVoteResult,
-			Data: &SystemVoteResultData{
-				Round:   r.round,
-				Message: err.Error(),
-				Success: false,
+			Type: EventSystemPlayerDeath,
+			Data: map[string]interface{}{
+				"player_id": p,
+				"round":     r.round,
 			},
-			PlayerID:  evt.PlayerID,
-			Receivers: []string{evt.PlayerID},
 			Timestamp: time.Now(),
 		})
 	}
+
+	// 广播阶段结束
+	r.broadcastEvent(Event{
+		Type: EventSystemPhaseEnd,
+		Data: &SystemPhaseData{
+			Phase:     phaseType,
+			Round:     r.round,
+			Timestamp: time.Now(),
+		},
+	})
 }
 
-// Start 启动游戏
-func (r *Runtime) Start(ctx context.Context) error {
-	r.Lock()
-	if r.started {
-		return ErrGameAlreadyStarted
-	}
-	r.started = true
-	r.Unlock()
+// checkGameEnd 检查游戏是否结束
+func (r *Runtime) checkGameEnd() bool {
+	r.RLock()
+	defer r.RUnlock()
 
-	// 广播游戏开始事件
-	var players []PlayerInfo
+	goodCount := 0
+	evilCount := 0
+	totalAlive := 0
+
+	// 统计存活玩家阵营情况
 	for _, p := range r.players {
-		players = append(players, PlayerInfo{
-			ID:      p.GetID(),
-			Role:    p.GetRole(),
-			IsAlive: p.IsAlive(),
-		})
+		if !p.IsAlive() {
+			continue
+		}
+		totalAlive++
+
+		switch p.GetRole().GetCamp() {
+		case game.CampGood:
+			goodCount++
+		case game.CampEvil:
+			evilCount++
+		default:
+			panic("unhandled default case")
+		}
 	}
 
-	r.broadcastEvent(Event{
-		Type: EventSystemGameStart,
-		Data: &SystemGameStartData{
-			Players: players,
-			Phase: PhaseInfo{
-				Type:      r.getCurrentPhase().GetName(),
-				Round:     r.round,
-				StartTime: time.Now(),
-				Duration:  300, // 设置默认阶段持续时间为5分钟
-			},
-		},
-		Timestamp: time.Now(),
-	})
+	// 检查胜利条件
+	if evilCount == 0 {
+		r.winner = game.CampGood
+		return true
+	}
 
-	// 启动事件循环
-	go r.eventLoop(ctx)
+	if goodCount == 0 || goodCount <= evilCount {
+		r.winner = game.CampEvil
+		return true
+	}
 
-	return nil
+	// 检查是否所有玩家都死亡（平局）
+	if totalAlive == 0 {
+		r.winner = game.CampNone
+		return true
+	}
+
+	return false
 }
 
 // endGame 结束游戏
@@ -477,126 +349,32 @@ func (r *Runtime) endGame() {
 
 	r.ended = true
 
+	// 构建游戏结束数据
+	endData := &SystemGameEndData{
+		Winner:    r.winner,
+		Round:     r.round,
+		Timestamp: time.Now(),
+		Players:   make([]PlayerInfo, 0, len(r.players)),
+	}
+
+	// 添加所有玩家的最终状态
+	for _, p := range r.players {
+		endData.Players = append(endData.Players, PlayerInfo{
+			ID:      p.GetID(),
+			Role:    p.GetRole(),
+			IsAlive: p.IsAlive(),
+		})
+	}
+
 	// 广播游戏结束事件
 	r.broadcastEvent(Event{
-		Type: EventSystemGameEnd,
-		Data: &SystemGameEndData{
-			Winner:    r.winner,
-			Round:     r.round,
-			Timestamp: time.Now(),
-		},
-	})
-}
-
-// eventLoop 事件循环
-func (r *Runtime) eventLoop(ctx context.Context) {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case evt := <-r.systemEventChan:
-			r.handleSysEvent(evt)
-		case evt := <-r.userEventChan:
-			r.handleUserEvent(evt)
-		case <-ticker.C:
-			r.completeCurrentPhase()
-		}
-	}
-}
-
-// broadcastEvent 广播事件到系统事件通道
-func (r *Runtime) broadcastEvent(evt Event) {
-	r.RLock()
-	defer r.RUnlock()
-
-	select {
-	case r.systemEventChan <- evt:
-	default:
-		// 如果channel已满，跳过
-	}
-}
-
-// handleUserEvent 处理用户事件
-func (r *Runtime) handleUserEvent(evt Event) {
-	switch evt.Type {
-	case EventUserSkill:
-		r.handleUserSkill(evt)
-	case EventUserSpeak:
-		r.handleUserSpeak(evt)
-	case EventUserVote:
-		r.handleUserVote(evt)
-	}
-}
-
-func (r *Runtime) handleSysEvent(evt Event) {
-	r.RLock()
-	defer r.RUnlock()
-
-	// 将事件发送给所有接收者
-	for _, receiverID := range evt.Receivers {
-		if p, exists := r.players[receiverID]; exists {
-			p.Send(evt)
-		}
-	}
-}
-
-// SendUserEvent 用户发送事件到游戏运行时
-func (r *Runtime) SendUserEvent(playerID string, eventType EventType, data interface{}) error {
-	r.RLock()
-	defer r.RUnlock()
-
-	// 检查玩家是否存在
-	if _, exists := r.players[playerID]; !exists {
-		return ErrPlayerNotFound
-	}
-
-	// 检查游戏状态
-	if !r.started || r.ended {
-		return ErrGameNotStarted
-	}
-
-	// 创建用户事件
-	evt := Event{
-		Type:      eventType,
-		PlayerID:  playerID,
-		Data:      data,
+		Type:      EventSystemGameEnd,
+		Data:      endData,
+		Receivers: r.getAllPlayerIDs(), // 发送给所有玩家
 		Timestamp: time.Now(),
-	}
+	})
 
-	// 根据事件类型设置接收者
-	switch eventType {
-	case EventUserSpeak:
-		// 发言所有人可见
-		var receivers []string
-		for id := range r.players {
-			receivers = append(receivers, id)
-		}
-		evt.Receivers = receivers
-
-	case EventUserSkill:
-		// 技能使用结果只有使用者可见
-		evt.Receivers = []string{playerID}
-
-	case EventUserVote:
-		// 投票信息所有存活玩家可见
-		var receivers []string
-		for id, p := range r.players {
-			if p.IsAlive() {
-				receivers = append(receivers, id)
-			}
-		}
-		evt.Receivers = receivers
-	}
-
-	// 发送到用户事件通道
-	select {
-	case r.userEventChan <- evt:
-		return nil
-	default:
-		// 如果channel已满，返回错误
-		return errors.New("event channel is full")
-	}
+	// 关闭事件通道
+	close(r.userEventChan)
+	close(r.systemEventChan)
 }

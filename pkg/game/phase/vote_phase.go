@@ -38,6 +38,10 @@ func (v *VotePhase) Handle(action *game.Action) error {
 	return nil
 }
 
+func (v *VotePhase) IsCompleted() bool {
+	return true
+}
+
 // GetPhaseResult 获取阶段结果
 func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	// 按优先级排序所有投票行为
