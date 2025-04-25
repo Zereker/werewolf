@@ -49,8 +49,9 @@ type Event struct {
 }
 
 type SystemGameStartData struct {
-	Players []PlayerInfo `json:"players"` // 玩家信息列表
-	Phase   PhaseInfo    `json:"phase"`   // 初始阶段信息
+	Players []PlayerInfo
+	Phase   PhaseInfo
+	Role    string // 修改 PlayerRole 为 Role
 }
 
 type SystemGameEndData struct {
@@ -75,12 +76,11 @@ type SystemSkillResultData struct {
 }
 
 type SystemVoteResultData struct {
-	Round      int            `json:"round"`      // 投票轮次
-	VoteCount  map[string]int `json:"vote_count"` // 每个玩家获得的票数
-	Eliminated []string       `json:"eliminated"` // 被淘汰的玩家ID
-
-	Message string
-	Success bool
+	Round    int
+	Success  bool
+	Message  string
+	VoterID  string // 添加 VoterID 字段
+	TargetID string // 添加 TargetID 字段
 }
 
 type UserSkillData struct {

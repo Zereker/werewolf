@@ -76,6 +76,10 @@ type Player interface {
 // RoleType represents role type
 type RoleType string
 
+func (r RoleType) String() string {
+	return string(r)
+}
+
 const (
 	RoleTypeWerewolf RoleType = "werewolf" // Werewolf
 	RoleTypeSeer     RoleType = "seer"     // Seer

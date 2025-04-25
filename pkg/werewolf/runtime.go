@@ -181,6 +181,38 @@ func (r *Runtime) handleVoteEvent(evt Event) {
 	r.broadcastVoteResult(evt.PlayerID, data.TargetID, err)
 }
 
+func (r *Runtime) broadcastVoteResult(voterID, targetID string, err error) {
+	if err != nil {
+		r.broadcastEvent(Event{
+			Type: EventSystemVoteResult,
+			Data: &SystemVoteResultData{
+				Round:   r.round,
+				Success: false,
+				Message: err.Error(),
+				VoterID: voterID, // 添加 VoterID
+			},
+			PlayerID:  voterID,
+			Receivers: []string{voterID},
+			Timestamp: time.Now(),
+		})
+		return
+	}
+
+	r.broadcastEvent(Event{
+		Type: EventSystemVoteResult,
+		Data: &SystemVoteResultData{
+			Round:    r.round,
+			Success:  true,
+			Message:  "投票成功",
+			VoterID:  voterID,  // 添加 VoterID
+			TargetID: targetID, // 添加 TargetID
+		},
+		PlayerID:  voterID,
+		Receivers: r.getAlivePlayerIDs(),
+		Timestamp: time.Now(),
+	})
+}
+
 func (r *Runtime) useSkill(casterID, targetID string, skillType game.SkillType) error {
 	r.RLock()
 	defer r.RUnlock()
@@ -234,7 +266,12 @@ func (r *Runtime) broadcastSkillResult(playerID string, skillType game.SkillType
 	} else {
 		success = true
 		message = "技能使用成功"
-		receivers = skillType == game.SkillTypeVote ? r.getAlivePlayerIDs() : []string{playerID}
+		// 修复这里的逻辑错误
+		if skillType == game.SkillTypeVote {
+			receivers = r.getAlivePlayerIDs()
+		} else {
+			receivers = []string{playerID}
+		}
 	}
 
 	r.broadcastEvent(Event{
@@ -246,37 +283,6 @@ func (r *Runtime) broadcastSkillResult(playerID string, skillType game.SkillType
 		},
 		PlayerID:  playerID,
 		Receivers: receivers,
-		Timestamp: time.Now(),
-	})
-}
-
-func (r *Runtime) broadcastVoteResult(voterID, targetID string, err error) {
-	if err != nil {
-		r.broadcastEvent(Event{
-			Type: EventSystemVoteResult,
-			Data: &SystemVoteResultData{
-				Round:   r.round,
-				Success: false,
-				Message: err.Error(),
-			},
-			PlayerID:  voterID,
-			Receivers: []string{voterID},
-			Timestamp: time.Now(),
-		})
-		return
-	}
-
-	r.broadcastEvent(Event{
-		Type: EventSystemVoteResult,
-		Data: &SystemVoteResultData{
-			Round:    r.round,
-			Success:  true,
-			VoterID:  voterID,
-			TargetID: targetID,
-			Message:  "投票成功",
-		},
-		PlayerID:  voterID,
-		Receivers: r.getAlivePlayerIDs(),
 		Timestamp: time.Now(),
 	})
 }
@@ -299,9 +305,9 @@ func (r *Runtime) broadcastGameStart() {
 
 	for playerID, p := range r.players {
 		personalStartData := &SystemGameStartData{
-			Players:    players,
-			Phase:      phaseInfo,
-			PlayerRole: p.GetRole(),
+			Players: players,
+			Phase:   phaseInfo,
+			Role:    p.GetRole().GetName().String(),
 		}
 
 		r.broadcastEvent(Event{
