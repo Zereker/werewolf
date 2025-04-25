@@ -27,7 +27,7 @@ func TestDayPhase_Handle(t *testing.T) {
 			setupAction: func() *game.Action {
 				villagerRole, _ := role.New(game.RoleTypeVillager)
 				return &game.Action{
-					Caster: player.New("", villagerRole),
+					Caster: player.New(villagerRole),
 					Skill:  skill.NewSpeakSkill(),
 				}
 			},
@@ -38,7 +38,7 @@ func TestDayPhase_Handle(t *testing.T) {
 			setupAction: func() *game.Action {
 				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
 				return &game.Action{
-					Caster: player.New("", werewolfRole),
+					Caster: player.New(werewolfRole),
 					Skill:  skill.NewSpeakSkill(),
 				}
 			},
@@ -49,7 +49,7 @@ func TestDayPhase_Handle(t *testing.T) {
 			setupAction: func() *game.Action {
 				villagerRole, _ := role.New(game.RoleTypeVillager)
 				return &game.Action{
-					Caster: player.New("", villagerRole),
+					Caster: player.New(villagerRole),
 					Skill:  skill.NewLastWordsSkill(),
 				}
 			},
@@ -83,17 +83,17 @@ func TestDayPhase_GetPhaseResult(t *testing.T) {
 
 				return []*game.Action{
 					{
-						Caster:  player.New("", villagerRole1),
+						Caster:  player.New(villagerRole1),
 						Skill:   skill.NewSpeakSkill(),
 						Content: "我是村民1",
 					},
 					{
-						Caster:  player.New("", villagerRole2),
+						Caster:  player.New(villagerRole2),
 						Skill:   skill.NewSpeakSkill(),
 						Content: "我是村民2",
 					},
 					{
-						Caster:  player.New("", werewolfRole),
+						Caster:  player.New(werewolfRole),
 						Skill:   skill.NewSpeakSkill(),
 						Content: "我是好人",
 					},
@@ -138,7 +138,7 @@ func TestDayPhase_GetPhaseResult(t *testing.T) {
 			name: "遗言",
 			setupActions: func() []*game.Action {
 				villagerRole, _ := role.New(game.RoleTypeVillager)
-				deadPlayer := player.New("", villagerRole)
+				deadPlayer := player.New(villagerRole)
 				deadPlayer.SetAlive(false) // 设置玩家为死亡状态
 				return []*game.Action{
 					{
@@ -190,17 +190,17 @@ func TestDayPhase_GetPhaseResult(t *testing.T) {
 				villagerRole2, _ := role.New(game.RoleTypeVillager)
 				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
 
-				deadPlayer := player.New("", villagerRole1)
+				deadPlayer := player.New(villagerRole1)
 				deadPlayer.SetAlive(false)
 
 				return []*game.Action{
 					{
-						Caster:  player.New("", villagerRole2),
+						Caster:  player.New(villagerRole2),
 						Skill:   skill.NewSpeakSkill(),
 						Content: "我是村民2",
 					},
 					{
-						Caster:  player.New("", werewolfRole),
+						Caster:  player.New(werewolfRole),
 						Skill:   skill.NewSpeakSkill(),
 						Content: "我是好人",
 					},
@@ -293,7 +293,7 @@ func TestDayPhase_GetPhaseResult(t *testing.T) {
 func TestDayPhase_Reset(t *testing.T) {
 	phase := NewDayPhase()
 	villagerRole, _ := role.New(game.RoleTypeVillager)
-	player1 := player.New("", villagerRole)
+	player1 := player.New(villagerRole)
 
 	// 添加一些动作
 	action := &game.Action{

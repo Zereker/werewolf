@@ -24,9 +24,6 @@ var (
 type Runtime struct {
 	sync.RWMutex
 
-	// 技能列表
-	skills []game.Skill
-
 	// 玩家列表
 	players map[string]*Player
 
@@ -69,7 +66,7 @@ func (r *Runtime) AddPlayer(id string, role game.Role) error {
 		return ErrGameAlreadyStarted
 	}
 
-	r.players[id] = New(id, player.New("", role))
+	r.players[id] = New(id, player.New(role))
 	return nil
 }
 
@@ -309,7 +306,7 @@ func (r *Runtime) checkGameEnd() bool {
 
 	// 如果某一阵营人数为0，游戏结束
 	if goodCount == 0 {
-		r.winner = game.CampBad
+		r.winner = game.CampEvil
 		return true
 	}
 	if badCount == 0 {

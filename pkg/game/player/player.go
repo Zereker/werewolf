@@ -12,9 +12,8 @@ type player struct {
 	role game.Role
 }
 
-func New(id string, role game.Role) game.Player {
+func New(role game.Role) game.Player {
 	return &player{
-		id:        id,
 		alive:     true,
 		protected: false,
 		role:      role,
@@ -27,10 +26,6 @@ func (p *player) GetID() string {
 
 func (p *player) GetRole() game.Role {
 	return p.role
-}
-
-func (p *player) GetCamp() game.Camp {
-	return p.role.GetCamp()
 }
 
 func (p *player) IsAlive() bool {

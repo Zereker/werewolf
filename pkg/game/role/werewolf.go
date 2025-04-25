@@ -29,7 +29,7 @@ func (w *Werewolf) GetName() game.RoleType {
 
 // GetCamp 获取角色所属阵营
 func (w *Werewolf) GetCamp() game.Camp {
-	return game.CampBad
+	return game.CampEvil
 }
 
 // GetAvailableSkills 获取可用技能

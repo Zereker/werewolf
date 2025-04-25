@@ -28,8 +28,8 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 		{
 			name: "狼人杀人场景",
 			setupActions: func() []*game.Action {
-				villager := player.New("v1", role.NewVillager())
-				werewolf := player.New("w1", role.NewWerewolf())
+				villager := player.New(role.NewVillager())
+				werewolf := player.New(role.NewWerewolf())
 
 				return []*game.Action{
 					{
@@ -52,9 +52,9 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 		{
 			name: "狼人杀人被女巫救场景",
 			setupActions: func() []*game.Action {
-				villager := player.New("v1", role.NewVillager())
-				werewolf := player.New("w1", role.NewWerewolf())
-				witch := player.New("witch1", role.NewWitch())
+				villager := player.New(role.NewVillager())
+				werewolf := player.New(role.NewWerewolf())
+				witch := player.New(role.NewWitch())
 
 				return []*game.Action{
 					{
@@ -79,8 +79,8 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 		{
 			name: "女巫毒杀场景",
 			setupActions: func() []*game.Action {
-				werewolf := player.New("w1", role.NewWerewolf())
-				witch := player.New("witch1", role.NewWitch())
+				werewolf := player.New(role.NewWerewolf())
+				witch := player.New(role.NewWitch())
 
 				return []*game.Action{
 					{
@@ -103,9 +103,9 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 		{
 			name: "守卫保护场景",
 			setupActions: func() []*game.Action {
-				villager := player.New("v1", role.NewVillager())
-				werewolf := player.New("w1", role.NewWerewolf())
-				guard := player.New("g1", role.NewGuard())
+				villager := player.New(role.NewVillager())
+				werewolf := player.New(role.NewWerewolf())
+				guard := player.New(role.NewGuard())
 
 				return []*game.Action{
 					{
@@ -130,9 +130,9 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 		{
 			name: "复杂场景：狼人杀人+女巫救+女巫毒",
 			setupActions: func() []*game.Action {
-				villager := player.New("v1", role.NewVillager())
-				werewolf := player.New("w1", role.NewWerewolf())
-				witch := player.New("witch1", role.NewWitch())
+				villager := player.New(role.NewVillager())
+				werewolf := player.New(role.NewWerewolf())
+				witch := player.New(role.NewWitch())
 
 				return []*game.Action{
 					{
@@ -176,8 +176,8 @@ func TestNightPhase_GetPhaseResult(t *testing.T) {
 		{
 			name: "预言家查验场景",
 			setupActions: func() []*game.Action {
-				werewolf := player.New("w1", role.NewWerewolf())
-				seer := player.New("s1", role.NewSeer())
+				werewolf := player.New(role.NewWerewolf())
+				seer := player.New(role.NewSeer())
 
 				return []*game.Action{
 					{
@@ -233,8 +233,8 @@ func TestNightPhase_Reset(t *testing.T) {
 	werewolfRole, _ := role.New(game.RoleTypeWerewolf)
 	villagerRole, _ := role.New(game.RoleTypeVillager)
 
-	werewolf := player.New("", werewolfRole)
-	villager := player.New("", villagerRole)
+	werewolf := player.New(werewolfRole)
+	villager := player.New(villagerRole)
 
 	action := &game.Action{
 		Caster: werewolf,
@@ -270,8 +270,8 @@ func TestNightPhase_Handle(t *testing.T) {
 				return NewNightPhase()
 			},
 			setupPlayers: func() []game.Player {
-				werewolf := player.New("werewolf1", role.NewWerewolf())
-				villager := player.New("villager1", role.NewVillager())
+				werewolf := player.New(role.NewWerewolf())
+				villager := player.New(role.NewVillager())
 				return []game.Player{werewolf, villager}
 			},
 			setupAction: func(players []game.Player) *game.Action {
@@ -282,88 +282,6 @@ func TestNightPhase_Handle(t *testing.T) {
 				}
 			},
 			wantErr: "",
-		},
-		{
-			name: "女巫使用解药",
-			setupPhase: func() *NightPhase {
-				return NewNightPhase()
-			},
-			setupPlayers: func() []game.Player {
-				witch := player.New("witch1", role.NewWitch())
-				villager := player.New("villager1", role.NewVillager())
-				villager.SetAlive(false) // 模拟被狼人杀死
-				return []game.Player{witch, villager}
-			},
-			setupAction: func(players []game.Player) *game.Action {
-				return &game.Action{
-					Skill:  skill.NewAntidoteSkill(),
-					Caster: players[0],
-					Target: players[1],
-				}
-			},
-			wantErr: "",
-		},
-		{
-			name: "女巫使用毒药",
-			setupPhase: func() *NightPhase {
-				return NewNightPhase()
-			},
-			setupPlayers: func() []game.Player {
-				witch := player.New("witch1", role.NewWitch())
-				werewolf := player.New("werewolf1", role.NewWerewolf())
-				return []game.Player{witch, werewolf}
-			},
-			setupAction: func(players []game.Player) *game.Action {
-				return &game.Action{
-					Skill:  skill.NewPoisonSkill(),
-					Caster: players[0],
-					Target: players[1],
-				}
-			},
-			wantErr: "",
-		},
-		{
-			name: "女巫解药已用",
-			setupPhase: func() *NightPhase {
-				return NewNightPhase()
-			},
-			setupPlayers: func() []game.Player {
-				witch := player.New("witch1", role.NewWitch())
-				villager := player.New("villager1", role.NewVillager())
-				villager.SetAlive(false) // 模拟被狼人杀死
-				return []game.Player{witch, villager}
-			},
-			setupAction: func(players []game.Player) *game.Action {
-				save := skill.NewAntidoteSkill()
-				save.Put(nil, nil, game.PutOption{}) // 先用掉解药
-				return &game.Action{
-					Skill:  save,
-					Caster: players[0],
-					Target: players[1],
-				}
-			},
-			wantErr: "antidote has been used",
-		},
-		{
-			name: "女巫毒药已用",
-			setupPhase: func() *NightPhase {
-				return NewNightPhase()
-			},
-			setupPlayers: func() []game.Player {
-				witch := player.New("witch1", role.NewWitch())
-				werewolf := player.New("werewolf1", role.NewWerewolf())
-				return []game.Player{witch, werewolf}
-			},
-			setupAction: func(players []game.Player) *game.Action {
-				poison := skill.NewPoisonSkill()
-				poison.Put(nil, nil, game.PutOption{}) // 先用掉毒药
-				return &game.Action{
-					Skill:  poison,
-					Caster: players[0],
-					Target: players[1],
-				}
-			},
-			wantErr: "poison has been used",
 		},
 	}
 

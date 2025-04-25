@@ -5,8 +5,19 @@ type Camp int
 
 const (
 	CampGood Camp = iota // Good camp
-	CampBad              // Bad camp
+	CampEvil             // Bad camp
 )
+
+func (c Camp) String() string {
+	switch c {
+	case CampGood:
+		return "good"
+	case CampEvil:
+		return "evil"
+	default:
+		return ""
+	}
+}
 
 // PhaseType represents werewolf phase
 type PhaseType string
@@ -49,7 +60,6 @@ type SkillResultMap map[SkillType]*SkillResult
 
 // Player interface defines player behavior
 type Player interface {
-	GetID() string
 	GetRole() Role
 
 	IsAlive() bool

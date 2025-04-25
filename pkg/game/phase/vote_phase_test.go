@@ -28,8 +28,8 @@ func TestVotePhase_Handle(t *testing.T) {
 				villagerRole1, _ := role.New(game.RoleTypeVillager)
 				villagerRole2, _ := role.New(game.RoleTypeVillager)
 				return &game.Action{
-					Caster: player.New("", villagerRole1),
-					Target: player.New("", villagerRole2),
+					Caster: player.New(villagerRole1),
+					Target: player.New(villagerRole2),
 					Skill:  skill.NewVoteSkill(),
 				}
 			},
@@ -40,11 +40,11 @@ func TestVotePhase_Handle(t *testing.T) {
 			setupAction: func() *game.Action {
 				villagerRole2, _ := role.New(game.RoleTypeVillager)
 				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
-				p := player.New("", villagerRole2)
+				p := player.New(villagerRole2)
 				p.SetAlive(false)
 				return &game.Action{
 					Caster: p,
-					Target: player.New("", werewolfRole),
+					Target: player.New(werewolfRole),
 					Skill:  skill.NewVoteSkill(),
 				}
 			},
@@ -55,10 +55,10 @@ func TestVotePhase_Handle(t *testing.T) {
 			setupAction: func() *game.Action {
 				villagerRole1, _ := role.New(game.RoleTypeVillager)
 				werewolfRole, _ := role.New(game.RoleTypeWerewolf)
-				p := player.New("", werewolfRole)
+				p := player.New(werewolfRole)
 				p.SetAlive(false)
 				return &game.Action{
-					Caster: player.New("", villagerRole1),
+					Caster: player.New(villagerRole1),
 					Target: p,
 					Skill:  skill.NewVoteSkill(),
 				}
@@ -83,8 +83,8 @@ func TestVotePhase_Reset(t *testing.T) {
 	villagerRole, _ := role.New(game.RoleTypeVillager)
 	werewolfRole, _ := role.New(game.RoleTypeWerewolf)
 
-	villager := player.New("", villagerRole)
-	werewolf := player.New("", werewolfRole)
+	villager := player.New(villagerRole)
+	werewolf := player.New(werewolfRole)
 
 	// 添加一些投票动作
 	action := &game.Action{
@@ -120,10 +120,10 @@ func TestVotePhase_GetPhaseResult(t *testing.T) {
 			name: "一致投票出局狼人",
 			setupActions: func() []*game.Action {
 				// 创建角色
-				villager1 := player.New("v1", role.NewVillager())
-				villager2 := player.New("v2", role.NewVillager())
-				villager3 := player.New("v3", role.NewVillager())
-				werewolf := player.New("w1", role.NewWerewolf())
+				villager1 := player.New(role.NewVillager())
+				villager2 := player.New(role.NewVillager())
+				villager3 := player.New(role.NewVillager())
+				werewolf := player.New(role.NewWerewolf())
 
 				return []*game.Action{
 					{
@@ -189,10 +189,10 @@ func TestVotePhase_GetPhaseResult(t *testing.T) {
 			name: "平票无人出局",
 			setupActions: func() []*game.Action {
 				// 创建角色
-				villager1 := player.New("v1", role.NewVillager())
-				villager2 := player.New("v2", role.NewVillager())
-				wolf1 := player.New("w1", role.NewWerewolf())
-				wolf2 := player.New("w2", role.NewWerewolf())
+				villager1 := player.New(role.NewVillager())
+				villager2 := player.New(role.NewVillager())
+				wolf1 := player.New(role.NewWerewolf())
+				wolf2 := player.New(role.NewWerewolf())
 
 				return []*game.Action{
 					{
@@ -249,8 +249,8 @@ func TestVotePhase_GetPhaseResult(t *testing.T) {
 		{
 			name: "单人投票无效",
 			setupActions: func() []*game.Action {
-				villager := player.New("v1", role.NewVillager())
-				werewolf := player.New("w1", role.NewWerewolf())
+				villager := player.New(role.NewVillager())
+				werewolf := player.New(role.NewWerewolf())
 
 				return []*game.Action{
 					{
