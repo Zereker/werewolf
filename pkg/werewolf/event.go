@@ -48,7 +48,6 @@ type Event struct {
 	Data      interface{} `json:"data"`      // 事件数据
 }
 
-// 系统事件数据结构
 type SystemGameStartData struct {
 	Players []PlayerInfo `json:"players"` // 玩家信息列表
 	Phase   PhaseInfo    `json:"phase"`   // 初始阶段信息
