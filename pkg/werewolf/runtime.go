@@ -11,13 +11,21 @@ import (
 	"github.com/Zereker/werewolf/pkg/game/player"
 )
 
+const (
+	DefaultEventChannelSize  = 100
+	DefaultSystemChannelSize = 1
+	DefaultPhaseDuration     = 300 // 5分钟
+	DefaultTickerDuration    = time.Second
+)
+
 var (
-	ErrGameAlreadyStarted = errors.New("werewolf already started")
-	ErrGameNotStarted     = errors.New("werewolf not started")
-	ErrGameInitFailed     = errors.New("werewolf init failed")
-	ErrInvalidPhase       = errors.New("invalid phase")
-	ErrPlayerNotFound     = errors.New("player not found")
-	ErrPlayerInvalidSkill = errors.New("player not allowed to use this skill")
+	ErrGameAlreadyStarted  = errors.New("werewolf already started")
+	ErrGameNotStarted      = errors.New("werewolf not started")
+	ErrGameInitFailed      = errors.New("werewolf init failed")
+	ErrPlayerNotFound      = errors.New("player not found")
+	ErrPlayerSkillNotFound = errors.New("player skill not found")
+	ErrInvalidPhase        = errors.New("invalid phase")
+	ErrEventChannelFull    = errors.New("event channel is full")
 )
 
 // Runtime 游戏运行时
@@ -27,23 +35,24 @@ type Runtime struct {
 	// 玩家列表
 	players map[string]*Player
 
-	// 游戏阶段
-	phase game.Phase // 当前阶段
-
 	// 游戏状态
 	started bool
 	ended   bool
 	round   int
 
-	// 游戏结果
-	winner game.Camp
-
 	// 事件通道
 	userEventChan   chan Event
 	systemEventChan chan Event
 
+	// 游戏阶段
+	phaseIdx int          // 当前阶段索引
+	phases   []game.Phase // 阶段数组
+
 	// 阶段结果
-	phaseResults map[int]map[game.PhaseType]*game.PhaseResult
+	phaseResults map[int]map[game.PhaseType]*game.PhaseResult[game.SkillResultMap]
+
+	// 游戏结果
+	winner game.Camp
 }
 
 // NewRuntime 创建新的游戏运行时
@@ -53,7 +62,7 @@ func NewRuntime() *Runtime {
 		players:         make(map[string]*Player),
 		userEventChan:   make(chan Event, 100),
 		systemEventChan: make(chan Event, 1),
-		phaseResults:    make(map[int]map[game.PhaseType]*game.PhaseResult),
+		phaseResults:    make(map[int]map[game.PhaseType]*game.PhaseResult[game.SkillResultMap]),
 	}
 }
 
@@ -70,33 +79,11 @@ func (r *Runtime) AddPlayer(id string, role game.Role) error {
 	return nil
 }
 
-func (r *Runtime) initPhase() error {
-	// 获取所有玩家列表
-	var players []game.Player
-	for _, p := range r.players {
-		players = append(players, p)
-	}
-
-	// 创建各个阶段
-	night := phase.NewNightPhase()
-	day := phase.NewDayPhase()
-	vote := phase.NewVotePhase()
-
-	// 构建循环链表
-	night.SetNextPhase(day)
-	day.SetNextPhase(vote)
-	vote.SetNextPhase(night)
-
-	r.phase = night
-	return nil
-}
-
 // Init 初始化游戏
 func (r *Runtime) Init() error {
 	r.Lock()
 	defer r.Unlock()
 
-	var err error
 	if r.started {
 		return ErrGameAlreadyStarted
 	}
@@ -109,16 +96,29 @@ func (r *Runtime) Init() error {
 	return nil
 }
 
+// initPhase 初始化游戏阶段
+func (r *Runtime) initPhase() error {
+	// 按顺序创建阶段
+	r.phases = []game.Phase{
+		phase.NewNightPhase(),
+		phase.NewDayPhase(),
+		phase.NewVotePhase(),
+	}
+
+	r.phaseIdx = 0
+	return nil
+}
+
 // nextPhase 进入下一阶段
 func (r *Runtime) nextPhase() {
 	r.Lock()
 	defer r.Unlock()
 
-	currentPhase := r.phase.GetName()
-	r.phase = r.phase.GetNextPhase()
+	// 移动到下一个阶段
+	r.phaseIdx = (r.phaseIdx + 1) % len(r.phases)
 
-	// 如果从投票阶段回到夜晚阶段，回合数加1
-	if currentPhase == (game.PhaseVote) {
+	// 如果回到第一个阶段（夜晚），回合数加1
+	if r.phaseIdx == 0 {
 		r.round++
 	}
 
@@ -126,75 +126,36 @@ func (r *Runtime) nextPhase() {
 	for _, p := range r.players {
 		p.SetProtected(false)
 	}
-
-	// 重置所有技能
-	for _, s := range r.skills {
-		s.Reset()
-	}
 }
 
-func (r *Runtime) findSkill(userID string, skillType game.SkillType) (game.Skill, error) {
-	p, exists := r.players[userID]
-	if !exists {
-		return nil, ErrPlayerNotFound
+// getCurrentPhase 获取当前阶段
+func (r *Runtime) getCurrentPhase() game.Phase {
+	r.RLock()
+	defer r.RUnlock()
+
+	if len(r.phases) == 0 {
+		return nil
 	}
 
-	return p.GetSkill(skillType)
-}
-
-// useSkill 使用技能
-func (r *Runtime) useSkill(casterID string, targetID string, skillType game.SkillType) error {
-	r.Lock()
-	defer r.Unlock()
-
-	if !r.started || r.ended {
-		return ErrGameNotStarted
-	}
-
-	// 查找施法者
-	caster, exists := r.players[casterID]
-	if !exists {
-		return ErrPlayerNotFound
-	}
-
-	// 查找目标
-	target, exists := r.players[targetID]
-	if !exists {
-		return ErrPlayerNotFound
-	}
-
-	// 查找技能
-	s, err := r.findSkill(casterID, skillType)
-	if err != nil {
-		return err
-	}
-
-	// 检查技能是否可以在当前阶段使用
-	if s.GetPhase() != r.phase.GetName() {
-		return ErrInvalidPhase
-	}
-
-	// 使用技能
-	return r.phase.Handle(caster, target, s)
+	return r.phases[r.phaseIdx]
 }
 
 // completeCurrentPhase 完成当前阶段
 func (r *Runtime) completeCurrentPhase() {
-	if !r.phase.IsCompleted() {
-		return
-	}
+	currentPhase := r.getCurrentPhase()
 
 	// 获取阶段结果
-	result := r.phase.GetPhaseResult()
+	result := currentPhase.GetPhaseResult()
 
 	// 存储阶段结果
 	if _, exists := r.phaseResults[r.round]; !exists {
-		r.phaseResults[r.round] = make(map[game.PhaseType]*game.PhaseResult)
+		r.phaseResults[r.round] = make(map[game.PhaseType]*game.PhaseResult[game.SkillResultMap])
 	}
-	r.phaseResults[r.round][r.phase.GetName()] = result
+
+	r.phaseResults[r.round][currentPhase.GetName()] = result
 
 	// 处理阶段结果
-	switch r.phase.GetName() {
+	switch currentPhase.GetName() {
 	case game.PhaseNight:
 		r.handleNightPhaseEnd(result)
 	case game.PhaseDay:
@@ -214,7 +175,7 @@ func (r *Runtime) completeCurrentPhase() {
 }
 
 // handleNightPhaseEnd 处理夜晚阶段结束
-func (r *Runtime) handleNightPhaseEnd(result *game.PhaseResult) {
+func (r *Runtime) handleNightPhaseEnd(result *game.PhaseResult[game.SkillResultMap]) {
 	// 死亡通知事件 - 所有玩家可见
 	for _, p := range result.Deaths {
 		var receivers []string
@@ -251,7 +212,7 @@ func (r *Runtime) handleNightPhaseEnd(result *game.PhaseResult) {
 }
 
 // handleDayPhaseEnd 处理白天阶段结束
-func (r *Runtime) handleDayPhaseEnd(result *game.PhaseResult) {
+func (r *Runtime) handleDayPhaseEnd(result *game.PhaseResult[game.SkillResultMap]) {
 	// 广播白天结果
 	r.broadcastEvent(Event{
 		Type: EventSystemPhaseEnd,
@@ -264,7 +225,7 @@ func (r *Runtime) handleDayPhaseEnd(result *game.PhaseResult) {
 }
 
 // handleVotePhaseEnd 处理投票阶段结束
-func (r *Runtime) handleVotePhaseEnd(result *game.PhaseResult) {
+func (r *Runtime) handleVotePhaseEnd(result *game.PhaseResult[game.SkillResultMap]) {
 	for _, p := range result.Deaths {
 		r.broadcastEvent(Event{
 			Type: EventSystemPlayerDeath,
@@ -297,7 +258,7 @@ func (r *Runtime) checkGameEnd() bool {
 			continue
 		}
 
-		if p.GetCamp() == game.CampGood {
+		if p.GetRole().GetCamp() == game.CampGood {
 			goodCount++
 		} else {
 			badCount++
@@ -315,6 +276,52 @@ func (r *Runtime) checkGameEnd() bool {
 	}
 
 	return false
+}
+
+func (r *Runtime) useSkill(casterID string, targetID string, skillType game.SkillType) error {
+	// 检查游戏状态
+	if !r.started || r.ended {
+		return ErrGameNotStarted
+	}
+
+	// 查找施法者和目标
+	caster, exists := r.players[casterID]
+	if !exists {
+		return ErrPlayerNotFound
+	}
+
+	target, exists := r.players[targetID]
+	if !exists {
+		return ErrPlayerNotFound
+	}
+
+	// 查找技能
+	var skill game.Skill
+	for _, s := range caster.GetRole().GetAvailableSkills() {
+		if s.GetName() == skillType {
+			skill = s
+			break
+		}
+	}
+
+	if skill == nil {
+		return ErrPlayerSkillNotFound
+	}
+
+	// 检查阶段
+	currentPhase := r.getCurrentPhase()
+	if currentPhase.GetName() != skill.GetPhase() {
+		return ErrInvalidPhase
+	}
+
+	// 创建动作并执行
+	action := &game.Action{
+		Caster: caster,
+		Target: target,
+		Skill:  skill,
+	}
+
+	return currentPhase.Handle(action)
 }
 
 // handleUserSkill 处理用户技能事件
@@ -377,7 +384,7 @@ func (r *Runtime) handleUserSpeak(evt Event) {
 	}
 
 	// 检查是否是当前发言玩家
-	if r.phase.GetName() != game.PhaseDay {
+	if r.getCurrentPhase().GetName() != game.PhaseDay {
 		return
 	}
 
@@ -398,7 +405,7 @@ func (r *Runtime) handleUserVote(evt Event) {
 	}
 
 	// 检查是否在投票阶段
-	if r.phase.GetName() != game.PhaseVote {
+	if r.getCurrentPhase().GetName() != game.PhaseVote {
 		return
 	}
 
@@ -444,7 +451,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		Data: &SystemGameStartData{
 			Players: players,
 			Phase: PhaseInfo{
-				Type:      r.phase.GetName(),
+				Type:      r.getCurrentPhase().GetName(),
 				Round:     r.round,
 				StartTime: time.Now(),
 				Duration:  300, // 设置默认阶段持续时间为5分钟

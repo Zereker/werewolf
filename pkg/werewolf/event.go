@@ -84,8 +84,8 @@ type SystemVoteResultData struct {
 }
 
 type UserSkillData struct {
-	SkillType game.SkillType `json:"skill_type"` // 技能类型
 	TargetID  string         `json:"target_id"`  // 目标ID
+	SkillType game.SkillType `json:"skill_type"` // 技能类型
 }
 
 type UserSpeakData struct {
