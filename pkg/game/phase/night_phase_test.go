@@ -243,7 +243,7 @@ func TestNightPhase_Reset(t *testing.T) {
 	}
 	phase.Handle(action)
 
-	phase.Reset()
+	phase.Start()
 
 	if len(phase.actions) != 0 {
 		t.Error("Actions should be empty after reset")

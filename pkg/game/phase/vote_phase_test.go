@@ -95,7 +95,7 @@ func TestVotePhase_Reset(t *testing.T) {
 	phase.Handle(action)
 
 	// 重置
-	phase.Reset()
+	phase.Start()
 
 	// 验证重置后的状态
 	if len(phase.actions) != 0 {

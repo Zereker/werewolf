@@ -108,7 +108,7 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	}
 }
 
-func (v *VotePhase) Reset() {
+func (v *VotePhase) Start() {
 	v.deaths = make([]game.Player, 0)
 	v.skillResults = make(game.SkillResultMap)
 	v.actions = make([]*game.Action, 0)

@@ -106,7 +106,7 @@ func (n *NightPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	}
 }
 
-func (n *NightPhase) Reset() {
+func (n *NightPhase) Start() {
 	n.deaths = make([]game.Player, 0)
 	n.skillResults = make(game.SkillResultMap)
 	n.actions = make([]*game.Action, 0)

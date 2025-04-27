@@ -47,10 +47,12 @@ type Action struct {
 // Phase 游戏阶段接口
 type Phase interface {
 	GetName() PhaseType
+
+	Start()
 	Handle(action *Action) error
 	IsCompleted() bool
+
 	GetPhaseResult() *PhaseResult[SkillResultMap]
-	Reset()
 }
 
 // PhaseResult 阶段结果

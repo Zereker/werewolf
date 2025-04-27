@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -26,12 +27,14 @@ var (
 const (
 	MinPlayerCount           = 6
 	DefaultEventChannelSize  = 100
-	DefaultSystemChannelSize = 1
+	DefaultSystemChannelSize = 9
 )
 
 // Runtime 游戏运行时
 type Runtime struct {
 	sync.RWMutex
+
+	logger *slog.Logger
 
 	players  map[string]*Player
 	started  bool
@@ -48,8 +51,9 @@ type Runtime struct {
 
 func NewRuntime() *Runtime {
 	return &Runtime{
-		round:           1,
-		players:         make(map[string]*Player),
+		logger:  slog.Default().With("game", "werewolf"),
+		players: make(map[string]*Player),
+
 		userEventChan:   make(chan Event, DefaultEventChannelSize),
 		systemEventChan: make(chan Event, DefaultSystemChannelSize),
 		phaseResults:    make(map[int]map[game.PhaseType]*game.PhaseResult[game.SkillResultMap]),
@@ -68,6 +72,26 @@ func (r *Runtime) AddPlayer(id string, role game.Role) error {
 	return nil
 }
 
+func (r *Runtime) init() error {
+	r.Lock()
+	defer r.Unlock()
+
+	r.phases = []game.Phase{
+		phase.NewNightPhase(),
+		phase.NewDayPhase(),
+		phase.NewVotePhase(),
+	}
+	r.phaseIdx = 0
+
+	r.started = true
+	r.ended = false
+	r.round = 1
+
+	// 开始第一个阶段（夜晚阶段）
+	r.notifyWerewolfTeammates()
+	return nil
+}
+
 func (r *Runtime) check() error {
 	r.Lock()
 	defer r.Unlock()
@@ -83,20 +107,18 @@ func (r *Runtime) check() error {
 	return nil
 }
 
-func (r *Runtime) init() error {
-	r.Lock()
-	defer r.Unlock()
-
-	r.phases = []game.Phase{
-		phase.NewNightPhase(),
-		phase.NewDayPhase(),
-		phase.NewVotePhase(),
+func (r *Runtime) Start(ctx context.Context) error {
+	if err := r.check(); err != nil {
+		return err
 	}
 
-	r.phaseIdx = 0
-	r.started = true
-	r.ended = false
-	r.round = 1
+	if err := r.init(); err != nil {
+		return fmt.Errorf("%w: %v", ErrGameInitFailed, err)
+	}
+
+	r.broadcastGameStart()
+	go r.eventLoop(ctx)
+	r.getCurrentPhase().Start()
 
 	return nil
 }
@@ -126,21 +148,6 @@ func (r *Runtime) eventLoop(ctx context.Context) {
 	}
 }
 
-func (r *Runtime) Start(ctx context.Context) error {
-	if err := r.check(); err != nil {
-		return err
-	}
-
-	if err := r.init(); err != nil {
-		return fmt.Errorf("%w: %v", ErrGameInitFailed, err)
-	}
-
-	r.broadcastGameStart()
-	go r.eventLoop(ctx)
-
-	return nil
-}
-
 func (r *Runtime) isGameActive() bool {
 	r.RLock()
 	defer r.RUnlock()
@@ -148,187 +155,95 @@ func (r *Runtime) isGameActive() bool {
 }
 
 func (r *Runtime) handleUserEvent(evt Event) {
+	currentPhase := r.getCurrentPhase()
+
+	var action *game.Action
+
 	switch evt.Type {
 	case EventUserSkill:
-		r.handleSkillEvent(evt)
+		data, ok := evt.Data.(*UserSkillData)
+		if !ok {
+			return
+		}
+
+		caster := r.players[evt.PlayerID]
+		target := r.players[data.TargetID]
+		skill := findSkill(caster, data.SkillType)
+		if skill == nil {
+			return
+		}
+
+		action = &game.Action{
+			Caster: caster,
+			Target: target,
+			Skill:  skill,
+		}
 	case EventUserSpeak:
-		r.handleSpeakEvent(evt)
+		data, ok := evt.Data.(*UserSpeakData)
+		if !ok {
+			return
+		}
+
+		caster := r.players[evt.PlayerID]
+		// 假设发言也是一种技能
+		skill := findSkill(caster, game.SkillTypeSpeak)
+		if skill == nil {
+			return
+		}
+
+		action = &game.Action{
+			Caster:  caster,
+			Skill:   skill,
+			Content: data.Message,
+		}
 	case EventUserVote:
-		r.handleVoteEvent(evt)
+		data, ok := evt.Data.(*UserVoteData)
+		if !ok {
+			return
+		}
+
+		caster := r.players[evt.PlayerID]
+		target := r.players[data.TargetID]
+		skill := findSkill(caster, game.SkillTypeVote)
+		if skill == nil {
+			return
+		}
+
+		action = &game.Action{
+			Caster: caster,
+			Target: target,
+			Skill:  skill,
+		}
+	}
+
+	if action != nil {
+		if err := currentPhase.Handle(action); err != nil {
+			r.logger.Error("phase handle failed", "err", err)
+		}
 	}
 }
 
-func (r *Runtime) handleSkillEvent(evt Event) {
-	data, ok := evt.Data.(*UserSkillData)
-	if !ok {
-		return
+func findSkill(p *Player, skillType game.SkillType) game.Skill {
+	for _, s := range p.GetRole().GetAvailableSkills() {
+		if s.GetName() == skillType {
+			return s
+		}
 	}
 
-	err := r.useSkill(evt.PlayerID, data.TargetID, data.SkillType)
-	r.broadcastSkillResult(evt.PlayerID, data.SkillType, err)
+	return nil
 }
 
-func (r *Runtime) handleSpeakEvent(evt Event) {
-	data, ok := evt.Data.(*UserSpeakData)
-	if !ok || r.getCurrentPhase().GetName() != game.PhaseDay {
-		return
-	}
-
-	r.broadcastEvent(Event{
-		Type:      EventUserSpeak,
-		PlayerID:  evt.PlayerID,
-		Data:      data,
-		Receivers: r.getAllPlayerIDs(),
-		Timestamp: time.Now(),
-	})
-}
-
-func (r *Runtime) handleVoteEvent(evt Event) {
-	data, ok := evt.Data.(*UserVoteData)
-	if !ok || r.getCurrentPhase().GetName() != game.PhaseVote {
-		return
-	}
-
-	err := r.useSkill(evt.PlayerID, data.TargetID, game.SkillTypeVote)
-	r.broadcastVoteResult(evt.PlayerID, data.TargetID, err)
-}
-
-func (r *Runtime) broadcastVoteResult(voterID, targetID string, err error) {
-	if err != nil {
-		r.broadcastEvent(Event{
-			Type: EventSystemVoteResult,
-			Data: &SystemVoteResultData{
-				Round:   r.round,
-				Success: false,
-				Message: err.Error(),
-				VoterID: voterID, // 添加 VoterID
-			},
-			PlayerID:  voterID,
-			Receivers: []string{voterID},
-			Timestamp: time.Now(),
-		})
-		return
-	}
-
-	r.broadcastEvent(Event{
-		Type: EventSystemVoteResult,
-		Data: &SystemVoteResultData{
-			Round:    r.round,
-			Success:  true,
-			Message:  "投票成功",
-			VoterID:  voterID,  // 添加 VoterID
-			TargetID: targetID, // 添加 TargetID
-		},
-		PlayerID:  voterID,
-		Receivers: r.getAlivePlayerIDs(),
-		Timestamp: time.Now(),
-	})
-}
-
-func (r *Runtime) useSkill(casterID, targetID string, skillType game.SkillType) error {
+func (r *Runtime) broadcastEvent(evt Event) {
 	r.RLock()
 	defer r.RUnlock()
 
-	if !r.started || r.ended {
-		return ErrGameNotStarted
+	if len(evt.Receivers) == 0 {
+		return
 	}
 
-	caster, exists := r.players[casterID]
-	if !exists {
-		return ErrPlayerNotFound
-	}
-
-	target, exists := r.players[targetID]
-	if !exists {
-		return ErrPlayerNotFound
-	}
-
-	var skill game.Skill
-	for _, s := range caster.GetRole().GetAvailableSkills() {
-		if s.GetName() == skillType {
-			skill = s
-			break
-		}
-	}
-
-	if skill == nil {
-		return ErrPlayerSkillNotFound
-	}
-
-	if r.getCurrentPhase().GetName() != skill.GetPhase() {
-		return ErrInvalidPhase
-	}
-
-	return r.getCurrentPhase().Handle(&game.Action{
-		Caster: caster,
-		Target: target,
-		Skill:  skill,
-	})
-}
-
-func (r *Runtime) broadcastSkillResult(playerID string, skillType game.SkillType, err error) {
-	var receivers []string
-	var success bool
-	var message string
-
-	if err != nil {
-		success = false
-		message = err.Error()
-		receivers = []string{playerID}
-	} else {
-		success = true
-		message = "技能使用成功"
-		// 修复这里的逻辑错误
-		if skillType == game.SkillTypeVote {
-			receivers = r.getAlivePlayerIDs()
-		} else {
-			receivers = []string{playerID}
-		}
-	}
-
-	r.broadcastEvent(Event{
-		Type: EventSystemSkillResult,
-		Data: &SystemSkillResultData{
-			SkillType: skillType,
-			Success:   success,
-			Message:   message,
-		},
-		PlayerID:  playerID,
-		Receivers: receivers,
-		Timestamp: time.Now(),
-	})
-}
-
-func (r *Runtime) broadcastGameStart() {
-	players := make([]PlayerInfo, 0, len(r.players))
-	for _, p := range r.players {
-		players = append(players, PlayerInfo{
-			ID:      p.GetID(),
-			Role:    p.GetRole(),
-			IsAlive: p.IsAlive(),
-		})
-	}
-
-	currentPhase := r.getCurrentPhase()
-	phaseInfo := PhaseInfo{
-		Type:  currentPhase.GetName(),
-		Round: r.round,
-	}
-
-	for playerID, p := range r.players {
-		personalStartData := &SystemGameStartData{
-			Players: players,
-			Phase:   phaseInfo,
-			Role:    p.GetRole().GetName().String(),
-		}
-
-		r.broadcastEvent(Event{
-			Type:      EventSystemGameStart,
-			Data:      personalStartData,
-			PlayerID:  playerID,
-			Receivers: []string{playerID},
-			Timestamp: time.Now(),
-		})
+	select {
+	case r.systemEventChan <- evt:
+	default:
 	}
 }
 
@@ -340,22 +255,6 @@ func (r *Runtime) handleSysEvent(evt Event) {
 		if p, exists := r.players[receiverID]; exists {
 			p.Send(evt)
 		}
-	}
-}
-
-func (r *Runtime) broadcastEvent(evt Event) {
-	r.RLock()
-	defer r.RUnlock()
-
-	if len(evt.Receivers) == 0 {
-		for id := range r.players {
-			evt.Receivers = append(evt.Receivers, id)
-		}
-	}
-
-	select {
-	case r.systemEventChan <- evt:
-	default:
 	}
 }
 
@@ -398,11 +297,20 @@ func (r *Runtime) nextPhase() {
 	r.Lock()
 	defer r.Unlock()
 
+	// 移动到下一个阶段
 	r.phaseIdx = (r.phaseIdx + 1) % len(r.phases)
-	if r.phaseIdx == 0 {
+
+	// 如果是夜晚阶段开始，通知狼人队友
+	if r.getCurrentPhase().GetName() == game.PhaseNight {
+		r.notifyWerewolfTeammates()
+	}
+
+	// 如果是投票阶段结束，增加回合数
+	if r.getCurrentPhase().GetName() == game.PhaseNight && r.phaseIdx == 0 {
 		r.round++
 	}
 
+	// 重置所有玩家的保护状态
 	for _, p := range r.players {
 		p.SetProtected(false)
 	}
@@ -572,5 +480,38 @@ func (r *Runtime) getEventReceivers(eventType EventType, playerID string) []stri
 		return r.getAlivePlayerIDs()
 	default:
 		return []string{playerID}
+	}
+}
+
+func (r *Runtime) notifyWerewolfTeammates() {
+	r.RLock()
+	defer r.RUnlock()
+
+	// 找出所有狼人
+	var werewolves []*Player
+	for _, p := range r.players {
+		if p.GetRole().GetName() == game.RoleTypeWerewolf {
+			werewolves = append(werewolves, p)
+		}
+	}
+
+	// 给每个狼人推送队友信息
+	for _, wolf := range werewolves {
+		teammates := []string{}
+		for _, teammate := range werewolves {
+			if teammate != wolf {
+				teammates = append(teammates, teammate.GetID())
+			}
+		}
+
+		// 发送事件
+		r.broadcastEvent(Event{
+			Type: EventSystemSkillResult,
+			Data: map[string]interface{}{
+				"message": fmt.Sprintf("你的狼人队友有：%v", teammates),
+			},
+			Receivers: []string{wolf.GetID()},
+			Timestamp: time.Now(),
+		})
 	}
 }

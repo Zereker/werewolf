@@ -1,6 +1,8 @@
 package werewolf
 
 import (
+	"log/slog"
+
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
@@ -8,14 +10,15 @@ type Player struct {
 	ID string
 	game.Player
 
-	msg chan Event
+	events []Event
+	writer *slog.Logger
 }
 
 func New(ID string, player game.Player) *Player {
 	return &Player{
 		ID:     ID,
 		Player: player,
-		msg:    make(chan Event, 1),
+		writer: slog.Default().With("user_id", ID, "player_role", player.GetRole().GetName()),
 	}
 }
 
@@ -24,9 +27,6 @@ func (p *Player) GetID() string {
 }
 
 func (p *Player) Send(event Event) {
-	p.msg <- event
-}
-
-func (p *Player) Recv() {
-
+	p.events = append(p.events, event)
+	p.writer.Info("player receive event", "event", event)
 }

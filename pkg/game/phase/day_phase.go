@@ -95,7 +95,7 @@ func (d *DayPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	}
 }
 
-func (d *DayPhase) Reset() {
+func (d *DayPhase) Start() {
 	d.skillResults = make(game.SkillResultMap)
 	d.actions = make([]*game.Action, 0)
 }

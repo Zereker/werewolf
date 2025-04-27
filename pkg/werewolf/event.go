@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
@@ -10,10 +11,12 @@ import (
 type EventType string
 
 const (
-	EventSystemGameStart   EventType = "system_game_start"   // 游戏开始
-	EventSystemGameEnd     EventType = "system_game_end"     // 游戏结束
-	EventSystemPhaseStart  EventType = "system_phase_start"  // 阶段开始
-	EventSystemPhaseEnd    EventType = "system_phase_end"    // 阶段结束
+	EventSystemGameStart EventType = "system_game_start" // 游戏开始
+	EventSystemGameEnd   EventType = "system_game_end"   // 游戏结束
+
+	EventSystemPhaseStart EventType = "system_phase_start" // 阶段开始
+	EventSystemPhaseEnd   EventType = "system_phase_end"   // 阶段结束
+
 	EventSystemPlayerDeath EventType = "system_player_death" // 玩家死亡
 	EventSystemSkillResult EventType = "system_skill_result" // 技能使用结果
 	EventSystemVoteResult  EventType = "system_vote_result"  // 投票结果
@@ -48,10 +51,53 @@ type Event struct {
 	Data      interface{} `json:"data"`      // 事件数据
 }
 
+func (e Event) String() string {
+	return fmt.Sprintf(
+		"Event{Type:%s, PlayerID:%s, Data:%s, Receivers:%v, Timestamp:%s}",
+		e.Type, e.PlayerID, e.Data, e.Receivers, e.Timestamp.Format(time.RFC3339),
+	)
+}
+
 type SystemGameStartData struct {
 	Players []PlayerInfo
 	Phase   PhaseInfo
-	Role    string // 修改 PlayerRole 为 Role
+	Role    string
+}
+
+func (s SystemGameStartData) String() string {
+	// 统计各角色数量
+	roleCount := make(map[string]int)
+	for _, p := range s.Players {
+		roleName := p.Role.GetName().String()
+		roleCount[roleName]++
+	}
+
+	// 生成玩家列表
+	playerList := ""
+	for _, p := range s.Players {
+		playerList += fmt.Sprintf("玩家：%s\n", p.ID)
+	}
+
+	// 生成角色分布
+	roleList := ""
+	for role, count := range roleCount {
+		roleList += fmt.Sprintf("%s：%d人\n", role, count)
+	}
+
+	// 生成开场白
+	return fmt.Sprintf(
+		"——— 狼人杀游戏开始 ———\n"+
+			"本局共有%d名玩家：\n%s"+
+			"角色分布如下：\n%s"+
+			"你是【%s】。\n"+
+			"当前阶段：%s，第%d回合。\n"+
+			"请遵守游戏规则，祝你好运！",
+		len(s.Players),
+		playerList,
+		roleList,
+		s.Role,
+		s.Phase.Type, s.Phase.Round,
+	)
 }
 
 type SystemGameEndData struct {
