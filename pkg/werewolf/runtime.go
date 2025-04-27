@@ -68,7 +68,7 @@ func (r *Runtime) AddPlayer(id string, role game.Role) error {
 	return nil
 }
 
-func (r *Runtime) Start(ctx context.Context) error {
+func (r *Runtime) check() error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -80,27 +80,24 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return fmt.Errorf("%w: need at least %d players", ErrInvalidPlayerCount, MinPlayerCount)
 	}
 
-	if err := r.initPhase(); err != nil {
-		return fmt.Errorf("%w: %v", ErrGameInitFailed, err)
-	}
-
-	r.started = true
-	r.ended = false
-	r.round = 1
-
-	r.broadcastGameStart()
-	go r.eventLoop(ctx)
-
 	return nil
 }
 
-func (r *Runtime) initPhase() error {
+func (r *Runtime) init() error {
+	r.Lock()
+	defer r.Unlock()
+
 	r.phases = []game.Phase{
 		phase.NewNightPhase(),
 		phase.NewDayPhase(),
 		phase.NewVotePhase(),
 	}
+
 	r.phaseIdx = 0
+	r.started = true
+	r.ended = false
+	r.round = 1
+
 	return nil
 }
 
@@ -127,6 +124,21 @@ func (r *Runtime) eventLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (r *Runtime) Start(ctx context.Context) error {
+	if err := r.check(); err != nil {
+		return err
+	}
+
+	if err := r.init(); err != nil {
+		return fmt.Errorf("%w: %v", ErrGameInitFailed, err)
+	}
+
+	r.broadcastGameStart()
+	go r.eventLoop(ctx)
+
+	return nil
 }
 
 func (r *Runtime) isGameActive() bool {
