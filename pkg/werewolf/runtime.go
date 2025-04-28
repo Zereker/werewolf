@@ -87,8 +87,6 @@ func (r *Runtime) init() error {
 	r.ended = false
 	r.round = 1
 
-	// 开始第一个阶段（夜晚阶段）
-	r.notifyWerewolfTeammates()
 	return nil
 }
 
@@ -118,8 +116,8 @@ func (r *Runtime) Start(ctx context.Context) error {
 
 	r.broadcastGameStart()
 	go r.eventLoop(ctx)
-	r.getCurrentPhase().Start()
 
+	r.handlePhase()
 	return nil
 }
 
@@ -168,7 +166,7 @@ func (r *Runtime) handleUserEvent(evt Event) {
 
 		caster := r.players[evt.PlayerID]
 		target := r.players[data.TargetID]
-		skill := findSkill(caster, data.SkillType)
+		skill := r.findSkill(caster, data.SkillType)
 		if skill == nil {
 			return
 		}
@@ -186,7 +184,7 @@ func (r *Runtime) handleUserEvent(evt Event) {
 
 		caster := r.players[evt.PlayerID]
 		// 假设发言也是一种技能
-		skill := findSkill(caster, game.SkillTypeSpeak)
+		skill := r.findSkill(caster, game.SkillTypeSpeak)
 		if skill == nil {
 			return
 		}
@@ -204,7 +202,7 @@ func (r *Runtime) handleUserEvent(evt Event) {
 
 		caster := r.players[evt.PlayerID]
 		target := r.players[data.TargetID]
-		skill := findSkill(caster, game.SkillTypeVote)
+		skill := r.findSkill(caster, game.SkillTypeVote)
 		if skill == nil {
 			return
 		}
@@ -223,7 +221,7 @@ func (r *Runtime) handleUserEvent(evt Event) {
 	}
 }
 
-func findSkill(p *Player, skillType game.SkillType) game.Skill {
+func (r *Runtime) findSkill(p *Player, skillType game.SkillType) game.Skill {
 	for _, s := range p.GetRole().GetAvailableSkills() {
 		if s.GetName() == skillType {
 			return s
@@ -231,20 +229,6 @@ func findSkill(p *Player, skillType game.SkillType) game.Skill {
 	}
 
 	return nil
-}
-
-func (r *Runtime) broadcastEvent(evt Event) {
-	r.RLock()
-	defer r.RUnlock()
-
-	if len(evt.Receivers) == 0 {
-		return
-	}
-
-	select {
-	case r.systemEventChan <- evt:
-	default:
-	}
 }
 
 func (r *Runtime) handleSysEvent(evt Event) {

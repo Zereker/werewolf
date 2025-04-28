@@ -7,6 +7,21 @@ import (
 	"github.com/Zereker/werewolf/pkg/game"
 )
 
+func (r *Runtime) broadcastEvent(evt Event) {
+	r.RLock()
+	defer r.RUnlock()
+
+	if len(evt.Receivers) == 0 {
+		return
+	}
+
+	select {
+	case r.systemEventChan <- evt:
+	default:
+	}
+}
+
+// broadcastGameStart 广播游戏开始事件
 func (r *Runtime) broadcastGameStart() {
 	players := make([]PlayerInfo, 0, len(r.players))
 	for _, p := range r.players {
@@ -40,6 +55,32 @@ func (r *Runtime) broadcastGameStart() {
 	}
 }
 
+// broadcastPhaseStart 广播阶段开始事件
+func (r *Runtime) broadcastPhaseStart(phaseType game.PhaseType) {
+	r.broadcastEvent(Event{
+		Type: EventSystemPhaseStart,
+		Data: map[string]interface{}{
+			"phase": phaseType,
+			"round": r.round,
+		},
+		Receivers: r.getAllPlayerIDs(),
+		Timestamp: time.Now(),
+	})
+}
+
+// broadcastNightPhaseStart 广播夜晚阶段开始事件
+func (r *Runtime) broadcastNightPhaseStart() {
+	// 1. 通知所有玩家进入夜晚
+	r.broadcastPhaseStart(game.PhaseNight)
+
+	// 2. 通知狼人队友信息
+	r.broadcastWerewolfTeammates()
+
+	// 3. 通知女巫
+	r.broadcastWitchNotification()
+}
+
+// broadcastWerewolfTeammates 广播狼人队友信息
 func (r *Runtime) broadcastWerewolfTeammates() {
 	r.RLock()
 	defer r.RUnlock()
@@ -47,6 +88,10 @@ func (r *Runtime) broadcastWerewolfTeammates() {
 	// 找出所有狼人
 	var werewolves []string
 	for _, p := range r.players {
+		if !p.IsAlive() {
+			continue
+		}
+
 		if p.GetRole().GetName() == game.RoleTypeWerewolf {
 			werewolves = append(werewolves, p.GetID())
 		}
@@ -54,7 +99,6 @@ func (r *Runtime) broadcastWerewolfTeammates() {
 
 	// 给每个狼人推送队友信息
 	for _, id := range werewolves {
-		// 发送事件
 		r.broadcastEvent(Event{
 			Type: EventSystemPhaseStart,
 			Data: map[string]interface{}{
@@ -66,6 +110,87 @@ func (r *Runtime) broadcastWerewolfTeammates() {
 	}
 }
 
+// broadcastWitchNotification 广播女巫通知
+func (r *Runtime) broadcastWitchNotification() {
+	r.RLock()
+	defer r.RUnlock()
+
+	for _, p := range r.players {
+		if p.GetRole().GetName() == game.RoleTypeWitch {
+			r.broadcastEvent(Event{
+				Type: EventSystemSkillResult,
+				Data: map[string]interface{}{
+					"message": "女巫请睁眼，今晚有人被杀了，你要救他吗？",
+				},
+				Receivers: []string{p.GetID()},
+				Timestamp: time.Now(),
+			})
+		}
+	}
+}
+
+// broadcastDayPhaseStart 广播白天阶段开始事件
+func (r *Runtime) broadcastDayPhaseStart() {
+	// 1. 通知所有玩家进入白天
+	r.broadcastPhaseStart(game.PhaseDay)
+
+	// 2. 广播昨晚的死亡信息
+	r.broadcastNightDeaths()
+
+	// 3. 通知可以开始发言
+	r.broadcastEvent(Event{
+		Type: EventSystemSkillResult,
+		Data: map[string]interface{}{
+			"message": "请开始发言讨论",
+		},
+		Receivers: r.getAlivePlayerIDs(),
+		Timestamp: time.Now(),
+	})
+}
+
+// broadcastNightDeaths 广播昨晚的死亡信息
+func (r *Runtime) broadcastNightDeaths() {
+	r.RLock()
+	defer r.RUnlock()
+
+	lastNightResult := r.phaseResults[r.round][game.PhaseNight]
+	deaths := make([]string, 0, len(lastNightResult.Deaths))
+	for _, p := range lastNightResult.Deaths {
+		for id, player := range r.players {
+			if player == p {
+				deaths = append(deaths, id)
+				break
+			}
+		}
+	}
+
+	r.broadcastEvent(Event{
+		Type: EventSystemPhaseStart,
+		Data: map[string]interface{}{
+			"deaths": deaths,
+		},
+		Receivers: r.getAllPlayerIDs(),
+		Timestamp: time.Now(),
+	})
+}
+
+// broadcastVotePhaseStart 广播投票阶段开始事件
+func (r *Runtime) broadcastVotePhaseStart() {
+	// 1. 通知所有玩家进入投票阶段
+	r.broadcastPhaseStart(game.PhaseVote)
+
+	// 2. 通知可以开始投票
+	r.broadcastEvent(Event{
+		Type: EventSystemSkillResult,
+		Data: map[string]interface{}{
+			"message": "请开始投票",
+		},
+		Receivers: r.getAlivePlayerIDs(),
+		Timestamp: time.Now(),
+	})
+}
+
+// broadcastVoteResult 广播投票结果
 func (r *Runtime) broadcastVoteResult(voterID, targetID string, err error) {
 	if err != nil {
 		r.broadcastEvent(Event{
@@ -74,7 +199,7 @@ func (r *Runtime) broadcastVoteResult(voterID, targetID string, err error) {
 				Round:   r.round,
 				Success: false,
 				Message: err.Error(),
-				VoterID: voterID, // 添加 VoterID
+				VoterID: voterID,
 			},
 			PlayerID:  voterID,
 			Receivers: []string{voterID},
@@ -89,8 +214,8 @@ func (r *Runtime) broadcastVoteResult(voterID, targetID string, err error) {
 			Round:    r.round,
 			Success:  true,
 			Message:  "投票成功",
-			VoterID:  voterID,  // 添加 VoterID
-			TargetID: targetID, // 添加 TargetID
+			VoterID:  voterID,
+			TargetID: targetID,
 		},
 		PlayerID:  voterID,
 		Receivers: r.getAlivePlayerIDs(),
@@ -98,6 +223,7 @@ func (r *Runtime) broadcastVoteResult(voterID, targetID string, err error) {
 	})
 }
 
+// broadcastSkillResult 广播技能使用结果
 func (r *Runtime) broadcastSkillResult(playerID string, skillType game.SkillType, err error) {
 	var receivers []string
 	var success bool
@@ -110,7 +236,6 @@ func (r *Runtime) broadcastSkillResult(playerID string, skillType game.SkillType
 	} else {
 		success = true
 		message = "技能使用成功"
-		// 修复这里的逻辑错误
 		if skillType == game.SkillTypeVote {
 			receivers = r.getAlivePlayerIDs()
 		} else {
