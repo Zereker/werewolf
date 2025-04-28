@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
@@ -41,7 +42,7 @@ func (r *Runtime) handleNightPhase() {
 		Timestamp: time.Now(),
 	})
 
-	// 等待狼人行动
+	// 通知狼人行动
 	r.broadcastEvent(Event{
 		Type: EventSystemSkillResult,
 		Data: map[string]interface{}{
@@ -51,8 +52,10 @@ func (r *Runtime) handleNightPhase() {
 		Receivers: r.getAlivePlayerIDsByRole(game.RoleTypeWerewolf),
 		Timestamp: time.Now(),
 	})
+	// 等待狼人回复
+	r.waitForPlayerActions(game.RoleTypeWerewolf)
 
-	// 等待预言家行动
+	// 通知预言家行动
 	r.broadcastEvent(Event{
 		Type: EventSystemSkillResult,
 		Data: map[string]interface{}{
@@ -62,8 +65,10 @@ func (r *Runtime) handleNightPhase() {
 		Receivers: r.getAlivePlayerIDsByRole(game.RoleTypeSeer),
 		Timestamp: time.Now(),
 	})
+	// 等待预言家回复
+	r.waitForPlayerActions(game.RoleTypeSeer)
 
-	// 等待守卫行动
+	// 通知守卫行动
 	r.broadcastEvent(Event{
 		Type: EventSystemSkillResult,
 		Data: map[string]interface{}{
@@ -73,6 +78,8 @@ func (r *Runtime) handleNightPhase() {
 		Receivers: r.getAlivePlayerIDsByRole(game.RoleTypeGuard),
 		Timestamp: time.Now(),
 	})
+	// 等待守卫回复
+	r.waitForPlayerActions(game.RoleTypeGuard)
 
 	// 等待女巫行动 - 选择使用解药或毒药
 	r.broadcastEvent(Event{
@@ -100,6 +107,79 @@ func (r *Runtime) handleNightPhase() {
 		Receivers: r.getAlivePlayerIDsByRole(game.RoleTypeWitch),
 		Timestamp: time.Now(),
 	})
+	// 等待女巫回复
+	r.waitForPlayerActions(game.RoleTypeWitch)
+}
+
+// waitForPlayerActions 等待指定角色的玩家完成行动
+func (r *Runtime) waitForPlayerActions(roleType game.RoleType) {
+	// 获取该角色的所有存活玩家
+	players := r.getAlivePlayerIDsByRole(roleType)
+	if len(players) == 0 {
+		return
+	}
+
+	// 创建一个通道来接收所有玩家的行动
+	actionChan := make(chan struct{}, len(players))
+
+	// 为每个玩家创建一个等待组
+	for _, playerID := range players {
+		go func(id string) {
+			// 将字符串ID转换为整数
+			playerIDInt, err := strconv.Atoi(id)
+			if err != nil {
+				r.logger.Error("转换玩家ID失败", "player_id", id, "error", err)
+				actionChan <- struct{}{}
+				return
+			}
+
+			// 获取玩家对象
+			player := r.players[id]
+			if player == nil {
+				r.logger.Error("玩家不存在", "player_id", id)
+				actionChan <- struct{}{}
+				return
+			}
+
+			// 等待该玩家的行动
+			for {
+				select {
+				case <-time.After(100 * time.Millisecond): // 定期检查玩家事件
+					// 检查玩家是否有新的事件
+					if len(player.events) > 0 {
+						evt := player.events[0]
+						player.events = player.events[1:] // 移除已处理的事件
+
+						// 处理用户事件
+						if evt.Type == EventUserSkill {
+							skillData := evt.Data.(*UserSkillData)
+							// 将用户事件转换为玩家行动
+							action := PlayerAction{
+								PlayerID:   playerIDInt,
+								TargetID:   playerIDInt, // 暂时使用相同的ID，后续需要从 skillData 中获取
+								ActionType: string(skillData.SkillType),
+								Data:       nil, // 暂时不传递额外数据
+							}
+							// 发送到行动通道
+							r.actionChan <- action
+							actionChan <- struct{}{}
+							return
+						}
+					}
+				case <-time.After(30 * time.Second): // 设置超时时间
+					// 如果超时，记录日志并继续
+					r.logger.Warn("玩家行动超时", "player_id", id, "role", roleType)
+					actionChan <- struct{}{}
+					return
+				}
+			}
+		}(playerID)
+	}
+
+	// 等待所有玩家完成行动
+	for i := 0; i < len(players); i++ {
+		<-actionChan
+	}
 }
 
 // handleDayPhase 处理白天阶段开始

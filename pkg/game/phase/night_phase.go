@@ -11,14 +11,14 @@ import (
 type NightPhase struct {
 	deaths       []game.Player
 	skillResults game.SkillResultMap
-	actions      []*game.Action
+	actions      []game.Action
 }
 
 func NewNightPhase() *NightPhase {
 	return &NightPhase{
 		deaths:       make([]game.Player, 0),
 		skillResults: make(game.SkillResultMap),
-		actions:      make([]*game.Action, 0),
+		actions:      make([]game.Action, 0),
 	}
 }
 
@@ -26,7 +26,7 @@ func (n *NightPhase) GetName() game.PhaseType {
 	return game.PhaseNight
 }
 
-func (n *NightPhase) Handle(action *game.Action) error {
+func (n *NightPhase) Handle(action game.Action) error {
 	// 检查技能
 	if err := action.Skill.Check(n.GetName(), action.Caster, action.Target); err != nil {
 		return err
@@ -109,5 +109,5 @@ func (n *NightPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 func (n *NightPhase) Start() {
 	n.deaths = make([]game.Player, 0)
 	n.skillResults = make(game.SkillResultMap)
-	n.actions = make([]*game.Action, 0)
+	n.actions = make([]game.Action, 0)
 }

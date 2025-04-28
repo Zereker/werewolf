@@ -26,7 +26,7 @@ func (v *VotePhase) GetName() game.PhaseType {
 	return game.PhaseVote
 }
 
-func (v *VotePhase) Handle(action *game.Action) error {
+func (v *VotePhase) Handle(action game.Action) error {
 	// 检查技能
 	if err := action.Skill.Check(v.GetName(), action.Caster, action.Target); err != nil {
 		return err

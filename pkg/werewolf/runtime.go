@@ -30,6 +30,14 @@ const (
 	DefaultSystemChannelSize = 9
 )
 
+// PlayerAction 表示玩家的行动
+type PlayerAction struct {
+	PlayerID   int
+	TargetID   int
+	ActionType string
+	Data       interface{}
+}
+
 // Runtime 游戏运行时
 type Runtime struct {
 	sync.RWMutex
@@ -44,9 +52,10 @@ type Runtime struct {
 	phases   []game.Phase
 	winner   game.Camp
 
-	userEventChan   chan Event
+	userEventChan   chan game.Action
 	systemEventChan chan Event
 	phaseResults    map[int]map[game.PhaseType]*game.PhaseResult[game.SkillResultMap]
+	actionChan      chan PlayerAction // 用于接收玩家行动的通道
 }
 
 func NewRuntime() *Runtime {
@@ -54,9 +63,10 @@ func NewRuntime() *Runtime {
 		logger:  slog.Default().With("game", "werewolf"),
 		players: make(map[string]*Player),
 
-		userEventChan:   make(chan Event, DefaultEventChannelSize),
+		userEventChan:   make(chan game.Action, DefaultEventChannelSize),
 		systemEventChan: make(chan Event, DefaultSystemChannelSize),
 		phaseResults:    make(map[int]map[game.PhaseType]*game.PhaseResult[game.SkillResultMap]),
+		actionChan:      make(chan PlayerAction, 100), // 初始化行动通道
 	}
 }
 
@@ -132,9 +142,7 @@ func (r *Runtime) eventLoop(ctx context.Context) {
 			r.handleSysEvent(evt)
 
 		case evt := <-r.userEventChan:
-			if r.isGameActive() {
-				r.handleUserEvent(evt)
-			}
+			r.handleUserEvent(evt)
 		}
 
 		// 检查阶段是否完成
@@ -152,72 +160,14 @@ func (r *Runtime) isGameActive() bool {
 	return r.started && !r.ended
 }
 
-func (r *Runtime) handleUserEvent(evt Event) {
-	currentPhase := r.getCurrentPhase()
-
-	var action *game.Action
-
-	switch evt.Type {
-	case EventUserSkill:
-		data, ok := evt.Data.(*UserSkillData)
-		if !ok {
-			return
-		}
-
-		caster := r.players[evt.PlayerID]
-		target := r.players[data.TargetID]
-		skill := r.findSkill(caster, data.SkillType)
-		if skill == nil {
-			return
-		}
-
-		action = &game.Action{
-			Caster: caster,
-			Target: target,
-			Skill:  skill,
-		}
-	case EventUserSpeak:
-		data, ok := evt.Data.(*UserSpeakData)
-		if !ok {
-			return
-		}
-
-		caster := r.players[evt.PlayerID]
-		// 假设发言也是一种技能
-		skill := r.findSkill(caster, game.SkillTypeSpeak)
-		if skill == nil {
-			return
-		}
-
-		action = &game.Action{
-			Caster:  caster,
-			Skill:   skill,
-			Content: data.Message,
-		}
-	case EventUserVote:
-		data, ok := evt.Data.(*UserVoteData)
-		if !ok {
-			return
-		}
-
-		caster := r.players[evt.PlayerID]
-		target := r.players[data.TargetID]
-		skill := r.findSkill(caster, game.SkillTypeVote)
-		if skill == nil {
-			return
-		}
-
-		action = &game.Action{
-			Caster: caster,
-			Target: target,
-			Skill:  skill,
-		}
+func (r *Runtime) handleUserEvent(action game.Action) {
+	if r.isGameActive() {
+		return
 	}
 
-	if action != nil {
-		if err := currentPhase.Handle(action); err != nil {
-			r.logger.Error("phase handle failed", "err", err)
-		}
+	currentPhase := r.getCurrentPhase()
+	if err := currentPhase.Handle(action); err != nil {
+		r.logger.Error("phase handle failed", "err", err)
 	}
 }
 

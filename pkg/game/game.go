@@ -49,7 +49,7 @@ type Phase interface {
 	GetName() PhaseType
 
 	Start()
-	Handle(action *Action) error
+	Handle(action Action) error
 	IsCompleted() bool
 
 	GetPhaseResult() *PhaseResult[SkillResultMap]

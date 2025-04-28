@@ -24,7 +24,7 @@ func (d *DayPhase) GetName() game.PhaseType {
 	return game.PhaseDay
 }
 
-func (d *DayPhase) Handle(action *game.Action) error {
+func (d *DayPhase) Handle(action game.Action) error {
 	// 检查技能
 	if err := action.Skill.Check(d.GetName(), action.Caster, action.Target); err != nil {
 		return err
