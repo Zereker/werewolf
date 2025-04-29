@@ -17,18 +17,21 @@ type BasePhase struct {
 }
 
 // NewBasePhase 创建基础阶段
-func NewBasePhase(round int, players []game.Player) *BasePhase {
+func NewBasePhase(players []game.Player) *BasePhase {
 	playerMap := make(map[string]game.Player)
 	for _, player := range players {
 		playerMap[player.GetID()] = player
 	}
 
 	return &BasePhase{
-		round:        round,
 		players:      playerMap,
 		actions:      make([]*game.Action, 0),
 		skillResults: make(game.SkillResultMap),
 	}
+}
+
+func (p *BasePhase) SetRound(round int) {
+	p.round = round
 }
 
 // GetRound 获取当前回合数

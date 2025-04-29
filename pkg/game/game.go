@@ -21,8 +21,6 @@ func (c Camp) String() string {
 		return "good"
 	case CampEvil:
 		return "evil"
-	case CampNone:
-		return "none"
 	default:
 		return ""
 	}
@@ -35,6 +33,8 @@ const (
 	PhaseNight PhaseType = "night" // Night phase
 	PhaseDay   PhaseType = "day"   // Day phase
 	PhaseVote  PhaseType = "vote"  // Vote phase
+	PhaseStart PhaseType = "start" // Game start phase
+	PhaseEnd   PhaseType = "end"   // Game end phase
 )
 
 // Action 表示一个技能行为
@@ -53,6 +53,7 @@ type Action struct {
 // Phase 游戏阶段接口
 type Phase interface {
 	GetName() PhaseType
+	SetRound(int)
 	Start() error
 }
 

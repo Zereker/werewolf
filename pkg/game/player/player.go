@@ -12,18 +12,19 @@ type player struct {
 	id        string
 	alive     bool
 	protected bool
-
-	role game.Role
+	role      game.Role
 
 	// 事件相关字段
 	eventChan chan event.Event[any]
 }
 
-func New(role game.Role) game.Player {
+func New(id string, role game.Role) game.Player {
 	return &player{
+		id:        id,
 		alive:     true,
 		protected: false,
 		role:      role,
+		
 		eventChan: make(chan event.Event[any], 100), // 设置一个合理的缓冲区大小
 	}
 }

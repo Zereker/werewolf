@@ -13,13 +13,14 @@ import (
 // VotePhase 投票阶段
 type VotePhase struct {
 	*BasePhase
+
 	deaths       []game.Player
 	skillResults game.SkillResultMap
 }
 
-func NewVotePhase(round int, players []game.Player) *VotePhase {
+func NewVotePhase(players []game.Player) *VotePhase {
 	return &VotePhase{
-		BasePhase:    NewBasePhase(round, players),
+		BasePhase:    NewBasePhase(players),
 		deaths:       make([]game.Player, 0),
 		skillResults: make(game.SkillResultMap),
 	}
@@ -108,7 +109,7 @@ func (v *VotePhase) waitForVotes() error {
 				Target: v.players[skillData.TargetID],
 				Skill:  v.getSkillByType(game.SkillTypeVote),
 			}
-			
+
 			// 执行行动
 			if err := action.Skill.Check(v.GetName(), action.Caster, action.Target); err != nil {
 				continue

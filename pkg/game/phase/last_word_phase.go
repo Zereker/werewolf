@@ -19,7 +19,7 @@ type LastWordPhase struct {
 
 func NewLastWordPhase(round int, players []game.Player, deaths []game.Player) *LastWordPhase {
 	return &LastWordPhase{
-		BasePhase: NewBasePhase(round, players),
+		BasePhase: NewBasePhase(players),
 		deaths:    deaths,
 	}
 }

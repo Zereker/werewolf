@@ -17,9 +17,9 @@ type DayPhase struct {
 	discussionTime time.Duration
 }
 
-func NewDayPhase(round int, players []game.Player) *DayPhase {
+func NewDayPhase(players []game.Player) *DayPhase {
 	return &DayPhase{
-		BasePhase:      NewBasePhase(round, players),
+		BasePhase:      NewBasePhase(players),
 		discussionTime: 5 * time.Minute, // 默认讨论时间为5分钟
 	}
 }

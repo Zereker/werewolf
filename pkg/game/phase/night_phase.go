@@ -18,9 +18,9 @@ type NightPhase struct {
 	logger *slog.Logger
 }
 
-func NewNightPhase(round int, players []game.Player) *NightPhase {
+func NewNightPhase(players []game.Player) *NightPhase {
 	return &NightPhase{
-		BasePhase: NewBasePhase(round, players),
+		BasePhase: NewBasePhase(players),
 		deaths:    make([]game.Player, 0),
 		logger:    slog.Default(),
 	}
