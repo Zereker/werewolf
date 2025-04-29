@@ -1,5 +1,11 @@
 package game
 
+import (
+	"time"
+
+	"github.com/Zereker/werewolf/pkg/game/event"
+)
+
 // Camp represents player's camp
 type Camp int
 
@@ -47,12 +53,7 @@ type Action struct {
 // Phase 游戏阶段接口
 type Phase interface {
 	GetName() PhaseType
-
-	Start()
-	Handle(action Action) error
-	IsCompleted() bool
-
-	GetPhaseResult() *PhaseResult[SkillResultMap]
+	Start() error
 }
 
 // PhaseResult 阶段结果
@@ -66,6 +67,7 @@ type SkillResultMap map[SkillType]*SkillResult
 
 // Player interface defines player behavior
 type Player interface {
+	GetID() string
 	GetRole() Role
 
 	IsAlive() bool
@@ -73,6 +75,9 @@ type Player interface {
 
 	IsProtected() bool
 	SetProtected(protected bool)
+
+	Write(event event.Event[any]) error                   // 写入事件
+	Read(timeout time.Duration) (event.Event[any], error) // 读取事件，带超时
 }
 
 // RoleType represents role type

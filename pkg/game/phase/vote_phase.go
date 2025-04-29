@@ -1,21 +1,33 @@
 package phase
 
 import (
+	"fmt"
 	"sort"
+	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
+	"github.com/Zereker/werewolf/pkg/game/event"
 )
 
 // VotePhase 投票阶段
 type VotePhase struct {
+	round   int
+	players map[string]game.Player
 	actions []*game.Action
 
 	deaths       []game.Player
 	skillResults game.SkillResultMap
 }
 
-func NewVotePhase() *VotePhase {
+func NewVotePhase(round int, players []game.Player) *VotePhase {
+	playerMap := make(map[string]game.Player)
+	for _, player := range players {
+		playerMap[player.GetID()] = player
+	}
+
 	return &VotePhase{
+		round:        round,
+		players:      playerMap,
 		actions:      make([]*game.Action, 0),
 		deaths:       make([]game.Player, 0),
 		skillResults: make(game.SkillResultMap),
@@ -26,20 +38,83 @@ func (v *VotePhase) GetName() game.PhaseType {
 	return game.PhaseVote
 }
 
-func (v *VotePhase) Handle(action game.Action) error {
-	// 检查技能
-	if err := action.Skill.Check(v.GetName(), action.Caster, action.Target); err != nil {
-		return err
+// broadcastEvent 广播事件
+func (v *VotePhase) broadcastEvent(evt any) error {
+	// 将事件转换为 event.Event[any] 类型
+	eventAny, ok := evt.(event.Event[any])
+	if !ok {
+		return fmt.Errorf("invalid event type: %T", evt)
 	}
 
-	// 记录行为
-	v.actions = append(v.actions, action)
-
+	for _, receiverID := range eventAny.Receivers {
+		if player, exists := v.players[receiverID]; exists {
+			if err := player.Write(eventAny); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
-func (v *VotePhase) IsCompleted() bool {
-	return true
+func (v *VotePhase) Start() error {
+	// 通知所有玩家进入投票阶段
+	if err := v.broadcastEvent(event.Event[event.PhaseStartData]{
+		Type: event.EventSystemPhaseStart,
+		Data: event.PhaseStartData{
+			Phase:   string(game.PhaseVote),
+			Round:   v.round,
+			Message: "请所有玩家投票",
+		},
+		Receivers: v.getAllPlayerIDs(),
+		Timestamp: time.Now(),
+	}); err != nil {
+		return fmt.Errorf("broadcast vote phase start failed: %w", err)
+	}
+
+	// 等待所有玩家投票
+	return v.waitForVotes()
+}
+
+// waitForVotes 等待所有玩家投票
+func (v *VotePhase) waitForVotes() error {
+	// 获取所有存活的玩家
+	alivePlayers := v.getAlivePlayerIDs()
+	if len(alivePlayers) == 0 {
+		return nil
+	}
+
+	// 为每个玩家创建一个等待组
+	for _, playerID := range alivePlayers {
+		player := v.players[playerID]
+		if player == nil {
+			continue
+		}
+
+		// 等待该玩家的投票
+		evt, err := player.Read(30 * time.Second)
+		if err != nil {
+			continue
+		}
+
+		// 处理用户事件
+		if evt.Type == event.EventUserSkill {
+			skillData := evt.Data.(*event.UserSkillData)
+			// 将用户事件转换为玩家行动
+			action := game.Action{
+				Caster: player,
+				Target: v.players[skillData.TargetID],
+				Skill:  v.getSkillByType(game.SkillTypeVote),
+			}
+			// 执行行动
+			if err := action.Skill.Check(v.GetName(), action.Caster, action.Target); err != nil {
+				continue
+			}
+			action.Skill.Put(action.Caster, action.Target, game.PutOption{})
+			v.actions = append(v.actions, &action)
+		}
+	}
+
+	return nil
 }
 
 // GetPhaseResult 获取阶段结果
@@ -108,8 +183,34 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	}
 }
 
-func (v *VotePhase) Start() {
-	v.deaths = make([]game.Player, 0)
-	v.skillResults = make(game.SkillResultMap)
-	v.actions = make([]*game.Action, 0)
+// getAlivePlayerIDs 获取所有存活的玩家ID
+func (v *VotePhase) getAlivePlayerIDs() []string {
+	ids := make([]string, 0)
+	for id, player := range v.players {
+		if player.IsAlive() {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// getAllPlayerIDs 获取所有玩家ID
+func (v *VotePhase) getAllPlayerIDs() []string {
+	ids := make([]string, 0, len(v.players))
+	for id := range v.players {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// getSkillByType 获取指定类型的技能
+func (v *VotePhase) getSkillByType(skillType game.SkillType) game.Skill {
+	for _, player := range v.players {
+		for _, skill := range player.GetRole().GetAvailableSkills() {
+			if skill.GetName() == skillType {
+				return skill
+			}
+		}
+	}
+	return nil
 }
