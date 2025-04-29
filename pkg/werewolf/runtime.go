@@ -80,66 +80,30 @@ func (r *Runtime) Start(ctx context.Context) error {
 	}
 
 	// 游戏主循环
-	for {
+	for r.checkGameEnd() == game.CampNone {
+		// 检查上下文是否取消
 		select {
 		case <-ctx.Done():
 			return nil
 		default:
-			// 创建夜晚阶段
-			nightPhase := phase.NewNightPhase(r.players)
-			if err := nightPhase.Start(); err != nil {
-				return fmt.Errorf("night phase failed: %w", err)
-			}
+		}
 
-			// 检查游戏是否结束
-			if winner := r.checkGameEnd(); winner != game.CampNone {
-				// 创建游戏结束阶段
-				endPhase := phase.NewEndPhase(r.players, winner)
-				if err := endPhase.Start(); err != nil {
-					return fmt.Errorf("end phase failed: %w", err)
-				}
-				return nil
-			}
+		// 获取当前阶段
+		currentPhase := r.phases[r.phaseIdx]
+		if err := currentPhase.Start(); err != nil {
+			return fmt.Errorf("phase %d failed: %w", r.phaseIdx, err)
+		}
 
-			// 创建白天阶段
-			dayPhase := phase.NewDayPhase(r.players)
-			if err := dayPhase.Start(); err != nil {
-				return fmt.Errorf("day phase failed: %w", err)
-			}
-
-			// 检查游戏是否结束
-			if winner := r.checkGameEnd(); winner != game.CampNone {
-				// 创建游戏结束阶段
-				endPhase := phase.NewEndPhase(r.players, winner)
-				if err := endPhase.Start(); err != nil {
-					return fmt.Errorf("end phase failed: %w", err)
-				}
-				return nil
-			}
-
-			// 创建投票阶段
-			votePhase := phase.NewVotePhase(r.players)
-			if err := votePhase.Start(); err != nil {
-				return fmt.Errorf("vote phase failed: %w", err)
-			}
-
-			// 检查游戏是否结束
-			if winner := r.checkGameEnd(); winner != game.CampNone {
-				// 创建游戏结束阶段
-				endPhase := phase.NewEndPhase(r.players, winner)
-				if err := endPhase.Start(); err != nil {
-					return fmt.Errorf("end phase failed: %w", err)
-				}
-				return nil
-			}
-
-			// 回合数加1
+		// 推进到下一个阶段
+		r.phaseIdx = (r.phaseIdx + 1) % len(r.phases)
+		if r.phaseIdx == 0 {
+			// 如果回到第一个阶段，说明一轮结束，回合数加1
 			r.round++
 		}
 	}
 
-	// 创建游戏结束阶段
-	endPhase := phase.NewEndPhase(r.players, r.winner)
+	// 游戏结束，创建结束阶段
+	endPhase := phase.NewEndPhase(r.players, r.checkGameEnd())
 	if err := endPhase.Start(); err != nil {
 		return fmt.Errorf("end phase failed: %w", err)
 	}
