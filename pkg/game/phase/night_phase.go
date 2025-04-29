@@ -9,32 +9,6 @@ import (
 	"github.com/Zereker/werewolf/pkg/game/event"
 )
 
-var logger = slog.Default()
-
-// EventType 事件类型
-type EventType string
-
-const (
-	EventSystemPhaseStart  EventType = "system_phase_start"  // 阶段开始
-	EventSystemPhaseEnd    EventType = "system_phase_end"    // 阶段结束
-	EventSystemSkillResult EventType = "system_skill_result" // 技能使用结果
-	EventUserSkill         EventType = "user_skill"          // 玩家使用技能
-)
-
-// Event 游戏事件
-type Event struct {
-	Type      EventType   `json:"type"`      // 事件类型
-	Data      interface{} `json:"data"`      // 事件数据
-	Receivers []string    `json:"receivers"` // 接收者ID列表
-	Timestamp time.Time   `json:"timestamp"` // 事件发生时间
-}
-
-// UserSkillData 用户技能数据
-type UserSkillData struct {
-	TargetID  string         `json:"target_id"`  // 目标ID
-	SkillType game.SkillType `json:"skill_type"` // 技能类型
-}
-
 // NightPhase 夜晚阶段
 type NightPhase struct {
 	round   int
@@ -42,6 +16,8 @@ type NightPhase struct {
 
 	actions []game.Action
 	results game.SkillResultMap
+
+	logger *slog.Logger
 }
 
 func NewNightPhase(round int, players []game.Player) *NightPhase {
@@ -234,7 +210,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 		// 等待该玩家的行动
 		evt, err := player.Read(30 * time.Second)
 		if err != nil {
-			logger.Warn("玩家行动超时", "player_id", playerID, "role", roleType)
+			p.logger.Warn("玩家行动超时", "player_id", playerID, "role", roleType)
 			continue
 		}
 
@@ -249,7 +225,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 			}
 			// 执行行动
 			if err := action.Skill.Check(p.GetName(), action.Caster, action.Target); err != nil {
-				logger.Error("技能检查失败", "player_id", playerID, "error", err)
+				p.logger.Error("技能检查失败", "player_id", playerID, "error", err)
 				continue
 			}
 			action.Skill.Put(action.Caster, action.Target, game.PutOption{})

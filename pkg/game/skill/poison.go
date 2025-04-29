@@ -33,7 +33,7 @@ func (p *Poison) GetPhase() game.PhaseType {
 	return p.phase
 }
 
-// Check checks the skill conditions
+// Check 检查技能是否可以使用
 func (p *Poison) Check(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if phase != p.phase {
 		return fmt.Errorf("poison skill cannot be used in %s phase", phase)
@@ -62,10 +62,19 @@ func (p *Poison) Check(phase game.PhaseType, caster game.Player, target game.Pla
 	return nil
 }
 
-// Put uses poison skill
+// Put 使用技能
 func (p *Poison) Put(caster game.Player, target game.Player, option game.PutOption) {
 	p.hasUsed = true
 	target.SetAlive(false)
+}
+
+// Exec 执行技能，包含检查和执行两个步骤
+func (p *Poison) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := p.Check(phase, caster, target); err != nil {
+		return err
+	}
+	p.Put(caster, target, option)
+	return nil
 }
 
 // Reset resets skill state

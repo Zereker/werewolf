@@ -74,6 +74,15 @@ func (k *Kill) Put(caster game.Player, target game.Player, option game.PutOption
 	target.SetAlive(false)
 }
 
+// Exec 执行技能，包含检查和执行两个步骤
+func (k *Kill) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := k.Check(phase, caster, target); err != nil {
+		return err
+	}
+	k.Put(caster, target, option)
+	return nil
+}
+
 // Reset resets skill state
 func (k *Kill) Reset() {
 	k.hasUsed = false

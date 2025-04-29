@@ -33,7 +33,7 @@ func (p *Protect) GetPhase() game.PhaseType {
 	return p.phase
 }
 
-// Check 检查技能条件
+// Check 检查技能是否可以使用
 func (p *Protect) Check(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if phase != p.phase {
 		return fmt.Errorf("protect skill cannot be used in %s phase", phase)
@@ -62,10 +62,19 @@ func (p *Protect) Check(phase game.PhaseType, caster game.Player, target game.Pl
 	return nil
 }
 
-// Put 使用保护技能
+// Put 使用技能
 func (p *Protect) Put(caster game.Player, target game.Player, option game.PutOption) {
 	p.hasUsed = true
 	target.SetProtected(true)
+}
+
+// Exec 执行技能，包含检查和执行两个步骤
+func (p *Protect) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := p.Check(phase, caster, target); err != nil {
+		return err
+	}
+	p.Put(caster, target, option)
+	return nil
 }
 
 // Reset resets skill state

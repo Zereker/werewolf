@@ -147,6 +147,8 @@ type Skill interface {
 	Check(phase PhaseType, caster Player, target Player) error
 	// Put 使用技能
 	Put(caster Player, target Player, option PutOption)
+	// Exec 执行技能，包含检查和执行两个步骤
+	Exec(phase PhaseType, caster Player, target Player, option PutOption) error
 	// Reset 重置技能状态
 	Reset()
 }

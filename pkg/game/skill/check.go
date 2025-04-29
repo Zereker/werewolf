@@ -34,6 +34,7 @@ func (c *Check) GetPriority() int {
 	return c.priority
 }
 
+// Check 检查技能是否可以使用
 func (c *Check) Check(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if phase != c.phase {
 		return fmt.Errorf("check skill cannot be used in %s phase", phase)
@@ -58,8 +59,18 @@ func (c *Check) Check(phase game.PhaseType, caster game.Player, target game.Play
 	return nil
 }
 
+// Put 使用技能
 func (c *Check) Put(caster game.Player, target game.Player, option game.PutOption) {
 	c.hasUsed = true
+}
+
+// Exec 执行技能，包含检查和执行两个步骤
+func (c *Check) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := c.Check(phase, caster, target); err != nil {
+		return err
+	}
+	c.Put(caster, target, option)
+	return nil
 }
 
 func (c *Check) Reset() {

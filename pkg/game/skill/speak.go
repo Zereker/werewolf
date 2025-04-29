@@ -34,7 +34,7 @@ func (s *Speak) GetPhase() game.PhaseType {
 	return s.phase
 }
 
-// Check checks the skill's conditions
+// Check 检查技能是否可以使用
 func (s *Speak) Check(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if phase != s.phase {
 		return fmt.Errorf("speak skill cannot be used in %s phase", phase)
@@ -55,15 +55,19 @@ func (s *Speak) Check(phase game.PhaseType, caster game.Player, target game.Play
 	return nil
 }
 
-// Put uses speak skill
+// Put 使用技能
 func (s *Speak) Put(caster game.Player, target game.Player, option game.PutOption) {
 	s.hasUsed = true
 	s.content = option.Content
 }
 
-// Reset resets skill state
-func (s *Speak) Reset() {
-	s.hasUsed = false
+// Exec 执行技能，包含检查和执行两个步骤
+func (s *Speak) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := s.Check(phase, caster, target); err != nil {
+		return err
+	}
+	s.Put(caster, target, option)
+	return nil
 }
 
 func (s *Speak) GetPriority() int {
@@ -73,4 +77,8 @@ func (s *Speak) GetPriority() int {
 // GetContent 获取发言内容
 func (s *Speak) GetContent() string {
 	return s.content
+}
+
+func (s *Speak) Reset() {
+	s.hasUsed = false
 }

@@ -34,6 +34,7 @@ func (a *Antidote) GetPriority() int {
 	return a.priority
 }
 
+// Check 检查技能是否可以使用
 func (a *Antidote) Check(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if phase != a.phase {
 		return fmt.Errorf("antidote skill cannot be used in %s phase", phase)
@@ -58,9 +59,19 @@ func (a *Antidote) Check(phase game.PhaseType, caster game.Player, target game.P
 	return nil
 }
 
+// Put 使用技能
 func (a *Antidote) Put(caster game.Player, target game.Player, option game.PutOption) {
 	a.hasUsed = true
 	target.SetAlive(true)
+}
+
+// Exec 执行技能，包含检查和执行两个步骤
+func (a *Antidote) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := a.Check(phase, caster, target); err != nil {
+		return err
+	}
+	a.Put(caster, target, option)
+	return nil
 }
 
 func (a *Antidote) Reset() {

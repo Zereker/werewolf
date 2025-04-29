@@ -63,3 +63,12 @@ func (l *LastWords) Reset() {
 func (l *LastWords) GetContent() string {
 	return l.content
 }
+
+// Exec 执行技能，包含检查和执行两个步骤
+func (l *LastWords) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := l.Check(phase, caster, target); err != nil {
+		return err
+	}
+	l.Put(caster, target, option)
+	return nil
+}

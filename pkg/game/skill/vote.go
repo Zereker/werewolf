@@ -33,7 +33,7 @@ func (v *Vote) GetPhase() game.PhaseType {
 	return v.phase
 }
 
-// Check checks the skill's conditions
+// Check 检查技能是否可以使用
 func (v *Vote) Check(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if phase != v.phase {
 		return fmt.Errorf("vote skill cannot be used in %s phase", phase)
@@ -58,9 +58,18 @@ func (v *Vote) Check(phase game.PhaseType, caster game.Player, target game.Playe
 	return nil
 }
 
-// Put uses vote skill
+// Put 使用技能
 func (v *Vote) Put(caster game.Player, target game.Player, option game.PutOption) {
 	v.hasUsed = true
+}
+
+// Exec 执行技能，包含检查和执行两个步骤
+func (v *Vote) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := v.Check(phase, caster, target); err != nil {
+		return err
+	}
+	v.Put(caster, target, option)
+	return nil
 }
 
 // Reset resets skill state

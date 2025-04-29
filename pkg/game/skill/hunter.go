@@ -34,6 +34,7 @@ func (h *Hunter) GetPriority() int {
 	return h.priority
 }
 
+// Check 检查技能是否可以使用
 func (h *Hunter) Check(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if phase != h.phase {
 		return fmt.Errorf("hunter skill cannot be used in %s phase", phase)
@@ -62,9 +63,19 @@ func (h *Hunter) Check(phase game.PhaseType, caster game.Player, target game.Pla
 	return nil
 }
 
+// Put 使用技能
 func (h *Hunter) Put(caster game.Player, target game.Player, option game.PutOption) {
 	h.hasUsed = true
 	target.SetAlive(false)
+}
+
+// Exec 执行技能，包含检查和执行两个步骤
+func (h *Hunter) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+	if err := h.Check(phase, caster, target); err != nil {
+		return err
+	}
+	h.Put(caster, target, option)
+	return nil
 }
 
 func (h *Hunter) Reset() {
