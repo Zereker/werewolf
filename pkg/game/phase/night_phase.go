@@ -3,6 +3,7 @@ package phase
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
@@ -71,6 +72,32 @@ func (p *NightPhase) Start() error {
 	// 处理女巫行动
 	if err := p.handleWitchActions(); err != nil {
 		return fmt.Errorf("handle witch actions failed: %w", err)
+	}
+
+	phaseResult := p.calculatePhaseResult()
+
+	// 通知所有玩家夜晚阶段结束
+	message := ""
+	if len(phaseResult.Deaths) > 0 {
+		deathNames := make([]string, 0, len(phaseResult.Deaths))
+		for _, player := range phaseResult.Deaths {
+			deathNames = append(deathNames, player.GetID())
+		}
+
+		message = fmt.Sprintf("天亮了，所有玩家请睁眼。昨晚死亡的玩家是：%s", strings.Join(deathNames, "、"))
+	}
+
+	if err := p.broadcastEvent(event.Event[event.PhaseStartData]{
+		Type: event.EventSystemPhaseEnd,
+		Data: event.PhaseStartData{
+			Phase:   string(game.PhaseNight),
+			Round:   p.round,
+			Message: message,
+		},
+		Receivers: p.getAllPlayerIDs(),
+		Timestamp: time.Now(),
+	}); err != nil {
+		return fmt.Errorf("broadcast night phase end failed: %w", err)
 	}
 
 	return nil
@@ -223,12 +250,13 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 				Target: p.players[skillData.TargetID],
 				Skill:  p.getSkillByType(skillType),
 			}
+
 			// 执行行动
 			if err := action.Skill.Check(p.GetName(), action.Caster, action.Target); err != nil {
 				p.logger.Error("技能检查失败", "player_id", playerID, "error", err)
 				continue
 			}
-			action.Skill.Put(action.Caster, action.Target, game.PutOption{})
+
 			p.actions = append(p.actions, action)
 		}
 	}
@@ -238,32 +266,20 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 
 // calculatePhaseResult 计算阶段结果
 func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.SkillResultMap] {
-	// 执行所有行动
 	deaths := make([]game.Player, 0)
 	for _, action := range p.actions {
-		// 检查目标是否被保护
-		if action.Target.IsProtected() {
-			continue
-		}
+		action.Skill.Put(action.Caster, action.Target, game.PutOption{Content: action.Content})
+	}
 
-		// 检查技能类型
-		switch action.Skill.GetName() {
-		case game.SkillTypeKill:
-			// 狼人杀人
-			action.Target.SetAlive(false)
+	for _, action := range p.actions {
+		isAlive := action.Target.IsAlive()
+		if !isAlive {
 			deaths = append(deaths, action.Target)
-		case game.SkillTypeCheck:
-			// 预言家查验
-			// TODO: 实现查验逻辑
-		case game.SkillTypeProtect:
-			// 守卫保护
-			// TODO: 实现保护逻辑
 		}
 	}
 
 	return &game.PhaseResult[game.SkillResultMap]{
-		Deaths:    deaths,
-		ExtraData: p.results,
+		Deaths: deaths,
 	}
 }
 

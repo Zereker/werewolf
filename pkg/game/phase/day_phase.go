@@ -3,6 +3,7 @@ package phase
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
@@ -12,11 +13,11 @@ import (
 
 // DayPhase 白天阶段
 type DayPhase struct {
-	round   int
-	players map[string]game.Player
-	actions []*game.Action
-
-	skillResults game.SkillResultMap
+	round          int
+	players        map[string]game.Player
+	actions        []*game.Action
+	skillResults   game.SkillResultMap
+	discussionTime time.Duration
 }
 
 func NewDayPhase(round int, players []game.Player) *DayPhase {
@@ -26,10 +27,11 @@ func NewDayPhase(round int, players []game.Player) *DayPhase {
 	}
 
 	return &DayPhase{
-		round:        round,
-		players:      playerMap,
-		actions:      make([]*game.Action, 0),
-		skillResults: make(game.SkillResultMap),
+		round:          round,
+		players:        playerMap,
+		actions:        make([]*game.Action, 0),
+		skillResults:   make(game.SkillResultMap),
+		discussionTime: 5 * time.Minute, // 默认讨论时间为5分钟
 	}
 }
 
@@ -56,13 +58,13 @@ func (d *DayPhase) broadcastEvent(evt any) error {
 }
 
 func (d *DayPhase) Start() error {
-	// 通知所有玩家进入白天阶段
+	// 通知所有玩家进入白天
 	if err := d.broadcastEvent(event.Event[event.PhaseStartData]{
 		Type: event.EventSystemPhaseStart,
 		Data: event.PhaseStartData{
 			Phase:   string(game.PhaseDay),
 			Round:   d.round,
-			Message: "天亮了，请所有玩家发言",
+			Message: "现在是白天，所有玩家可以自由讨论",
 		},
 		Receivers: d.getAllPlayerIDs(),
 		Timestamp: time.Now(),
@@ -70,8 +72,56 @@ func (d *DayPhase) Start() error {
 		return fmt.Errorf("broadcast day phase start failed: %w", err)
 	}
 
-	// 等待所有玩家发言
-	return d.waitForSpeeches()
+	// 等待玩家发言
+	if err := d.waitForSpeeches(); err != nil {
+		return err
+	}
+
+	// 计算阶段结果
+	phaseResult := d.GetPhaseResult()
+
+	// 广播所有玩家的发言结果
+	if skillResult, ok := phaseResult.ExtraData[game.SkillTypeSpeak]; ok {
+		if data, ok := skillResult.Data.(map[string]interface{}); ok {
+			if spoken, ok := data["spoken"].(map[game.Player]string); ok {
+				// 构建发言结果消息
+				var messages []string
+				for player, content := range spoken {
+					messages = append(messages, fmt.Sprintf("%s: %s", player.GetID(), content))
+				}
+				message := "白天讨论结束，以下是所有玩家的发言：\n" + strings.Join(messages, "\n")
+
+				// 广播发言结果
+				if err := d.broadcastEvent(event.Event[event.SkillResultData]{
+					Type: event.EventSystemSkillResult,
+					Data: event.SkillResultData{
+						SkillType: string(game.SkillTypeSpeak),
+						Message:   message,
+					},
+					Receivers: d.getAllPlayerIDs(),
+					Timestamp: time.Now(),
+				}); err != nil {
+					return fmt.Errorf("broadcast speech results failed: %w", err)
+				}
+			}
+		}
+	}
+
+	// 通知所有玩家白天阶段结束
+	if err := d.broadcastEvent(event.Event[event.PhaseStartData]{
+		Type: event.EventSystemPhaseEnd,
+		Data: event.PhaseStartData{
+			Phase:   string(game.PhaseDay),
+			Round:   d.round,
+			Message: "白天讨论时间结束，进入投票阶段",
+		},
+		Receivers: d.getAllPlayerIDs(),
+		Timestamp: time.Now(),
+	}); err != nil {
+		return fmt.Errorf("broadcast day phase end failed: %w", err)
+	}
+
+	return nil
 }
 
 // waitForSpeeches 等待所有玩家发言
@@ -110,6 +160,19 @@ func (d *DayPhase) waitForSpeeches() error {
 			}
 			action.Skill.Put(action.Caster, action.Target, game.PutOption{})
 			d.actions = append(d.actions, &action)
+
+			// 广播发言给其他玩家
+			if err := d.broadcastEvent(event.Event[event.UserSpeakData]{
+				Type:      event.EventUserSpeak,
+				PlayerID:  playerID,
+				Receivers: d.getAlivePlayerIDs(),
+				Timestamp: time.Now(),
+				Data: event.UserSpeakData{
+					Message: skillData.Content,
+				},
+			}); err != nil {
+				return fmt.Errorf("broadcast speech failed: %w", err)
+			}
 		}
 	}
 

@@ -3,6 +3,7 @@ package phase
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
@@ -72,7 +73,38 @@ func (v *VotePhase) Start() error {
 	}
 
 	// 等待所有玩家投票
-	return v.waitForVotes()
+	if err := v.waitForVotes(); err != nil {
+		return err
+	}
+
+	// 计算投票结果
+	phaseResult := v.GetPhaseResult()
+
+	// 通知所有玩家投票阶段结束
+	message := ""
+	if len(phaseResult.Deaths) > 0 {
+		deathNames := make([]string, 0, len(phaseResult.Deaths))
+		for _, player := range phaseResult.Deaths {
+			deathNames = append(deathNames, player.GetID())
+		}
+
+		message = fmt.Sprintf("投票阶段结束。被投票处决的玩家是：%s", strings.Join(deathNames, "、"))
+	}
+
+	if err := v.broadcastEvent(event.Event[event.PhaseStartData]{
+		Type: event.EventSystemPhaseEnd,
+		Data: event.PhaseStartData{
+			Phase:   string(game.PhaseVote),
+			Round:   v.round,
+			Message: message,
+		},
+		Receivers: v.getAllPlayerIDs(),
+		Timestamp: time.Now(),
+	}); err != nil {
+		return fmt.Errorf("broadcast vote phase end failed: %w", err)
+	}
+
+	return nil
 }
 
 // waitForVotes 等待所有玩家投票
