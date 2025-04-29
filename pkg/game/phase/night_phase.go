@@ -12,26 +12,17 @@ import (
 
 // NightPhase 夜晚阶段
 type NightPhase struct {
-	round   int
-	players map[string]game.Player
+	*BasePhase
 
-	actions []game.Action
-	results game.SkillResultMap
-
+	deaths []game.Player
 	logger *slog.Logger
 }
 
 func NewNightPhase(round int, players []game.Player) *NightPhase {
-	playerMap := make(map[string]game.Player)
-	for _, player := range players {
-		playerMap[player.GetID()] = player
-	}
-
 	return &NightPhase{
-		round:   round,
-		players: playerMap,
-		actions: make([]game.Action, 0),
-		results: make(game.SkillResultMap),
+		BasePhase: NewBasePhase(round, players),
+		deaths:    make([]game.Player, 0),
+		logger:    slog.Default(),
 	}
 }
 
@@ -41,16 +32,7 @@ func (p *NightPhase) GetName() game.PhaseType {
 
 func (p *NightPhase) Start() error {
 	// 通知所有玩家进入夜晚
-	if err := p.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseStart,
-		Data: event.PhaseStartData{
-			Phase:   string(game.PhaseNight),
-			Round:   p.round,
-			Message: "天黑了，所有玩家请闭眼",
-		},
-		Receivers: p.getAllPlayerIDs(),
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := p.broadcastPhaseStart(game.PhaseNight, "天黑了，所有玩家请闭眼"); err != nil {
 		return fmt.Errorf("broadcast night phase start failed: %w", err)
 	}
 
@@ -77,26 +59,16 @@ func (p *NightPhase) Start() error {
 	phaseResult := p.calculatePhaseResult()
 
 	// 通知所有玩家夜晚阶段结束
-	message := ""
+	message := "天亮了，所有玩家请睁眼"
 	if len(phaseResult.Deaths) > 0 {
 		deathNames := make([]string, 0, len(phaseResult.Deaths))
 		for _, player := range phaseResult.Deaths {
 			deathNames = append(deathNames, player.GetID())
 		}
-
 		message = fmt.Sprintf("天亮了，所有玩家请睁眼。昨晚死亡的玩家是：%s", strings.Join(deathNames, "、"))
 	}
 
-	if err := p.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseEnd,
-		Data: event.PhaseStartData{
-			Phase:   string(game.PhaseNight),
-			Round:   p.round,
-			Message: message,
-		},
-		Receivers: p.getAllPlayerIDs(),
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := p.broadcastPhaseEnd(game.PhaseNight, message); err != nil {
 		return fmt.Errorf("broadcast night phase end failed: %w", err)
 	}
 
@@ -112,15 +84,7 @@ func (p *NightPhase) handleWerewolfActions() error {
 	}
 
 	// 通知狼人行动
-	if err := p.broadcastEvent(event.Event[event.SkillResultData]{
-		Type: event.EventSystemSkillResult,
-		Data: event.SkillResultData{
-			SkillType: string(game.SkillTypeKill),
-			Message:   "狼人请睁眼，请选择要击杀的目标",
-		},
-		Receivers: wolves,
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := p.broadcastSkillResult(game.SkillTypeKill, "狼人请睁眼，请选择要击杀的目标"); err != nil {
 		return err
 	}
 
@@ -137,15 +101,7 @@ func (p *NightPhase) handleSeerActions() error {
 	}
 
 	// 通知预言家行动
-	if err := p.broadcastEvent(event.Event[event.SkillResultData]{
-		Type: event.EventSystemSkillResult,
-		Data: event.SkillResultData{
-			SkillType: string(game.SkillTypeCheck),
-			Message:   "预言家请睁眼，请选择要查验的目标",
-		},
-		Receivers: seers,
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := p.broadcastSkillResult(game.SkillTypeCheck, "预言家请睁眼，请选择要查验的目标"); err != nil {
 		return err
 	}
 
@@ -162,15 +118,7 @@ func (p *NightPhase) handleGuardActions() error {
 	}
 
 	// 通知守卫行动
-	if err := p.broadcastEvent(event.Event[event.SkillResultData]{
-		Type: event.EventSystemSkillResult,
-		Data: event.SkillResultData{
-			SkillType: string(game.SkillTypeProtect),
-			Message:   "守卫请睁眼，请选择要守护的目标",
-		},
-		Receivers: guards,
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := p.broadcastSkillResult(game.SkillTypeProtect, "守卫请睁眼，请选择要守护的目标"); err != nil {
 		return err
 	}
 
@@ -187,31 +135,7 @@ func (p *NightPhase) handleWitchActions() error {
 	}
 
 	// 通知女巫行动
-	if err := p.broadcastEvent(event.Event[event.SkillResultData]{
-		Type: event.EventSystemSkillResult,
-		Data: event.SkillResultData{
-			SkillType: "witch_choice",
-			Message:   "女巫请睁眼，今晚有人被杀了，你要使用解药救他吗？或者使用毒药？",
-			Options: map[string]interface{}{
-				"choices": []map[string]interface{}{
-					{
-						"type": game.SkillTypeAntidote,
-						"desc": "使用解药救人",
-					},
-					{
-						"type": game.SkillTypePoison,
-						"desc": "使用毒药杀人",
-					},
-					{
-						"type": "none",
-						"desc": "不使用任何药",
-					},
-				},
-			},
-		},
-		Receivers: witches,
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := p.broadcastSkillResult("witch_choice", "女巫请睁眼，今晚有人被杀了，你要使用解药救他吗？或者使用毒药？"); err != nil {
 		return err
 	}
 
@@ -257,7 +181,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 				continue
 			}
 
-			p.actions = append(p.actions, action)
+			p.AddAction(&action)
 		}
 	}
 
@@ -281,57 +205,4 @@ func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.SkillResultMa
 	return &game.PhaseResult[game.SkillResultMap]{
 		Deaths: deaths,
 	}
-}
-
-// getAlivePlayerIDsByRole 获取指定角色的所有存活玩家ID
-func (p *NightPhase) getAlivePlayerIDsByRole(roleType game.RoleType) []string {
-	ids := make([]string, 0)
-	for id, player := range p.players {
-		if player.IsAlive() && player.GetRole().GetName() == roleType {
-			ids = append(ids, id)
-		}
-	}
-
-	return ids
-}
-
-// getAllPlayerIDs 获取所有玩家ID
-func (p *NightPhase) getAllPlayerIDs() []string {
-	ids := make([]string, 0, len(p.players))
-	for id := range p.players {
-		ids = append(ids, id)
-	}
-
-	return ids
-}
-
-// getSkillByType 获取指定类型的技能
-func (p *NightPhase) getSkillByType(skillType game.SkillType) game.Skill {
-	for _, player := range p.players {
-		for _, skill := range player.GetRole().GetAvailableSkills() {
-			if skill.GetName() == skillType {
-				return skill
-			}
-		}
-	}
-
-	return nil
-}
-
-// broadcastEvent 广播事件
-func (p *NightPhase) broadcastEvent(evt any) error {
-	// 将事件转换为 event.Event[any] 类型
-	eventAny, ok := evt.(event.Event[any])
-	if !ok {
-		return fmt.Errorf("invalid event type: %T", evt)
-	}
-
-	for _, receiverID := range eventAny.Receivers {
-		if player, exists := p.players[receiverID]; exists {
-			if err := player.Write(eventAny); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }

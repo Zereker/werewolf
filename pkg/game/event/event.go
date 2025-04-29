@@ -20,10 +20,8 @@ const (
 	EventSystemVoteResult  EventType = "system_vote_result"  // 投票结果
 	EventSystemGameResult  EventType = "system_game_result"  // 游戏结果
 
-	// 用户事件
+	// EventUserSkill 用户事件
 	EventUserSkill EventType = "user_skill" // 玩家使用技能
-	EventUserSpeak EventType = "user_speak" // 玩家发言
-	EventUserVote  EventType = "user_vote"  // 玩家投票
 )
 
 // Event 游戏事件

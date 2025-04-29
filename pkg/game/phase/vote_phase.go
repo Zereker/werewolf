@@ -12,24 +12,14 @@ import (
 
 // VotePhase 投票阶段
 type VotePhase struct {
-	round   int
-	players map[string]game.Player
-	actions []*game.Action
-
+	*BasePhase
 	deaths       []game.Player
 	skillResults game.SkillResultMap
 }
 
 func NewVotePhase(round int, players []game.Player) *VotePhase {
-	playerMap := make(map[string]game.Player)
-	for _, player := range players {
-		playerMap[player.GetID()] = player
-	}
-
 	return &VotePhase{
-		round:        round,
-		players:      playerMap,
-		actions:      make([]*game.Action, 0),
+		BasePhase:    NewBasePhase(round, players),
 		deaths:       make([]game.Player, 0),
 		skillResults: make(game.SkillResultMap),
 	}
@@ -59,16 +49,7 @@ func (v *VotePhase) broadcastEvent(evt any) error {
 
 func (v *VotePhase) Start() error {
 	// 通知所有玩家进入投票阶段
-	if err := v.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseStart,
-		Data: event.PhaseStartData{
-			Phase:   string(game.PhaseVote),
-			Round:   v.round,
-			Message: "请所有玩家投票",
-		},
-		Receivers: v.getAllPlayerIDs(),
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := v.broadcastPhaseStart(game.PhaseVote, "请所有玩家投票"); err != nil {
 		return fmt.Errorf("broadcast vote phase start failed: %w", err)
 	}
 
@@ -81,26 +62,16 @@ func (v *VotePhase) Start() error {
 	phaseResult := v.GetPhaseResult()
 
 	// 通知所有玩家投票阶段结束
-	message := ""
+	message := "投票阶段结束"
 	if len(phaseResult.Deaths) > 0 {
 		deathNames := make([]string, 0, len(phaseResult.Deaths))
 		for _, player := range phaseResult.Deaths {
 			deathNames = append(deathNames, player.GetID())
 		}
-
 		message = fmt.Sprintf("投票阶段结束。被投票处决的玩家是：%s", strings.Join(deathNames, "、"))
 	}
 
-	if err := v.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseEnd,
-		Data: event.PhaseStartData{
-			Phase:   string(game.PhaseVote),
-			Round:   v.round,
-			Message: message,
-		},
-		Receivers: v.getAllPlayerIDs(),
-		Timestamp: time.Now(),
-	}); err != nil {
+	if err := v.broadcastPhaseEnd(game.PhaseVote, message); err != nil {
 		return fmt.Errorf("broadcast vote phase end failed: %w", err)
 	}
 
@@ -137,12 +108,13 @@ func (v *VotePhase) waitForVotes() error {
 				Target: v.players[skillData.TargetID],
 				Skill:  v.getSkillByType(game.SkillTypeVote),
 			}
+			
 			// 执行行动
 			if err := action.Skill.Check(v.GetName(), action.Caster, action.Target); err != nil {
 				continue
 			}
-			action.Skill.Put(action.Caster, action.Target, game.PutOption{})
-			v.actions = append(v.actions, &action)
+
+			v.AddAction(&action)
 		}
 	}
 
@@ -199,7 +171,7 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	}
 
 	// 记录投票结果
-	v.skillResults[game.SkillTypeVote] = &game.SkillResult{
+	v.AddSkillResult(game.SkillTypeVote, &game.SkillResult{
 		Success: true,
 		Message: "投票结果",
 		Data: map[string]interface{}{
@@ -207,42 +179,10 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 			"voteCount": voteCount,  // 票数统计
 			"votedOut":  votedOut,   // 被投出的玩家
 		},
-	}
+	})
 
 	return &game.PhaseResult[game.SkillResultMap]{
 		Deaths:    v.deaths,
 		ExtraData: v.skillResults,
 	}
-}
-
-// getAlivePlayerIDs 获取所有存活的玩家ID
-func (v *VotePhase) getAlivePlayerIDs() []string {
-	ids := make([]string, 0)
-	for id, player := range v.players {
-		if player.IsAlive() {
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-
-// getAllPlayerIDs 获取所有玩家ID
-func (v *VotePhase) getAllPlayerIDs() []string {
-	ids := make([]string, 0, len(v.players))
-	for id := range v.players {
-		ids = append(ids, id)
-	}
-	return ids
-}
-
-// getSkillByType 获取指定类型的技能
-func (v *VotePhase) getSkillByType(skillType game.SkillType) game.Skill {
-	for _, player := range v.players {
-		for _, skill := range player.GetRole().GetAvailableSkills() {
-			if skill.GetName() == skillType {
-				return skill
-			}
-		}
-	}
-	return nil
 }
