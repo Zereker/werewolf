@@ -75,22 +75,15 @@ func (r *Runtime) Start(ctx context.Context) error {
 
 	// 创建游戏开始阶段
 	startPhase := phase.NewStartPhase(r.players)
-	if err := startPhase.Start(); err != nil {
+	if err := startPhase.Start(ctx); err != nil {
 		return fmt.Errorf("start phase failed: %w", err)
 	}
 
 	// 游戏主循环
 	for r.checkGameEnd() == game.CampNone {
-		// 检查上下文是否取消
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
 		// 获取当前阶段
 		currentPhase := r.phases[r.phaseIdx]
-		if err := currentPhase.Start(); err != nil {
+		if err := currentPhase.Start(ctx); err != nil {
 			return fmt.Errorf("phase %d failed: %w", r.phaseIdx, err)
 		}
 
@@ -104,7 +97,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 
 	// 游戏结束，创建结束阶段
 	endPhase := phase.NewEndPhase(r.players, r.checkGameEnd())
-	if err := endPhase.Start(); err != nil {
+	if err := endPhase.Start(ctx); err != nil {
 		return fmt.Errorf("end phase failed: %w", err)
 	}
 

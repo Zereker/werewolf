@@ -1,6 +1,7 @@
 package phase
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -32,7 +33,7 @@ func (p *LastWordsPhase) GetName() game.PhaseType {
 	return "last_words"
 }
 
-func (p *LastWordsPhase) Start() error {
+func (p *LastWordsPhase) Start(ctx context.Context) error {
 	// 如果不是第一回合，直接返回
 	if p.round != 1 {
 		return nil

@@ -1,6 +1,7 @@
 package game
 
 import (
+	"context"
 	"time"
 
 	"github.com/Zereker/werewolf/pkg/game/event"
@@ -50,11 +51,14 @@ type Action struct {
 	Content string
 }
 
-// Phase 游戏阶段接口
+// Phase 阶段接口
 type Phase interface {
+	// Start 开始阶段
+	Start(ctx context.Context) error
+	// GetName 获取阶段类型
 	GetName() PhaseType
-	SetRound(int)
-	Start() error
+	// GetRound 获取回合数
+	GetRound() int
 }
 
 // PhaseResult 阶段结果

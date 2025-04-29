@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/Zereker/werewolf/pkg/event"
-	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/skill"
+
+	"github.com/Zereker/werewolf/pkg/game"
 )
 
 // LastWordPhase 遗言阶段

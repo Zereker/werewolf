@@ -1,6 +1,7 @@
 package phase
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -23,7 +24,7 @@ func (s *StartPhase) GetName() game.PhaseType {
 	return game.PhaseStart
 }
 
-func (s *StartPhase) Start() error {
+func (s *StartPhase) Start(ctx context.Context) error {
 	// 通知所有玩家游戏开始
 	if err := s.broadcastPhaseStart(game.PhaseStart, "游戏开始，请所有玩家查看自己的身份"); err != nil {
 		return fmt.Errorf("broadcast game start failed: %w", err)

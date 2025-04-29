@@ -1,6 +1,7 @@
 package phase
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -46,7 +47,8 @@ func (d *DayPhase) broadcastEvent(evt any) error {
 	return nil
 }
 
-func (d *DayPhase) Start() error {
+// Start 开始阶段
+func (d *DayPhase) Start(ctx context.Context) error {
 	// 通知所有玩家进入白天
 	if err := d.broadcastPhaseStart(game.PhaseDay, "现在是白天，所有玩家可以自由讨论"); err != nil {
 		return fmt.Errorf("broadcast day phase start failed: %w", err)

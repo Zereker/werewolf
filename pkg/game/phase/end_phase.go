@@ -1,6 +1,7 @@
 package phase
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -25,7 +26,7 @@ func (e *EndPhase) GetName() game.PhaseType {
 	return game.PhaseEnd
 }
 
-func (e *EndPhase) Start() error {
+func (e *EndPhase) Start(ctx context.Context) error {
 	// 构建游戏结果数据
 	gameResult := event.GameResultData{
 		Winner:    e.winner.String(),

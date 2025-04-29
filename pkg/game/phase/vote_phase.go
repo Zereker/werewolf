@@ -1,6 +1,7 @@
 package phase
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -48,7 +49,7 @@ func (v *VotePhase) broadcastEvent(evt any) error {
 	return nil
 }
 
-func (v *VotePhase) Start() error {
+func (v *VotePhase) Start(ctx context.Context) error {
 	// 通知所有玩家进入投票阶段
 	if err := v.broadcastPhaseStart(game.PhaseVote, "请所有玩家投票"); err != nil {
 		return fmt.Errorf("broadcast vote phase start failed: %w", err)
@@ -186,4 +187,8 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 		Deaths:    v.deaths,
 		ExtraData: v.skillResults,
 	}
+}
+
+func (v *VotePhase) GetType() game.PhaseType {
+	return game.PhaseVote
 }

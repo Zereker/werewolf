@@ -1,6 +1,7 @@
 package phase
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -30,7 +31,7 @@ func (p *NightPhase) GetName() game.PhaseType {
 	return game.PhaseNight
 }
 
-func (p *NightPhase) Start() error {
+func (p *NightPhase) Start(ctx context.Context) error {
 	// 通知所有玩家进入夜晚
 	if err := p.broadcastPhaseStart(game.PhaseNight, "天黑了，所有玩家请闭眼"); err != nil {
 		return fmt.Errorf("broadcast night phase start failed: %w", err)
@@ -70,6 +71,13 @@ func (p *NightPhase) Start() error {
 
 	if err := p.broadcastPhaseEnd(game.PhaseNight, message); err != nil {
 		return fmt.Errorf("broadcast night phase end failed: %w", err)
+	}
+
+	// 等待夜晚结束
+	select {
+	case <-ctx.Done():
+		return nil
+	case <-time.After(30 * time.Second):
 	}
 
 	return nil
@@ -205,4 +213,9 @@ func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.SkillResultMa
 	return &game.PhaseResult[game.SkillResultMap]{
 		Deaths: deaths,
 	}
+}
+
+// GetType 获取阶段类型
+func (p *NightPhase) GetType() game.PhaseType {
+	return game.PhaseNight
 }
