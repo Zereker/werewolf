@@ -56,17 +56,17 @@ func (s *Speak) Check(phase game.PhaseType, caster game.Player, target game.Play
 }
 
 // Put 使用技能
-func (s *Speak) Put(caster game.Player, target game.Player, option game.PutOption) {
+func (s *Speak) Put(caster game.Player, target game.Player) {
 	s.hasUsed = true
-	s.content = option.Content
 }
 
 // Exec 执行技能，包含检查和执行两个步骤
-func (s *Speak) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+func (s *Speak) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if err := s.Check(phase, caster, target); err != nil {
 		return err
 	}
-	s.Put(caster, target, option)
+
+	s.Put(caster, target)
 	return nil
 }
 

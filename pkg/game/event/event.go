@@ -8,11 +8,10 @@ import (
 type Type string
 
 const (
-	SystemGameStart  Type = "system_game_start"  // 游戏开始
-	SystemGameEnd    Type = "system_game_end"    // 游戏结束
-	SystemPhaseStart Type = "system_phase_start" // 阶段开始
-	SystemPhaseEnd   Type = "system_phase_end"   // 阶段结束
-
+	SystemGameStart        Type = "system_game_start"   // 游戏开始
+	SystemGameEnd          Type = "system_game_end"     // 游戏结束
+	SystemPhaseStart       Type = "system_phase_start"  // 阶段开始
+	SystemPhaseEnd         Type = "system_phase_end"    // 阶段结束
 	EventSystemPlayerDeath Type = "system_player_death" // 玩家死亡
 	SystemSkillResult      Type = "system_skill_result" // 技能使用结果
 	EventSystemVoteResult  Type = "system_vote_result"  // 投票结果

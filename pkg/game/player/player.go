@@ -1,8 +1,8 @@
 package player
 
 import (
+	"context"
 	"errors"
-	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
@@ -24,7 +24,7 @@ func New(id string, role game.Role) game.Player {
 		alive:     true,
 		protected: false,
 		role:      role,
-		
+
 		eventChan: make(chan event.Event[any], 100), // 设置一个合理的缓冲区大小
 	}
 }
@@ -64,14 +64,12 @@ func (p *player) Write(evt event.Event[any]) error {
 }
 
 // Read 读取事件，带超时
-func (p *player) Read(timeout time.Duration) (event.Event[any], error) {
+func (p *player) Read(ctx context.Context) (event.Event[any], error) {
 	select {
 	case evt, ok := <-p.eventChan:
 		if !ok {
 			return event.Event[any]{}, errors.New("event channel is closed")
 		}
 		return evt, nil
-	case <-time.After(timeout):
-		return event.Event[any]{}, errors.New("read event timeout")
 	}
 }

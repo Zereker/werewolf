@@ -51,9 +51,8 @@ func (l *LastWords) Check(phase game.PhaseType, caster game.Player, target game.
 	return nil
 }
 
-func (l *LastWords) Put(caster game.Player, target game.Player, option game.PutOption) {
+func (l *LastWords) Put(caster game.Player, target game.Player) {
 	l.hasUsed = true
-	l.content = option.Content
 }
 
 func (l *LastWords) Reset() {
@@ -65,10 +64,10 @@ func (l *LastWords) GetContent() string {
 }
 
 // Exec 执行技能，包含检查和执行两个步骤
-func (l *LastWords) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+func (l *LastWords) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if err := l.Check(phase, caster, target); err != nil {
 		return err
 	}
-	l.Put(caster, target, option)
+	l.Put(caster, target)
 	return nil
 }

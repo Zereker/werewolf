@@ -60,16 +60,16 @@ func (c *Check) Check(phase game.PhaseType, caster game.Player, target game.Play
 }
 
 // Put 使用技能
-func (c *Check) Put(caster game.Player, target game.Player, option game.PutOption) {
+func (c *Check) Put(caster game.Player, target game.Player) {
 	c.hasUsed = true
 }
 
 // Exec 执行技能，包含检查和执行两个步骤
-func (c *Check) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+func (c *Check) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if err := c.Check(phase, caster, target); err != nil {
 		return err
 	}
-	c.Put(caster, target, option)
+	c.Put(caster, target)
 	return nil
 }
 

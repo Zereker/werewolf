@@ -167,7 +167,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 		}
 
 		// 等待该玩家的行动
-		evt, err := player.Read(30 * time.Second)
+		evt, err := player.Read(context.Background())
 		if err != nil {
 			p.logger.Warn("玩家行动超时", "player_id", playerID, "role", roleType)
 			continue
@@ -200,7 +200,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	deaths := make([]game.Player, 0)
 	for _, action := range p.actions {
-		action.Skill.Put(action.Caster, action.Target, game.PutOption{Content: action.Content})
+		action.Skill.Put(action.Caster, action.Target)
 	}
 
 	for _, action := range p.actions {

@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
+	skill2 "github.com/Zereker/werewolf/pkg/game/skill"
 )
 
 // BasePhase 基础阶段结构体
@@ -103,23 +106,72 @@ func (p *BasePhase) getSkillByType(skillType game.SkillType) game.Skill {
 			}
 		}
 	}
+
 	return nil
 }
 
 // broadcastEvent 广播事件
 func (p *BasePhase) broadcastEvent(evt any) error {
-	// 将事件转换为 event.Event[any] 类型
-	eventAny, ok := evt.(event.Event[any])
-	if !ok {
-		return fmt.Errorf("invalid event type: %T", evt)
-	}
-
-	for _, receiverID := range eventAny.Receivers {
-		if player, exists := p.players[receiverID]; exists {
-			if err := player.Write(eventAny); err != nil {
-				return err
+	// 使用类型断言获取事件的基本信息
+	switch e := evt.(type) {
+	case event.Event[event.PhaseStartData]:
+		for _, receiverID := range e.Receivers {
+			if player, exists := p.players[receiverID]; exists {
+				if err := player.Write(event.Event[any]{
+					Type:      e.Type,
+					PlayerID:  e.PlayerID,
+					Receivers: e.Receivers,
+					Timestamp: e.Timestamp,
+					Data:      e.Data,
+				}); err != nil {
+					return err
+				}
 			}
 		}
+	case event.Event[event.SkillResultData]:
+		for _, receiverID := range e.Receivers {
+			if player, exists := p.players[receiverID]; exists {
+				if err := player.Write(event.Event[any]{
+					Type:      e.Type,
+					PlayerID:  e.PlayerID,
+					Receivers: e.Receivers,
+					Timestamp: e.Timestamp,
+					Data:      e.Data,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+	case event.Event[event.SystemGameStartData]:
+		for _, receiverID := range e.Receivers {
+			if player, exists := p.players[receiverID]; exists {
+				if err := player.Write(event.Event[any]{
+					Type:      e.Type,
+					PlayerID:  e.PlayerID,
+					Receivers: e.Receivers,
+					Timestamp: e.Timestamp,
+					Data:      e.Data,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+	case event.Event[event.SystemGameEndData]:
+		for _, receiverID := range e.Receivers {
+			if player, exists := p.players[receiverID]; exists {
+				if err := player.Write(event.Event[any]{
+					Type:      e.Type,
+					PlayerID:  e.PlayerID,
+					Receivers: e.Receivers,
+					Timestamp: e.Timestamp,
+					Data:      e.Data,
+				}); err != nil {
+					return err
+				}
+			}
+		}
+	default:
+		return fmt.Errorf("unsupported event type: %T", evt)
 	}
 	return nil
 }
@@ -127,14 +179,16 @@ func (p *BasePhase) broadcastEvent(evt any) error {
 // broadcastPhaseStart 广播阶段开始
 func (p *BasePhase) broadcastPhaseStart(phase game.PhaseType, message string) error {
 	return p.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.SystemPhaseStart,
+		ID:        uuid.NewString(),
+		Type:      event.SystemPhaseStart,
+		PlayerID:  game.SystemPlayerID,
+		Receivers: p.getAllPlayerIDs(),
+		Timestamp: time.Now(),
 		Data: event.PhaseStartData{
 			Phase:   string(phase),
 			Round:   p.round,
 			Message: message,
 		},
-		Receivers: p.getAllPlayerIDs(),
-		Timestamp: time.Now(),
 	})
 }
 
@@ -163,4 +217,70 @@ func (p *BasePhase) broadcastSkillResult(skillType game.SkillType, message strin
 		Receivers: p.getAllPlayerIDs(),
 		Timestamp: time.Now(),
 	})
+}
+
+// convertActionToSkillEvent 将 Action 转换为 Skill 事件
+func (p *BasePhase) convertActionToSkillEvent(action *game.Action) event.Event[any] {
+	var targetID string
+	if action.Target != nil {
+		targetID = action.Target.GetID()
+	}
+
+	return event.Event[any]{
+		ID:        uuid.NewString(),
+		Type:      event.UserSkill,
+		PlayerID:  action.Caster.GetID(),
+		Receivers: p.getAllPlayerIDs(),
+		Timestamp: time.Now(),
+		Data: &event.UserSkillData{
+			TargetID:  targetID,
+			SkillType: string(action.Skill.GetName()),
+		},
+	}
+}
+
+// convertEventToAction 将用户事件转换为 Action
+func (p *BasePhase) convertEventToAction(evt event.Event[any]) (*game.Action, error) {
+	// 检查事件类型
+	if evt.Type != event.UserSkill {
+		return nil, fmt.Errorf("invalid event type: %s", evt.Type)
+	}
+
+	// 获取施法者
+	caster, exists := p.players[evt.PlayerID]
+	if !exists {
+		return nil, fmt.Errorf("caster not found: %s", evt.PlayerID)
+	}
+
+	// 获取技能数据
+	skillData, ok := evt.Data.(*event.UserSkillData)
+	if !ok {
+		return nil, fmt.Errorf("invalid event data type: %T", evt.Data)
+	}
+
+	// 获取技能
+	skill := p.getSkillByType(game.SkillType(skillData.SkillType))
+	if skill == nil {
+		return nil, fmt.Errorf("skill not found: %s", skillData.SkillType)
+	}
+
+	if speak, ok := skill.(skill2.Speak); ok {
+		speak
+
+	}
+
+	// 获取目标（如果有）
+	var target game.Player
+	if skillData.TargetID != "" {
+		target, exists = p.players[skillData.TargetID]
+		if !exists {
+			return nil, fmt.Errorf("target not found: %s", skillData.TargetID)
+		}
+	}
+
+	return &game.Action{
+		Caster: caster,
+		Target: target,
+		Skill:  skill,
+	}, nil
 }

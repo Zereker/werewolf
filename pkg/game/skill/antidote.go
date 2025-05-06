@@ -60,17 +60,17 @@ func (a *Antidote) Check(phase game.PhaseType, caster game.Player, target game.P
 }
 
 // Put 使用技能
-func (a *Antidote) Put(caster game.Player, target game.Player, option game.PutOption) {
+func (a *Antidote) Put(caster game.Player, target game.Player) {
 	a.hasUsed = true
 	target.SetAlive(true)
 }
 
 // Exec 执行技能，包含检查和执行两个步骤
-func (a *Antidote) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+func (a *Antidote) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if err := a.Check(phase, caster, target); err != nil {
 		return err
 	}
-	a.Put(caster, target, option)
+	a.Put(caster, target)
 	return nil
 }
 

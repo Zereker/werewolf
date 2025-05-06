@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
@@ -96,7 +95,7 @@ func (v *VotePhase) waitForVotes() error {
 		}
 
 		// 等待该玩家的投票
-		evt, err := player.Read(30 * time.Second)
+		evt, err := player.Read(context.Background())
 		if err != nil {
 			continue
 		}
@@ -137,9 +136,7 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	// 执行投票并记录
 	for _, action := range v.actions {
 		// 执行技能
-		action.Skill.Put(action.Caster, action.Target, game.PutOption{
-			Content: action.Content,
-		})
+		action.Skill.Put(action.Caster, action.Target)
 
 		// 记录投票
 		voteCount[action.Target]++

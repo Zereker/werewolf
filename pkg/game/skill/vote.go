@@ -59,16 +59,16 @@ func (v *Vote) Check(phase game.PhaseType, caster game.Player, target game.Playe
 }
 
 // Put 使用技能
-func (v *Vote) Put(caster game.Player, target game.Player, option game.PutOption) {
+func (v *Vote) Put(caster game.Player, target game.Player) {
 	v.hasUsed = true
 }
 
 // Exec 执行技能，包含检查和执行两个步骤
-func (v *Vote) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+func (v *Vote) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if err := v.Check(phase, caster, target); err != nil {
 		return err
 	}
-	v.Put(caster, target, option)
+	v.Put(caster, target)
 	return nil
 }
 

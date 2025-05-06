@@ -2,7 +2,6 @@ package game
 
 import (
 	"context"
-	"time"
 
 	"github.com/Zereker/werewolf/pkg/game/event"
 )
@@ -46,9 +45,6 @@ type Action struct {
 	Target Player
 	// Skill 使用的技能
 	Skill Skill
-
-	// Content 发言内容
-	Content string
 }
 
 // Phase 阶段接口
@@ -70,6 +66,8 @@ type PhaseResult[T any] struct {
 // SkillResultMap 技能结果映射
 type SkillResultMap map[SkillType]*SkillResult
 
+const SystemPlayerID = "System"
+
 // Player interface defines player behavior
 type Player interface {
 	GetID() string
@@ -81,8 +79,8 @@ type Player interface {
 	IsProtected() bool
 	SetProtected(protected bool)
 
-	Write(event event.Event[any]) error                   // 写入事件
-	Read(timeout time.Duration) (event.Event[any], error) // 读取事件，带超时
+	Write(event event.Event[any]) error                 // 写入事件
+	Read(ctx context.Context) (event.Event[any], error) // 读取事件，带超时
 }
 
 // RoleType represents role type
@@ -151,9 +149,9 @@ type Skill interface {
 	// Check 检查技能条件
 	Check(phase PhaseType, caster Player, target Player) error
 	// Put 使用技能
-	Put(caster Player, target Player, option PutOption)
+	Put(caster Player, target Player)
 	// Exec 执行技能，包含检查和执行两个步骤
-	Exec(phase PhaseType, caster Player, target Player, option PutOption) error
+	Exec(phase PhaseType, caster Player, target Player) error
 	// Reset 重置技能状态
 	Reset()
 }

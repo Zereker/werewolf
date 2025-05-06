@@ -63,17 +63,17 @@ func (p *Poison) Check(phase game.PhaseType, caster game.Player, target game.Pla
 }
 
 // Put 使用技能
-func (p *Poison) Put(caster game.Player, target game.Player, option game.PutOption) {
+func (p *Poison) Put(caster game.Player, target game.Player) {
 	p.hasUsed = true
 	target.SetAlive(false)
 }
 
 // Exec 执行技能，包含检查和执行两个步骤
-func (p *Poison) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+func (p *Poison) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if err := p.Check(phase, caster, target); err != nil {
 		return err
 	}
-	p.Put(caster, target, option)
+	p.Put(caster, target)
 	return nil
 }
 

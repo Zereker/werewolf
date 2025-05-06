@@ -64,7 +64,7 @@ func (k *Kill) Check(phase game.PhaseType, caster game.Player, target game.Playe
 }
 
 // Put 使用技能
-func (k *Kill) Put(caster game.Player, target game.Player, option game.PutOption) {
+func (k *Kill) Put(caster game.Player, target game.Player) {
 	k.hasUsed = true
 
 	if target.IsProtected() {
@@ -75,11 +75,11 @@ func (k *Kill) Put(caster game.Player, target game.Player, option game.PutOption
 }
 
 // Exec 执行技能，包含检查和执行两个步骤
-func (k *Kill) Exec(phase game.PhaseType, caster game.Player, target game.Player, option game.PutOption) error {
+func (k *Kill) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
 	if err := k.Check(phase, caster, target); err != nil {
 		return err
 	}
-	k.Put(caster, target, option)
+	k.Put(caster, target)
 	return nil
 }
 

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
 	"github.com/Zereker/werewolf/pkg/game/skill"
@@ -29,34 +31,16 @@ func (d *DayPhase) GetName() game.PhaseType {
 	return game.PhaseDay
 }
 
-// broadcastEvent 广播事件
-func (d *DayPhase) broadcastEvent(evt any) error {
-	// 将事件转换为 event.Event[any] 类型
-	eventAny, ok := evt.(event.Event[any])
-	if !ok {
-		return fmt.Errorf("invalid event type: %T", evt)
-	}
-
-	for _, receiverID := range eventAny.Receivers {
-		if player, exists := d.players[receiverID]; exists {
-			if err := player.Write(eventAny); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // Start 开始阶段
 func (d *DayPhase) Start(ctx context.Context) error {
 	// 通知所有玩家进入白天
 	if err := d.broadcastPhaseStart(game.PhaseDay, "现在是白天，所有玩家可以自由讨论"); err != nil {
-		return fmt.Errorf("broadcast day phase start failed: %w", err)
+		return errors.WithMessage(err, "broadcast day phase start failed")
 	}
 
 	// 等待玩家发言
-	if err := d.waitForSpeeches(); err != nil {
-		return err
+	if err := d.waitForSpeeches(ctx); err != nil {
+		return errors.WithMessage(err, "wait user speech failed")
 	}
 
 	// 计算阶段结果
@@ -82,7 +66,7 @@ func (d *DayPhase) Start(ctx context.Context) error {
 	}
 
 	// 通知所有玩家白天阶段结束
-	if err := d.broadcastPhaseEnd(game.PhaseDay, "白天讨论时间结束，进入投票阶段"); err != nil {
+	if err := d.broadcastPhaseEnd(game.PhaseDay, "白天讨论结束"); err != nil {
 		return fmt.Errorf("broadcast day phase end failed: %w", err)
 	}
 
@@ -90,7 +74,8 @@ func (d *DayPhase) Start(ctx context.Context) error {
 }
 
 // waitForSpeeches 等待所有玩家发言
-func (d *DayPhase) waitForSpeeches() error {
+func (d *DayPhase) waitForSpeeches(ctx context.Context) error {
+
 	// 获取所有存活的玩家
 	alivePlayers := d.getAlivePlayerIDs()
 	if len(alivePlayers) == 0 {
@@ -105,31 +90,43 @@ func (d *DayPhase) waitForSpeeches() error {
 		}
 
 		// 等待该玩家的发言
-		evt, err := player.Read(30 * time.Second)
+		evt, err := d.waitPlayer(ctx, player, d.discussionTime/time.Duration(len(alivePlayers)))
 		if err != nil {
 			continue
 		}
 
 		// 处理用户事件
-		if evt.Type == event.UserSkill {
-			skillData := evt.Data.(*event.UserSkillData)
-			// 将用户事件转换为玩家行动
-			action := game.Action{
-				Caster: player,
-				Target: d.players[skillData.TargetID],
-				Skill:  d.getSkillByType(game.SkillTypeSpeak),
-			}
-
-			// 执行行动
-			if err := action.Skill.Check(d.GetName(), action.Caster, action.Target); err != nil {
-				continue
-			}
-
-			d.AddAction(&action)
+		if evt.Type != event.UserSkill {
+			continue
 		}
+
+		action, err := d.convertEventToAction(evt)
+		if err != nil {
+			continue
+		}
+
+		// 执行行动
+		if err := action.Skill.Check(d.GetName(), action.Caster, action.Target); err != nil {
+			continue
+		}
+
+		d.AddAction(action)
 	}
 
 	return nil
+}
+
+func (d *DayPhase) waitPlayer(ctx context.Context, player game.Player, timeout time.Duration) (event.Event[any], error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// 等待该玩家的发言
+	evt, err := player.Read(ctx)
+	if err != nil {
+		return event.Event[any]{}, err
+	}
+
+	return evt, nil
 }
 
 // GetPhaseResult 获取阶段结果
@@ -139,14 +136,10 @@ func (d *DayPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 
 	for _, action := range d.actions {
 		// 执行技能，传入内容选项
-		action.Skill.Put(action.Caster, action.Target, game.PutOption{
-			Content: action.Content,
-		})
-
+		action.Skill.Put(action.Caster, action.Target)
 		if speak, ok := action.Skill.(*skill.Speak); ok {
 			speakResults[action.Caster] = speak.GetContent()
 		}
-
 	}
 
 	// 记录发言结果

@@ -77,7 +77,7 @@ func (p *LastWordsPhase) Start(ctx context.Context) error {
 		}
 
 		// 等待玩家发表遗言
-		if _, err := p.players[deadPlayer.GetID()].Read(30 * time.Second); err != nil {
+		if _, err := p.players[deadPlayer.GetID()].Read(ctx); err != nil {
 			return fmt.Errorf("wait for last words failed: %w", err)
 		}
 	}
