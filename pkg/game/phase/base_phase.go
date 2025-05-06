@@ -127,7 +127,7 @@ func (p *BasePhase) broadcastEvent(evt any) error {
 // broadcastPhaseStart 广播阶段开始
 func (p *BasePhase) broadcastPhaseStart(phase game.PhaseType, message string) error {
 	return p.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseStart,
+		Type: event.SystemPhaseStart,
 		Data: event.PhaseStartData{
 			Phase:   string(phase),
 			Round:   p.round,
@@ -141,7 +141,7 @@ func (p *BasePhase) broadcastPhaseStart(phase game.PhaseType, message string) er
 // broadcastPhaseEnd 广播阶段结束
 func (p *BasePhase) broadcastPhaseEnd(phase game.PhaseType, message string) error {
 	return p.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseEnd,
+		Type: event.SystemPhaseEnd,
 		Data: event.PhaseStartData{
 			Phase:   string(phase),
 			Round:   p.round,
@@ -155,7 +155,7 @@ func (p *BasePhase) broadcastPhaseEnd(phase game.PhaseType, message string) erro
 // broadcastSkillResult 广播技能结果
 func (p *BasePhase) broadcastSkillResult(skillType game.SkillType, message string) error {
 	return p.broadcastEvent(event.Event[event.SkillResultData]{
-		Type: event.EventSystemSkillResult,
+		Type: event.SystemSkillResult,
 		Data: event.SkillResultData{
 			SkillType: string(skillType),
 			Message:   message,

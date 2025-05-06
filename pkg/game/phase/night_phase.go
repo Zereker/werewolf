@@ -174,7 +174,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 		}
 
 		// 处理用户事件
-		if evt.Type == event.EventUserSkill {
+		if evt.Type == event.UserSkill {
 			skillData := evt.Data.(*event.UserSkillData)
 			// 将用户事件转换为玩家行动
 			action := game.Action{

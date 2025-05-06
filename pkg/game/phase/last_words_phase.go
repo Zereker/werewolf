@@ -50,7 +50,7 @@ func (p *LastWordsPhase) Start(ctx context.Context) error {
 
 	// 通知所有玩家进入遗言阶段
 	if err := p.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseStart,
+		Type: event.SystemPhaseStart,
 		Data: event.PhaseStartData{
 			Phase: "last_words",
 		},
@@ -64,7 +64,7 @@ func (p *LastWordsPhase) Start(ctx context.Context) error {
 	for _, deadPlayer := range p.deaths {
 		// 通知该玩家发表遗言
 		if err := p.broadcastEvent(event.Event[event.SkillResultData]{
-			Type: event.EventSystemSkillResult,
+			Type: event.SystemSkillResult,
 			Data: event.SkillResultData{
 				SkillType: string(game.SkillTypeLastWords),
 				Message:   "请发表遗言",
@@ -84,7 +84,7 @@ func (p *LastWordsPhase) Start(ctx context.Context) error {
 
 	// 通知所有玩家遗言阶段结束
 	if err := p.broadcastEvent(event.Event[event.PhaseStartData]{
-		Type: event.EventSystemPhaseEnd,
+		Type: event.SystemPhaseEnd,
 		Data: event.PhaseStartData{
 			Phase: "last_words",
 		},

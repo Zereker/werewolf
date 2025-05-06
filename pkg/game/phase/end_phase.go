@@ -44,7 +44,7 @@ func (e *EndPhase) Start(ctx context.Context) error {
 
 	// 通知所有玩家游戏结束
 	if err := e.broadcastEvent(event.Event[event.SystemGameEndData]{
-		Type:      event.EventSystemGameEnd,
+		Type:      event.SystemGameEnd,
 		Receivers: e.getAllPlayerIDs(),
 		Timestamp: time.Now(),
 		Data: event.SystemGameEndData{

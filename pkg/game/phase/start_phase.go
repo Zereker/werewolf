@@ -49,7 +49,7 @@ func (s *StartPhase) Start(ctx context.Context) error {
 
 		// 发送游戏开始事件给每个玩家
 		if err := s.broadcastEvent(event.Event[event.SystemGameStartData]{
-			Type:      event.EventSystemGameStart,
+			Type:      event.SystemGameStart,
 			PlayerID:  player.GetID(),
 			Receivers: []string{player.GetID()}, // 只发送给该玩家
 			Timestamp: time.Now(),

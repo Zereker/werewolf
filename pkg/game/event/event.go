@@ -4,30 +4,28 @@ import (
 	"time"
 )
 
-// EventType 事件类型
-type EventType string
+// Type 事件类型
+type Type string
 
 const (
-	// 系统事件
-	EventSystemGameStart EventType = "system_game_start" // 游戏开始
-	EventSystemGameEnd   EventType = "system_game_end"   // 游戏结束
+	SystemGameStart  Type = "system_game_start"  // 游戏开始
+	SystemGameEnd    Type = "system_game_end"    // 游戏结束
+	SystemPhaseStart Type = "system_phase_start" // 阶段开始
+	SystemPhaseEnd   Type = "system_phase_end"   // 阶段结束
 
-	EventSystemPhaseStart EventType = "system_phase_start" // 阶段开始
-	EventSystemPhaseEnd   EventType = "system_phase_end"   // 阶段结束
+	EventSystemPlayerDeath Type = "system_player_death" // 玩家死亡
+	SystemSkillResult      Type = "system_skill_result" // 技能使用结果
+	EventSystemVoteResult  Type = "system_vote_result"  // 投票结果
+	EventSystemGameResult  Type = "system_game_result"  // 游戏结果
 
-	EventSystemPlayerDeath EventType = "system_player_death" // 玩家死亡
-	EventSystemSkillResult EventType = "system_skill_result" // 技能使用结果
-	EventSystemVoteResult  EventType = "system_vote_result"  // 投票结果
-	EventSystemGameResult  EventType = "system_game_result"  // 游戏结果
-
-	// EventUserSkill 用户事件
-	EventUserSkill EventType = "user_skill" // 玩家使用技能
+	// UserSkill 用户事件
+	UserSkill Type = "user_skill" // 玩家使用技能
 )
 
 // Event 游戏事件
 type Event[T any] struct {
 	ID        string    `json:"id"`        // 事件ID
-	Type      EventType `json:"type"`      // 事件类型
+	Type      Type      `json:"type"`      // 事件类型
 	PlayerID  string    `json:"player_id"` // 发送者ID
 	Receivers []string  `json:"receivers"` // 接收者ID列表
 	Timestamp time.Time `json:"timestamp"` // 事件发生时间
