@@ -59,17 +59,15 @@ func (v *Vote) Check(phase game.PhaseType, caster game.Player, target game.Playe
 }
 
 // Put 使用技能
-func (v *Vote) Put(caster game.Player, target game.Player) {
+func (v *Vote) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	v.hasUsed = true
-}
 
-// Exec 执行技能，包含检查和执行两个步骤
-func (v *Vote) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := v.Check(phase, caster, target); err != nil {
-		return err
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 投票给 %s", caster.GetID(), target.GetID())
+	result.Data = map[string]interface{}{
+		"voter": caster.GetID(),
+		"voted": target.GetID(),
 	}
-	v.Put(caster, target)
-	return nil
 }
 
 // Reset resets skill state

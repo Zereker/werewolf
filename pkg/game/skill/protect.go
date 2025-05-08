@@ -63,18 +63,12 @@ func (p *Protect) Check(phase game.PhaseType, caster game.Player, target game.Pl
 }
 
 // Put 使用技能
-func (p *Protect) Put(caster game.Player, target game.Player) {
+func (p *Protect) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	p.hasUsed = true
 	target.SetProtected(true)
-}
 
-// Exec 执行技能，包含检查和执行两个步骤
-func (p *Protect) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := p.Check(phase, caster, target); err != nil {
-		return err
-	}
-	p.Put(caster, target)
-	return nil
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 被守卫保护", target.GetID())
 }
 
 // Reset resets skill state

@@ -64,18 +64,12 @@ func (h *Hunter) Check(phase game.PhaseType, caster game.Player, target game.Pla
 }
 
 // Put 使用技能
-func (h *Hunter) Put(caster game.Player, target game.Player) {
+func (h *Hunter) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	h.hasUsed = true
 	target.SetAlive(false)
-}
 
-// Exec 执行技能，包含检查和执行两个步骤
-func (h *Hunter) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := h.Check(phase, caster, target); err != nil {
-		return err
-	}
-	h.Put(caster, target)
-	return nil
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 被猎人射杀", target.GetID())
 }
 
 func (h *Hunter) Reset() {

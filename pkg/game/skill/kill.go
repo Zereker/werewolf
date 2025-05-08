@@ -64,23 +64,18 @@ func (k *Kill) Check(phase game.PhaseType, caster game.Player, target game.Playe
 }
 
 // Put 使用技能
-func (k *Kill) Put(caster game.Player, target game.Player) {
+func (k *Kill) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	k.hasUsed = true
 
 	if target.IsProtected() {
+		result.Success = false
+		result.Message = fmt.Sprintf("目标 %s 被守护，无法击杀", target.GetID())
 		return
 	}
 
 	target.SetAlive(false)
-}
-
-// Exec 执行技能，包含检查和执行两个步骤
-func (k *Kill) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := k.Check(phase, caster, target); err != nil {
-		return err
-	}
-	k.Put(caster, target)
-	return nil
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 被狼人击杀", target.GetID())
 }
 
 // Reset resets skill state

@@ -60,17 +60,14 @@ func (c *Check) Check(phase game.PhaseType, caster game.Player, target game.Play
 }
 
 // Put 使用技能
-func (c *Check) Put(caster game.Player, target game.Player) {
+func (c *Check) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	c.hasUsed = true
-}
 
-// Exec 执行技能，包含检查和执行两个步骤
-func (c *Check) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := c.Check(phase, caster, target); err != nil {
-		return err
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 的身份是：%s", target.GetID(), target.GetRole().GetName())
+	result.Data = map[string]interface{}{
+		"target_role": target.GetRole().GetName(),
 	}
-	c.Put(caster, target)
-	return nil
 }
 
 func (c *Check) Reset() {

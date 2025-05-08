@@ -60,18 +60,12 @@ func (a *Antidote) Check(phase game.PhaseType, caster game.Player, target game.P
 }
 
 // Put 使用技能
-func (a *Antidote) Put(caster game.Player, target game.Player) {
+func (a *Antidote) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	a.hasUsed = true
 	target.SetAlive(true)
-}
 
-// Exec 执行技能，包含检查和执行两个步骤
-func (a *Antidote) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := a.Check(phase, caster, target); err != nil {
-		return err
-	}
-	a.Put(caster, target)
-	return nil
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 被女巫救活", target.GetID())
 }
 
 func (a *Antidote) Reset() {

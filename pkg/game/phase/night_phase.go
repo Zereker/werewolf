@@ -200,7 +200,8 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	deaths := make([]game.Player, 0)
 	for _, action := range p.actions {
-		action.Skill.Put(action.Caster, action.Target)
+		var result game.SkillResult
+		action.Skill.Put(action.Caster, action.Target, &result)
 	}
 
 	for _, action := range p.actions {

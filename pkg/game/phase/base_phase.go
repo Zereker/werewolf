@@ -8,7 +8,8 @@ import (
 
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
-	skill2 "github.com/Zereker/werewolf/pkg/game/skill"
+	"github.com/Zereker/werewolf/pkg/game/skill"
+	_ "github.com/Zereker/werewolf/pkg/game/skill"
 )
 
 // BasePhase 基础阶段结构体
@@ -99,15 +100,16 @@ func (p *BasePhase) getAllPlayerIDs() []string {
 
 // getSkillByType 获取指定类型的技能
 func (p *BasePhase) getSkillByType(skillType game.SkillType) game.Skill {
+	var result game.Skill
 	for _, player := range p.players {
 		for _, skill := range player.GetRole().GetAvailableSkills() {
 			if skill.GetName() == skillType {
-				return skill
+				result = skill
 			}
 		}
 	}
 
-	return nil
+	return result
 }
 
 // broadcastEvent 广播事件
@@ -259,14 +261,14 @@ func (p *BasePhase) convertEventToAction(evt event.Event[any]) (*game.Action, er
 	}
 
 	// 获取技能
-	skill := p.getSkillByType(game.SkillType(skillData.SkillType))
-	if skill == nil {
+	s := p.getSkillByType(game.SkillType(skillData.SkillType))
+	if s == nil {
 		return nil, fmt.Errorf("skill not found: %s", skillData.SkillType)
 	}
 
-	if speak, ok := skill.(skill2.Speak); ok {
-		speak
-
+	if speak, ok := s.(*skill.Speak); ok {
+		speak.Content = skillData.Content
+		fmt.Printf("%p 0x%#v\n", speak, speak)
 	}
 
 	// 获取目标（如果有）
@@ -281,6 +283,6 @@ func (p *BasePhase) convertEventToAction(evt event.Event[any]) (*game.Action, er
 	return &game.Action{
 		Caster: caster,
 		Target: target,
-		Skill:  skill,
+		Skill:  s,
 	}, nil
 }

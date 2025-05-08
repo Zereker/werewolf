@@ -136,7 +136,8 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 	// 执行投票并记录
 	for _, action := range v.actions {
 		// 执行技能
-		action.Skill.Put(action.Caster, action.Target)
+		var result game.SkillResult
+		action.Skill.Put(action.Caster, action.Target, &result)
 
 		// 记录投票
 		voteCount[action.Target]++

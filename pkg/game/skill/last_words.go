@@ -51,8 +51,15 @@ func (l *LastWords) Check(phase game.PhaseType, caster game.Player, target game.
 	return nil
 }
 
-func (l *LastWords) Put(caster game.Player, target game.Player) {
+// Put 使用技能
+func (l *LastWords) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	l.hasUsed = true
+
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 的遗言：%s", caster.GetID(), l.content)
+	result.Data = map[string]interface{}{
+		"Content": l.content,
+	}
 }
 
 func (l *LastWords) Reset() {
@@ -61,13 +68,4 @@ func (l *LastWords) Reset() {
 
 func (l *LastWords) GetContent() string {
 	return l.content
-}
-
-// Exec 执行技能，包含检查和执行两个步骤
-func (l *LastWords) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := l.Check(phase, caster, target); err != nil {
-		return err
-	}
-	l.Put(caster, target)
-	return nil
 }

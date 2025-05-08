@@ -66,6 +66,8 @@ type PhaseResult[T any] struct {
 // SkillResultMap 技能结果映射
 type SkillResultMap map[SkillType]*SkillResult
 
+type UserSkillResultMap map[Player]*SkillResult
+
 const SystemPlayerID = "System"
 
 // Player interface defines player behavior
@@ -148,10 +150,8 @@ type Skill interface {
 	GetPriority() int
 	// Check 检查技能条件
 	Check(phase PhaseType, caster Player, target Player) error
-	// Put 使用技能
-	Put(caster Player, target Player)
-	// Exec 执行技能，包含检查和执行两个步骤
-	Exec(phase PhaseType, caster Player, target Player) error
+	// Put 使用技能，result 用于填充技能执行的结果
+	Put(caster Player, target Player, result *SkillResult)
 	// Reset 重置技能状态
 	Reset()
 }

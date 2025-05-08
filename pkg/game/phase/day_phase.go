@@ -3,14 +3,12 @@ package phase
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
 
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
-	"github.com/Zereker/werewolf/pkg/game/skill"
 )
 
 // DayPhase 白天阶段
@@ -43,25 +41,11 @@ func (d *DayPhase) Start(ctx context.Context) error {
 		return errors.WithMessage(err, "wait user speech failed")
 	}
 
-	// 计算阶段结果
-	phaseResult := d.GetPhaseResult()
-
 	// 广播所有玩家的发言结果
-	if skillResult, ok := phaseResult.ExtraData[game.SkillTypeSpeak]; ok {
-		if data, ok := skillResult.Data.(map[string]interface{}); ok {
-			if spoken, ok := data["spoken"].(map[game.Player]string); ok {
-				// 构建发言结果消息
-				var messages []string
-				for player, content := range spoken {
-					messages = append(messages, fmt.Sprintf("%s: %s", player.GetID(), content))
-				}
-				message := "白天讨论结束，以下是所有玩家的发言：\n" + strings.Join(messages, "\n")
-
-				// 广播发言结果
-				if err := d.broadcastSkillResult(game.SkillTypeSpeak, message); err != nil {
-					return fmt.Errorf("broadcast speech results failed: %w", err)
-				}
-			}
+	phaseResult := d.GetPhaseResult()
+	for _, result := range phaseResult {
+		if err := d.broadcastSkillResult(game.SkillTypeSpeak, result.Message); err != nil {
+			return fmt.Errorf("broadcast speech results failed: %w", err)
 		}
 	}
 
@@ -75,7 +59,6 @@ func (d *DayPhase) Start(ctx context.Context) error {
 
 // waitForSpeeches 等待所有玩家发言
 func (d *DayPhase) waitForSpeeches(ctx context.Context) error {
-
 	// 获取所有存活的玩家
 	alivePlayers := d.getAlivePlayerIDs()
 	if len(alivePlayers) == 0 {
@@ -130,28 +113,15 @@ func (d *DayPhase) waitPlayer(ctx context.Context, player game.Player, timeout t
 }
 
 // GetPhaseResult 获取阶段结果
-func (d *DayPhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
+func (d *DayPhase) GetPhaseResult() game.UserSkillResultMap {
 	// 执行所有行为
-	speakResults := make(map[game.Player]string)
+	speakResults := make(map[game.Player]*game.SkillResult)
 
 	for _, action := range d.actions {
-		// 执行技能，传入内容选项
-		action.Skill.Put(action.Caster, action.Target)
-		if speak, ok := action.Skill.(*skill.Speak); ok {
-			speakResults[action.Caster] = speak.GetContent()
-		}
+		var result game.SkillResult
+		action.Skill.Put(action.Caster, action.Target, &result)
+		speakResults[action.Caster] = &result
 	}
 
-	// 记录发言结果
-	d.AddSkillResult(game.SkillTypeSpeak, &game.SkillResult{
-		Success: true,
-		Message: "发言结果",
-		Data: map[string]interface{}{
-			"spoken": speakResults,
-		},
-	})
-
-	return &game.PhaseResult[game.SkillResultMap]{
-		ExtraData: d.skillResults,
-	}
+	return speakResults
 }

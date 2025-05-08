@@ -12,7 +12,7 @@ type Speak struct {
 	phase    game.PhaseType
 	priority int
 	hasUsed  bool
-	content  string
+	Content  string
 }
 
 // NewSpeakSkill creates new speak skill
@@ -56,18 +56,12 @@ func (s *Speak) Check(phase game.PhaseType, caster game.Player, target game.Play
 }
 
 // Put 使用技能
-func (s *Speak) Put(caster game.Player, target game.Player) {
+func (s *Speak) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	s.hasUsed = true
-}
 
-// Exec 执行技能，包含检查和执行两个步骤
-func (s *Speak) Exec(phase game.PhaseType, caster game.Player, target game.Player) error {
-	if err := s.Check(phase, caster, target); err != nil {
-		return err
-	}
-
-	s.Put(caster, target)
-	return nil
+	// 填充技能执行结果
+	result.Success = true
+	result.Message = fmt.Sprintf("玩家 %s 发言，内容: %s", caster.GetID(), s.Content)
 }
 
 func (s *Speak) GetPriority() int {
@@ -76,7 +70,7 @@ func (s *Speak) GetPriority() int {
 
 // GetContent 获取发言内容
 func (s *Speak) GetContent() string {
-	return s.content
+	return s.Content
 }
 
 func (s *Speak) Reset() {
