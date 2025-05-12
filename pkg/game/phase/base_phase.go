@@ -1,7 +1,9 @@
 package phase
 
 import (
+	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -76,6 +78,8 @@ func (p *BasePhase) getAlivePlayerIDs() []string {
 			ids = append(ids, id)
 		}
 	}
+
+	sort.Strings(ids)
 	return ids
 }
 
@@ -86,6 +90,8 @@ func (p *BasePhase) getAlivePlayerIDsByRole(roleType game.RoleType) []string {
 			ids = append(ids, id)
 		}
 	}
+
+	sort.Strings(ids)
 	return ids
 }
 
@@ -95,6 +101,8 @@ func (p *BasePhase) getAllPlayerIDs() []string {
 	for id := range p.players {
 		ids = append(ids, id)
 	}
+
+	sort.Strings(ids)
 	return ids
 }
 
@@ -110,6 +118,30 @@ func (p *BasePhase) getSkillByType(skillType game.SkillType) game.Skill {
 	}
 
 	return result
+}
+
+// getSkillByType 获取指定类型的技能
+func (p *BasePhase) getPlayerSkill(player game.Player, skillType game.SkillType) game.Skill {
+	for _, s := range player.GetRole().GetAvailableSkills() {
+		if s.GetName() == skillType {
+			return s
+		}
+	}
+
+	return nil
+}
+
+func (p *BasePhase) waitPlayer(ctx context.Context, player game.Player, timeout time.Duration) (event.Event[any], error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// 等待该玩家的发言
+	evt, err := player.Read(ctx)
+	if err != nil {
+		return event.Event[any]{}, err
+	}
+
+	return evt, nil
 }
 
 // broadcastEvent 广播事件
@@ -209,14 +241,14 @@ func (p *BasePhase) broadcastPhaseEnd(phase game.PhaseType, message string) erro
 }
 
 // broadcastSkillResult 广播技能结果
-func (p *BasePhase) broadcastSkillResult(skillType game.SkillType, message string) error {
+func (p *BasePhase) broadcastSkillResult(skillType game.SkillType, message string, players ...string) error {
 	return p.broadcastEvent(event.Event[event.SkillResultData]{
 		Type: event.SystemSkillResult,
 		Data: event.SkillResultData{
 			SkillType: string(skillType),
 			Message:   message,
 		},
-		Receivers: p.getAllPlayerIDs(),
+		Receivers: players,
 		Timestamp: time.Now(),
 	})
 }
@@ -261,14 +293,13 @@ func (p *BasePhase) convertEventToAction(evt event.Event[any]) (*game.Action, er
 	}
 
 	// 获取技能
-	s := p.getSkillByType(game.SkillType(skillData.SkillType))
+	s := p.getPlayerSkill(caster, game.SkillType(skillData.SkillType))
 	if s == nil {
 		return nil, fmt.Errorf("skill not found: %s", skillData.SkillType)
 	}
 
 	if speak, ok := s.(*skill.Speak); ok {
 		speak.Content = skillData.Content
-		fmt.Printf("%p 0x%#v\n", speak, speak)
 	}
 
 	// 获取目标（如果有）

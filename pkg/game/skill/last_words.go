@@ -57,9 +57,6 @@ func (l *LastWords) Put(caster game.Player, target game.Player, result *game.Ski
 
 	result.Success = true
 	result.Message = fmt.Sprintf("玩家 %s 的遗言：%s", caster.GetID(), l.content)
-	result.Data = map[string]interface{}{
-		"Content": l.content,
-	}
 }
 
 func (l *LastWords) Reset() {

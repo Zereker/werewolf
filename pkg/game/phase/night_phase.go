@@ -66,6 +66,7 @@ func (p *NightPhase) Start(ctx context.Context) error {
 		for _, player := range phaseResult.Deaths {
 			deathNames = append(deathNames, player.GetID())
 		}
+
 		message = fmt.Sprintf("天亮了，所有玩家请睁眼。昨晚死亡的玩家是：%s", strings.Join(deathNames, "、"))
 	}
 
@@ -92,7 +93,7 @@ func (p *NightPhase) handleWerewolfActions() error {
 	}
 
 	// 通知狼人行动
-	if err := p.broadcastSkillResult(game.SkillTypeKill, "狼人请睁眼，请选择要击杀的目标"); err != nil {
+	if err := p.broadcastSkillResult(game.SkillTypeKill, "狼人请睁眼，请选择要击杀的目标", wolves...); err != nil {
 		return err
 	}
 
@@ -109,7 +110,7 @@ func (p *NightPhase) handleSeerActions() error {
 	}
 
 	// 通知预言家行动
-	if err := p.broadcastSkillResult(game.SkillTypeCheck, "预言家请睁眼，请选择要查验的目标"); err != nil {
+	if err := p.broadcastSkillResult(game.SkillTypeCheck, "预言家请睁眼，请选择要查验的目标", seers...); err != nil {
 		return err
 	}
 
@@ -197,11 +198,17 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 }
 
 // calculatePhaseResult 计算阶段结果
-func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.SkillResultMap] {
-	deaths := make([]game.Player, 0)
+func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.UserSkillResultMap] {
+	var (
+		deaths      = make([]game.Player, 0)
+		skillResult = make(game.UserSkillResultMap)
+	)
+
 	for _, action := range p.actions {
 		var result game.SkillResult
 		action.Skill.Put(action.Caster, action.Target, &result)
+
+		skillResult[action.Caster] = &result
 	}
 
 	for _, action := range p.actions {
@@ -211,8 +218,9 @@ func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.SkillResultMa
 		}
 	}
 
-	return &game.PhaseResult[game.SkillResultMap]{
-		Deaths: deaths,
+	return &game.PhaseResult[game.UserSkillResultMap]{
+		Deaths:    deaths,
+		ExtraData: skillResult,
 	}
 }
 

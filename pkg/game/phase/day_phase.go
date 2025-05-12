@@ -65,7 +65,6 @@ func (d *DayPhase) waitForSpeeches(ctx context.Context) error {
 		return nil
 	}
 
-	// 为每个玩家创建一个等待组
 	for _, playerID := range alivePlayers {
 		player := d.players[playerID]
 		if player == nil {
@@ -73,7 +72,8 @@ func (d *DayPhase) waitForSpeeches(ctx context.Context) error {
 		}
 
 		// 等待该玩家的发言
-		evt, err := d.waitPlayer(ctx, player, d.discussionTime/time.Duration(len(alivePlayers)))
+		timeout := d.discussionTime / time.Duration(len(alivePlayers))
+		evt, err := d.waitPlayer(ctx, player, timeout)
 		if err != nil {
 			continue
 		}
@@ -97,19 +97,6 @@ func (d *DayPhase) waitForSpeeches(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (d *DayPhase) waitPlayer(ctx context.Context, player game.Player, timeout time.Duration) (event.Event[any], error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	// 等待该玩家的发言
-	evt, err := player.Read(ctx)
-	if err != nil {
-		return event.Event[any]{}, err
-	}
-
-	return evt, nil
 }
 
 // GetPhaseResult 获取阶段结果

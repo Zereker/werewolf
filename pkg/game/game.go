@@ -136,10 +136,6 @@ type SkillResult struct {
 	Data interface{}
 }
 
-type PutOption struct {
-	Content string
-}
-
 // Skill 技能接口
 type Skill interface {
 	// GetName 获取技能名称

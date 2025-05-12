@@ -2,8 +2,10 @@ package skill
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
+	"github.com/Zereker/werewolf/pkg/game/event"
 )
 
 // Check 预言家查验技能
@@ -63,10 +65,20 @@ func (c *Check) Check(phase game.PhaseType, caster game.Player, target game.Play
 func (c *Check) Put(caster game.Player, target game.Player, result *game.SkillResult) {
 	c.hasUsed = true
 
-	result.Success = true
-	result.Message = fmt.Sprintf("玩家 %s 的身份是：%s", target.GetID(), target.GetRole().GetName())
-	result.Data = map[string]interface{}{
-		"target_role": target.GetRole().GetName(),
+	err := caster.Write(event.Event[any]{
+		Type:      event.SystemSkillResult,
+		PlayerID:  game.SystemPlayerID,
+		Receivers: []string{caster.GetID()},
+		Timestamp: time.Now(),
+		Data: event.SkillResultData{
+			SkillType: string(game.SkillTypeCheck),
+			Message:   fmt.Sprintf("玩家 %s 的身份是：%s", target.GetID(), target.GetRole().GetCamp()),
+			PlayerID:  target.GetID(),
+		},
+	})
+	if err != nil {
+		result.Success = false
+		return
 	}
 }
 
