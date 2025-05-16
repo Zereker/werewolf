@@ -139,12 +139,13 @@ func TestNightPhase_HandleWitchActions(t *testing.T) {
 	mockWitch.SetNextSkillEvent(game.SkillTypeAntidote, mockVillager.GetID(), "")
 
 	phase := NewNightPhase(players)
-	phase.handleWerewolfActions()
-	err := phase.handleWitchActions()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	err := phase.Start(ctx)
 	assert.NoError(t, err)
 
-	// 验证女巫技能使用结果
-	assert.True(t, mockVillager.IsAlive(), "村民应该被女巫救活")
+	result := phase.calculatePhaseResult()
+	assert.Equal(t, len(result.Deaths), 0)
 }
 
 func TestNightPhase_CalculatePhaseResult(t *testing.T) {
@@ -183,7 +184,7 @@ func TestNightPhase_CompleteNight(t *testing.T) {
 	mockWerewolf.SetNextSkillEvent(game.SkillTypeKill, mockVillager.GetID(), "")
 	mockSeer.SetNextSkillEvent(game.SkillTypeCheck, mockWerewolf.GetID(), "")
 	mockGuard.SetNextSkillEvent(game.SkillTypeProtect, mockVillager.GetID(), "")
-	mockWitch.SetNextSkillEvent("witch_choice", mockVillager.GetID(), "save")
+	mockWitch.SetNextSkillEvent(game.SkillTypeAntidote, mockVillager.GetID(), "")
 
 	// 创建夜晚阶段
 	phase := NewNightPhase(players)

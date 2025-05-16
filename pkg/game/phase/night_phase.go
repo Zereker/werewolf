@@ -98,7 +98,7 @@ func (p *NightPhase) handleWerewolfActions() error {
 	}
 
 	// 等待狼人行动
-	return p.waitForPlayerActions(game.RoleTypeWerewolf, game.SkillTypeKill)
+	return p.waitForPlayerActions(game.RoleTypeWerewolf)
 }
 
 // handleSeerActions 处理预言家行动
@@ -115,7 +115,7 @@ func (p *NightPhase) handleSeerActions() error {
 	}
 
 	// 等待预言家行动
-	return p.waitForPlayerActions(game.RoleTypeSeer, game.SkillTypeCheck)
+	return p.waitForPlayerActions(game.RoleTypeSeer)
 }
 
 // handleGuardActions 处理守卫行动
@@ -132,7 +132,7 @@ func (p *NightPhase) handleGuardActions() error {
 	}
 
 	// 等待守卫行动
-	return p.waitForPlayerActions(game.RoleTypeGuard, game.SkillTypeProtect)
+	return p.waitForPlayerActions(game.RoleTypeGuard)
 }
 
 // handleWitchActions 处理女巫行动
@@ -144,16 +144,16 @@ func (p *NightPhase) handleWitchActions() error {
 	}
 
 	// 通知女巫行动
-	if err := p.broadcastSkillResult("witch_choice", "女巫请睁眼，今晚有人被杀了，你要使用解药救他吗？或者使用毒药？"); err != nil {
+	if err := p.broadcastSkillResult(game.SkillTypeAntidote, "女巫请睁眼，今晚有人被杀了，你要使用解药救他吗？或者使用毒药？", witches...); err != nil {
 		return err
 	}
 
 	// 等待女巫行动
-	return p.waitForPlayerActions(game.RoleTypeWitch, "witch_choice")
+	return p.waitForPlayerActions(game.RoleTypeWitch)
 }
 
 // waitForPlayerActions 等待指定角色的玩家完成行动
-func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game.SkillType) error {
+func (p *NightPhase) waitForPlayerActions(roleType game.RoleType) error {
 	// 获取该角色的所有存活玩家
 	players := p.getAlivePlayerIDsByRole(roleType)
 	if len(players) == 0 {
@@ -181,7 +181,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType, skillType game
 			action := game.Action{
 				Caster: player,
 				Target: p.players[skillData.TargetID],
-				Skill:  p.getSkillByType(skillType),
+				Skill:  p.getSkillByType(game.SkillType(skillData.SkillType)),
 			}
 
 			// 执行行动
