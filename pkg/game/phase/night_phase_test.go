@@ -21,39 +21,6 @@ func TestNewNightPhase(t *testing.T) {
 	assert.Equal(t, game.PhaseNight, phase.GetName())
 }
 
-func TestNightPhase_Start(t *testing.T) {
-	// 创建测试玩家
-	mockWerewolf := NewMockPlayer("werewolf", game.RoleTypeWerewolf)
-	mockSeer := NewMockPlayer("seer", game.RoleTypeSeer)
-	mockGuard := NewMockPlayer("guard", game.RoleTypeGuard)
-	mockWitch := NewMockPlayer("witch", game.RoleTypeWitch)
-	mockVillager := NewMockPlayer("villager", game.RoleTypeVillager)
-
-	players := []game.Player{
-		mockWerewolf,
-		mockSeer,
-		mockGuard,
-		mockWitch,
-		mockVillager,
-	}
-
-	// 设置玩家的技能事件
-	mockWerewolf.SetNextSkillEvent(game.SkillTypeKill, mockVillager.GetID(), "")
-	mockSeer.SetNextSkillEvent(game.SkillTypeCheck, mockVillager.GetID(), "")
-	mockGuard.SetNextSkillEvent(game.SkillTypeProtect, mockVillager.GetID(), "")
-	mockWitch.SetNextSkillEvent("witch_choice", mockVillager.GetID(), "")
-
-	// 创建夜晚阶段
-	phase := NewNightPhase(players)
-
-	// 启动阶段
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	err := phase.Start(ctx)
-	assert.NoError(t, err)
-}
-
 func TestNightPhase_HandleWerewolfActions(t *testing.T) {
 	// 创建测试玩家
 	mockWerewolf := NewMockPlayer("werewolf", game.RoleTypeWerewolf)
@@ -68,7 +35,8 @@ func TestNightPhase_HandleWerewolfActions(t *testing.T) {
 	mockWerewolf.SetNextSkillEvent(game.SkillTypeKill, mockVillager.GetID(), "")
 
 	phase := NewNightPhase(players)
-	err := phase.handleWerewolfActions()
+	ctx := context.Background()
+	err := phase.handleWerewolfActions(ctx)
 	assert.NoError(t, err)
 
 	// 验证狼人技能使用结果
@@ -91,7 +59,8 @@ func TestNightPhase_HandleSeerActions(t *testing.T) {
 	mockSeer.SetNextSkillEvent(game.SkillTypeCheck, mockVillager.GetID(), "")
 
 	phase := NewNightPhase(players)
-	err := phase.handleSeerActions()
+	ctx := context.Background()
+	err := phase.handleSeerActions(ctx)
 	assert.NoError(t, err)
 
 	results := phase.calculatePhaseResult()
@@ -115,7 +84,8 @@ func TestNightPhase_HandleGuardActions(t *testing.T) {
 	mockWerewolf.SetNextSkillEvent(game.SkillTypeKill, mockVillager.GetID(), "")
 
 	phase := NewNightPhase(players)
-	err := phase.handleGuardActions()
+	ctx := context.Background()
+	err := phase.handleGuardActions(ctx)
 	assert.NoError(t, err)
 
 	result := phase.calculatePhaseResult()

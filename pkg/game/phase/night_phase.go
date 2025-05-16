@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
@@ -38,22 +37,22 @@ func (p *NightPhase) Start(ctx context.Context) error {
 	}
 
 	// 处理狼人行动
-	if err := p.handleWerewolfActions(); err != nil {
+	if err := p.handleWerewolfActions(ctx); err != nil {
 		return fmt.Errorf("handle werewolf actions failed: %w", err)
 	}
 
 	// 处理预言家行动
-	if err := p.handleSeerActions(); err != nil {
+	if err := p.handleSeerActions(ctx); err != nil {
 		return fmt.Errorf("handle seer actions failed: %w", err)
 	}
 
 	// 处理守卫行动
-	if err := p.handleGuardActions(); err != nil {
+	if err := p.handleGuardActions(ctx); err != nil {
 		return fmt.Errorf("handle guard actions failed: %w", err)
 	}
 
 	// 处理女巫行动
-	if err := p.handleWitchActions(); err != nil {
+	if err := p.handleWitchActions(ctx); err != nil {
 		return fmt.Errorf("handle witch actions failed: %w", err)
 	}
 
@@ -74,18 +73,11 @@ func (p *NightPhase) Start(ctx context.Context) error {
 		return fmt.Errorf("broadcast night phase end failed: %w", err)
 	}
 
-	// 等待夜晚结束
-	select {
-	case <-ctx.Done():
-		return nil
-	case <-time.After(30 * time.Second):
-	}
-
 	return nil
 }
 
 // handleWerewolfActions 处理狼人行动
-func (p *NightPhase) handleWerewolfActions() error {
+func (p *NightPhase) handleWerewolfActions(ctx context.Context) error {
 	// 获取所有存活的狼人
 	wolves := p.getAlivePlayerIDsByRole(game.RoleTypeWerewolf)
 	if len(wolves) == 0 {
@@ -98,11 +90,11 @@ func (p *NightPhase) handleWerewolfActions() error {
 	}
 
 	// 等待狼人行动
-	return p.waitForPlayerActions(game.RoleTypeWerewolf)
+	return p.waitForPlayerActions(ctx, game.RoleTypeWerewolf)
 }
 
 // handleSeerActions 处理预言家行动
-func (p *NightPhase) handleSeerActions() error {
+func (p *NightPhase) handleSeerActions(ctx context.Context) error {
 	// 获取所有存活的预言家
 	seers := p.getAlivePlayerIDsByRole(game.RoleTypeSeer)
 	if len(seers) == 0 {
@@ -115,11 +107,11 @@ func (p *NightPhase) handleSeerActions() error {
 	}
 
 	// 等待预言家行动
-	return p.waitForPlayerActions(game.RoleTypeSeer)
+	return p.waitForPlayerActions(ctx, game.RoleTypeSeer)
 }
 
 // handleGuardActions 处理守卫行动
-func (p *NightPhase) handleGuardActions() error {
+func (p *NightPhase) handleGuardActions(ctx context.Context) error {
 	// 获取所有存活的守卫
 	guards := p.getAlivePlayerIDsByRole(game.RoleTypeGuard)
 	if len(guards) == 0 {
@@ -127,16 +119,16 @@ func (p *NightPhase) handleGuardActions() error {
 	}
 
 	// 通知守卫行动
-	if err := p.broadcastSkillResult(game.SkillTypeProtect, "守卫请睁眼，请选择要守护的目标"); err != nil {
+	if err := p.broadcastSkillResult(game.SkillTypeProtect, "守卫请睁眼，请选择要守护的目标", guards...); err != nil {
 		return err
 	}
 
 	// 等待守卫行动
-	return p.waitForPlayerActions(game.RoleTypeGuard)
+	return p.waitForPlayerActions(ctx, game.RoleTypeGuard)
 }
 
 // handleWitchActions 处理女巫行动
-func (p *NightPhase) handleWitchActions() error {
+func (p *NightPhase) handleWitchActions(ctx context.Context) error {
 	// 获取所有存活的女巫
 	witches := p.getAlivePlayerIDsByRole(game.RoleTypeWitch)
 	if len(witches) == 0 {
@@ -149,11 +141,11 @@ func (p *NightPhase) handleWitchActions() error {
 	}
 
 	// 等待女巫行动
-	return p.waitForPlayerActions(game.RoleTypeWitch)
+	return p.waitForPlayerActions(ctx, game.RoleTypeWitch)
 }
 
 // waitForPlayerActions 等待指定角色的玩家完成行动
-func (p *NightPhase) waitForPlayerActions(roleType game.RoleType) error {
+func (p *NightPhase) waitForPlayerActions(ctx context.Context, roleType game.RoleType) error {
 	// 获取该角色的所有存活玩家
 	players := p.getAlivePlayerIDsByRole(roleType)
 	if len(players) == 0 {
@@ -168,7 +160,7 @@ func (p *NightPhase) waitForPlayerActions(roleType game.RoleType) error {
 		}
 
 		// 等待该玩家的行动
-		evt, err := player.Read(context.Background())
+		evt, err := player.Read(ctx)
 		if err != nil {
 			p.logger.Warn("玩家行动超时", "player_id", playerID, "role", roleType)
 			continue
@@ -222,9 +214,4 @@ func (p *NightPhase) calculatePhaseResult() *game.PhaseResult[game.UserSkillResu
 		Deaths:    deaths,
 		ExtraData: skillResult,
 	}
-}
-
-// GetType 获取阶段类型
-func (p *NightPhase) GetType() game.PhaseType {
-	return game.PhaseNight
 }
