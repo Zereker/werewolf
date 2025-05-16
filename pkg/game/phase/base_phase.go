@@ -16,7 +16,8 @@ import (
 
 // BasePhase 基础阶段结构体
 type BasePhase struct {
-	round        int
+	round int
+
 	players      map[string]game.Player
 	actions      []*game.Action
 	skillResults game.SkillResultMap
@@ -131,10 +132,7 @@ func (p *BasePhase) getPlayerSkill(player game.Player, skillType game.SkillType)
 	return nil
 }
 
-func (p *BasePhase) waitPlayer(ctx context.Context, player game.Player, timeout time.Duration) (event.Event[any], error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
+func (p *BasePhase) waitPlayer(ctx context.Context, player game.Player) (event.Event[any], error) {
 	// 等待该玩家的发言
 	evt, err := player.Read(ctx)
 	if err != nil {

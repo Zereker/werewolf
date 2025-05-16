@@ -72,8 +72,7 @@ func (d *DayPhase) waitForSpeeches(ctx context.Context) error {
 		}
 
 		// 等待该玩家的发言
-		timeout := d.discussionTime / time.Duration(len(alivePlayers))
-		evt, err := d.waitPlayer(ctx, player, timeout)
+		evt, err := d.waitPlayer(ctx, player)
 		if err != nil {
 			continue
 		}
