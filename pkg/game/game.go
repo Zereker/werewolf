@@ -101,6 +101,27 @@ const (
 	RoleTypeGuard    RoleType = "guard"    // Guard
 )
 
+// 角色优先级常量
+const (
+	PriorityLowest = 99
+
+	PriorityWerewolfNight = 1              // 狼人优先级最高
+	PrioritySeerNight     = 2              // 预言家第二
+	PriorityGuardNight    = 3              // 守卫第三
+	PriorityWitchNight    = 4              // 女巫最后
+	PriorityHunterNight   = 5              // 猎人（死亡时触发）
+	PriorityVillagerNight = PriorityLowest // 村民在夜晚没有行动
+
+	PriorityHunterDay   = 1              // 猎人死亡时优先级最高
+	PriorityVillagerDay = 2              // 村民发言优先级第二
+	PriorityWerewolfDay = PriorityLowest // 狼人在白天没有特殊行动
+	PrioritySeerDay     = PriorityLowest // 预言家在白天没有特殊行动
+	PriorityGuardDay    = PriorityLowest // 守卫在白天没有特殊行动
+	PriorityWitchDay    = PriorityLowest // 女巫在白天没有特殊行动
+
+	PriorityVote = 1 // 所有角色在投票阶段优先级相同
+)
+
 // Role interface defines role behavior
 type Role interface {
 	// GetName returns role name
@@ -109,6 +130,8 @@ type Role interface {
 	GetCamp() Camp
 	// GetAvailableSkills returns available skills
 	GetAvailableSkills() []Skill
+	// GetPriority returns role's action priority in specific phase
+	GetPriority(phase PhaseType) int
 }
 
 // SkillType 技能类型

@@ -186,7 +186,3 @@ func (v *VotePhase) GetPhaseResult() *game.PhaseResult[game.SkillResultMap] {
 		ExtraData: v.skillResults,
 	}
 }
-
-func (v *VotePhase) GetType() game.PhaseType {
-	return game.PhaseVote
-}

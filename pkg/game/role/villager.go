@@ -35,3 +35,17 @@ func (v *Villager) GetCamp() game.Camp {
 func (v *Villager) GetAvailableSkills() []game.Skill {
 	return v.skills
 }
+
+// GetPriority returns role's action priority in specific phase
+func (v *Villager) GetPriority(phase game.PhaseType) int {
+	switch phase {
+	case game.PhaseNight:
+		return game.PriorityVillagerNight
+	case game.PhaseDay:
+		return game.PriorityVillagerDay
+	case game.PhaseVote:
+		return game.PriorityVote
+	default:
+		return game.PriorityLowest
+	}
+}

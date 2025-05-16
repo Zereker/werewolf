@@ -36,3 +36,17 @@ func (s *Seer) GetCamp() game.Camp {
 func (s *Seer) GetAvailableSkills() []game.Skill {
 	return s.skills
 }
+
+// GetPriority returns role's action priority in specific phase
+func (s *Seer) GetPriority(phase game.PhaseType) int {
+	switch phase {
+	case game.PhaseNight:
+		return game.PrioritySeerNight
+	case game.PhaseDay:
+		return game.PrioritySeerDay
+	case game.PhaseVote:
+		return game.PriorityVote
+	default:
+		return game.PriorityLowest
+	}
+}
