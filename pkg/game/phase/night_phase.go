@@ -77,7 +77,7 @@ func (p *NightPhase) handleRoleActions(ctx context.Context) error {
 	// 3. 按优先级处理每个玩家的行动
 	for _, player := range alivePlayers {
 		// 3.1 获取玩家可用技能
-		skills := player.GetRole().GetAvailableSkills()
+		skills := player.GetRole().GetAvailableSkills(p.GetName())
 		if len(skills) == 0 {
 			continue
 		}

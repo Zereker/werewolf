@@ -33,8 +33,15 @@ func (g *Guard) GetCamp() game.Camp {
 }
 
 // GetAvailableSkills 获取可用技能
-func (g *Guard) GetAvailableSkills() []game.Skill {
-	return g.skills
+func (g *Guard) GetAvailableSkills(phase game.PhaseType) []game.Skill {
+	var result []game.Skill
+	for _, s := range g.skills {
+		if s.GetPhase() == phase {
+			result = append(result, s)
+		}
+	}
+
+	return result
 }
 
 // GetPriority returns role's action priority in specific phase

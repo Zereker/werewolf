@@ -33,8 +33,15 @@ func (h *Hunter) GetCamp() game.Camp {
 }
 
 // GetAvailableSkills 获取可用技能
-func (h *Hunter) GetAvailableSkills() []game.Skill {
-	return h.skills
+func (h *Hunter) GetAvailableSkills(phase game.PhaseType) []game.Skill {
+	var result []game.Skill
+	for _, s := range h.skills {
+		if s.GetPhase() == phase {
+			result = append(result, s)
+		}
+	}
+
+	return result
 }
 
 // GetPriority returns role's action priority in specific phase

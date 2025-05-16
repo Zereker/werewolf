@@ -128,8 +128,8 @@ type Role interface {
 	GetName() RoleType
 	// GetCamp returns role's camp
 	GetCamp() Camp
-	// GetAvailableSkills returns available skills
-	GetAvailableSkills() []Skill
+	// GetAvailableSkills returns available skills in specific phase
+	GetAvailableSkills(phase PhaseType) []Skill
 	// GetPriority returns role's action priority in specific phase
 	GetPriority(phase PhaseType) int
 }

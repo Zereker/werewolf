@@ -32,8 +32,15 @@ func (v *Villager) GetCamp() game.Camp {
 }
 
 // GetAvailableSkills 获取可用技能
-func (v *Villager) GetAvailableSkills() []game.Skill {
-	return v.skills
+func (v *Villager) GetAvailableSkills(phase game.PhaseType) []game.Skill {
+	var result []game.Skill
+	for _, s := range v.skills {
+		if s.GetPhase() == phase {
+			result = append(result, s)
+		}
+	}
+
+	return result
 }
 
 // GetPriority returns role's action priority in specific phase
