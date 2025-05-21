@@ -2,10 +2,13 @@ package player
 
 import (
 	"context"
-	"errors"
+	"errors" // Keep for Read method's placeholder error
+	"fmt"    // For error wrapping in Write
 
+	"github.com/Zereker/socket"
 	"github.com/Zereker/werewolf/pkg/game"
 	"github.com/Zereker/werewolf/pkg/game/event"
+	"github.com/Zereker/werewolf/pkg/server" // For server.Message and server.MessageTypeGameUpdate
 )
 
 type player struct {
@@ -13,19 +16,18 @@ type player struct {
 	alive     bool
 	protected bool
 	role      game.Role
-
-	// 事件相关字段
-	eventChan chan event.Event[any]
+	conn      *socket.Conn // Connection to the client
 }
 
-func New(id string, role game.Role) game.Player {
+// New creates a new player instance.
+// The conn parameter is the client's connection.
+func New(id string, role game.Role, conn *socket.Conn) game.Player {
 	return &player{
 		id:        id,
 		alive:     true,
 		protected: false,
 		role:      role,
-
-		eventChan: make(chan event.Event[any], 100), // 设置一个合理的缓冲区大小
+		conn:      conn,
 	}
 }
 
@@ -53,23 +55,37 @@ func (p *player) SetProtected(protected bool) {
 	p.protected = protected
 }
 
-// Write 写入事件
+// Write sends an event to the player through their connection.
+// It wraps the game event in a server.Message with type MessageTypeGameUpdate.
 func (p *player) Write(evt event.Event[any]) error {
-	select {
-	case p.eventChan <- evt:
-		return nil
-	default:
-		return errors.New("event channel is full")
+	if p.conn == nil {
+		return errors.New("player has no active connection")
 	}
+
+	// Ensure the event's PlayerID is set, if it's meant to be specific to this player
+	// or if it's a broadcast, this might be handled by the caller.
+	// For now, assume evt is ready to be sent.
+
+	serverMsg := &server.Message{
+		Type:    server.MessageTypeGameUpdate,
+		Payload: evt,
+	}
+
+	// The socket.Conn.Write method expects a socket.Message.
+	// Our server.Message implements this.
+	if err := p.conn.Write(serverMsg); err != nil {
+		return fmt.Errorf("failed to write message to player %s: %w", p.id, err)
+	}
+	return nil
 }
 
-// Read 读取事件，带超时
+// Read is a placeholder for receiving client-side initiated actions for this player.
+// In the current design, actions are received by the server's global OnMessageOption callback
+// and then dispatched to runtime.HandlePlayerAction.
+// This Read method might be used if a game phase requires specific, direct input from a player
+// outside the typical action flow.
 func (p *player) Read(ctx context.Context) (event.Event[any], error) {
-	select {
-	case evt, ok := <-p.eventChan:
-		if !ok {
-			return event.Event[any]{}, errors.New("event channel is closed")
-		}
-		return evt, nil
-	}
+	// For now, this is not the primary way players send actions.
+	// Actions are sent as messages to the server, which forwards them to the runtime.
+	return event.Event[any]{}, errors.New("player.Read not implemented, actions are handled via server messages")
 }

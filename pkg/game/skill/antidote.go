@@ -69,5 +69,6 @@ func (a *Antidote) Put(caster game.Player, target game.Player, result *game.Skil
 }
 
 func (a *Antidote) Reset() {
-	a.hasUsed = false
+	// a.hasUsed is a per-game flag, so it's not reset here.
+	// If there were other per-night states for this skill, they would be reset.
 }

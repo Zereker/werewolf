@@ -55,6 +55,16 @@ type Phase interface {
 	GetName() PhaseType
 	// GetRound 获取回合数
 	GetRound() int
+	// HandleAction processes a player's action within the phase.
+	// player: The player performing the action.
+	// actionData: The payload of the action from server.Message.Payload.
+	// results: A channel to send back asynchronous errors or signals.
+	// Returns an error for immediate validation issues.
+	HandleAction(player Player, actionData interface{}, results chan<- error) error
+	// IsComplete checks if the phase has completed its action collection or conditions.
+	// The runtimeWrapper is an interface to avoid direct dependency on werewolf.Runtime in this package.
+	// Concrete phase implementations will need to type-assert it to access specific runtime methods.
+	IsComplete(runtimeWrapper interface{}) bool
 }
 
 // PhaseResult 阶段结果
@@ -81,8 +91,8 @@ type Player interface {
 	IsProtected() bool
 	SetProtected(protected bool)
 
-	Write(event event.Event[any]) error                 // 写入事件
-	Read(ctx context.Context) (event.Event[any], error) // 读取事件，带超时
+	Write(event event.Event[any]) error // 写入事件
+	// Read was removed as player input is now handled by server pushing actions to runtime.
 }
 
 // RoleType represents role type

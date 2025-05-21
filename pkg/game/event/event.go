@@ -19,6 +19,10 @@ const (
 
 	// UserSkill 用户事件
 	UserSkill Type = "user_skill" // 玩家使用技能
+
+	// Witch specific events
+	SystemWitchNotification Type = "system_witch_notification" // Sent to Witch with werewolf target info
+	UserSkillWitchResponse  Type = "user_skill_witch_response"  // Witch's response (use antidote/poison/skip)
 )
 
 // Event 游戏事件
@@ -72,6 +76,21 @@ type UserSkillData struct {
 	TargetID  string
 	SkillType string
 	Content   string // 遗言内容
+}
+
+// SystemWitchNotificationData informs the Witch about the night's events.
+type SystemWitchNotificationData struct {
+	WerewolfTargetID string // PlayerID of the player targeted by werewolves. Empty if none or multiple and rules hide it.
+	CanUseAntidote   bool   // Does the Witch still have Antidote?
+	CanUsePoison     bool   // Does the Witch still have Poison?
+}
+
+// UserSkillWitchResponseData is the Witch's decision.
+type UserSkillWitchResponseData struct {
+	UseAntidote      bool   // True if Witch wants to use Antidote
+	AntidoteTargetID string // PlayerID to use Antidote on (could be WerewolfTargetID or another player)
+	UsePoison        bool   // True if Witch wants to use Poison
+	PoisonTargetID   string // PlayerID to use Poison on
 }
 
 // UserSpeakData 用户发言事件数据

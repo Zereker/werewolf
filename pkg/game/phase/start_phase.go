@@ -24,7 +24,15 @@ func (s *StartPhase) GetName() game.PhaseType {
 	return game.PhaseStart
 }
 
+// IsComplete for StartPhase always returns true as Start() is synchronous.
+func (s *StartPhase) IsComplete(runtimeWrapper interface{}) bool {
+	s.logger.Debug("StartPhase.IsComplete called, returning true", "phaseName", s.GetName())
+	return true
+}
+
 func (s *StartPhase) Start(ctx context.Context) error {
+	s.BasePhase.actions = make([]*game.Action, 0) // Clear actions, though StartPhase doesn't collect them
+	s.logger.Info("StartPhase starting", "round", s.round)
 	// 通知所有玩家游戏开始
 	if err := s.broadcastPhaseStart(game.PhaseStart, "游戏开始，请所有玩家查看自己的身份"); err != nil {
 		return fmt.Errorf("broadcast game start failed: %w", err)
