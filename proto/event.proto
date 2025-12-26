@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package werewolf;
+
+option go_package = "github.com/Zereker/werewolf/proto";
+
+// ==================== 核心枚举 ====================
+
+// PhaseType 游戏阶段
+enum PhaseType {
+  PHASE_TYPE_UNSPECIFIED = 0;
+  PHASE_TYPE_START = 10;
+  // 夜晚阶段 (2x)
+  PHASE_TYPE_NIGHT = 20;           // 夜晚（整体，用于批量模式）
+  PHASE_TYPE_NIGHT_GUARD = 21;     // 守卫阶段
+  PHASE_TYPE_NIGHT_WOLF = 22;      // 狼人阶段
+  PHASE_TYPE_NIGHT_WITCH = 23;     // 女巫阶段
+  PHASE_TYPE_NIGHT_SEER = 24;      // 预言家阶段
+  PHASE_TYPE_NIGHT_RESOLVE = 25;   // 夜晚结算阶段（处理击杀、猎人触发等）
+  PHASE_TYPE_NIGHT_HUNTER = 26;    // 猎人阶段（被动触发）
+  // 白天阶段 (3x)
+  PHASE_TYPE_DAY = 30;
+  PHASE_TYPE_DAY_HUNTER = 31;      // 白天猎人阶段（被投票出局后触发）
+  // 投票阶段 (4x)
+  PHASE_TYPE_VOTE = 40;
+  // 结束 (5x)
+  PHASE_TYPE_END = 50;
+}
+
+// Camp 阵营
+enum Camp {
+  CAMP_UNSPECIFIED = 0;
+  CAMP_GOOD = 1;
+  CAMP_EVIL = 2;
+}
+
+// RoleType 角色类型
+enum RoleType {
+  ROLE_TYPE_UNSPECIFIED = 0;
+  ROLE_TYPE_GOD = 1;       // 上帝（系统角色，用于发送公告）
+  ROLE_TYPE_WEREWOLF = 2;
+  ROLE_TYPE_SEER = 3;
+  ROLE_TYPE_WITCH = 4;
+  ROLE_TYPE_HUNTER = 5;
+  ROLE_TYPE_VILLAGER = 6;
+  ROLE_TYPE_GUARD = 7;
+}
+
+// SkillType 技能类型
+enum SkillType {
+  SKILL_TYPE_UNSPECIFIED = 0;
+  SKILL_TYPE_KILL = 1;      // 狼人击杀
+  SKILL_TYPE_CHECK = 2;     // 预言家查验
+  SKILL_TYPE_PROTECT = 3;   // 守卫保护
+  SKILL_TYPE_ANTIDOTE = 4;  // 女巫解药
+  SKILL_TYPE_POISON = 5;    // 女巫毒药
+  SKILL_TYPE_VOTE = 6;      // 投票
+  SKILL_TYPE_SPEAK = 7;     // 发言
+  SKILL_TYPE_SHOOT = 8;     // 猎人开枪
+  SKILL_TYPE_ANNOUNCE = 9;  // 上帝公告
+  SKILL_TYPE_SKIP = 10;     // 跳过行动（主动放弃技能使用）
+}
+
+// EventType 事件/效果类型
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  // 游戏生命周期
+  EVENT_TYPE_GAME_STARTED = 1;
+  EVENT_TYPE_GAME_ENDED = 2;
+  // 技能效果（外部可见）
+  EVENT_TYPE_KILL = 3;       // 狼人击杀
+  EVENT_TYPE_PROTECT = 4;    // 守卫保护
+  EVENT_TYPE_SAVE = 5;       // 女巫救人
+  EVENT_TYPE_POISON = 6;     // 女巫毒杀
+  EVENT_TYPE_CHECK = 7;      // 预言家查验
+  EVENT_TYPE_ELIMINATE = 8;  // 投票出局
+  EVENT_TYPE_SHOOT = 9;      // 猎人开枪
+  EVENT_TYPE_SKIP = 10;      // 跳过行动
+  // 内部状态变更（不对外发布）
+  EVENT_TYPE_SET_NIGHT_KILL = 100;      // 设置夜晚击杀目标
+  EVENT_TYPE_CLEAR_NIGHT_KILL = 101;    // 清除夜晚击杀目标（被救）
+  EVENT_TYPE_SET_LAST_PROTECTED = 102;  // 设置守卫上回合保护目标
+  EVENT_TYPE_USE_ANTIDOTE = 103;        // 消耗解药
+  EVENT_TYPE_USE_POISON = 104;          // 消耗毒药
+  EVENT_TYPE_HUNTER_TRIGGERED = 105;    // 猎人技能触发（死亡时）
+}
+
+// ErrorCode 错误码
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_PLAYER_NOT_FOUND = 1;     // 玩家未找到
+  ERROR_CODE_PLAYER_DEAD = 2;          // 玩家已死亡
+  ERROR_CODE_TARGET_NOT_FOUND = 3;     // 目标未找到
+  ERROR_CODE_TARGET_DEAD = 4;          // 目标已死亡
+  ERROR_CODE_SKILL_NOT_ALLOWED = 5;    // 技能不允许在此阶段使用
+  ERROR_CODE_GAME_NOT_STARTED = 6;     // 游戏未开始
+  ERROR_CODE_GAME_ENDED = 7;           // 游戏已结束
+  ERROR_CODE_INVALID_PHASE = 8;        // 无效阶段
+  ERROR_CODE_MESSAGE_NOT_ALLOWED = 9;  // 当前阶段不允许发言
+}
+
+// ==================== 消息定义 ====================
+
+// Event 游戏事件（轻量级，用于外部通知）
+message Event {
+  EventType type = 1;
+  string source_id = 2;          // 事件来源玩家
+  string target_id = 3;          // 事件目标玩家
+  map<string, string> data = 4;  // 附加数据
+}

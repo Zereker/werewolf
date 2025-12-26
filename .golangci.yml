@@ -1,0 +1,27 @@
+# golangci-lint 配置
+# 文档: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+
+  exclusions:
+    # 排除 proto（生成代码）、example 和测试文件
+    paths:
+      - proto
+      - example
+      - ".*_test\\.go"
+
+    # 启用通用排除预设
+    presets:
+      - std-error-handling
+      - common-false-positives
