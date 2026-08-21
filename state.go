@@ -261,7 +261,7 @@ type PlayerInfo struct {
 	Camp        pb.Camp
 	Category    RoleCategory
 	Alive       bool
-	Protected   bool // 今晚是否被保护（从 NightContext 计算）
+	Protected   bool // 今晚是否被保护（取自本回合上下文）
 	HasAntidote bool
 	HasPoison   bool
 }

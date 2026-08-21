@@ -42,22 +42,29 @@ func countVotes(uses []*SkillUse, skillType pb.SkillType) VoteResult {
 		voters[use.TargetID] = append(voters[use.TargetID], use.PlayerID)
 	}
 
-	// 找出最高票数和是否平票
-	var winner string
+	// 两遍扫描：先求最高票，再数有几个人拿到最高票。
+	//
+	// 单遍扫描也能得到正确结果，但正确性依赖「tied 会被后来的严格更大值
+	// 重置」这个推理，而 map 的遍历顺序又是随机的——要确信它对，读者得
+	// 自己把几种顺序都推一遍。两遍扫描一眼就能看出与顺序无关。
 	maxVotes := 0
-	tied := false
-
-	for target, count := range votes {
+	for _, count := range votes {
 		if count > maxVotes {
-			winner = target
 			maxVotes = count
-			tied = false
-		} else if count == maxVotes && maxVotes > 0 {
-			tied = true
 		}
 	}
 
-	if tied {
+	var winner string
+	winners := 0
+	for target, count := range votes {
+		if count == maxVotes {
+			winners++
+			winner = target
+		}
+	}
+
+	tied := winners > 1
+	if tied || maxVotes == 0 {
 		winner = ""
 	}
 
@@ -67,6 +74,21 @@ func countVotes(uses []*SkillUse, skillType pb.SkillType) VoteResult {
 		Votes:   votes,
 		Voters:  voters,
 		MaxVote: maxVotes,
+	}
+}
+
+// firstUsePerPlayer 按提交顺序遍历，每位玩家只取其首次提交的该技能。
+//
+// 三个 Resolver（守卫、预言家、猎人）原本各写了一遍相同的去重样板。
+// 「改主意」由调用方在提交前自行处理；到了结算这一步，一人一次。
+func firstUsePerPlayer(uses []*SkillUse, fn func(use *SkillUse)) {
+	seen := make(map[string]bool, len(uses))
+	for _, use := range uses {
+		if seen[use.PlayerID] {
+			continue
+		}
+		seen[use.PlayerID] = true
+		fn(use)
 	}
 }
 
@@ -136,35 +158,29 @@ func NewGuardResolver() *GuardResolver {
 
 func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
-	usedPlayers := make(map[string]bool)
 
-	for _, use := range uses {
-		// 防止同一玩家重复提交技能
-		if usedPlayers[use.PlayerID] {
-			continue
+	firstUsePerPlayer(uses, func(use *SkillUse) {
+		if use.Skill != pb.SkillType_SKILL_TYPE_PROTECT || use.TargetID == "" {
+			return
 		}
 
-		if use.Skill == pb.SkillType_SKILL_TYPE_PROTECT && use.TargetID != "" {
-			usedPlayers[use.PlayerID] = true
-			protectEffect := NewEffect(pb.EventType_EVENT_TYPE_PROTECT, use.PlayerID, use.TargetID)
+		protect := NewEffect(pb.EventType_EVENT_TYPE_PROTECT, use.PlayerID, use.TargetID)
 
+		switch {
+		case !config.GuardCanRepeat && view.LastProtectedTarget(use.PlayerID) == use.TargetID:
 			// 连守限制：视图只给「上回合守了谁」，是否允许由规则配置决定
-			repeatBlocked := !config.GuardCanRepeat &&
-				view.LastProtectedTarget(use.PlayerID) == use.TargetID
-			if repeatBlocked {
-				protectEffect.Cancel("cannot protect same target consecutively")
-			} else if use.PlayerID == use.TargetID && !config.GuardCanProtectSelf {
-				// 检查是否自守
-				protectEffect.Cancel("guard cannot protect self")
-			} else {
-				// 通过 Effect 记录本回合保护的目标
-				setLastProtectedEffect := NewEffect(pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED, use.PlayerID, use.TargetID)
-				effects = append(effects, setLastProtectedEffect)
-			}
-
-			effects = append(effects, protectEffect)
+			protect.Cancel("cannot protect same target consecutively")
+		case use.PlayerID == use.TargetID && !config.GuardCanProtectSelf:
+			protect.Cancel("guard cannot protect self")
+		default:
+			// 守护生效，记下本回合的目标供下回合判断连守
+			effects = append(effects,
+				NewEffect(pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED, use.PlayerID, use.TargetID))
 		}
-	}
+
+		effects = append(effects, protect)
+	})
+
 	return effects
 }
 
@@ -207,88 +223,108 @@ func NewWitchResolver() *WitchResolver {
 
 func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
-
-	// 获取击杀目标（RoundContext 保证非 nil）
 	killTarget := view.RoundContext().KillTarget
 
-	// 防止同一玩家重复使用同一技能
-	usedSkills := make(map[string]bool) // key: "playerID:skillType"
+	// 同一玩家的同一技能只取首次提交
+	type skillKey struct {
+		player string
+		skill  pb.SkillType
+	}
+	used := make(map[skillKey]bool, len(uses))
 
 	// 规则「解藥和毒藥不可以在同一夜使用」：记录本夜已成功用药的女巫。
-	// 只有真正生效的用药才计入——若解药因「今晚没人被杀」等原因被取消，
+	// 只有真正生效的用药才计入——解药若因「今晚没人被杀」被取消，
 	// 女巫本夜仍可以正常使用毒药。
-	potionUsed := make(map[string]bool) // key: playerID
+	potionUsed := make(map[string]bool)
 
 	for _, use := range uses {
-		skillKey := use.PlayerID + ":" + use.Skill.String()
-		if usedSkills[skillKey] {
+		if use.Skill != pb.SkillType_SKILL_TYPE_ANTIDOTE &&
+			use.Skill != pb.SkillType_SKILL_TYPE_POISON {
+			continue
+		}
+		if use.TargetID == "" {
 			continue
 		}
 
-		// 本夜是否已经用过另一瓶药
-		bothPotionsBlocked := !config.WitchCanUseBothPotions && potionUsed[use.PlayerID]
-
-		switch use.Skill {
-		case pb.SkillType_SKILL_TYPE_ANTIDOTE:
-			if use.TargetID != "" {
-				usedSkills[skillKey] = true
-				saveEffect := NewEffect(pb.EventType_EVENT_TYPE_SAVE, use.PlayerID, use.TargetID)
-
-				// 检查是否有解药
-				if bothPotionsBlocked {
-					saveEffect.Cancel("cannot use both potions in one night")
-				} else if !witchHas(view, use.PlayerID, potionAntidote) {
-					saveEffect.Cancel("no antidote")
-				} else if use.PlayerID == use.TargetID && !config.WitchCanSaveSelf {
-					// 检查是否自救
-					saveEffect.Cancel("witch cannot save self")
-				} else if killTarget == "" {
-					// 今晚没有人被杀（狼人空刀或平票）
-					saveEffect.Cancel("no one is dying tonight")
-				} else if use.TargetID != killTarget {
-					// 只能救被杀的人
-					saveEffect.Cancel("target is not dying")
-				} else {
-					// 救的是被杀的人，消耗解药。
-					// 这里不再清除刀口——是否真的救回由 NightResolveResolver
-					// 综合「是否同时被守卫守护」判定（同守同救可能依然死亡）。
-					potionUsed[use.PlayerID] = true
-					useAntidoteEffect := NewEffect(pb.EventType_EVENT_TYPE_USE_ANTIDOTE, use.PlayerID, "")
-					effects = append(effects, useAntidoteEffect)
-				}
-
-				effects = append(effects, saveEffect)
-			}
-		case pb.SkillType_SKILL_TYPE_POISON:
-			if use.TargetID != "" {
-				usedSkills[skillKey] = true
-
-				// 检查是否有毒药
-				if bothPotionsBlocked {
-					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
-					canceledEffect.Cancel("cannot use both potions in one night")
-					effects = append(effects, canceledEffect)
-				} else if !witchHas(view, use.PlayerID, potionPoison) {
-					// 无毒药，产生一个被取消的效果用于通知
-					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
-					canceledEffect.Cancel("no poison")
-					effects = append(effects, canceledEffect)
-				} else if use.PlayerID == use.TargetID {
-					// 检查是否自毒
-					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
-					canceledEffect.Cancel("witch cannot poison self")
-					effects = append(effects, canceledEffect)
-				} else {
-					// 通过 Effect 消耗毒药并标记目标（实际死亡在 NightResolveResolver 处理）
-					potionUsed[use.PlayerID] = true
-					usePoisonEffect := NewEffect(pb.EventType_EVENT_TYPE_USE_POISON, use.PlayerID, use.TargetID)
-					effects = append(effects, usePoisonEffect)
-				}
-			}
+		key := skillKey{player: use.PlayerID, skill: use.Skill}
+		if used[key] {
+			continue
 		}
+		used[key] = true
+
+		// 本夜是否已经用过另一瓶药
+		blocked := !config.WitchCanUseBothPotions && potionUsed[use.PlayerID]
+
+		var produced []*Effect
+		var consumed bool
+		if use.Skill == pb.SkillType_SKILL_TYPE_ANTIDOTE {
+			produced, consumed = resolveAntidote(use, view, config, killTarget, blocked)
+		} else {
+			produced, consumed = resolvePoison(use, view, blocked)
+		}
+
+		if consumed {
+			potionUsed[use.PlayerID] = true
+		}
+		effects = append(effects, produced...)
 	}
 
 	return effects
+}
+
+// resolveAntidote 结算一次解药使用。
+//
+// 无论成败都产出一个 SAVE 效果，被拒时带上原因——调用方需要知道
+// 「女巫点了但没成，为什么」，而不是什么都收不到。
+//
+// 第二个返回值表示解药是否真的被消耗，用于判断本夜能否再用毒药。
+// 这个信息必须显式返回：从产出的效果个数去反推既脆弱又难读。
+func resolveAntidote(use *SkillUse, view GameView, config *GameConfig, killTarget string, blocked bool) ([]*Effect, bool) {
+	save := NewEffect(pb.EventType_EVENT_TYPE_SAVE, use.PlayerID, use.TargetID)
+
+	switch {
+	case blocked:
+		save.Cancel("cannot use both potions in one night")
+	case !witchHas(view, use.PlayerID, potionAntidote):
+		save.Cancel("no antidote")
+	case use.PlayerID == use.TargetID && !config.WitchCanSaveSelf:
+		save.Cancel("witch cannot save self")
+	case killTarget == "":
+		// 今晚没有人被杀（狼人空刀或平票）
+		save.Cancel("no one is dying tonight")
+	case use.TargetID != killTarget:
+		save.Cancel("target is not dying")
+	default:
+		// 救的是被杀的人，消耗解药。是否真的救回由 NightResolveResolver
+		// 综合「是否同时被守卫守护」判定（同守同救可能依然死亡）
+		return []*Effect{
+			NewEffect(pb.EventType_EVENT_TYPE_USE_ANTIDOTE, use.PlayerID, ""),
+			save,
+		}, true
+	}
+
+	return []*Effect{save}, false
+}
+
+// resolvePoison 结算一次毒药使用。与 resolveAntidote 同构。
+func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool) {
+	poison := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
+
+	switch {
+	case blocked:
+		poison.Cancel("cannot use both potions in one night")
+	case !witchHas(view, use.PlayerID, potionPoison):
+		poison.Cancel("no poison")
+	case use.PlayerID == use.TargetID:
+		poison.Cancel("witch cannot poison self")
+	default:
+		// 消耗毒药并标记目标，实际死亡在 NightResolveResolver 结算
+		return []*Effect{
+			NewEffect(pb.EventType_EVENT_TYPE_USE_POISON, use.PlayerID, use.TargetID),
+		}, true
+	}
+
+	return []*Effect{poison}, false
 }
 
 // SeerResolver 预言家阶段解析器
@@ -301,26 +337,21 @@ func NewSeerResolver() *SeerResolver {
 
 func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
-	usedPlayers := make(map[string]bool)
 
-	for _, use := range uses {
-		// 防止同一玩家重复提交技能
-		if usedPlayers[use.PlayerID] {
-			continue
+	firstUsePerPlayer(uses, func(use *SkillUse) {
+		if use.Skill != pb.SkillType_SKILL_TYPE_CHECK || use.TargetID == "" {
+			return
 		}
 
-		if use.Skill == pb.SkillType_SKILL_TYPE_CHECK && use.TargetID != "" {
-			usedPlayers[use.PlayerID] = true
-			checkEffect := NewEffect(pb.EventType_EVENT_TYPE_CHECK, use.PlayerID, use.TargetID)
-			// 使用只读副本避免竞态风险
-			if target, ok := view.Player(use.TargetID); ok {
-				checkEffect.
-					WithData("camp", target.Camp).
-					WithData("isGood", target.Camp == pb.Camp_CAMP_GOOD)
-			}
-			effects = append(effects, checkEffect)
+		check := NewEffect(pb.EventType_EVENT_TYPE_CHECK, use.PlayerID, use.TargetID)
+		// 只报阵营，不报具体角色
+		if target, ok := view.Player(use.TargetID); ok {
+			check.
+				WithData("camp", target.Camp).
+				WithData("isGood", target.Camp == pb.Camp_CAMP_GOOD)
 		}
-	}
+		effects = append(effects, check)
+	})
 
 	return effects
 }
@@ -410,28 +441,20 @@ func NewHunterResolver() *HunterResolver {
 
 func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
-	usedPlayers := make(map[string]bool)
 
-	for _, use := range uses {
-		// 防止同一玩家重复提交技能
-		if usedPlayers[use.PlayerID] {
-			continue
-		}
-
+	firstUsePerPlayer(uses, func(use *SkillUse) {
 		switch use.Skill {
 		case pb.SkillType_SKILL_TYPE_SHOOT:
 			if use.TargetID != "" {
-				usedPlayers[use.PlayerID] = true
-				shootEffect := NewEffect(pb.EventType_EVENT_TYPE_SHOOT, use.PlayerID, use.TargetID)
-				effects = append(effects, shootEffect)
+				effects = append(effects,
+					NewEffect(pb.EventType_EVENT_TYPE_SHOOT, use.PlayerID, use.TargetID))
 			}
 		case pb.SkillType_SKILL_TYPE_SKIP:
 			// 猎人选择不开枪
-			usedPlayers[use.PlayerID] = true
-			skipEffect := NewEffect(pb.EventType_EVENT_TYPE_SKIP, use.PlayerID, "")
-			effects = append(effects, skipEffect)
+			effects = append(effects,
+				NewEffect(pb.EventType_EVENT_TYPE_SKIP, use.PlayerID, ""))
 		}
-	}
+	})
 
 	return effects
 }

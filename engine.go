@@ -554,11 +554,11 @@ func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigge
 	return ri
 }
 
-// calculateNextPhase 计算下一阶段（考虑动态触发）
+// calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。
 //
-// 猎人触发标记是「一次性」的：由死亡结算置位，进入猎人阶段后必须消费掉。
-// 若不消费，标记会在整个回合内持续为真——夜里开过枪的猎人，会在当天
-// 投票结束后被再次拉进 DAY_HUNTER 并开出第二枪。
+// 待结算队列是「一次性」的：由死亡结算入队，进入对应阶段后必须出队。
+// 不出队的话它会在整个回合内持续非空，同一个玩家会被反复拉回来
+// 再用一次技能。
 func (e *Engine) calculateNextPhase(currentPhase pb.PhaseType) pb.PhaseType {
 	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队。
 	// 不出队的话标记会在整个回合内持续为真，同一个玩家会被反复拉回来。
@@ -689,7 +689,7 @@ func (e *Engine) GetMessageReceivers(senderID string) []string {
 	return e.getMessageReceivers(senderID)
 }
 
-// getMessageReceivers 获取消息接收者（内部方法，调用前需持有锁）
+// getMessageReceivers 获取消息接收者（内部方法，调用前需持有 e.mu）
 func (e *Engine) getMessageReceivers(senderID string) []string {
 	sender, ok := e.state.getPlayer(senderID)
 	if !ok || !sender.Alive {
