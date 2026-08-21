@@ -317,7 +317,9 @@ const (
 	EventType_EVENT_TYPE_SET_LAST_PROTECTED EventType = 102 // 设置守卫上回合保护目标
 	EventType_EVENT_TYPE_USE_ANTIDOTE       EventType = 103 // 消耗解药
 	EventType_EVENT_TYPE_USE_POISON         EventType = 104 // 消耗毒药
-	EventType_EVENT_TYPE_HUNTER_TRIGGERED   EventType = 105 // 猎人技能触发（死亡时）
+	EventType_EVENT_TYPE_ABILITY_TRIGGERED  EventType = 105 // 死亡技能触发，待进入对应阶段结算
+	EventType_EVENT_TYPE_PLAYER_ADDED       EventType = 106 // 玩家入座（用于效果流回放）
+	EventType_EVENT_TYPE_PHASE_CHANGED      EventType = 107 // 阶段流转（用于效果流回放）
 )
 
 // Enum value maps for EventType.
@@ -339,7 +341,9 @@ var (
 		102: "EVENT_TYPE_SET_LAST_PROTECTED",
 		103: "EVENT_TYPE_USE_ANTIDOTE",
 		104: "EVENT_TYPE_USE_POISON",
-		105: "EVENT_TYPE_HUNTER_TRIGGERED",
+		105: "EVENT_TYPE_ABILITY_TRIGGERED",
+		106: "EVENT_TYPE_PLAYER_ADDED",
+		107: "EVENT_TYPE_PHASE_CHANGED",
 	}
 	EventType_value = map[string]int32{
 		"EVENT_TYPE_UNSPECIFIED":        0,
@@ -358,7 +362,9 @@ var (
 		"EVENT_TYPE_SET_LAST_PROTECTED": 102,
 		"EVENT_TYPE_USE_ANTIDOTE":       103,
 		"EVENT_TYPE_USE_POISON":         104,
-		"EVENT_TYPE_HUNTER_TRIGGERED":   105,
+		"EVENT_TYPE_ABILITY_TRIGGERED":  105,
+		"EVENT_TYPE_PLAYER_ADDED":       106,
+		"EVENT_TYPE_PHASE_CHANGED":      107,
 	}
 )
 
@@ -600,7 +606,7 @@ const file_proto_event_proto_rawDesc = "" +
 	"\x10SKILL_TYPE_SHOOT\x10\b\x12\x17\n" +
 	"\x13SKILL_TYPE_ANNOUNCE\x10\t\x12\x13\n" +
 	"\x0fSKILL_TYPE_SKIP\x10\n" +
-	"*\xcf\x03\n" +
+	"*\x8b\x04\n" +
 	"\tEventType\x12\x1a\n" +
 	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17EVENT_TYPE_GAME_STARTED\x10\x01\x12\x19\n" +
@@ -618,8 +624,10 @@ const file_proto_event_proto_rawDesc = "" +
 	"\x1bEVENT_TYPE_CLEAR_NIGHT_KILL\x10e\x12!\n" +
 	"\x1dEVENT_TYPE_SET_LAST_PROTECTED\x10f\x12\x1b\n" +
 	"\x17EVENT_TYPE_USE_ANTIDOTE\x10g\x12\x19\n" +
-	"\x15EVENT_TYPE_USE_POISON\x10h\x12\x1f\n" +
-	"\x1bEVENT_TYPE_HUNTER_TRIGGERED\x10i*\x82\x04\n" +
+	"\x15EVENT_TYPE_USE_POISON\x10h\x12 \n" +
+	"\x1cEVENT_TYPE_ABILITY_TRIGGERED\x10i\x12\x1b\n" +
+	"\x17EVENT_TYPE_PLAYER_ADDED\x10j\x12\x1c\n" +
+	"\x18EVENT_TYPE_PHASE_CHANGED\x10k*\x82\x04\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bERROR_CODE_PLAYER_NOT_FOUND\x10\x01\x12\x1a\n" +

@@ -19,8 +19,10 @@
 
 ### 2. 状态变更一律经由 Effect
 
-Resolver **不允许直接修改 State**，只能产出 `Effect` 描述「想发生什么」，
-由 `State.ApplyEffect` 统一落地。
+Resolver 拿到的是只读的 `GameView`，只能产出 `Effect` 描述「想发生什么」，
+由内部唯一的写入点统一落地。这条约束**由签名保证**，不是靠约定——
+曾经它只写在文档里，而 Resolver 收到的是可变的状态对象，
+任何实现都能绕开整条管线。
 
 ```
 SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ──► 新状态
@@ -46,10 +48,23 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
 ### 4. 单一真相来源
 
 「玩家此刻能用什么技能」只有一个来源：`PhaseConfig.Steps`。
-`SubmitSkillUse` 的校验与 `GetPhaseInfo` 的对外宣告都从它派生。
+`SubmitSkillUse` 的校验、`GetPhaseInfo` 的对外宣告、`GetPlayerView`
+的视角、`PhaseReadiness` 的就绪判定，全部由它派生。
 
 历史教训：这两者曾各自硬编码技能列表，导致 `GetPhaseInfo` 宣告猎人可以
 `SKIP`、而 `SubmitSkillUse` 拒绝 `SKIP` 的自相矛盾。
+
+### 5. 信息边界属于引擎
+
+调用方作为主持人需要上帝视角，但它不该被迫自己实现「投影」——
+那是整局游戏最安全攸关的一段逻辑，放在库外意味着每个使用者都要重写一遍，
+而且错一次游戏就废了。`GetPlayerView` 与 `AudienceOf` 把这件事收回库内。
+
+### 6. 引擎不认识具体角色
+
+猎人曾被写死在阶段流转里：`calculateNextPhase` 有它的分支，
+`RoundContext` 有它的专属字段。每加一个死亡触发角色就要再改一遍引擎。
+现在引擎只认识「谁、去哪个阶段结算」这个抽象，具体是谁由 Resolver 决定。
 
 ## 架构图
 
@@ -203,6 +218,8 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 - **不做发牌随机**：没有洗牌逻辑，座位与身份的对应关系由调用方给定
 - **不做存储**：提供 `Snapshot` / `RestoreEngine` 导出与重建局面，
   但存到哪、怎么存由调用方决定
+- **不决定阶段何时结束**：`PhaseReadiness` 告诉你还差谁，
+  是继续等还是超时推进由调用方决定，`EndPhase` 不会因未就绪而拒绝
 - **不做网络与 AI**
 
 ## 存档
@@ -223,6 +240,32 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
   便于比对与幂等写入（Go 的 map 遍历顺序是随机的，不排序就做不到）。
 - **版本不匹配直接拒绝**，而不是按新结构去解读旧数据——那会得到一个
   看似正常、实则错乱的局面。
+
+## 扩展契约
+
+内置的六个角色是一套默认板子，不是能力上限。第三方加入新角色只需要：
+
+1. 用超出内置枚举的取值定义角色、技能、阶段（建议从 1000 起）
+2. 在 `GameConfig.Phases` 里声明该阶段
+3. `Engine.RegisterResolver` 注册解析器
+4. `Engine.AddCustomPlayer` 显式给出阵营与角色类别
+
+死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect`，
+引擎会把它排入待结算队列、自动流转过去，并把胜负判定推迟到结算之后。
+
+`extension_test.go` 用「狼王」把这条路径完整走通，全程只用导出 API。
+这个测试的意义不只是覆盖率——它是扩展契约本身的可执行说明，
+契约一旦被破坏，它会先于使用者发现。
+
+## 效果流
+
+`EffectLog` 累积自建局以来的全部 Effect，`ReplayEngine` 按流重建局面。
+`PLAYER_ADDED` / `GAME_STARTED` / `PHASE_CHANGED` 三个事件让效果流自洽——
+不依赖任何外部信息即可完整重建。
+
+与快照的分工：**效果流是历史，快照是状态**。
+持久化用快照（`Effect.Data` 经 JSON 往返会退化类型），
+进程内的回放、复盘与排查用效果流。
 
 ## 规则依据
 

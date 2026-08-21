@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewEngine_NilConfig(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	if engine.config == nil {
 		t.Error("expected default config to be set")
@@ -32,7 +32,7 @@ func TestNewEngine_CustomConfig(t *testing.T) {
 		WitchCanSaveSelf: true,
 		Phases:           DefaultGameConfig().Phases,
 	}
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	if engine.config != config {
 		t.Error("expected custom config to be set")
@@ -43,7 +43,7 @@ func TestNewEngine_CustomConfig(t *testing.T) {
 }
 
 func TestEngine_AddPlayer(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	engine.AddPlayer("p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 
@@ -57,7 +57,7 @@ func TestEngine_AddPlayer(t *testing.T) {
 }
 
 func TestEngine_Start(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
@@ -75,7 +75,7 @@ func TestEngine_Start(t *testing.T) {
 }
 
 func TestEngine_Start_AlreadyStarted(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
@@ -100,7 +100,7 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine := NewEngine(nil)
+			engine := MustNewEngine(nil)
 			for id, role := range tc.roles {
 				engine.AddPlayer(id, role)
 			}
@@ -112,7 +112,7 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 }
 
 func TestEngine_AddPlayer_Validation(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	if err := engine.AddPlayer("", pb.RoleType_ROLE_TYPE_VILLAGER); err != ErrInvalidPlayerID {
 		t.Errorf("空 ID 应返回 ErrInvalidPlayerID，实际 %v", err)
@@ -148,7 +148,7 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 }
 
 func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -179,7 +179,7 @@ func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 }
 
 func TestEngine_SubmitSkillUse_InvalidPlayer(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.Start()
 
@@ -195,7 +195,7 @@ func TestEngine_SubmitSkillUse_InvalidPlayer(t *testing.T) {
 }
 
 func TestEngine_SubmitSkillUse_DeadPlayer(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	engine.state.players["wolf"].Alive = false
@@ -213,7 +213,7 @@ func TestEngine_SubmitSkillUse_DeadPlayer(t *testing.T) {
 }
 
 func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 	engine.AddPlayer("target", pb.RoleType_ROLE_TYPE_VILLAGER)
 	engine.Start()
@@ -231,7 +231,7 @@ func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
 }
 
 func TestEngine_EndPhase(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -278,7 +278,7 @@ func TestEngine_EndPhase(t *testing.T) {
 }
 
 func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	engine.Start()
@@ -309,7 +309,7 @@ func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
 }
 
 func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -347,7 +347,7 @@ func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
 }
 
 func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.state.Phase = pb.PhaseType_PHASE_TYPE_END
 
 	_, err := engine.EndPhase()
@@ -357,7 +357,7 @@ func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 }
 
 func TestEngine_GetCurrentPhase(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_START {
 		t.Errorf("expected Phase=START, got %v", engine.GetCurrentPhase())
@@ -373,7 +373,7 @@ func TestEngine_GetCurrentPhase(t *testing.T) {
 }
 
 func TestEngine_GetCurrentRound(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	if engine.GetCurrentRound() != 0 {
 		t.Errorf("expected Round=0, got %d", engine.GetCurrentRound())
@@ -389,7 +389,7 @@ func TestEngine_GetCurrentRound(t *testing.T) {
 }
 
 func TestEngine_GetAllowedSkills(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.Start()
@@ -406,7 +406,7 @@ func TestEngine_GetAllowedSkills(t *testing.T) {
 }
 
 func TestEngine_GetAllowedSkills_Dead(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.state.players["wolf"].Alive = false
 	engine.Start()
@@ -419,7 +419,7 @@ func TestEngine_GetAllowedSkills_Dead(t *testing.T) {
 }
 
 func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.Start()
 
 	skills := engine.GetAllowedSkills("nonexistent")
@@ -430,7 +430,7 @@ func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
 }
 
 func TestEngine_IsGameOver(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	if engine.IsGameOver() {
 		t.Error("expected IsGameOver=false initially")
@@ -444,7 +444,7 @@ func TestEngine_IsGameOver(t *testing.T) {
 }
 
 func TestEngine_OnEvent(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -470,7 +470,7 @@ func TestEngine_OnEvent(t *testing.T) {
 }
 
 func TestEngine_MultipleHandlers(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -503,7 +503,7 @@ func TestEngine_MultipleHandlers(t *testing.T) {
 }
 
 func TestEngine_Concurrency(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -550,7 +550,7 @@ func TestEngine_Concurrency(t *testing.T) {
 }
 
 func TestEngine_FullGameCycle(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	// Setup players
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -673,7 +673,7 @@ func TestEngine_FullGameCycle(t *testing.T) {
 }
 
 func TestEngine_GetPhaseInfo_NightGuard(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -705,7 +705,7 @@ func TestEngine_GetPhaseInfo_NightGuard(t *testing.T) {
 }
 
 func TestEngine_GetPhaseInfo_NightWolf(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -742,7 +742,7 @@ func TestEngine_GetPhaseInfo_NightWolf(t *testing.T) {
 }
 
 func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -779,7 +779,7 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 }
 
 func TestPhaseInfo_GodAnnouncement(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -826,7 +826,7 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 // 回归：publishEvent 此前在释放 e.mu 之后才遍历 e.eventHandlers，
 // 与并发的 OnEvent 追加构成数据竞争（需 -race 才能发现）。
 func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("s", pb.RoleType_ROLE_TYPE_SEER)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -866,7 +866,7 @@ func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 // TestEngine_HandlerPanicIsIsolatedAndLogged 单个 handler panic 不影响其他
 // handler，且必须留下错误日志（此前是 `_ = recover()` 静默吞掉）。
 func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 	rec := &recordingLogger{}
 	engine.SetLogger(rec)
 

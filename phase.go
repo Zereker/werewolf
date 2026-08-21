@@ -36,6 +36,25 @@ func NewPhase(config *GameConfig) *Phase {
 	return p
 }
 
+// registerResolver 注册或替换某阶段的解析器
+func (p *Phase) registerResolver(phase pb.PhaseType, r Resolver) {
+	p.resolvers[phase] = r
+}
+
+// validateResolvers 检查每个已配置的阶段都注册了解析器。
+//
+// 缺失解析器不会报错，只会让该阶段收到的技能被悄悄丢弃——这种失败
+// 在对局中几乎无法定位，必须在开局前拦下。
+func (p *Phase) validateResolvers() error {
+	for phaseType := range p.config.Phases {
+		if p.resolvers[phaseType] == nil {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				"phase %v has no resolver registered", phaseType)
+		}
+	}
+	return nil
+}
+
 // GetPhaseConfig 获取阶段配置
 func (p *Phase) GetPhaseConfig(phase pb.PhaseType) *PhaseConfig {
 	return p.config.Phases[phase]
@@ -88,7 +107,7 @@ func (p *Phase) GetAllowedSkills(phase pb.PhaseType, role pb.RoleType) []pb.Skil
 func (p *Phase) NextSubPhase(current pb.PhaseType) pb.PhaseType {
 	// 游戏开始阶段的特殊处理
 	if current == pb.PhaseType_PHASE_TYPE_START {
-		return pb.PhaseType_PHASE_TYPE_NIGHT_GUARD
+		return p.config.startPhase()
 	}
 
 	// 从配置中获取下一阶段
@@ -102,20 +121,18 @@ func (p *Phase) NextSubPhase(current pb.PhaseType) pb.PhaseType {
 }
 
 // ValidateSkillUse 验证技能使用是否合法
-func (p *Phase) ValidateSkillUse(use *SkillUse, state *State) error {
+func (p *Phase) ValidateSkillUse(use *SkillUse, state *gameState) error {
 	// 检查玩家是否存在
 	player, ok := state.getPlayer(use.PlayerID)
 	if !ok {
 		return ErrPlayerNotFound
 	}
 
-	// 猎人阶段特殊处理：被触发的猎人即便已经死亡也可以使用技能，
-	// 但仅限「本次被触发的那名猎人」——否则任何已出局的猎人都能在
-	// 猎人阶段再开一枪。
-	isHunterPhase := state.Phase == pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER ||
-		state.Phase == pb.PhaseType_PHASE_TYPE_DAY_HUNTER
-	if isHunterPhase && player.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-		if state.TriggeredHunterID() != use.PlayerID {
+	// 死亡技能阶段：技能的持有者即便已经出局也可以行动，
+	// 但仅限「本次触发的那名玩家」——否则任何已出局的同角色玩家
+	// 都能在该阶段再用一次技能。
+	if t, ok := state.peekTrigger(); ok && t.Phase == state.Phase {
+		if t.PlayerID != use.PlayerID {
 			return ErrSkillNotAllowed
 		}
 	} else if !player.Alive {

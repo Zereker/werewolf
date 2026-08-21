@@ -45,6 +45,9 @@ type GameConfig struct {
 	// 胜负判定方式
 	VictoryMode VictoryMode
 
+	// 起始阶段。Start 之后进入的第一个阶段，为空时默认 NIGHT_GUARD。
+	StartPhase pb.PhaseType
+
 	// 阶段配置
 	Phases map[pb.PhaseType]*PhaseConfig
 
@@ -60,13 +63,25 @@ type PhaseConfig struct {
 	NextPhase pb.PhaseType  // 下一阶段（声明式配置）
 }
 
-// PhaseStep 阶段步骤
-//
-// 步骤的先后由切片顺序决定。「是否允许多名玩家参与」「未行动如何处理」
-// 由各阶段的 Resolver 自行编码（如狼人按票数取共识、守卫只取首个提交）。
+// PhaseStep 阶段步骤。步骤的先后由切片顺序决定。
 type PhaseStep struct {
 	Role  pb.RoleType  // 哪个角色
 	Skill pb.SkillType // 使用什么技能
+
+	// Required 该步骤是否必须完成，阶段才算就绪。
+	//
+	// 引擎不计时、也不会因此拒绝 EndPhase——它只据此回答
+	// Engine.PhaseReadiness()「还差谁没行动」，让调用方决定是继续等待
+	// 还是按超时推进。没有任何合格行动者时（例如守卫已出局），
+	// 该步骤视为自动满足。
+	Required bool
+
+	// Multiple 是否要求全部合格行动者都行动。
+	//
+	// true：所有人都提交了才算完成（狼人商刀、全员投票）
+	// false：任意一人提交即算完成
+	// 仅影响就绪判断；重复提交如何取舍由各阶段的 Resolver 决定。
+	Multiple bool
 }
 
 // SkillUse 技能使用记录
@@ -92,6 +107,7 @@ func DefaultGameConfig() *GameConfig {
 		SameGuardKillIsEmpty:   true,
 		GuardSaveTogetherDies:  true,
 		VictoryMode:            VictoryModeSideWipe,
+		StartPhase:             pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
 		DefaultTimeout:         DefaultPhaseTimeout,
 		Phases: map[pb.PhaseType]*PhaseConfig{
 			// 白天和投票阶段
@@ -113,10 +129,10 @@ func DefaultGameConfig() *GameConfig {
 func StandardDayPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_DAY,
+		// 白天只有发言，而发言走 SendMessage 而非技能通道，
+		// 因此这里没有玩家技能步骤
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			// 白天主要是发言，所有存活玩家
-			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_SPEAK},
 		},
 		Timeout:   DayPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_VOTE,
@@ -129,7 +145,7 @@ func StandardVotePhase() *PhaseConfig {
 		Type: pb.PhaseType_PHASE_TYPE_VOTE,
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_VOTE},
+			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_VOTE, Required: true, Multiple: true},
 		},
 		Timeout:   VotePhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 进入下一夜
@@ -169,7 +185,7 @@ func NightWolfPhase() *PhaseConfig {
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL},
+			{Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL, Required: true, Multiple: true},
 		},
 		Timeout:   WolfPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
@@ -227,4 +243,70 @@ func NightHunterPhase() *PhaseConfig {
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
 	}
+}
+
+// ==================== 配置校验 ====================
+
+// Validate 检查配置自身是否自洽。
+//
+// 阶段流转图是使用者可以替换的数据，一旦出现悬空的 NextPhase，
+// 引擎会在推进到那里时静默地把游戏判为结束——这类问题必须在构造时暴露，
+// 而不是等到第三回合突然收场。
+//
+// 这里只校验配置的形状。「每个阶段是否都有 Resolver」依赖运行期注册，
+// 由 Engine.Start 校验。
+func (c *GameConfig) Validate() error {
+	if c == nil {
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE, "config must not be nil")
+	}
+	if len(c.Phases) == 0 {
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE, "config contains no phases")
+	}
+
+	start := c.startPhase()
+	if _, ok := c.Phases[start]; !ok {
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+			"start phase %v is not present in config", start)
+	}
+
+	for phaseType, pc := range c.Phases {
+		if pc == nil {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				"phase %v has a nil config", phaseType)
+		}
+		if pc.Type != phaseType {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				"phase %v is registered under key %v", pc.Type, phaseType)
+		}
+
+		// 悬空的 NextPhase 会让游戏走到一半无声结束
+		if pc.NextPhase != pb.PhaseType_PHASE_TYPE_UNSPECIFIED &&
+			pc.NextPhase != pb.PhaseType_PHASE_TYPE_END {
+			if _, ok := c.Phases[pc.NextPhase]; !ok {
+				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+					"phase %v points to %v which is not present in config", phaseType, pc.NextPhase)
+			}
+		}
+
+		// 同一阶段内重复声明会让 GetAllowedSkills 返回重复项
+		seen := make(map[[2]int32]bool, len(pc.Steps))
+		for _, step := range pc.Steps {
+			key := [2]int32{int32(step.Role), int32(step.Skill)}
+			if seen[key] {
+				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+					"phase %v declares %v/%v twice", phaseType, step.Role, step.Skill)
+			}
+			seen[key] = true
+		}
+	}
+
+	return nil
+}
+
+// startPhase 返回起始阶段，未配置时用默认值
+func (c *GameConfig) startPhase() pb.PhaseType {
+	if c.StartPhase == pb.PhaseType_PHASE_TYPE_UNSPECIFIED {
+		return pb.PhaseType_PHASE_TYPE_NIGHT_GUARD
+	}
+	return c.StartPhase
 }

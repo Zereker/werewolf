@@ -1,0 +1,86 @@
+package werewolf
+
+import (
+	pb "github.com/Zereker/werewolf/proto"
+)
+
+// GameView 只读的游戏视图。
+//
+// Resolver 拿到的是它而不是 *gameState：架构上「状态变更一律经由 Effect」
+// 是这个引擎最重要的不变量，此前它只写在文档里，类型系统不设防——
+// 任何 Resolver（包括第三方注册的）都能直接改状态、绕开整条 Effect 管线，
+// 让可回放、可审计这些收益全部落空。现在这条约束写进了签名。
+//
+// 视图只提供事实，不提供判断：规则的判定属于 Resolver，
+// 因此这里给的是「上一回合守了谁」而非「现在能不能守」。
+type GameView interface {
+	// Player 返回玩家信息的只读副本
+	Player(id string) (PlayerInfo, bool)
+
+	// AlivePlayers 返回所有存活玩家
+	AlivePlayers() []PlayerInfo
+
+	// AlivePlayerIDsByRole 返回指定角色的存活玩家 ID
+	AlivePlayerIDsByRole(role pb.RoleType) []string
+
+	// RoundContext 返回本回合上下文的只读副本
+	RoundContext() RoundContext
+
+	// LastProtectedTarget 返回守卫上一回合守护的目标，无则为空
+	LastProtectedTarget(guardID string) string
+
+	// Round 返回当前回合数
+	Round() int
+
+	// Phase 返回当前阶段
+	Phase() pb.PhaseType
+}
+
+// stateView 是 GameView 的实现。
+//
+// 刻意做成不导出的包装类型而非直接让 *gameState 实现接口：
+// 后者可以被类型断言还原成可变的状态对象，等于没有约束。
+type stateView struct {
+	s *gameState
+}
+
+func newStateView(s *gameState) GameView { return stateView{s: s} }
+
+func (v stateView) Player(id string) (PlayerInfo, bool) {
+	return v.s.GetPlayerInfo(id)
+}
+
+func (v stateView) AlivePlayers() []PlayerInfo {
+	ids := v.s.getAlivePlayerIDs()
+	out := make([]PlayerInfo, 0, len(ids))
+	for _, id := range ids {
+		if info, ok := v.s.GetPlayerInfo(id); ok {
+			out = append(out, info)
+		}
+	}
+	return out
+}
+
+func (v stateView) AlivePlayerIDsByRole(role pb.RoleType) []string {
+	return v.s.getAlivePlayerIDsByRole(role)
+}
+
+func (v stateView) RoundContext() RoundContext {
+	rc := v.s.GetRoundContext()
+	if rc == nil {
+		return RoundContext{}
+	}
+	return *rc
+}
+
+func (v stateView) LastProtectedTarget(guardID string) string {
+	p, ok := v.s.getPlayerSnapshot(guardID)
+	if !ok {
+		return ""
+	}
+	return p.LastProtectedTarget
+}
+
+func (v stateView) Round() int { return v.s.currentRound() }
+
+func (v stateView) Phase() pb.PhaseType { return v.s.currentPhase() }

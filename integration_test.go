@@ -12,7 +12,7 @@ func TestFullGame_WolvesWin(t *testing.T) {
 	// 本局无神职，屠边条件（屠神/屠民）不适用，故显式使用屠城判定
 	config := DefaultGameConfig()
 	config.VictoryMode = VictoryModeTownWipe
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	// 2 wolves vs 2 villagers
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -49,14 +49,14 @@ func TestFullGame_WolvesWin(t *testing.T) {
 	}
 
 	winner := pb.Camp_CAMP_EVIL
-	_, actualWinner := engine.state.CheckVictory(engine.config.VictoryMode)
+	_, actualWinner := engine.state.checkVictory(engine.config.VictoryMode)
 	if actualWinner != winner {
 		t.Errorf("expected EVIL wins, got %v", actualWinner)
 	}
 }
 
 func TestFullGame_GoodWins(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	// 1 wolf vs 3 villagers
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -101,7 +101,7 @@ func TestFullGame_GoodWins(t *testing.T) {
 		t.Error("expected game to be over (good wins)")
 	}
 
-	_, winner := engine.state.CheckVictory(engine.config.VictoryMode)
+	_, winner := engine.state.checkVictory(engine.config.VictoryMode)
 	if winner != pb.Camp_CAMP_GOOD {
 		t.Errorf("expected GOOD wins, got %v", winner)
 	}
@@ -110,7 +110,7 @@ func TestFullGame_GoodWins(t *testing.T) {
 // ==================== Rule Scenario Tests ====================
 
 func TestScenario_WitchSavesVictim(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
@@ -150,7 +150,7 @@ func TestScenario_WitchSavesVictim(t *testing.T) {
 func TestScenario_GuardProtects(t *testing.T) {
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = true
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
@@ -186,7 +186,7 @@ func TestScenario_GuardProtects(t *testing.T) {
 }
 
 func TestScenario_VoteTie(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -236,7 +236,7 @@ func TestScenario_VoteTie(t *testing.T) {
 }
 
 func TestScenario_MultipleRounds(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
@@ -282,7 +282,7 @@ func TestScenario_MultipleRounds(t *testing.T) {
 func TestConfig_WitchCanSaveSelf_Enabled(t *testing.T) {
 	config := DefaultGameConfig()
 	config.WitchCanSaveSelf = true
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
@@ -322,7 +322,7 @@ func TestConfig_WitchCanSaveSelf_Enabled(t *testing.T) {
 func TestConfig_WitchCanSaveSelf_Disabled(t *testing.T) {
 	config := DefaultGameConfig()
 	config.WitchCanSaveSelf = false
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
@@ -362,7 +362,7 @@ func TestConfig_WitchCanSaveSelf_Disabled(t *testing.T) {
 func TestConfig_SameGuardKill_Empty(t *testing.T) {
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = true
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
@@ -400,7 +400,7 @@ func TestConfig_SameGuardKill_Empty(t *testing.T) {
 func TestConfig_SameGuardKill_NotEmpty(t *testing.T) {
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = false
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
@@ -448,7 +448,7 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 	setup := func(canUseBoth bool) *Engine {
 		config := DefaultGameConfig()
 		config.WitchCanUseBothPotions = canUseBoth
-		engine := NewEngine(config)
+		engine := MustNewEngine(config)
 
 		engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 		engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
@@ -551,7 +551,7 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 }
 
 func TestScenario_SeerIdentifiesWolf(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
@@ -605,7 +605,7 @@ func TestScenario_SeerIdentifiesWolf(t *testing.T) {
 // ==================== Sub-Step Mode Tests ====================
 
 func TestSubStepMode_FullNightCycle(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	// 设置玩家
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
@@ -727,7 +727,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 }
 
 func TestSubStepMode_WolfVoteTie(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -777,7 +777,7 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = true
-	engine := NewEngine(config)
+	engine := MustNewEngine(config)
 
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -823,7 +823,7 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 }
 
 func TestSubStepMode_MultipleRounds(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
 	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -870,7 +870,7 @@ func TestSubStepMode_MultipleRounds(t *testing.T) {
 }
 
 func TestScenario_AllRolesActive(t *testing.T) {
-	engine := NewEngine(nil)
+	engine := MustNewEngine(nil)
 
 	// Full game with all roles
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)

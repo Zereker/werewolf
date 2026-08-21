@@ -137,21 +137,12 @@ func TestGetRequiredRoles_Day(t *testing.T) {
 
 	roles := p.GetRequiredRoles(pb.PhaseType_PHASE_TYPE_DAY)
 
-	// Day phase has God announce + UNSPECIFIED role for speak
-	if len(roles) != 2 {
-		t.Errorf("expected 2 roles, got %d", len(roles))
+	// 白天只剩上帝公告：发言走 SendMessage，不占技能步骤
+	if len(roles) != 1 {
+		t.Fatalf("expected 1 role, got %d", len(roles))
 	}
-
-	roleSet := make(map[pb.RoleType]bool)
-	for _, r := range roles {
-		roleSet[r] = true
-	}
-
-	if !roleSet[pb.RoleType_ROLE_TYPE_GOD] {
-		t.Error("expected God in required roles")
-	}
-	if !roleSet[pb.RoleType_ROLE_TYPE_UNSPECIFIED] {
-		t.Error("expected UNSPECIFIED in required roles")
+	if roles[0] != pb.RoleType_ROLE_TYPE_GOD {
+		t.Errorf("expected God, got %v", roles[0])
 	}
 }
 
@@ -248,11 +239,12 @@ func TestGetAllowedSkills_Villager_NightGuard(t *testing.T) {
 	}
 }
 
-func TestGetAllowedSkills_AllSpeak(t *testing.T) {
+func TestGetAllowedSkills_DayHasNoPlayerSkill(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	// All roles should be able to speak during day (UNSPECIFIED matches all)
+	// 白天没有玩家技能——发言不是技能，走 SendMessage。
+	// 此前 DAY 阶段声明了 SPEAK，提交能通过但结算零效果，是个悬空概念。
 	roles := []pb.RoleType{
 		pb.RoleType_ROLE_TYPE_WEREWOLF,
 		pb.RoleType_ROLE_TYPE_SEER,
@@ -260,14 +252,9 @@ func TestGetAllowedSkills_AllSpeak(t *testing.T) {
 		pb.RoleType_ROLE_TYPE_GUARD,
 		pb.RoleType_ROLE_TYPE_VILLAGER,
 	}
-
 	for _, role := range roles {
-		skills := p.GetAllowedSkills(pb.PhaseType_PHASE_TYPE_DAY, role)
-		if len(skills) != 1 {
-			t.Errorf("expected 1 skill for %v during day, got %d", role, len(skills))
-		}
-		if len(skills) > 0 && skills[0] != pb.SkillType_SKILL_TYPE_SPEAK {
-			t.Errorf("expected SPEAK for %v during day, got %v", role, skills[0])
+		if skills := p.GetAllowedSkills(pb.PhaseType_PHASE_TYPE_DAY, role); len(skills) != 0 {
+			t.Errorf("白天不应有可提交技能，%v 得到 %v", role, skills)
 		}
 	}
 }
@@ -381,9 +368,9 @@ func TestValidateSkillUse_Valid(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state := newState()
+	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	use := &SkillUse{
@@ -403,7 +390,7 @@ func TestValidateSkillUse_PlayerNotFound(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
+	state := newState()
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	use := &SkillUse{
@@ -423,9 +410,9 @@ func TestValidateSkillUse_PlayerDead(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state := newState()
+	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.players["wolf"].Alive = false
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
@@ -446,9 +433,9 @@ func TestValidateSkillUse_SkillNotAllowed(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
-	state.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state := newState()
+	state.addPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	// Villager tries to kill at night (not allowed)
@@ -469,8 +456,8 @@ func TestValidateSkillUse_TargetNotFound(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state := newState()
+	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	use := &SkillUse{
@@ -490,9 +477,9 @@ func TestValidateSkillUse_TargetDead(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state := newState()
+	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.players["victim"].Alive = false
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
@@ -513,9 +500,9 @@ func TestValidateSkillUse_AntidoteOnDead(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
-	state.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state := newState()
+	state.addPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.players["victim"].Alive = false
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WITCH
 
@@ -537,8 +524,8 @@ func TestValidateSkillUse_NoTarget(t *testing.T) {
 	config := DefaultGameConfig()
 	p := NewPhase(config)
 
-	state := NewState()
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state := newState()
+	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	// Empty target (wolf chooses not to kill)

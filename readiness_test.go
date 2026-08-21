@@ -1,0 +1,186 @@
+package werewolf
+
+import (
+	"testing"
+
+	pb "github.com/Zereker/werewolf/proto"
+)
+
+// TestPhaseReadiness_WolfConsensus 狼人商刀要求全部存活狼人都提交。
+func TestPhaseReadiness_WolfConsensus(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), seer("s"), witch("wi"),
+		villagers("v1", "v2", "v3"),
+	)...)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+
+	r := g.e.PhaseReadiness()
+	if r.Ready {
+		t.Error("无人提交时不应就绪")
+	}
+	if len(r.Pending) != 2 {
+		t.Fatalf("应当还差两名狼人，实际 %d: %+v", len(r.Pending), r.Pending)
+	}
+	for _, p := range r.Pending {
+		if p.Skill != pb.SkillType_SKILL_TYPE_KILL {
+			t.Errorf("待办技能应为 KILL，实际 %v", p.Skill)
+		}
+	}
+
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	r = g.e.PhaseReadiness()
+	if r.Ready {
+		t.Error("Multiple=true，只有一狼提交时仍不应就绪")
+	}
+	if len(r.Pending) != 1 || r.Pending[0].PlayerID != "w2" {
+		t.Errorf("应当还差 w2，实际 %+v", r.Pending)
+	}
+	if len(r.Acted) != 1 || r.Acted[0] != "w1" {
+		t.Errorf("已行动者应为 [w1]，实际 %v", r.Acted)
+	}
+
+	g.mustUse("w2", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	if r = g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("两狼都提交后应当就绪，仍差 %+v", r.Pending)
+	}
+}
+
+// TestPhaseReadiness_NoEligibleActor 无人能承担的必需步骤视为自动满足，
+// 否则阶段会永远卡住。
+func TestPhaseReadiness_NoEligibleActor(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), seer("s"), villagers("v1", "v2"),
+	)...)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+
+	// 唯一的狼出局后，狼人步骤没有合格行动者
+	g.setDead("w1")
+	if r := g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("没有合格行动者时应视为就绪，实际仍差 %+v", r.Pending)
+	}
+}
+
+// TestPhaseReadiness_OptionalStepsNeverBlock 非必需步骤不影响就绪。
+func TestPhaseReadiness_OptionalStepsNeverBlock(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), guard("g"), seer("s"), witch("wi"),
+		villagers("v1", "v2"),
+	)...)
+
+	// NIGHT_GUARD：守卫可以选择不守护
+	if r := g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("守卫阶段非必需，应当就绪，实际 %+v", r.Pending)
+	}
+
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	if r := g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("女巫阶段非必需，应当就绪，实际 %+v", r.Pending)
+	}
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	if r := g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("预言家阶段非必需，应当就绪，实际 %+v", r.Pending)
+	}
+}
+
+// TestPhaseReadiness_Vote 投票要求全体存活玩家参与。
+func TestPhaseReadiness_Vote(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), seer("s"), villagers("v1", "v2"),
+	)...)
+	g.walkNight()
+	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+
+	r := g.e.PhaseReadiness()
+	if len(r.Pending) != 4 {
+		t.Fatalf("应当还差 4 人投票，实际 %d", len(r.Pending))
+	}
+
+	g.vote("v1", "w1", "s", "v1")
+	r = g.e.PhaseReadiness()
+	if r.Ready {
+		t.Error("还有人没投时不应就绪")
+	}
+	if len(r.Pending) != 1 || r.Pending[0].PlayerID != "v2" {
+		t.Errorf("应当还差 v2，实际 %+v", r.Pending)
+	}
+
+	g.vote("v1", "v2")
+	if r = g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("全员投票后应当就绪，仍差 %+v", r.Pending)
+	}
+}
+
+// TestPhaseReadiness_MultipleFalse Multiple=false 时任意一人完成即可。
+func TestPhaseReadiness_MultipleFalse(t *testing.T) {
+	cfg := DefaultGameConfig()
+	// 造一个双守卫且必须行动的板子，但只要求其中一人
+	guardPhase := cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_GUARD]
+	guardPhase.Steps = []PhaseStep{
+		{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+		{Role: pb.RoleType_ROLE_TYPE_GUARD, Skill: pb.SkillType_SKILL_TYPE_PROTECT,
+			Required: true, Multiple: false},
+	}
+
+	g := newRuleGame(t, cfg, seats(
+		wolf("w1"), guard("g1"), guard("g2"), villagers("v1", "v2"),
+	)...)
+
+	if r := g.e.PhaseReadiness(); r.Ready {
+		t.Error("两名守卫都未行动时不应就绪")
+	}
+	g.mustUse("g1", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	if r := g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("Multiple=false，一人完成即应就绪，仍差 %+v", r.Pending)
+	}
+}
+
+// TestPhaseReadiness_TriggerPhase 死亡技能阶段只等触发者一人。
+func TestPhaseReadiness_TriggerPhase(t *testing.T) {
+	cfg := DefaultGameConfig()
+	hunterPhase := cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER]
+	hunterPhase.Steps = []PhaseStep{
+		{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+		{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT,
+			Required: true},
+		{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
+	}
+
+	g := newRuleGame(t, cfg, seats(
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
+		villagers("v1", "v2", "v3"),
+	)...)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.mustUse("w2", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+
+	r := g.e.PhaseReadiness()
+	if len(r.Pending) != 1 || r.Pending[0].PlayerID != "h" {
+		t.Fatalf("应当只等被触发的猎人，实际 %+v", r.Pending)
+	}
+	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
+	if r = g.e.PhaseReadiness(); !r.Ready {
+		t.Errorf("猎人开枪后应当就绪，仍差 %+v", r.Pending)
+	}
+}
+
+// TestPhaseReadiness_DoesNotBlockEndPhase 就绪与否不影响 EndPhase——
+// 引擎不替调用方决定阶段何时结束。
+func TestPhaseReadiness_DoesNotBlockEndPhase(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"),
+	)...)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+
+	if g.e.PhaseReadiness().Ready {
+		t.Fatal("前置：此刻不应就绪")
+	}
+	if _, err := g.e.EndPhase(); err != nil {
+		t.Errorf("未就绪时 EndPhase 仍应放行（超时推进由调用方决定），实际 %v", err)
+	}
+}

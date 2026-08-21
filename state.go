@@ -1,7 +1,7 @@
 package werewolf
 
 import (
-	"sync"
+	"sort"
 
 	pb "github.com/Zereker/werewolf/proto"
 )
@@ -10,12 +10,23 @@ import (
 // 用于管理回合内各阶段之间共享的临时状态
 // 包含夜晚和白天的相关状态（如猎人触发可能发生在投票阶段）
 type RoundContext struct {
-	KillTarget        string          // 狼人击杀目标（女巫可查询）
-	ProtectedPlayers  map[string]bool // 被守卫保护的玩家
-	SavedPlayers      map[string]bool // 被女巫救的玩家
-	PoisonedPlayers   map[string]bool // 被女巫毒的玩家
-	HunterTriggered   bool            // 猎人是否被触发（死亡时）
-	TriggeredHunterID string          // 被触发的猎人ID
+	KillTarget       string          // 狼人击杀目标（女巫可查询）
+	ProtectedPlayers map[string]bool // 被守卫保护的玩家
+	SavedPlayers     map[string]bool // 被女巫救的玩家
+	PoisonedPlayers  map[string]bool // 被女巫毒的玩家
+
+	// PendingTriggers 待结算的死亡技能，先进先出。
+	//
+	// 此前这里是 HunterTriggered / TriggeredHunterID 两个猎人专属字段，
+	// 每加一个死亡触发角色（狼王、白痴）就要再加两个字段、
+	// 并在引擎的阶段流转里多一个分支。改成队列后引擎不认识任何具体角色。
+	PendingTriggers []PendingTrigger
+}
+
+// PendingTrigger 一个待结算的死亡技能
+type PendingTrigger struct {
+	PlayerID string       // 触发者
+	Phase    pb.PhaseType // 该去哪个阶段结算
 }
 
 // NewRoundContext 创建新的回合上下文
@@ -80,8 +91,10 @@ func (c RoleCategory) String() string {
 
 // CategoryOf 由角色推导默认类别。
 //
-// 自定义角色（狼王、白痴、骑士等）若不在此表中，会落到 Unknown，
-// 需要调用方通过 Engine.SetPlayerCategory 显式指定，否则不参与屠边判定。
+// 只覆盖内置的六个角色。pb.RoleType 的底层是 int32，调用方可以用
+// 超出内置枚举的取值来定义自己的角色（建议从 1000 起，避免与后续
+// 内置角色撞号）；这类角色会落到 Unknown，需通过 AddCustomPlayer
+// 显式给出阵营与类别，否则不参与屠边判定。
 func CategoryOf(role pb.RoleType) RoleCategory {
 	switch role {
 	case pb.RoleType_ROLE_TYPE_WEREWOLF:
@@ -114,29 +127,18 @@ type PlayerState struct {
 	LastProtectedTarget string // 上一回合保护的目标
 }
 
-// State 游戏状态
+// gameState 游戏状态。
 //
-// # 并发安全说明
+// # 并发
 //
-// State 使用 RWMutex 保护所有字段。当通过 Engine 访问时，
-// Engine 也有自己的 RWMutex，形成嵌套锁（双重锁）。
+// 本类型自身不加锁。它是 Engine 的内部状态，不导出、也不出现在任何
+// 导出签名里，全部访问都发生在 Engine 持锁期间；Resolver 拿到的是
+// 只读的 GameView，同样在锁内构造与使用。
 //
-// 设计选择说明：
-//   - 这种设计是有意为之，确保 State 可以独立使用时也是线程安全的
-//   - 嵌套锁不会死锁，因为总是按相同顺序获取（Engine.mu -> State.mu）
-//   - 性能影响：有一定开销，但对于回合制游戏场景可以接受
-//
-// 替代方案（未采用）：
-//   - 只在 Engine 层加锁：需要确保 State 永远不会被直接访问
-//   - 使用 sync.Map：对于复杂状态结构不太适合
-//
-// 使用建议：
-//   - 优先通过 Engine 的方法访问状态
-//   - 避免持有锁时进行耗时操作
-//   - 如需高性能场景，可重构为单层锁设计
-type State struct {
-	mu sync.RWMutex
-
+// 此前这里有一层自己的 RWMutex，与 Engine 的锁构成嵌套双锁，理由是
+// 「State 可以独立使用」——但收进包内之后这个前提不再成立，多出来的
+// 一层锁只剩开销与心智负担。
+type gameState struct {
 	Phase   pb.PhaseType            // 当前阶段
 	Round   int                     // 当前回合
 	players map[string]*PlayerState // 玩家状态（私有，通过方法访问）
@@ -145,9 +147,9 @@ type State struct {
 	RoundCtx *RoundContext
 }
 
-// NewState 创建游戏状态
-func NewState() *State {
-	return &State{
+// newState 创建游戏状态
+func newState() *gameState {
+	return &gameState{
 		Phase:    pb.PhaseType_PHASE_TYPE_START,
 		Round:    0,
 		players:  make(map[string]*PlayerState),
@@ -166,18 +168,18 @@ func CampOf(role pb.RoleType) pb.Camp {
 	return pb.Camp_CAMP_GOOD
 }
 
-// AddPlayer 添加玩家。阵营与角色类别由角色推导。
+// addPlayer 添加玩家。阵营与角色类别由角色推导。
 //
 // 返回错误：ID 为空、ID 已存在、角色不能作为玩家身份（如上帝）。
-func (s *State) AddPlayer(id string, role pb.RoleType) error {
-	return s.AddCustomPlayer(id, role, CampOf(role), CategoryOf(role))
+func (s *gameState) addPlayer(id string, role pb.RoleType) error {
+	return s.addCustomPlayer(id, role, CampOf(role), CategoryOf(role))
 }
 
-// AddCustomPlayer 添加玩家并显式指定阵营与角色类别。
+// addCustomPlayer 添加玩家并显式指定阵营与角色类别。
 //
 // 供扩展角色使用：隐狼是好人牌面的狼、白痴是不参与屠边的好人，
 // 这类角色无法从内置映射推导，需要调用方直接给出。
-func (s *State) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
+func (s *gameState) addCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
 	if id == "" {
 		return ErrInvalidPlayerID
 	}
@@ -186,9 +188,6 @@ func (s *State) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, categ
 		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
 			"role %v cannot be assigned to a player", role)
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if _, exists := s.players[id]; exists {
 		return WrapError(pb.ErrorCode_ERROR_CODE_PLAYER_EXISTS, "player %q already exists", id)
@@ -213,10 +212,7 @@ func (s *State) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, categ
 }
 
 // countCamps 统计各阵营存活人数（包内使用）
-func (s *State) countCamps() (good, evil int) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) countCamps() (good, evil int) {
 	for _, p := range s.players {
 		if !p.Alive {
 			continue
@@ -231,13 +227,29 @@ func (s *State) countCamps() (good, evil int) {
 	return good, evil
 }
 
+// getPlayerSnapshot 返回玩家内部状态的值副本（包内使用）
+func (s *gameState) getPlayerSnapshot(id string) (PlayerState, bool) {
+	p, ok := s.players[id]
+	if !ok {
+		return PlayerState{}, false
+	}
+	return *p, true
+}
+
+// currentPhase 当前阶段（包内使用，自带锁）
+func (s *gameState) currentPhase() pb.PhaseType {
+	return s.Phase
+}
+
+// currentRound 当前回合（包内使用，自带锁）
+func (s *gameState) currentRound() int {
+	return s.Round
+}
+
 // getPlayer 获取玩家（包内使用）
 // 返回内部指针，仅限包内代码使用
 // 外部请使用 GetPlayerInfo(id) 获取只读副本
-func (s *State) getPlayer(id string) (*PlayerState, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 	p, ok := s.players[id]
 	return p, ok
 }
@@ -255,10 +267,7 @@ type PlayerInfo struct {
 }
 
 // GetPlayerInfo 获取玩家信息的只读副本
-func (s *State) GetPlayerInfo(id string) (PlayerInfo, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) GetPlayerInfo(id string) (PlayerInfo, bool) {
 	p, ok := s.players[id]
 	if !ok {
 		return PlayerInfo{}, false
@@ -277,10 +286,7 @@ func (s *State) GetPlayerInfo(id string) (PlayerInfo, bool) {
 }
 
 // getAlivePlayerIDsByRole 获取指定角色的存活玩家ID列表（包内使用）
-func (s *State) getAlivePlayerIDsByRole(role pb.RoleType) []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) getAlivePlayerIDsByRole(role pb.RoleType) []string {
 	result := make([]string, 0)
 	for id, p := range s.players {
 		if p.Alive && p.Role == role {
@@ -290,11 +296,19 @@ func (s *State) getAlivePlayerIDsByRole(role pb.RoleType) []string {
 	return result
 }
 
-// getAlivePlayerIDs 获取所有存活玩家ID列表（包内使用）
-func (s *State) getAlivePlayerIDs() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// allPlayerIDs 返回全部玩家ID，按字典序排序（包内使用）。
+// 排序是为了让面向玩家的视图输出稳定，不受 map 遍历顺序影响。
+func (s *gameState) allPlayerIDs() []string {
+	result := make([]string, 0, len(s.players))
+	for id := range s.players {
+		result = append(result, id)
+	}
+	sort.Strings(result)
+	return result
+}
 
+// getAlivePlayerIDs 获取所有存活玩家ID列表（包内使用）
+func (s *gameState) getAlivePlayerIDs() []string {
 	result := make([]string, 0)
 	for id, p := range s.players {
 		if p.Alive {
@@ -304,11 +318,8 @@ func (s *State) getAlivePlayerIDs() []string {
 	return result
 }
 
-// ApplyEffect 应用效果
-func (s *State) ApplyEffect(effect *Effect) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+// applyEffect 应用效果
+func (s *gameState) applyEffect(effect *Effect) {
 	// 检查效果是否被取消（必须在锁内检查以避免竞态）
 	if effect.Canceled {
 		return
@@ -358,32 +369,35 @@ func (s *State) ApplyEffect(effect *Effect) {
 			witch.HasPoison = false
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
-	case pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED:
-		// 标记猎人被触发
-		s.RoundCtx.HunterTriggered = true
-		s.RoundCtx.TriggeredHunterID = effect.SourceID
+	case pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED:
+		// 死亡技能入队，等待流转到对应阶段结算
+		if phase, ok := effect.triggerPhase(); ok && effect.SourceID != "" {
+			s.RoundCtx.PendingTriggers = append(s.RoundCtx.PendingTriggers,
+				PendingTrigger{PlayerID: effect.SourceID, Phase: phase})
+		}
 	}
 }
 
-// ResetRoundState 重置回合状态（每回合开始时调用）
-func (s *State) ResetRoundState() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+// resetRoundState 重置回合状态（每回合开始时调用）
+func (s *gameState) resetRoundState() {
 	s.resetRoundStateUnlocked()
 }
 
 // resetRoundStateUnlocked 内部方法，不获取锁
-func (s *State) resetRoundStateUnlocked() {
+func (s *gameState) resetRoundStateUnlocked() {
 	// 创建新的回合上下文
 	s.RoundCtx = NewRoundContext()
 }
 
-// NextPhase 切换到下一阶段
-func (s *State) NextPhase(phase pb.PhaseType) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// startAt 把状态置到开局：指定阶段、第一回合、干净的回合上下文
+func (s *gameState) startAt(phase pb.PhaseType) {
+	s.Phase = phase
+	s.Round = 1
+	s.resetRoundStateUnlocked()
+}
 
+// nextPhase 切换到下一阶段
+func (s *gameState) nextPhase(phase pb.PhaseType) {
 	s.Phase = phase
 	// 进入新的夜晚（守卫阶段）时增加回合数并重置状态
 	if phase == pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
@@ -392,12 +406,9 @@ func (s *State) NextPhase(phase pb.PhaseType) {
 	}
 }
 
-// GetWolfTeammates 获取狼人队友（不包括自己）
+// getWolfTeammates 获取狼人队友（不包括自己）
 // 只有狼人才能查询队友，非狼人返回空列表
-func (s *State) GetWolfTeammates(playerID string) []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) getWolfTeammates(playerID string) []string {
 	// 检查请求者是否是狼人
 	player, ok := s.players[playerID]
 	if !ok || player.Role != pb.RoleType_ROLE_TYPE_WEREWOLF {
@@ -413,7 +424,7 @@ func (s *State) GetWolfTeammates(playerID string) []string {
 	return result
 }
 
-// CheckVictory 按指定方式检查胜利条件。
+// checkVictory 按指定方式检查胜利条件。
 //
 // 好人阵营的胜利条件与判定方式无关：「將狼人淘汰以獲取勝利」。
 // 狼人阵营的胜利条件取决于 mode：
@@ -423,10 +434,7 @@ func (s *State) GetWolfTeammates(playerID string) []string {
 //
 // 屠边判定只对开局就存在的类别生效：没有神职的板子不会因
 // 「神职全灭」在开局瞬间判负，平民同理。
-func (s *State) CheckVictory(mode VictoryMode) (bool, pb.Camp) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) checkVictory(mode VictoryMode) (bool, pb.Camp) {
 	var goodAlive, evilAlive int
 	var godsTotal, godsAlive int
 	var villagersTotal, villagersAlive int
@@ -486,58 +494,12 @@ func (s *State) CheckVictory(mode VictoryMode) (bool, pb.Camp) {
 	return false, pb.Camp_CAMP_UNSPECIFIED
 }
 
-// CanUseAntidote 检查女巫是否有解药
-func (s *State) CanUseAntidote(witchID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	witch, ok := s.players[witchID]
-	if !ok || witch.Role != pb.RoleType_ROLE_TYPE_WITCH {
-		return false
-	}
-	return witch.HasAntidote
-}
-
-// CanUsePoison 检查女巫是否有毒药
-func (s *State) CanUsePoison(witchID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	witch, ok := s.players[witchID]
-	if !ok || witch.Role != pb.RoleType_ROLE_TYPE_WITCH {
-		return false
-	}
-	return witch.HasPoison
-}
-
-// CanProtect 检查守卫是否可以保护目标（考虑连续保护限制）
-func (s *State) CanProtect(guardID, targetID string, canRepeat bool) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	guard, ok := s.players[guardID]
-	if !ok || guard.Role != pb.RoleType_ROLE_TYPE_GUARD {
-		return false
-	}
-
-	// 如果允许连续保护，直接返回 true
-	if canRepeat {
-		return true
-	}
-
-	// 否则检查是否与上一回合保护相同目标
-	return guard.LastProtectedTarget != targetID
-}
-
-// AnyAliveWitchHasAntidote 是否还有存活女巫持有解药。
+// anyAliveWitchHasAntidote 是否还有存活女巫持有解药。
 //
 // 用于规则「解藥未使用時可以得知狼人的殺害對象」：解药用完后，
 // 女巫不再获知刀口。标准板子只有一名女巫，此时即「该女巫是否仍持有解药」；
 // 多女巫板子下只要有一人持有解药，刀口就仍需下发。
-func (s *State) AnyAliveWitchHasAntidote() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) anyAliveWitchHasAntidote() bool {
 	for _, p := range s.players {
 		if p.Alive && p.Role == pb.RoleType_ROLE_TYPE_WITCH && p.HasAntidote {
 			return true
@@ -546,63 +508,41 @@ func (s *State) AnyAliveWitchHasAntidote() bool {
 	return false
 }
 
-// HunterPending 是否有猎人技能待结算（尚未进入猎人阶段）。
-func (s *State) HunterPending() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.RoundCtx == nil {
-		return false
+// peekTrigger 查看队首的待结算死亡技能
+func (s *gameState) peekTrigger() (PendingTrigger, bool) {
+	if s.RoundCtx == nil || len(s.RoundCtx.PendingTriggers) == 0 {
+		return PendingTrigger{}, false
 	}
-	return s.RoundCtx.HunterTriggered
+	return s.RoundCtx.PendingTriggers[0], true
 }
 
-// TriggeredHunterID 返回本次被触发的猎人ID，无则为空。
-func (s *State) TriggeredHunterID() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.RoundCtx == nil {
-		return ""
+// popTrigger 弹出队首的待结算死亡技能
+func (s *gameState) popTrigger() {
+	if s.RoundCtx == nil || len(s.RoundCtx.PendingTriggers) == 0 {
+		return
 	}
-	return s.RoundCtx.TriggeredHunterID
+	s.RoundCtx.PendingTriggers = s.RoundCtx.PendingTriggers[1:]
 }
 
-// ConsumeHunterTrigger 消费猎人触发标记（读取并清除）。
-//
-// 猎人阶段结束时调用。标记必须被消费，否则它会在整个回合内持续为真，
-// 导致同一回合的投票阶段再次进入猎人阶段、让已开过枪的猎人开出第二枪。
-func (s *State) ConsumeHunterTrigger() (bool, string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.RoundCtx == nil {
-		return false, ""
-	}
-
-	triggered, hunterID := s.RoundCtx.HunterTriggered, s.RoundCtx.TriggeredHunterID
-	s.RoundCtx.HunterTriggered = false
-	s.RoundCtx.TriggeredHunterID = ""
-	return triggered, hunterID
+// hasPendingTrigger 是否还有未结算的死亡技能
+func (s *gameState) hasPendingTrigger() bool {
+	_, ok := s.peekTrigger()
+	return ok
 }
 
 // GetRoundContext 获取回合上下文的只读副本
-func (s *State) GetRoundContext() *RoundContext {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
+func (s *gameState) GetRoundContext() *RoundContext {
 	if s.RoundCtx == nil {
 		return nil
 	}
 
 	// 返回副本以避免外部修改
 	return &RoundContext{
-		KillTarget:        s.RoundCtx.KillTarget,
-		ProtectedPlayers:  copyStringBoolMap(s.RoundCtx.ProtectedPlayers),
-		SavedPlayers:      copyStringBoolMap(s.RoundCtx.SavedPlayers),
-		PoisonedPlayers:   copyStringBoolMap(s.RoundCtx.PoisonedPlayers),
-		HunterTriggered:   s.RoundCtx.HunterTriggered,
-		TriggeredHunterID: s.RoundCtx.TriggeredHunterID,
+		KillTarget:       s.RoundCtx.KillTarget,
+		ProtectedPlayers: copyStringBoolMap(s.RoundCtx.ProtectedPlayers),
+		SavedPlayers:     copyStringBoolMap(s.RoundCtx.SavedPlayers),
+		PoisonedPlayers:  copyStringBoolMap(s.RoundCtx.PoisonedPlayers),
+		PendingTriggers:  append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
 	}
 }
 
