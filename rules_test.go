@@ -143,9 +143,9 @@ func (g *ruleGame) mustUse(playerID string, skill pb.SkillType, targetID string)
 func (g *ruleGame) end(expect pb.PhaseType) []*Effect {
 	g.t.Helper()
 	from := g.e.GetCurrentPhase()
-	effects, err := g.e.EndSubStep()
+	effects, err := g.e.EndPhase()
 	if err != nil {
-		g.t.Fatalf("EndSubStep() 于 %v 失败: %v", from, err)
+		g.t.Fatalf("EndPhase() 于 %v 失败: %v", from, err)
 	}
 	if got := g.e.GetCurrentPhase(); got != expect {
 		g.t.Fatalf("阶段流转错误: %v 结束后期望 %v，实际 %v", from, expect, got)
@@ -156,9 +156,9 @@ func (g *ruleGame) end(expect pb.PhaseType) []*Effect {
 // endAny 结束当前子阶段，不断言目标阶段。
 func (g *ruleGame) endAny() []*Effect {
 	g.t.Helper()
-	effects, err := g.e.EndSubStep()
+	effects, err := g.e.EndPhase()
 	if err != nil {
-		g.t.Fatalf("EndSubStep() 失败: %v", err)
+		g.t.Fatalf("EndPhase() 失败: %v", err)
 	}
 	return effects
 }

@@ -631,7 +631,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "seer",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 阶段2：狼人阶段
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
@@ -655,7 +655,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 阶段3：女巫阶段
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
@@ -674,7 +674,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
 		TargetID: "v1",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 阶段4：预言家阶段
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
@@ -686,7 +686,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_CHECK,
 		TargetID: "wolf1",
 	})
-	effects, _ := engine.EndSubStep()
+	effects, _ := engine.EndPhase()
 
 	// 验证预言家查验结果
 	var checkEffect *Effect
@@ -707,7 +707,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
 		t.Errorf("expected NIGHT_RESOLVE, got %v", engine.GetCurrentPhase())
 	}
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	// 阶段6：白天
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
@@ -740,7 +740,7 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	engine.Start()
 
 	// 守卫阶段
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 狼人阶段：平票（wolf1 投 v1, wolf2 投 v2）
 	engine.SubmitSkillUse(&SkillUse{
@@ -753,7 +753,7 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v2",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 女巫阶段：平票导致无击杀，NightKillTarget 应为空
 	killTarget := engine.GetNightKillTarget()
@@ -762,9 +762,9 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	}
 
 	// 完成剩余阶段
-	engine.EndSubStep() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndSubStep() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
+	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	// v1 和 v2 都应该存活（没有达成共识）
 	v1, _ := engine.state.getPlayer("v1")
@@ -793,7 +793,7 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "victim",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 狼人杀 victim（应该被守卫挡住）
 	engine.SubmitSkillUse(&SkillUse{
@@ -801,7 +801,7 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "victim",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 女巫阶段：刀口照常记录（女巫不知道守卫守了谁），
 	// 守护是否抵消由 NIGHT_RESOLVE 判定
@@ -811,9 +811,9 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 	}
 
 	// 完成剩余阶段
-	engine.EndSubStep() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndSubStep() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
+	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	// victim 存活
 	victim, _ := engine.state.getPlayer("victim")
@@ -840,25 +840,25 @@ func TestSubStepMode_MultipleRounds(t *testing.T) {
 	}
 
 	// 第一轮夜晚：空过
-	engine.EndSubStep() // NIGHT_GUARD -> NIGHT_WOLF
-	engine.EndSubStep() // NIGHT_WOLF -> NIGHT_WITCH
-	engine.EndSubStep() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndSubStep() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_GUARD -> NIGHT_WOLF
+	engine.EndPhase() // NIGHT_WOLF -> NIGHT_WITCH
+	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
+	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
 		t.Errorf("expected DAY, got %v", engine.GetCurrentPhase())
 	}
 
 	// 白天 -> 投票
-	engine.EndSubStep() // DAY -> VOTE
+	engine.EndPhase() // DAY -> VOTE
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_VOTE {
 		t.Errorf("expected VOTE, got %v", engine.GetCurrentPhase())
 	}
 
 	// 投票 -> 第二轮夜晚
-	engine.EndSubStep() // VOTE -> NIGHT_GUARD
+	engine.EndPhase() // VOTE -> NIGHT_GUARD
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
 		t.Errorf("expected NIGHT_GUARD, got %v", engine.GetCurrentPhase())

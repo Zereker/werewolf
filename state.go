@@ -138,7 +138,6 @@ type State struct {
 	mu sync.RWMutex
 
 	Phase   pb.PhaseType            // 当前阶段
-	SubStep int                     // 当前子步骤（夜晚阶段使用）
 	Round   int                     // 当前回合
 	players map[string]*PlayerState // 玩家状态（私有，通过方法访问）
 
@@ -270,48 +269,6 @@ func (s *State) GetPlayerInfo(id string) (PlayerInfo, bool) {
 	}, true
 }
 
-// getAlivePlayers 获取存活玩家（包内使用）
-func (s *State) getAlivePlayers() []*PlayerState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make([]*PlayerState, 0)
-	for _, p := range s.players {
-		if p.Alive {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// getAlivePlayersByRole 获取指定角色的存活玩家（包内使用）
-func (s *State) getAlivePlayersByRole(role pb.RoleType) []*PlayerState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make([]*PlayerState, 0)
-	for _, p := range s.players {
-		if p.Alive && p.Role == role {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-// getAlivePlayersByCamp 获取指定阵营的存活玩家（包内使用）
-func (s *State) getAlivePlayersByCamp(camp pb.Camp) []*PlayerState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make([]*PlayerState, 0)
-	for _, p := range s.players {
-		if p.Alive && p.Camp == camp {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
 // getAlivePlayerIDsByRole 获取指定角色的存活玩家ID列表（包内使用）
 func (s *State) getAlivePlayerIDsByRole(role pb.RoleType) []string {
 	s.mu.RLock()
@@ -411,7 +368,6 @@ func (s *State) ResetRoundState() {
 
 // resetRoundStateUnlocked 内部方法，不获取锁
 func (s *State) resetRoundStateUnlocked() {
-	s.SubStep = 0
 	// 创建新的回合上下文
 	s.RoundCtx = NewRoundContext()
 }
@@ -523,44 +479,6 @@ func (s *State) CheckVictory(mode VictoryMode) (bool, pb.Camp) {
 	return false, pb.Camp_CAMP_UNSPECIFIED
 }
 
-// UseAntidote 女巫使用解药
-// 返回 true 表示成功使用，false 表示没有解药
-func (s *State) UseAntidote(witchID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	witch, ok := s.players[witchID]
-	if !ok || witch.Role != pb.RoleType_ROLE_TYPE_WITCH {
-		return false
-	}
-
-	if !witch.HasAntidote {
-		return false
-	}
-
-	witch.HasAntidote = false
-	return true
-}
-
-// UsePoison 女巫使用毒药
-// 返回 true 表示成功使用，false 表示没有毒药
-func (s *State) UsePoison(witchID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	witch, ok := s.players[witchID]
-	if !ok || witch.Role != pb.RoleType_ROLE_TYPE_WITCH {
-		return false
-	}
-
-	if !witch.HasPoison {
-		return false
-	}
-
-	witch.HasPoison = false
-	return true
-}
-
 // CanUseAntidote 检查女巫是否有解药
 func (s *State) CanUseAntidote(witchID string) bool {
 	s.mu.RLock()
@@ -583,18 +501,6 @@ func (s *State) CanUsePoison(witchID string) bool {
 		return false
 	}
 	return witch.HasPoison
-}
-
-// SetLastProtectedTarget 设置守卫上一回合保护的目标
-func (s *State) SetLastProtectedTarget(guardID, targetID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	guard, ok := s.players[guardID]
-	if !ok || guard.Role != pb.RoleType_ROLE_TYPE_GUARD {
-		return
-	}
-	guard.LastProtectedTarget = targetID
 }
 
 // CanProtect 检查守卫是否可以保护目标（考虑连续保护限制）
@@ -691,14 +597,6 @@ func (s *State) GetRoundContext() *RoundContext {
 		HunterTriggered:   s.RoundCtx.HunterTriggered,
 		TriggeredHunterID: s.RoundCtx.TriggeredHunterID,
 	}
-}
-
-// IsPlayerProtectedThisRound 检查玩家本回合是否被保护
-func (s *State) IsPlayerProtectedThisRound(playerID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.RoundCtx.IsProtected(playerID)
 }
 
 // copyStringBoolMap 复制 map[string]bool

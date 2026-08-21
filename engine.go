@@ -328,13 +328,6 @@ func (e *Engine) IsGameOver() bool {
 	return e.state.Phase == pb.PhaseType_PHASE_TYPE_END
 }
 
-// GetCurrentSubStep 获取当前子步骤
-func (e *Engine) GetCurrentSubStep() int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.state.SubStep
-}
-
 // GetNightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）
 func (e *Engine) GetNightKillTarget() string {
 	e.mu.RLock()
@@ -514,11 +507,6 @@ func (e *Engine) EndSubStep() ([]*Effect, error) {
 	return e.EndPhase()
 }
 
-// isValidPhase 检查是否是有效的游戏阶段
-func (e *Engine) isValidPhase(phase pb.PhaseType) bool {
-	return e.phase.GetPhaseConfig(phase) != nil
-}
-
 // calculateNextPhase 计算下一阶段（考虑动态触发）
 //
 // 猎人触发标记是「一次性」的：由死亡结算置位，进入猎人阶段后必须消费掉。
@@ -560,16 +548,6 @@ func (e *Engine) snapshotEventHandlersLocked() []EventHandler {
 	handlers := make([]EventHandler, len(e.eventHandlers))
 	copy(handlers, e.eventHandlers)
 	return handlers
-}
-
-// publishEvent 发布事件
-func (e *Engine) publishEvent(event *pb.Event) {
-	e.mu.RLock()
-	handlers := e.snapshotEventHandlersLocked()
-	logger := e.logger
-	e.mu.RUnlock()
-
-	dispatchEvent(handlers, logger, event)
 }
 
 // dispatchEvent 在锁外分发事件。

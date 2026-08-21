@@ -7,6 +7,10 @@ import (
 )
 
 // 超时常量
+//
+// 引擎本身不计时——阶段何时结束完全由调用方决定（调用 EndPhase）。
+// 这些常量与 PhaseConfig.Timeout 是给调用方参考的建议值，
+// 调用方据此设置自己的定时器。
 const (
 	DefaultPhaseTimeout = 30 * time.Second // 默认阶段超时
 	DayPhaseTimeout     = 60 * time.Second // 白天阶段超时（发言时间较长）
@@ -44,7 +48,7 @@ type GameConfig struct {
 	// 阶段配置
 	Phases map[pb.PhaseType]*PhaseConfig
 
-	// 超时配置
+	// 超时配置（建议值，引擎不据此计时，详见超时常量的说明）
 	DefaultTimeout time.Duration
 }
 
@@ -52,39 +56,30 @@ type GameConfig struct {
 type PhaseConfig struct {
 	Type      pb.PhaseType  // 阶段类型
 	Steps     []PhaseStep   // 步骤列表
-	Timeout   time.Duration // 超时时间
+	Timeout   time.Duration // 超时时间（建议值，引擎不据此计时）
 	NextPhase pb.PhaseType  // 下一阶段（声明式配置）
 }
 
 // PhaseStep 阶段步骤
+//
+// 步骤的先后由切片顺序决定。「是否允许多名玩家参与」「未行动如何处理」
+// 由各阶段的 Resolver 自行编码（如狼人按票数取共识、守卫只取首个提交）。
 type PhaseStep struct {
-	Role     pb.RoleType  // 哪个角色
-	Skill    pb.SkillType // 使用什么技能
-	Order    int          // 执行顺序
-	Required bool         // 是否必须行动
-	Multiple bool         // 是否允许多个玩家（如多狼）
+	Role  pb.RoleType  // 哪个角色
+	Skill pb.SkillType // 使用什么技能
 }
 
-// Visibility 消息可见性
-type Visibility int
-
-const (
-	VisibilityPrivate   Visibility = iota // 仅目标可见
-	VisibilityTeammates                   // 队友可见（如狼人队友）
-	VisibilityRole                        // 指定角色可见
-	VisibilityPublic                      // 所有人可见
-)
-
 // SkillUse 技能使用记录
+//
+// 玩家发言不走技能通道，由 Engine.SendMessage 处理，可见性也在那里按阶段路由。
 type SkillUse struct {
-	PlayerID   string       // 使用技能的玩家
-	Skill      pb.SkillType // 技能类型
-	TargetID   string       // 技能目标（单人）
-	Content    string       // 消息内容（发言/公告用）
-	Visibility Visibility   // 可见性
-	TargetRole pb.RoleType  // 目标角色（当 Visibility 是 VisibilityRole 时）
-	Phase      pb.PhaseType
-	Round      int
+	PlayerID string       // 使用技能的玩家
+	Skill    pb.SkillType // 技能类型
+	TargetID string       // 技能目标（单人）
+
+	// 以下字段由 Engine 在提交时填充，调用方无需设置
+	Phase pb.PhaseType
+	Round int
 }
 
 // DefaultGameConfig 默认游戏配置
@@ -119,9 +114,9 @@ func StandardDayPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_DAY,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
 			// 白天主要是发言，所有存活玩家
-			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_SPEAK, Order: 1, Required: false, Multiple: true},
+			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_SPEAK},
 		},
 		Timeout:   DayPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_VOTE,
@@ -133,8 +128,8 @@ func StandardVotePhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_VOTE,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
-			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_VOTE, Order: 1, Required: true, Multiple: true},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_VOTE},
 		},
 		Timeout:   VotePhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 进入下一夜
@@ -146,9 +141,9 @@ func DayHunterPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_DAY_HUNTER,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Order: 1, Required: false},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Order: 2, Required: false},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 猎人行动后进入下一夜
@@ -160,8 +155,8 @@ func NightGuardPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
-			{Role: pb.RoleType_ROLE_TYPE_GUARD, Skill: pb.SkillType_SKILL_TYPE_PROTECT, Order: 1, Required: false},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: pb.RoleType_ROLE_TYPE_GUARD, Skill: pb.SkillType_SKILL_TYPE_PROTECT},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
@@ -173,8 +168,8 @@ func NightWolfPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
-			{Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL, Order: 1, Required: true, Multiple: true},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL},
 		},
 		Timeout:   WolfPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
@@ -186,9 +181,9 @@ func NightWitchPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
-			{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_ANTIDOTE, Order: 1, Required: false},
-			{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_POISON, Order: 2, Required: false},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_ANTIDOTE},
+			{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_POISON},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_SEER,
@@ -200,8 +195,8 @@ func NightSeerPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_SEER,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
-			{Role: pb.RoleType_ROLE_TYPE_SEER, Skill: pb.SkillType_SKILL_TYPE_CHECK, Order: 1, Required: false},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: pb.RoleType_ROLE_TYPE_SEER, Skill: pb.SkillType_SKILL_TYPE_CHECK},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE,
@@ -213,7 +208,7 @@ func NightResolvePhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_DAY, // 默认进入白天，如有猎人死亡则动态改为猎人阶段
@@ -225,9 +220,9 @@ func NightHunterPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Order: 1, Required: false},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Order: 2, Required: false},
+			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_DAY,

@@ -646,7 +646,7 @@ func TestEngine_GetPhaseInfo_NightWolf(t *testing.T) {
 	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
 
 	engine.Start()
-	engine.EndSubStep() // GUARD -> WOLF
+	engine.EndPhase() // GUARD -> WOLF
 
 	info := engine.GetPhaseInfo()
 
@@ -683,7 +683,7 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
 
 	engine.Start()
-	engine.EndSubStep() // GUARD -> WOLF
+	engine.EndPhase() // GUARD -> WOLF
 
 	// Wolf kills v1
 	engine.SubmitSkillUse(&SkillUse{
@@ -691,7 +691,7 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
-	engine.EndSubStep() // WOLF -> WITCH
+	engine.EndPhase() // WOLF -> WITCH
 
 	info := engine.GetPhaseInfo()
 

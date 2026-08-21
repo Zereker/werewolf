@@ -84,31 +84,6 @@ func (p *Phase) GetAllowedSkills(phase pb.PhaseType, role pb.RoleType) []pb.Skil
 	return skills
 }
 
-// GetAllowedSkillsForSubStep 获取指定角色在当前子步骤允许的技能
-func (p *Phase) GetAllowedSkillsForSubStep(phase pb.PhaseType, subStep int, role pb.RoleType) []pb.SkillType {
-	config := p.GetPhaseConfig(phase)
-	if config == nil || subStep >= len(config.Steps) {
-		return nil
-	}
-
-	step := config.Steps[subStep]
-	// UNSPECIFIED 表示所有角色都可以
-	if step.Role == role || step.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED {
-		return []pb.SkillType{step.Skill}
-	}
-
-	return nil
-}
-
-// GetCurrentStepRole 获取当前子步骤需要行动的角色
-func (p *Phase) GetCurrentStepRole(phase pb.PhaseType, subStep int) pb.RoleType {
-	config := p.GetPhaseConfig(phase)
-	if config == nil || subStep >= len(config.Steps) {
-		return pb.RoleType_ROLE_TYPE_UNSPECIFIED
-	}
-	return config.Steps[subStep].Role
-}
-
 // NextSubPhase 计算下一阶段（使用声明式配置）
 func (p *Phase) NextSubPhase(current pb.PhaseType) pb.PhaseType {
 	// 游戏开始阶段的特殊处理

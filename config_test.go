@@ -52,9 +52,6 @@ func TestStandardDayPhase(t *testing.T) {
 	if godStep.Skill != pb.SkillType_SKILL_TYPE_ANNOUNCE {
 		t.Errorf("expected Skill=ANNOUNCE, got %v", godStep.Skill)
 	}
-	if !godStep.Required {
-		t.Error("expected god announce step to be Required")
-	}
 
 	// Verify speak step
 	speakStep := phase.Steps[1]
@@ -63,9 +60,6 @@ func TestStandardDayPhase(t *testing.T) {
 	}
 	if speakStep.Skill != pb.SkillType_SKILL_TYPE_SPEAK {
 		t.Errorf("expected Skill=SPEAK, got %v", speakStep.Skill)
-	}
-	if !speakStep.Multiple {
-		t.Error("expected speak step to allow Multiple")
 	}
 }
 
@@ -90,9 +84,6 @@ func TestStandardVotePhase(t *testing.T) {
 	if godStep.Skill != pb.SkillType_SKILL_TYPE_ANNOUNCE {
 		t.Errorf("expected Skill=ANNOUNCE, got %v", godStep.Skill)
 	}
-	if !godStep.Required {
-		t.Error("expected god announce step to be Required")
-	}
 
 	// Verify vote step
 	voteStep := phase.Steps[1]
@@ -101,12 +92,6 @@ func TestStandardVotePhase(t *testing.T) {
 	}
 	if voteStep.Skill != pb.SkillType_SKILL_TYPE_VOTE {
 		t.Errorf("expected Skill=VOTE, got %v", voteStep.Skill)
-	}
-	if !voteStep.Required {
-		t.Error("expected vote step to be Required")
-	}
-	if !voteStep.Multiple {
-		t.Error("expected vote step to allow Multiple")
 	}
 }
 
