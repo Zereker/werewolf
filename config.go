@@ -63,13 +63,25 @@ type PhaseConfig struct {
 	NextPhase pb.PhaseType  // 下一阶段（声明式配置）
 }
 
-// PhaseStep 阶段步骤
-//
-// 步骤的先后由切片顺序决定。「是否允许多名玩家参与」「未行动如何处理」
-// 由各阶段的 Resolver 自行编码（如狼人按票数取共识、守卫只取首个提交）。
+// PhaseStep 阶段步骤。步骤的先后由切片顺序决定。
 type PhaseStep struct {
 	Role  pb.RoleType  // 哪个角色
 	Skill pb.SkillType // 使用什么技能
+
+	// Required 该步骤是否必须完成，阶段才算就绪。
+	//
+	// 引擎不计时、也不会因此拒绝 EndPhase——它只据此回答
+	// Engine.PhaseReadiness()「还差谁没行动」，让调用方决定是继续等待
+	// 还是按超时推进。没有任何合格行动者时（例如守卫已出局），
+	// 该步骤视为自动满足。
+	Required bool
+
+	// Multiple 是否要求全部合格行动者都行动。
+	//
+	// true：所有人都提交了才算完成（狼人商刀、全员投票）
+	// false：任意一人提交即算完成
+	// 仅影响就绪判断；重复提交如何取舍由各阶段的 Resolver 决定。
+	Multiple bool
 }
 
 // SkillUse 技能使用记录
@@ -133,7 +145,7 @@ func StandardVotePhase() *PhaseConfig {
 		Type: pb.PhaseType_PHASE_TYPE_VOTE,
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_VOTE},
+			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_VOTE, Required: true, Multiple: true},
 		},
 		Timeout:   VotePhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 进入下一夜
@@ -173,7 +185,7 @@ func NightWolfPhase() *PhaseConfig {
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL},
+			{Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL, Required: true, Multiple: true},
 		},
 		Timeout:   WolfPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,

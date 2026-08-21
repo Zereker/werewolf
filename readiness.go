@@ -1,0 +1,117 @@
+package werewolf
+
+import (
+	pb "github.com/Zereker/werewolf/proto"
+)
+
+// PhaseReadiness 当前阶段的行动就绪情况。
+//
+// 引擎不计时，也不会替调用方决定阶段何时结束——但它手里握着
+// 「谁该行动、谁已经行动了」的全部信息，没有理由让调用方自己去数。
+// 此前 PhaseStep.Required / Multiple 声明了这层语义却从不读取，
+// 调用方只能自己维护一份「还差谁」的账。
+type PhaseReadiness struct {
+	Phase pb.PhaseType // 当前阶段
+	Round int          // 当前回合
+
+	// Ready 所有 Required 步骤是否都已满足。
+	// 为 false 时调用方可以继续等待；是否按超时强行推进由调用方决定，
+	// EndPhase 不会因未就绪而拒绝。
+	Ready bool
+
+	// Pending 还未完成的必需行动。Ready 为 true 时为空。
+	Pending []PendingAction
+
+	// Acted 本阶段已提交过技能的玩家，按 ID 排序。
+	Acted []string
+}
+
+// PendingAction 一项尚未完成的必需行动
+type PendingAction struct {
+	PlayerID string       // 该行动的玩家；步骤要求全员行动时逐个列出
+	Role     pb.RoleType  // 其角色
+	Skill    pb.SkillType // 尚未提交的技能
+}
+
+// PhaseReadiness 返回当前阶段还差谁行动。
+//
+// 判定只针对 Required 步骤；没有合格行动者的步骤（例如守卫已出局）
+// 视为自动满足，不会让阶段永远卡住。
+func (e *Engine) PhaseReadiness() PhaseReadiness {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	out := PhaseReadiness{
+		Phase: e.state.Phase,
+		Round: e.state.Round,
+		Ready: true,
+	}
+
+	// 已提交记录：playerID -> 该玩家提交过的技能集合
+	submitted := make(map[string]map[pb.SkillType]bool, len(e.pendingUses))
+	for _, use := range e.pendingUses {
+		if submitted[use.PlayerID] == nil {
+			submitted[use.PlayerID] = make(map[pb.SkillType]bool)
+		}
+		submitted[use.PlayerID][use.Skill] = true
+	}
+	for _, id := range e.state.allPlayerIDs() {
+		if submitted[id] != nil {
+			out.Acted = append(out.Acted, id)
+		}
+	}
+
+	phaseConfig := e.phase.GetPhaseConfig(e.state.Phase)
+	if phaseConfig == nil {
+		return out
+	}
+
+	trigger, hasTrigger := e.state.peekTrigger()
+	triggerActive := hasTrigger && trigger.Phase == e.state.Phase
+
+	for _, step := range phaseConfig.Steps {
+		// 上帝是系统角色，没有玩家承担
+		if !step.Required || step.Role == pb.RoleType_ROLE_TYPE_GOD {
+			continue
+		}
+
+		actors := e.actorsForStep(step.Role, triggerActive, trigger)
+		if len(actors) == 0 {
+			// 无人能承担该步骤，视为自动满足
+			continue
+		}
+
+		var missing []PendingAction
+		for _, id := range actors {
+			if !submitted[id][step.Skill] {
+				missing = append(missing, PendingAction{
+					PlayerID: id,
+					Role:     step.Role,
+					Skill:    step.Skill,
+				})
+			}
+		}
+
+		// Multiple=false 时任意一人完成即可
+		if !step.Multiple && len(missing) < len(actors) {
+			continue
+		}
+		if len(missing) > 0 {
+			out.Ready = false
+			out.Pending = append(out.Pending, missing...)
+		}
+	}
+
+	return out
+}
+
+// actorsForStep 该步骤的合格行动者。调用前需持有 e.mu。
+func (e *Engine) actorsForStep(role pb.RoleType, triggerActive bool, trigger PendingTrigger) []string {
+	if triggerActive {
+		return []string{trigger.PlayerID}
+	}
+	if role == pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+		return sortedStrings(e.state.getAlivePlayerIDs())
+	}
+	return sortedStrings(e.state.getAlivePlayerIDsByRole(role))
+}

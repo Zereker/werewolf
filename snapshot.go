@@ -273,6 +273,12 @@ func keySet(ids []string) map[string]bool {
 	return m
 }
 
+// sortedStrings 原地排序并返回，用于让面向调用方的列表输出稳定
+func sortedStrings(in []string) []string {
+	sort.Strings(in)
+	return in
+}
+
 // sortPlayerSnapshots 按 ID 排序
 func sortPlayerSnapshots(ps []PlayerSnapshot) {
 	sort.Slice(ps, func(i, j int) bool { return ps[i].ID < ps[j].ID })
