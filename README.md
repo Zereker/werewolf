@@ -3,15 +3,16 @@
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-一个纯 Go 实现的狼人杀游戏引擎库。状态机驱动，声明式配置，零外部依赖。
+一个纯 Go 实现的狼人杀游戏引擎库。状态机驱动，声明式配置，规则对齐维基百科条目。
 
 ## 特性
 
 - **状态机驱动** - 清晰的阶段流转，声明式规则配置
-- **规则可配置** - 女巫自救、守卫连守等规则可自定义
+- **规则对齐维基** - 以维基百科「狼人殺」条目为基准，规则逐条有测试覆盖
+- **规则可配置** - 女巫自救、守卫连守、同守同救、屠边/屠城均可切换
 - **单包设计** - 只需 `import "github.com/Zereker/werewolf"`
-- **零外部依赖** - 仅使用 Go 标准库
-- **线程安全** - 所有状态操作都有锁保护
+- **依赖极简** - 仅依赖 `google.golang.org/protobuf`（用于事件与枚举定义）
+- **线程安全** - 引擎的所有导出方法都可并发调用
 
 ## 安装
 
@@ -25,42 +26,92 @@ go get github.com/Zereker/werewolf
 package main
 
 import (
-    "fmt"
+	"fmt"
+	"log"
 
-    "github.com/Zereker/werewolf"
-    pb "github.com/Zereker/werewolf/proto"
+	"github.com/Zereker/werewolf"
+	pb "github.com/Zereker/werewolf/proto"
 )
 
 func main() {
-    // 1. 创建引擎（使用默认配置）
-    engine := werewolf.NewEngine(nil)
+	// 1. 创建引擎（nil 表示使用默认配置）
+	engine := werewolf.NewEngine(nil)
 
-    // 2. 添加玩家
-    engine.AddPlayer("p1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-    engine.AddPlayer("p2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-    engine.AddPlayer("p3", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-    engine.AddPlayer("p4", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-    engine.AddPlayer("p5", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-    engine.AddPlayer("p6", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	// 2. 添加玩家：2 狼、4 神、2 民
+	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	engine.AddPlayer("w2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("hunter", pb.RoleType_ROLE_TYPE_HUNTER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
 
-    // 3. 开始游戏
-    engine.Start()
+	// 3. 开始游戏，进入第一夜的守卫阶段
+	if err := engine.Start(); err != nil {
+		log.Fatal(err)
+	}
 
-    // 4. 提交技能使用
-    engine.SubmitSkillUse(&werewolf.SkillUse{
-        PlayerID: "p1",
-        Skill:    pb.SkillType_SKILL_TYPE_KILL,
-        TargetID: "p6",
-    })
+	// 4. 按阶段推进：每个阶段先提交技能，再调用 EndPhase 结算
+	//    Start() 之后是 NIGHT_GUARD，各阶段可提交的技能由 GetPhaseInfo 给出
+	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+		PlayerID: "guard", Skill: pb.SkillType_SKILL_TYPE_PROTECT, TargetID: "seer",
+	}))
+	next(engine) // NIGHT_GUARD -> NIGHT_WOLF
 
-    // 5. 结束阶段，解析技能效果
-    effects, _ := engine.EndPhase()
+	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+		PlayerID: "w1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1",
+	}))
+	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+		PlayerID: "w2", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1",
+	}))
+	next(engine) // NIGHT_WOLF -> NIGHT_WITCH
 
-    for _, effect := range effects {
-        fmt.Printf("Effect: %v -> %v\n", effect.Type, effect.TargetID)
-    }
+	// 女巫此刻可以看到刀口（解药还在手上）
+	info := engine.GetPhaseInfo()
+	fmt.Printf("女巫看到的刀口: %s\n", info.RoleInfos[pb.RoleType_ROLE_TYPE_WITCH].KillTarget)
+	next(engine) // NIGHT_WITCH -> NIGHT_SEER
+
+	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+		PlayerID: "seer", Skill: pb.SkillType_SKILL_TYPE_CHECK, TargetID: "w1",
+	}))
+	next(engine) // NIGHT_SEER -> NIGHT_RESOLVE
+
+	// 5. 夜晚结算：死亡在此产生
+	effects, err := engine.EndPhase()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, e := range effects {
+		fmt.Printf("效果: %v -> %s (canceled=%v)\n", e.Type, e.TargetID, e.Canceled)
+	}
+
+	v1, _ := engine.GetPlayerInfo("v1")
+	fmt.Printf("天亮了，当前阶段=%v，v1 存活=%v\n", engine.GetCurrentPhase(), v1.Alive)
+}
+
+func next(e *werewolf.Engine) {
+	if _, err := e.EndPhase(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func must(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 ```
+
+输出：
+
+```
+女巫看到的刀口: v1
+效果: EVENT_TYPE_KILL -> v1 (canceled=false)
+天亮了，当前阶段=PHASE_TYPE_DAY，v1 存活=false
+```
+
+完整示例见 [example/main.go](example/main.go)。
 
 ## 核心概念
 
@@ -78,6 +129,9 @@ engine.Start()
 engine.SubmitSkillUse(use)
 effects, _ := engine.EndPhase()
 ```
+
+`EndPhase` 是推进游戏的唯一入口，阶段流转与猎人等动态阶段都由它处理。
+（`EndSubStep` 已废弃，仅作兼容保留。）
 
 ### GameConfig（游戏配置）
 
@@ -115,28 +169,49 @@ config := &werewolf.GameConfig{
 
 ### PhaseConfig（阶段配置）
 
-声明式阶段步骤：
+阶段用数据描述：谁、在什么时候、能用什么技能，以及下一阶段是什么。
 
 ```go
-nightPhase := &werewolf.PhaseConfig{
-    Type: pb.PhaseType_PHASE_TYPE_NIGHT,
+nightWolf := &werewolf.PhaseConfig{
+    Type: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
     Steps: []werewolf.PhaseStep{
-        {Role: pb.RoleType_ROLE_TYPE_GUARD, Skill: pb.SkillType_SKILL_TYPE_PROTECT, Order: 1},
-        {Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL, Order: 2, Multiple: true},
-        {Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_ANTIDOTE, Order: 3},
-        {Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_POISON, Order: 4},
-        {Role: pb.RoleType_ROLE_TYPE_SEER, Skill: pb.SkillType_SKILL_TYPE_CHECK, Order: 5},
+        {Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+        {Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL},
     },
+    Timeout:   werewolf.WolfPhaseTimeout,
+    NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
 }
 ```
 
+`Steps` 同时是技能校验的唯一依据：`SubmitSkillUse` 只放行当前阶段声明过的技能，
+`GetPhaseInfo` 对外宣告的可用技能也由它派生，两者不会出现分歧。
+
+`Timeout` 是给调用方参考的建议值——**引擎自身不计时**，阶段何时结束完全由
+调用方决定（调用 `EndPhase`）。
+
 ### Resolver（冲突解析器）
 
-处理技能冲突的核心逻辑：
+每个阶段一个解析器，只产出 `Effect`、不直接改状态：
 
-- **NightResolver** - 夜晚技能解析（守卫保护 > 狼人击杀 > 女巫救人/毒人）
-- **VoteResolver** - 投票结果解析（统计票数，处理平票）
-- **DayResolver** - 白天发言（无状态变化）
+| Resolver | 阶段 | 职责 |
+|----------|------|------|
+| `GuardResolver` | NIGHT_GUARD | 守护，处理连守限制与自守限制 |
+| `WolfResolver` | NIGHT_WOLF | 按票数取狼队共识，记录刀口 |
+| `WitchResolver` | NIGHT_WITCH | 解药/毒药，处理自救与同夜双开药限制 |
+| `SeerResolver` | NIGHT_SEER | 查验阵营 |
+| `NightResolveResolver` | NIGHT_RESOLVE | 夜晚结算：刀口生死、毒杀、猎人触发 |
+| `HunterResolver` | NIGHT_HUNTER / DAY_HUNTER | 猎人开枪或放弃 |
+| `DayResolver` | DAY | 发言阶段，无状态变化 |
+| `VoteResolver` | VOTE | 统计票数，处理平票 |
+
+刀口的最终生死统一在 `NightResolveResolver` 判定：
+
+| 被守卫守护 | 被女巫解药 | 结果 |
+|:---:|:---:|------|
+| ✓ | ✓ | 由 `GuardSaveTogetherDies` 决定（默认死亡，即同守同救） |
+| ✓ | ✗ | 由 `SameGuardKillIsEmpty` 决定守护是否生效 |
+| ✗ | ✓ | 救回 |
+| ✗ | ✗ | 死亡 |
 
 ### Effect（效果）
 
@@ -154,40 +229,61 @@ type Effect struct {
 
 ## 游戏流程
 
+引擎把夜晚拆成了若干子阶段，每个子阶段只让一个角色行动：
+
 ```
-Start → Night → Day → Vote → Night → ... → End
-         ↑                      │
-         └──────────────────────┘
+Start
+  │
+  ▼
+NIGHT_GUARD → NIGHT_WOLF → NIGHT_WITCH → NIGHT_SEER → NIGHT_RESOLVE
+                                                            │
+                                    ┌───────────────────────┤
+                                    ▼                       ▼
+                             NIGHT_HUNTER ───────────────► DAY
+                            （猎人死亡时触发）               │
+                                                            ▼
+                                                          VOTE
+                                                            │
+                                    ┌───────────────────────┤
+                                    ▼                       ▼
+                              DAY_HUNTER ──────────► 下一夜 NIGHT_GUARD
+                            （猎人被放逐时触发）
 ```
 
-1. **Night（夜晚）** - 狼人杀人、预言家查验、女巫救人/毒人、守卫守护
-2. **Day（白天）** - 玩家发言讨论
-3. **Vote（投票）** - 所有玩家投票驱逐
+顺序不是随意的：守卫必须排在狼人之前才能拦下刀口，女巫必须排在狼人之后
+才能看到刀口。猎人阶段由死亡结算动态触发，**胜负判定会推迟到猎人开完枪之后**
+——那一枪可能带走最后一只狼，让好人反胜。
 
 ## 支持的角色
 
-| 角色 | 阵营 | 技能 |
-|------|------|------|
-| Werewolf（狼人） | 狼人阵营 | 夜晚杀人 |
-| Seer（预言家） | 好人阵营 | 夜晚查验身份 |
-| Witch（女巫） | 好人阵营 | 解药救人、毒药杀人 |
-| Guard（守卫） | 好人阵营 | 夜晚守护 |
-| Hunter（猎人） | 好人阵营 | 死亡时可以开枪 |
-| Villager（村民） | 好人阵营 | 无特殊技能 |
+| 角色 | 阵营 | 类别 | 技能 |
+|------|------|------|------|
+| Werewolf（狼人） | 狼人 | 狼人 | 夜晚击杀 |
+| Seer（预言家） | 好人 | 神职 | 夜晚查验阵营 |
+| Witch（女巫） | 好人 | 神职 | 解药救人、毒药杀人（同夜只能用一瓶） |
+| Guard（守卫） | 好人 | 神职 | 夜晚守护，不可连续两晚守同一人 |
+| Hunter（猎人） | 好人 | 神职 | 死亡时开枪带走一人（被毒杀除外） |
+| Villager（村民） | 好人 | 平民 | 无特殊技能 |
+
+「类别」用于屠边判定，由 `CategoryOf(role)` 自动推导。扩展角色（狼王、白痴、
+骑士等）暂未内置，可通过 `State.SetPlayerCategory` 指定类别后参与判定。
 
 ## 项目结构
 
 ```
 werewolf/
-├── config.go         # 游戏配置、阶段配置
-├── effect.go         # 效果类型定义
-├── engine.go         # 核心引擎（状态机）
-├── errors.go         # 错误定义
-├── phase_manager.go  # 阶段管理器
-├── resolver.go       # 冲突解析器
-├── state.go          # 游戏状态
-├── proto/            # Protobuf 定义
-└── docs/             # 文档
+├── config.go       # 游戏配置、阶段配置、规则开关
+├── effect.go       # 效果类型定义
+├── engine.go       # 核心引擎（状态机）
+├── errors.go       # 错误定义
+├── logger.go       # 日志与指标接口
+├── phase.go        # 阶段管理器、技能校验
+├── resolver.go     # 各阶段解析器
+├── state.go        # 游戏状态、角色类别、胜负判定
+├── rules_test.go   # 以维基百科规则为基准的一致性测试
+├── proto/          # Protobuf 定义（枚举与事件）
+├── example/        # 可运行示例
+└── docs/
     └── ARCHITECTURE.md
 ```
 
@@ -200,10 +296,37 @@ werewolf/
 - **Phase 为中心** - 阶段决定规则，而非角色
 - **声明式配置** - 规则用数据描述，而非代码
 
+## 规则依据
+
+本引擎的规则以中文维基百科[「狼人殺」条目](https://zh.wikipedia.org/wiki/狼人殺)
+为基准，逐条写成了可执行测试，见 [rules_test.go](rules_test.go)：
+
+| 编号 | 规则 |
+|------|------|
+| R1 | 预言家每晚查验一名存活玩家的所属阵营 |
+| R2 | 解药未使用时才可得知狼人的杀害对象 |
+| R3 | 解药和毒药不可以在同一夜使用 |
+| R4 | 解药不能用于解救自己 |
+| R5 | 守卫可以守护自己或不进行守护 |
+| R6 | 守卫不可连续两晚守护同一名玩家 |
+| R7 | 同守同救时该名玩家依然会死亡 |
+| R8 | 除被毒杀外，猎人以任何方式出局都可以开枪 |
+| R9 | 狼人全部出局，好人胜利 |
+| R10 | 淘汰所有平民或所有神职，狼人胜利（屠边） |
+| R11 | 所有存活玩家发言完毕后投票放逐一名玩家 |
+
+维基未规定、由本引擎自行约定的口径（同样有测试固化）：
+
+- **D1** 白天投票平票 → 无人出局（不进入 PK 发言重投）
+- **D2** 狼人刀口平票 → 空刀
+- **D3** 夜晚行动顺序固定为 守卫 → 狼人 → 女巫 → 预言家 → 结算
+
 ## 测试
 
 ```bash
-go test ./...
+go test ./...           # 全部测试
+go test -race ./...     # 并发检查
+golangci-lint run       # 静态检查
 ```
 
 ## 许可证
