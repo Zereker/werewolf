@@ -139,12 +139,6 @@ func TestExtension_WolfKing(t *testing.T) {
 		t.Fatalf("期望进入狼王阶段，实际 %v", got)
 	}
 
-	// 只有被触发的狼王能行动
-	info := engine.GetPhaseInfo()
-	if ri := info.RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER]; ri != nil && len(ri.PlayerIDs) > 0 {
-		t.Logf("提示：内置的触发阶段信息按猎人角色组织，自定义角色需自行读取 %v", ri.PlayerIDs)
-	}
-
 	// 别的玩家不能冒用狼王的技能
 	if err := engine.SubmitSkillUse(&SkillUse{
 		PlayerID: "w1", Skill: skillWolfClaw, TargetID: "s",
@@ -213,4 +207,58 @@ func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
 		t.Fatalf("玩家不存在: %s", id)
 	}
 	return p
+}
+
+// TestExtension_CustomPhaseGetsPhaseInfo 自定义阶段也能拿到阶段信息。
+//
+// 此前 GetPhaseInfo 是一个写死内置阶段的 switch，自定义阶段返回空，
+// 调用方无从得知该让谁行动。
+func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
+	engine := newWolfKingGame(t)
+
+	for engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
+		if _, err := engine.EndPhase(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := engine.EndPhase(); err != nil { // DAY -> VOTE
+		t.Fatal(err)
+	}
+	for _, voter := range []string{"s", "g", "v1", "v2"} {
+		if err := engine.SubmitSkillUse(&SkillUse{
+			PlayerID: voter, Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "wk",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := engine.EndPhase(); err != nil {
+		t.Fatal(err)
+	}
+	if engine.GetCurrentPhase() != phaseWolfKing {
+		t.Fatalf("期望进入狼王阶段，实际 %v", engine.GetCurrentPhase())
+	}
+
+	info := engine.GetPhaseInfo()
+	ri := info.RoleInfos[roleWolfKing]
+	if ri == nil {
+		t.Fatal("自定义角色应当出现在 RoleInfos 中")
+	}
+	if len(ri.PlayerIDs) != 1 || ri.PlayerIDs[0] != "wk" {
+		t.Errorf("行动者: 期望 [wk]，实际 %v", ri.PlayerIDs)
+	}
+	if len(ri.AllowedSkills) != 2 {
+		t.Errorf("可用技能: 期望 2 个（开枪与跳过），实际 %v", ri.AllowedSkills)
+	}
+	if len(info.ActiveRoles) != 1 || info.ActiveRoles[0] != roleWolfKing {
+		t.Errorf("ActiveRoles: 期望 [狼王]，实际 %v", info.ActiveRoles)
+	}
+
+	// 视角同样对自定义角色生效
+	v := engine.GetPlayerView("wk")
+	if len(v.AllowedSkills) != 2 {
+		t.Errorf("狼王视角应当看到自己的两个技能，实际 %v", v.AllowedSkills)
+	}
+	if got := engine.GetPlayerView("v3").AllowedSkills; len(got) != 0 {
+		t.Errorf("非触发者不应有可用技能，实际 %v", got)
+	}
 }

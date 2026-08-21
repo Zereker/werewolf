@@ -441,8 +441,15 @@ func (e *Engine) GetWolfTeammates(playerID string) []string {
 	return e.state.getWolfTeammates(playerID)
 }
 
-// GetPhaseInfo 获取当前阶段信息（纯状态，不含消息内容）
-// 调用方根据此信息决定上帝发送什么消息
+// GetPhaseInfo 获取当前阶段信息（上帝视角）。
+//
+// 返回的内容包含狼队名单、女巫可见的刀口等敏感信息，供调用方作为主持人
+// 组织本阶段的流程与公告使用，**不可以整体转发给玩家**。
+// 要拿到可以直接发给某个玩家的内容，用 GetPlayerView。
+//
+// 各角色的信息由阶段配置（PhaseConfig.Steps）派生，因此第三方通过
+// RegisterResolver 加入的自定义角色同样能拿到——此前这里是一个写死
+// 内置阶段的 switch，自定义阶段拿不到任何信息。
 func (e *Engine) GetPhaseInfo() *PhaseInfo {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -455,46 +462,29 @@ func (e *Engine) GetPhaseInfo() *PhaseInfo {
 		RoleInfos:   make(map[pb.RoleType]*RolePhaseInfo),
 	}
 
-	// 获取当前阶段的配置
-	// 返回副本：Steps 直接暴露会让调用方改到引擎内部的阶段配置
 	phaseConfig := e.phase.GetPhaseConfig(e.state.Phase)
-	if phaseConfig != nil {
-		info.Steps = make([]PhaseStep, len(phaseConfig.Steps))
-		copy(info.Steps, phaseConfig.Steps)
+	if phaseConfig == nil {
+		return info
 	}
 
-	switch e.state.Phase {
-	case pb.PhaseType_PHASE_TYPE_NIGHT_GUARD:
-		info.ActiveRoles = []pb.RoleType{pb.RoleType_ROLE_TYPE_GUARD}
-		info.RoleInfos[pb.RoleType_ROLE_TYPE_GUARD] = e.buildGuardPhaseInfo()
+	// 返回副本：Steps 直接暴露会让调用方改到引擎内部的阶段配置
+	info.Steps = make([]PhaseStep, len(phaseConfig.Steps))
+	copy(info.Steps, phaseConfig.Steps)
 
-	case pb.PhaseType_PHASE_TYPE_NIGHT_WOLF:
-		info.ActiveRoles = []pb.RoleType{pb.RoleType_ROLE_TYPE_WEREWOLF}
-		info.RoleInfos[pb.RoleType_ROLE_TYPE_WEREWOLF] = e.buildWolfPhaseInfo()
+	// 本阶段若在结算某个死亡技能，则只有触发者能行动
+	trigger, hasTrigger := e.state.peekTrigger()
+	triggerActive := hasTrigger && trigger.Phase == e.state.Phase
 
-	case pb.PhaseType_PHASE_TYPE_NIGHT_WITCH:
-		info.ActiveRoles = []pb.RoleType{pb.RoleType_ROLE_TYPE_WITCH}
-		info.RoleInfos[pb.RoleType_ROLE_TYPE_WITCH] = e.buildWitchPhaseInfo()
+	seen := make(map[pb.RoleType]bool)
+	for _, step := range phaseConfig.Steps {
+		// 上帝是系统角色，不是需要行动的玩家
+		if step.Role == pb.RoleType_ROLE_TYPE_GOD || seen[step.Role] {
+			continue
+		}
+		seen[step.Role] = true
 
-	case pb.PhaseType_PHASE_TYPE_NIGHT_SEER:
-		info.ActiveRoles = []pb.RoleType{pb.RoleType_ROLE_TYPE_SEER}
-		info.RoleInfos[pb.RoleType_ROLE_TYPE_SEER] = e.buildSeerPhaseInfo()
-
-	case pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE:
-		// 结算阶段只有上帝公告，没有玩家行动
-		info.ActiveRoles = []pb.RoleType{}
-
-	case pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER, pb.PhaseType_PHASE_TYPE_DAY_HUNTER:
-		info.ActiveRoles = []pb.RoleType{pb.RoleType_ROLE_TYPE_HUNTER}
-		info.RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER] = e.buildHunterPhaseInfo()
-
-	case pb.PhaseType_PHASE_TYPE_DAY:
-		info.ActiveRoles = []pb.RoleType{pb.RoleType_ROLE_TYPE_UNSPECIFIED}
-		info.RoleInfos[pb.RoleType_ROLE_TYPE_UNSPECIFIED] = e.buildDayPhaseInfo()
-
-	case pb.PhaseType_PHASE_TYPE_VOTE:
-		info.ActiveRoles = []pb.RoleType{pb.RoleType_ROLE_TYPE_UNSPECIFIED}
-		info.RoleInfos[pb.RoleType_ROLE_TYPE_UNSPECIFIED] = e.buildVotePhaseInfo()
+		info.ActiveRoles = append(info.ActiveRoles, step.Role)
+		info.RoleInfos[step.Role] = e.buildRolePhaseInfo(step.Role, triggerActive, trigger)
 	}
 
 	return info
@@ -503,85 +493,43 @@ func (e *Engine) GetPhaseInfo() *PhaseInfo {
 // allowedSkillsFor 返回指定角色在当前阶段可用的技能。
 //
 // 唯一真相来源是阶段配置（PhaseConfig.Steps），与 ValidateSkillUse 走同一条路径。
-// 此前 build*PhaseInfo 各自硬编码技能列表，导致 GetPhaseInfo 宣告 SKIP 可用、
-// SubmitSkillUse 却拒绝 SKIP 的自相矛盾。
 func (e *Engine) allowedSkillsFor(role pb.RoleType) []pb.SkillType {
 	return e.phase.GetAllowedSkills(e.state.Phase, role)
 }
 
-// buildGuardPhaseInfo 构建守卫阶段信息
-func (e *Engine) buildGuardPhaseInfo() *RolePhaseInfo {
-	return &RolePhaseInfo{
-		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_GUARD),
-		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_GUARD),
-	}
-}
-
-// buildWolfPhaseInfo 构建狼人阶段信息
-func (e *Engine) buildWolfPhaseInfo() *RolePhaseInfo {
-	playerIDs := e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WEREWOLF)
-	teammates := make(map[string][]string)
-	for _, id := range playerIDs {
-		teammates[id] = e.state.getWolfTeammates(id)
-	}
-	return &RolePhaseInfo{
-		PlayerIDs:     playerIDs,
-		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_WEREWOLF),
-		Teammates:     teammates,
-	}
-}
-
-// buildWitchPhaseInfo 构建女巫阶段信息
-func (e *Engine) buildWitchPhaseInfo() *RolePhaseInfo {
-	info := &RolePhaseInfo{
-		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WITCH),
-		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_WITCH),
+// buildRolePhaseInfo 组装某个角色在当前阶段的信息。
+// 调用前需持有 e.mu。
+func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigger PendingTrigger) *RolePhaseInfo {
+	ri := &RolePhaseInfo{
+		AllowedSkills: e.allowedSkillsFor(role),
 	}
 
-	// 规则「解藥未使用時可以得知狼人的殺害對象」：
-	// 解药一旦用掉，女巫便不再获知当晚刀口。
-	if e.state.anyAliveWitchHasAntidote() {
-		info.KillTarget = e.state.RoundCtx.KillTarget
+	switch {
+	case triggerActive:
+		// 死亡技能阶段：行动者只有触发者本人
+		ri.PlayerIDs = []string{trigger.PlayerID}
+	case role == pb.RoleType_ROLE_TYPE_UNSPECIFIED:
+		// UNSPECIFIED 表示所有存活玩家（如投票）
+		ri.PlayerIDs = e.state.getAlivePlayerIDs()
+	default:
+		ri.PlayerIDs = e.state.getAlivePlayerIDsByRole(role)
 	}
 
-	return info
-}
+	switch role {
+	case pb.RoleType_ROLE_TYPE_WEREWOLF:
+		// 狼人需要知道队友才能协商
+		ri.Teammates = make(map[string][]string, len(ri.PlayerIDs))
+		for _, id := range ri.PlayerIDs {
+			ri.Teammates[id] = e.state.getWolfTeammates(id)
+		}
+	case pb.RoleType_ROLE_TYPE_WITCH:
+		// 规则：解药未使用时才可得知刀口
+		if e.state.anyAliveWitchHasAntidote() {
+			ri.KillTarget = e.state.RoundCtx.KillTarget
+		}
+	}
 
-// buildSeerPhaseInfo 构建预言家阶段信息
-func (e *Engine) buildSeerPhaseInfo() *RolePhaseInfo {
-	return &RolePhaseInfo{
-		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_SEER),
-		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_SEER),
-	}
-}
-
-// buildDayPhaseInfo 构建白天阶段信息
-func (e *Engine) buildDayPhaseInfo() *RolePhaseInfo {
-	return &RolePhaseInfo{
-		PlayerIDs:     e.state.getAlivePlayerIDs(),
-		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_UNSPECIFIED),
-	}
-}
-
-// buildVotePhaseInfo 构建投票阶段信息
-func (e *Engine) buildVotePhaseInfo() *RolePhaseInfo {
-	return &RolePhaseInfo{
-		PlayerIDs:     e.state.getAlivePlayerIDs(),
-		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_UNSPECIFIED),
-	}
-}
-
-// buildHunterPhaseInfo 构建猎人阶段信息
-func (e *Engine) buildHunterPhaseInfo() *RolePhaseInfo {
-	// 待结算的死亡技能属于谁，本阶段就只有谁能行动
-	playerIDs := []string{}
-	if t, ok := e.state.peekTrigger(); ok && t.Phase == e.state.Phase {
-		playerIDs = []string{t.PlayerID}
-	}
-	return &RolePhaseInfo{
-		PlayerIDs:     playerIDs,
-		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_HUNTER),
-	}
+	return ri
 }
 
 // calculateNextPhase 计算下一阶段（考虑动态触发）

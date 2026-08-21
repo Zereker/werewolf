@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"sort"
 	"sync"
 
 	pb "github.com/Zereker/werewolf/proto"
@@ -326,6 +327,20 @@ func (s *gameState) getAlivePlayerIDsByRole(role pb.RoleType) []string {
 			result = append(result, id)
 		}
 	}
+	return result
+}
+
+// allPlayerIDs 返回全部玩家ID，按字典序排序（包内使用）。
+// 排序是为了让面向玩家的视图输出稳定，不受 map 遍历顺序影响。
+func (s *gameState) allPlayerIDs() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]string, 0, len(s.players))
+	for id := range s.players {
+		result = append(result, id)
+	}
+	sort.Strings(result)
 	return result
 }
 
