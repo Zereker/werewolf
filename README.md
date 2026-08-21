@@ -522,7 +522,8 @@ werewolf/
 ```bash
 go test ./...           # 全部测试
 go test -race ./...     # 并发检查
-golangci-lint run       # 静态检查
+golangci-lint run       # 静态检查（覆盖测试代码）
+go run ./example        # 示例必须能跑通，不是只能编译
 ```
 
 ## 许可证

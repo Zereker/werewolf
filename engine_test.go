@@ -45,7 +45,7 @@ func TestNewEngine_CustomConfig(t *testing.T) {
 func TestEngine_AddPlayer(t *testing.T) {
 	engine := MustNewEngine(nil)
 
-	engine.AddPlayer("p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 
 	player, ok := engine.state.getPlayer("p1")
 	if !ok {
@@ -58,8 +58,8 @@ func TestEngine_AddPlayer(t *testing.T) {
 
 func TestEngine_Start(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	err := engine.Start()
 	if err != nil {
@@ -76,8 +76,8 @@ func TestEngine_Start(t *testing.T) {
 
 func TestEngine_Start_AlreadyStarted(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	if err := engine.Start(); err != nil {
 		t.Fatalf("首次 Start 应当成功，实际 %v", err)
@@ -102,7 +102,7 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			engine := MustNewEngine(nil)
 			for id, role := range tc.roles {
-				engine.AddPlayer(id, role)
+				mustAdd(t, engine, id, role)
 			}
 			if err := engine.Start(); err != tc.want {
 				t.Errorf("期望 %v，实际 %v", tc.want, err)
@@ -135,7 +135,7 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 	}
 
 	// 开局后不允许再改动玩家
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	if err := engine.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -149,10 +149,10 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 
 func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	// Guard can protect in NIGHT_GUARD phase
 	err := engine.SubmitSkillUse(&SkillUse{
@@ -180,8 +180,9 @@ func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 
 func TestEngine_SubmitSkillUse_InvalidPlayer(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.Start()
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	err := engine.SubmitSkillUse(&SkillUse{
 		PlayerID: "nonexistent",
@@ -196,10 +197,11 @@ func TestEngine_SubmitSkillUse_InvalidPlayer(t *testing.T) {
 
 func TestEngine_SubmitSkillUse_DeadPlayer(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
+	// 开局之后再置为出局：开局前杀掉唯一的狼会让板子不合法
 	engine.state.players["wolf"].Alive = false
-	engine.Start()
 
 	err := engine.SubmitSkillUse(&SkillUse{
 		PlayerID: "wolf",
@@ -214,9 +216,10 @@ func TestEngine_SubmitSkillUse_DeadPlayer(t *testing.T) {
 
 func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("target", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "target", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	// Villager cannot kill
 	err := engine.SubmitSkillUse(&SkillUse{
@@ -232,13 +235,13 @@ func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
 
 func TestEngine_EndPhase(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	// In NIGHT_GUARD phase, guard protects v1
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "v1",
@@ -279,25 +282,25 @@ func TestEngine_EndPhase(t *testing.T) {
 
 func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	// NIGHT_GUARD phase - skip
-	engine.EndPhase()
+	mustEnd(t, engine)
 
 	// NIGHT_WOLF phase - wolf kills v1
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "wolf",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
-	engine.EndPhase() // -> NIGHT_WITCH
+	mustEnd(t, engine) // -> NIGHT_WITCH
 
 	// Continue through night phases
-	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndPhase() // NIGHT_RESOLVE -> 击杀在此结算
+	mustEnd(t, engine) // NIGHT_WITCH -> NIGHT_SEER
+	mustEnd(t, engine) // NIGHT_SEER -> NIGHT_RESOLVE
+	mustEnd(t, engine) // NIGHT_RESOLVE -> 击杀在此结算
 
 	// v1 出局后平民全灭，狼人按屠边获胜
 	if !engine.IsGameOver() {
@@ -310,35 +313,35 @@ func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
 
 func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	// NIGHT_GUARD -> NIGHT_WOLF
-	engine.EndPhase()
+	mustEnd(t, engine)
 
 	// NIGHT_WOLF: wolf kills v1
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "wolf",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
-	engine.EndPhase() // -> NIGHT_WITCH
+	mustEnd(t, engine) // -> NIGHT_WITCH
 
 	// NIGHT_WITCH -> NIGHT_SEER -> NIGHT_RESOLVE -> DAY -> VOTE
-	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndPhase() // NIGHT_RESOLVE -> DAY (v1 killed here)
-	engine.EndPhase() // DAY -> VOTE
+	mustEnd(t, engine) // NIGHT_WITCH -> NIGHT_SEER
+	mustEnd(t, engine) // NIGHT_SEER -> NIGHT_RESOLVE
+	mustEnd(t, engine) // NIGHT_RESOLVE -> DAY (v1 killed here)
+	mustEnd(t, engine) // DAY -> VOTE
 
 	// VOTE: v2 votes wolf
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "v2",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "wolf",
 	})
-	engine.EndPhase()
+	mustEnd(t, engine)
 
 	// After voting wolf out, evil(0), good wins
 	if !engine.IsGameOver() {
@@ -363,9 +366,9 @@ func TestEngine_GetCurrentPhase(t *testing.T) {
 		t.Errorf("expected Phase=START, got %v", engine.GetCurrentPhase())
 	}
 
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
 		t.Errorf("expected Phase=NIGHT_GUARD after start, got %v", engine.GetCurrentPhase())
@@ -379,9 +382,9 @@ func TestEngine_GetCurrentRound(t *testing.T) {
 		t.Errorf("expected Round=0, got %d", engine.GetCurrentRound())
 	}
 
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	if engine.GetCurrentRound() != 1 {
 		t.Errorf("expected Round=1 after start, got %d", engine.GetCurrentRound())
@@ -390,9 +393,9 @@ func TestEngine_GetCurrentRound(t *testing.T) {
 
 func TestEngine_GetAllowedSkills(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.Start()
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustStart(t, engine)
 
 	// In NIGHT_GUARD phase, guard can protect
 	skills := engine.GetAllowedSkills("guard")
@@ -407,9 +410,10 @@ func TestEngine_GetAllowedSkills(t *testing.T) {
 
 func TestEngine_GetAllowedSkills_Dead(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 	engine.state.players["wolf"].Alive = false
-	engine.Start()
 
 	skills := engine.GetAllowedSkills("wolf")
 
@@ -420,7 +424,9 @@ func TestEngine_GetAllowedSkills_Dead(t *testing.T) {
 
 func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.Start()
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	skills := engine.GetAllowedSkills("nonexistent")
 
@@ -445,23 +451,23 @@ func TestEngine_IsGameOver(t *testing.T) {
 
 func TestEngine_OnEvent(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	eventCount := 0
 	engine.OnEvent(func(event *pb.Event) {
 		eventCount++
 	})
 
-	engine.Start()
+	mustStart(t, engine)
 	// NIGHT_GUARD phase
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "v1",
 	})
-	engine.EndPhase()
+	mustEnd(t, engine)
 
 	// Should have 1 event (protect effect)
 	if eventCount != 1 {
@@ -471,9 +477,9 @@ func TestEngine_OnEvent(t *testing.T) {
 
 func TestEngine_MultipleHandlers(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	count1 := 0
 	count2 := 0
@@ -485,14 +491,14 @@ func TestEngine_MultipleHandlers(t *testing.T) {
 		count2++
 	})
 
-	engine.Start()
+	mustStart(t, engine)
 	// NIGHT_GUARD phase
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "v1",
 	})
-	engine.EndPhase()
+	mustEnd(t, engine)
 
 	if count1 != 1 {
 		t.Errorf("expected handler1 called 1 time, got %d", count1)
@@ -504,10 +510,10 @@ func TestEngine_MultipleHandlers(t *testing.T) {
 
 func TestEngine_Concurrency(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.Start()
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustStart(t, engine)
 
 	var wg sync.WaitGroup
 	errors := make(chan error, 100)
@@ -553,12 +559,12 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	engine := MustNewEngine(nil)
 
 	// Setup players
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "seer", pb.RoleType_ROLE_TYPE_SEER)
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	// v2 保证 v1 出局后平民未被屠尽，游戏得以进入白天
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// Start game
 	err := engine.Start()
@@ -575,12 +581,12 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// Guard protects seer
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "seer",
 	})
-	engine.EndPhase() // NIGHT_GUARD -> NIGHT_WOLF
+	mustEnd(t, engine) // NIGHT_GUARD -> NIGHT_WOLF
 
 	// Night 1 - WOLF phase
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
@@ -588,15 +594,15 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// Wolf kills v1
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "wolf",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
-	engine.EndPhase() // NIGHT_WOLF -> NIGHT_WITCH
+	mustEnd(t, engine) // NIGHT_WOLF -> NIGHT_WITCH
 
 	// Night 1 - WITCH phase (skip)
-	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
+	mustEnd(t, engine) // NIGHT_WITCH -> NIGHT_SEER
 
 	// Night 1 - SEER phase
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
@@ -604,12 +610,12 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// Seer checks wolf
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "seer",
 		Skill:    pb.SkillType_SKILL_TYPE_CHECK,
 		TargetID: "wolf",
 	})
-	effects, _ := engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	effects := mustEnd(t, engine) // NIGHT_SEER -> NIGHT_RESOLVE
 
 	// Should have check result showing wolf
 	hasCheckResult := false
@@ -626,7 +632,7 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
 		t.Errorf("expected NIGHT_RESOLVE phase, got %v", engine.GetCurrentPhase())
 	}
-	engine.EndPhase() // NIGHT_RESOLVE -> DAY (v1 killed here)
+	mustEnd(t, engine) // NIGHT_RESOLVE -> DAY (v1 killed here)
 
 	// v1 should be dead after NIGHT_RESOLVE
 	v1, _ := engine.state.getPlayer("v1")
@@ -639,7 +645,7 @@ func TestEngine_FullGameCycle(t *testing.T) {
 		t.Errorf("expected DAY phase, got %v", engine.GetCurrentPhase())
 	}
 
-	engine.EndPhase() // Day -> Vote
+	mustEnd(t, engine) // Day -> Vote
 
 	// Vote 1
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_VOTE {
@@ -647,18 +653,18 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// Vote out wolf
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "seer",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "wolf",
 	})
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "wolf",
 	})
 
-	engine.EndPhase()
+	mustEnd(t, engine)
 
 	// wolf should be eliminated, good wins
 	wolf, _ := engine.state.getPlayer("wolf")
@@ -674,11 +680,11 @@ func TestEngine_FullGameCycle(t *testing.T) {
 
 func TestEngine_GetPhaseInfo_NightGuard(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
-	engine.Start()
+	mustStart(t, engine)
 
 	info := engine.GetPhaseInfo()
 
@@ -706,14 +712,14 @@ func TestEngine_GetPhaseInfo_NightGuard(t *testing.T) {
 
 func TestEngine_GetPhaseInfo_NightWolf(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
-	engine.Start()
-	engine.EndPhase() // GUARD -> WOLF
+	mustStart(t, engine)
+	mustEnd(t, engine) // GUARD -> WOLF
 
 	info := engine.GetPhaseInfo()
 
@@ -743,22 +749,22 @@ func TestEngine_GetPhaseInfo_NightWolf(t *testing.T) {
 
 func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "witch", pb.RoleType_ROLE_TYPE_WITCH)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
-	engine.Start()
-	engine.EndPhase() // GUARD -> WOLF
+	mustStart(t, engine)
+	mustEnd(t, engine) // GUARD -> WOLF
 
 	// Wolf kills v1
-	engine.SubmitSkillUse(&SkillUse{
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "wolf",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
-	engine.EndPhase() // WOLF -> WITCH
+	mustEnd(t, engine) // WOLF -> WITCH
 
 	info := engine.GetPhaseInfo()
 
@@ -780,11 +786,11 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 
 func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
-	engine.Start()
+	mustStart(t, engine)
 
 	info := engine.GetPhaseInfo()
 
@@ -827,11 +833,11 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 // 与并发的 OnEvent 追加构成数据竞争（需 -race 才能发现）。
 func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("s", pb.RoleType_ROLE_TYPE_SEER)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "s", pb.RoleType_ROLE_TYPE_SEER)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 	if err := engine.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -870,10 +876,10 @@ func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
 	rec := &recordingLogger{}
 	engine.SetLogger(rec)
 
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 	if err := engine.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -882,14 +888,14 @@ func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
 	engine.OnEvent(func(*pb.Event) { panic("boom") })
 	engine.OnEvent(func(*pb.Event) { survivorCalled = true })
 
-	engine.EndPhase() // NIGHT_GUARD -> NIGHT_WOLF
-	engine.SubmitSkillUse(&SkillUse{
+	mustEnd(t, engine) // NIGHT_GUARD -> NIGHT_WOLF
+	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "w1",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
 	for i := 0; i < 4; i++ {
-		engine.EndPhase() // 走到 NIGHT_RESOLVE 之后，产生 KILL 事件
+		mustEnd(t, engine) // 走到 NIGHT_RESOLVE 之后，产生 KILL 事件
 	}
 
 	if !survivorCalled {

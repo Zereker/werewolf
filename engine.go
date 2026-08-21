@@ -429,6 +429,17 @@ func (e *Engine) isPendingActor(playerID string) bool {
 	return ok && t.PlayerID == playerID && t.Phase == e.state.Phase
 }
 
+// AlivePlayerIDs 返回所有存活玩家的 ID，按字典序排序。
+//
+// 谁还活着是公开信息。此前调用方要拿这份名单只能绕道
+// GetPhaseInfo().RoleInfos[UNSPECIFIED]——而那个入口依赖当前阶段
+// 恰好声明了面向全体玩家的步骤，白天不再有玩家技能步骤之后就取不到了。
+func (e *Engine) AlivePlayerIDs() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return sortedStrings(e.state.getAlivePlayerIDs())
+}
+
 // IsGameOver 游戏是否结束
 func (e *Engine) IsGameOver() bool {
 	e.mu.RLock()

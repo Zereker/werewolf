@@ -182,8 +182,8 @@ func TestStart_RejectsMissingResolver(t *testing.T) {
 	engine := MustNewEngine(nil)
 	delete(engine.phase.resolvers, pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
 
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	if err := engine.Start(); err == nil {
 		t.Error("缺少解析器时 Start 应当报错")
@@ -196,8 +196,8 @@ func TestStartPhase_Configurable(t *testing.T) {
 	cfg.StartPhase = pb.PhaseType_PHASE_TYPE_DAY
 
 	engine := MustNewEngine(cfg)
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	if err := engine.Start(); err != nil {
 		t.Fatal(err)
 	}

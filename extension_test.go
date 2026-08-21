@@ -190,8 +190,8 @@ func TestExtension_RegisterResolverRejects(t *testing.T) {
 		t.Error("nil 解析器应当被拒绝")
 	}
 
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	if err := engine.Start(); err != nil {
 		t.Fatal(err)
 	}

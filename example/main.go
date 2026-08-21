@@ -67,12 +67,12 @@ func basicGameSetup() {
 
 	// 4. 添加玩家
 	// 6人局配置: 2狼人 + 1女巫 + 1预言家 + 1守卫 + 1村民
-	engine.AddPlayer("player1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("player2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("player3", pb.RoleType_ROLE_TYPE_WITCH)
-	engine.AddPlayer("player4", pb.RoleType_ROLE_TYPE_SEER)
-	engine.AddPlayer("player5", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("player6", pb.RoleType_ROLE_TYPE_VILLAGER)
+	seat(engine, "player1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "player2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "player3", pb.RoleType_ROLE_TYPE_WITCH)
+	seat(engine, "player4", pb.RoleType_ROLE_TYPE_SEER)
+	seat(engine, "player5", pb.RoleType_ROLE_TYPE_GUARD)
+	seat(engine, "player6", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 5. 注册事件处理器（可选）
 	engine.OnEvent(func(event *pb.Event) {
@@ -100,15 +100,15 @@ func godNarratorDemo() {
 	engine := werewolf.MustNewEngine(nil)
 
 	// 添加玩家
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	seat(engine, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "witch", pb.RoleType_ROLE_TYPE_WITCH)
+	seat(engine, "seer", pb.RoleType_ROLE_TYPE_SEER)
+	seat(engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	seat(engine, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 开始游戏
-	engine.Start()
+	begin(engine)
 
 	fmt.Println("\n  === 第一夜开始 ===")
 	fmt.Printf("  回合: %d\n", engine.GetCurrentRound())
@@ -147,48 +147,46 @@ func godNarratorDemo() {
 
 	// === 守卫阶段 ===
 	announcePhase()
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "seer",
 	})
-	engine.EndPhase()
+	step(engine)
 
 	// === 狼人阶段 ===
 	announcePhase()
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "villager",
 	})
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "villager",
 	})
-	engine.EndPhase()
+	step(engine)
 
 	// === 女巫阶段 ===
 	announcePhase()
 	// 女巫选择不使用药水
-	engine.EndPhase()
+	step(engine)
 
 	// === 预言家阶段 ===
 	announcePhase()
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    pb.SkillType_SKILL_TYPE_CHECK,
 		TargetID: "wolf1",
 	})
-	engine.EndPhase()
+	step(engine)
 
 	// === 夜晚结算阶段 ===
-	info := engine.GetPhaseInfo()
 	fmt.Printf("\n  [上帝] 夜晚结算中...\n")
-	engine.EndPhase()
+	step(engine)
 
 	// === 白天阶段 ===
-	info = engine.GetPhaseInfo()
 	fmt.Printf("\n  [上帝] 天亮了！")
 
 	// 宣布昨晚死亡情况
@@ -199,7 +197,9 @@ func godNarratorDemo() {
 		fmt.Printf(" 昨晚是平安夜。\n")
 	}
 
-	fmt.Printf("  → 所有玩家请发言: %v\n", info.RoleInfos[pb.RoleType_ROLE_TYPE_UNSPECIFIED].PlayerIDs)
+	// 白天发言走 SendMessage，不占技能步骤，因此 RoleInfos 里没有对应条目；
+	// 存活名单直接问引擎要
+	fmt.Printf("  → 所有玩家请发言: %v\n", engine.AlivePlayerIDs())
 }
 
 // getGodAnnouncement 根据阶段生成上帝公告
@@ -241,12 +241,15 @@ func fullGameFlow() {
 	engine := werewolf.MustNewEngine(nil) // 使用默认配置
 
 	// 添加玩家
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
-	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	seat(engine, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "witch", pb.RoleType_ROLE_TYPE_WITCH)
+	seat(engine, "seer", pb.RoleType_ROLE_TYPE_SEER)
+	seat(engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
+	seat(engine, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	// 第二名平民：默认按屠边判定，平民全灭游戏会在夜晚结算就结束，
+	// 演示走不到白天
+	seat(engine, "villager2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 注册事件处理器
 	engine.OnEvent(func(event *pb.Event) {
@@ -285,14 +288,16 @@ func fullGameFlow() {
 	err := engine.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
-		TargetID: "villager",
+		// 守的不是狼刀目标：守护叠加女巫解药即「同守同救」，
+		// 按默认规则目标依然死亡，与本段想演示的「被解药救回」相反
+		TargetID: "seer",
 	})
 	if err != nil {
 		fmt.Printf("  守卫技能提交失败: %v\n", err)
 	}
 
 	// 结束守卫阶段，进入狼人阶段
-	engine.EndPhase()
+	step(engine)
 
 	// 狼人阶段 (NIGHT_WOLF)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
@@ -302,19 +307,19 @@ func fullGameFlow() {
 	fmt.Printf("  wolf1 的狼队友: %v\n", teammates)
 
 	// 两只狼都投票杀村民
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "villager",
 	})
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "villager",
 	})
 
 	// 结束狼人阶段，进入女巫阶段
-	engine.EndPhase()
+	step(engine)
 
 	// 女巫阶段 (NIGHT_WITCH)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
@@ -324,31 +329,31 @@ func fullGameFlow() {
 	fmt.Printf("  女巫得知: %s 今晚被狼人杀害\n", killTarget)
 
 	// 女巫使用解药救人
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "witch",
 		Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
 		TargetID: killTarget,
 	})
 
 	// 结束女巫阶段，进入预言家阶段
-	engine.EndPhase()
+	step(engine)
 
 	// 预言家阶段 (NIGHT_SEER)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
 
 	// 预言家查验 wolf1
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    pb.SkillType_SKILL_TYPE_CHECK,
 		TargetID: "wolf1",
 	})
 
 	// 结束预言家阶段，进入夜晚结算
-	engine.EndPhase()
+	step(engine)
 
 	// 夜晚结算阶段 (NIGHT_RESOLVE)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
-	engine.EndPhase()
+	step(engine)
 
 	// ==================== 白天 ====================
 	fmt.Println("\n  --- 白天 ---")
@@ -360,48 +365,48 @@ func fullGameFlow() {
 	}
 
 	// 结束白天，进入投票
-	engine.EndPhase()
+	step(engine)
 
 	// ==================== 投票 ====================
 	fmt.Println("\n  --- 投票 ---")
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
 
 	// 所有好人投票 wolf1
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "witch",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "wolf1",
 	})
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "wolf1",
 	})
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "wolf1",
 	})
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "villager",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "wolf1",
 	})
 
 	// 狼人投票预言家
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "seer",
 	})
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    pb.SkillType_SKILL_TYPE_VOTE,
 		TargetID: "seer",
 	})
 
 	// 结束投票
-	engine.EndPhase()
+	step(engine)
 
 	// 检查 wolf1 是否被投票出局
 	wolf1Info, _ := engine.GetPlayerInfo("wolf1")
@@ -423,12 +428,12 @@ func messagingDemo() {
 	engine := werewolf.MustNewEngine(nil)
 
 	// 添加玩家（需要足够多的好人防止游戏过早结束）
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	engine.AddPlayer("villager1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("villager2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("villager3", pb.RoleType_ROLE_TYPE_VILLAGER)
-	engine.AddPlayer("villager4", pb.RoleType_ROLE_TYPE_VILLAGER)
+	seat(engine, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	seat(engine, "villager1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	seat(engine, "villager2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	seat(engine, "villager3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	seat(engine, "villager4", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 注册消息处理器
 	engine.OnMessage(func(msg *werewolf.Message, receiverIDs []string) {
@@ -437,10 +442,10 @@ func messagingDemo() {
 	})
 
 	// 开始游戏
-	engine.Start()
+	begin(engine)
 
 	// 进入狼人阶段
-	engine.EndPhase() // 跳过守卫阶段
+	step(engine) // 跳过守卫阶段
 
 	fmt.Printf("\n  当前阶段: %s (狼人交流阶段)\n", engine.GetCurrentPhase())
 
@@ -461,15 +466,15 @@ func messagingDemo() {
 	fmt.Printf("\n  wolf1 消息可发送给: %v\n", receivers)
 
 	// 跳到白天
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	act(engine, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "villager1",
 	})
-	engine.EndPhase() // 狼人阶段结束
-	engine.EndPhase() // 女巫阶段结束
-	engine.EndPhase() // 预言家阶段结束
-	engine.EndPhase() // 夜晚结算结束
+	step(engine) // 狼人阶段结束
+	step(engine) // 女巫阶段结束
+	step(engine) // 预言家阶段结束
+	step(engine) // 夜晚结算结束
 
 	fmt.Printf("\n  当前阶段: %s (白天发言阶段)\n", engine.GetCurrentPhase())
 
@@ -500,4 +505,39 @@ func (l *SimpleLogger) Warn(msg string, fields ...werewolf.Field) {
 
 func (l *SimpleLogger) Error(msg string, fields ...werewolf.Field) {
 	fmt.Printf("  [ERROR] %s\n", msg)
+}
+
+// ==================== 示例用的小包装 ====================
+//
+// 示例代码也该示范正确的错误处理。这几个包装让主线保持可读，
+// 同时不吞掉任何错误——真实调用方应当按业务需要处理，而不是忽略。
+
+// seat 入座
+func seat(e *werewolf.Engine, id string, role pb.RoleType) {
+	if err := e.AddPlayer(id, role); err != nil {
+		log.Fatalf("添加玩家 %s 失败: %v", id, err)
+	}
+}
+
+// begin 开局
+func begin(e *werewolf.Engine) {
+	if err := e.Start(); err != nil {
+		log.Fatalf("开局失败: %v", err)
+	}
+}
+
+// step 推进一个阶段
+func step(e *werewolf.Engine) []*werewolf.Effect {
+	effects, err := e.EndPhase()
+	if err != nil {
+		log.Fatalf("推进阶段失败: %v", err)
+	}
+	return effects
+}
+
+// act 提交技能
+func act(e *werewolf.Engine, use *werewolf.SkillUse) {
+	if err := e.SubmitSkillUse(use); err != nil {
+		log.Fatalf("提交技能失败 (%s/%v): %v", use.PlayerID, use.Skill, err)
+	}
 }
