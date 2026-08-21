@@ -13,6 +13,10 @@ linters:
     - govet
     - ineffassign
     - staticcheck
+    # unused: 拦住「只写不读」的字段与无人调用的私有函数。
+    # 此前 PhaseStep.Order/Required/Multiple、State.SubStep 等一批标识符
+    # 声明了却从不读取，CI 完全发现不了。
+    - unused
 
   exclusions:
     # 排除 proto（生成代码）、example 和测试文件

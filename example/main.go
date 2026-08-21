@@ -67,12 +67,12 @@ func basicGameSetup() {
 
 	// 4. 添加玩家
 	// 6人局配置: 2狼人 + 1女巫 + 1预言家 + 1守卫 + 1村民
-	engine.AddPlayer("player1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("player2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("player3", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("player4", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("player5", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("player6", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("player1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("player2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("player3", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("player4", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("player5", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("player6", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 5. 注册事件处理器（可选）
 	engine.OnEvent(func(event *pb.Event) {
@@ -100,12 +100,12 @@ func godNarratorDemo() {
 	engine := werewolf.NewEngine(nil)
 
 	// 添加玩家
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 开始游戏
 	engine.Start()
@@ -152,7 +152,7 @@ func godNarratorDemo() {
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "seer",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// === 狼人阶段 ===
 	announcePhase()
@@ -166,12 +166,12 @@ func godNarratorDemo() {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "villager",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// === 女巫阶段 ===
 	announcePhase()
 	// 女巫选择不使用药水
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// === 预言家阶段 ===
 	announcePhase()
@@ -180,12 +180,12 @@ func godNarratorDemo() {
 		Skill:    pb.SkillType_SKILL_TYPE_CHECK,
 		TargetID: "wolf1",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// === 夜晚结算阶段 ===
 	info := engine.GetPhaseInfo()
 	fmt.Printf("\n  [上帝] 夜晚结算中...\n")
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// === 白天阶段 ===
 	info = engine.GetPhaseInfo()
@@ -241,12 +241,12 @@ func fullGameFlow() {
 	engine := werewolf.NewEngine(nil) // 使用默认配置
 
 	// 添加玩家
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 注册事件处理器
 	engine.OnEvent(func(event *pb.Event) {
@@ -292,7 +292,7 @@ func fullGameFlow() {
 	}
 
 	// 结束守卫阶段，进入狼人阶段
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 狼人阶段 (NIGHT_WOLF)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
@@ -314,7 +314,7 @@ func fullGameFlow() {
 	})
 
 	// 结束狼人阶段，进入女巫阶段
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 女巫阶段 (NIGHT_WITCH)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
@@ -331,7 +331,7 @@ func fullGameFlow() {
 	})
 
 	// 结束女巫阶段，进入预言家阶段
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 预言家阶段 (NIGHT_SEER)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
@@ -344,25 +344,23 @@ func fullGameFlow() {
 	})
 
 	// 结束预言家阶段，进入夜晚结算
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 夜晚结算阶段 (NIGHT_RESOLVE)
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// ==================== 白天 ====================
 	fmt.Println("\n  --- 白天 ---")
 	fmt.Printf("  当前阶段: %s\n", engine.GetCurrentPhase())
 
-	// 白天发言（技能提交可选）
-	engine.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: "seer",
-		Skill:    pb.SkillType_SKILL_TYPE_SPEAK,
-		Content:  "我是预言家，wolf1 是狼人！",
-	})
+	// 白天发言走消息通道，由引擎按阶段路由给该听到的人
+	if err := engine.SendMessage("seer", "我是预言家，wolf1 是狼人！"); err != nil {
+		log.Printf("发言失败: %v", err)
+	}
 
 	// 结束白天，进入投票
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// ==================== 投票 ====================
 	fmt.Println("\n  --- 投票 ---")
@@ -403,7 +401,7 @@ func fullGameFlow() {
 	})
 
 	// 结束投票
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 检查 wolf1 是否被投票出局
 	wolf1Info, _ := engine.GetPlayerInfo("wolf1")
@@ -425,12 +423,12 @@ func messagingDemo() {
 	engine := werewolf.NewEngine(nil)
 
 	// 添加玩家（需要足够多的好人防止游戏过早结束）
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("villager1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager4", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("villager1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("villager2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("villager3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("villager4", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 注册消息处理器
 	engine.OnMessage(func(msg *werewolf.Message, receiverIDs []string) {
@@ -442,7 +440,7 @@ func messagingDemo() {
 	engine.Start()
 
 	// 进入狼人阶段
-	engine.EndSubStep() // 跳过守卫阶段
+	engine.EndPhase() // 跳过守卫阶段
 
 	fmt.Printf("\n  当前阶段: %s (狼人交流阶段)\n", engine.GetCurrentPhase())
 
@@ -468,10 +466,10 @@ func messagingDemo() {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "villager1",
 	})
-	engine.EndSubStep() // 狼人阶段结束
-	engine.EndSubStep() // 女巫阶段结束
-	engine.EndSubStep() // 预言家阶段结束
-	engine.EndSubStep() // 夜晚结算结束
+	engine.EndPhase() // 狼人阶段结束
+	engine.EndPhase() // 女巫阶段结束
+	engine.EndPhase() // 预言家阶段结束
+	engine.EndPhase() // 夜晚结算结束
 
 	fmt.Printf("\n  当前阶段: %s (白天发言阶段)\n", engine.GetCurrentPhase())
 

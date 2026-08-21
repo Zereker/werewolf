@@ -26,8 +26,8 @@ func TestVoteResolver_Empty(t *testing.T) {
 func TestVoteResolver_Single(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -50,10 +50,10 @@ func TestVoteResolver_Single(t *testing.T) {
 func TestVoteResolver_Clear(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -78,10 +78,10 @@ func TestVoteResolver_Clear(t *testing.T) {
 func TestVoteResolver_Tie(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p4", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p4", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -107,8 +107,8 @@ func TestVoteResolver_Tie(t *testing.T) {
 func TestVoteResolver_Invalid(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -153,10 +153,10 @@ func TestDayResolver(t *testing.T) {
 func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 	resolver := NewWolfResolver()
 	state := NewState()
-	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	// 平票：wolf1 投 v1, wolf2 投 v2
@@ -182,9 +182,9 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 func TestWolfResolver_Consensus_Kill(t *testing.T) {
 	resolver := NewWolfResolver()
 	state := NewState()
-	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	// 达成共识：两个狼人投同一个目标
@@ -221,11 +221,11 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 func TestWolfResolver_Majority_Kill(t *testing.T) {
 	resolver := NewWolfResolver()
 	state := NewState()
-	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("wolf3", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("wolf3", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	// 多数决：2票 v1, 1票 v2
@@ -255,13 +255,16 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 	}
 }
 
-func TestWolfResolver_SameGuardKill_Empty(t *testing.T) {
-	// 同守同杀空刀：当守卫保护的目标被狼人攻击时，不设置击杀目标
-	// 这样女巫不知道有人被攻击
+func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
+	// 狼人不知道守卫守了谁，刀是照砍的：无论目标是否被守护都记录刀口。
+	// 守护能否抵消由 NightResolveResolver 判定。
+	//
+	// 若此处因守护而不记录刀口，女巫就看不到刀口，
+	// 「同守同救」（守卫守护 + 女巫解药 -> 依然死亡）这一局面将无法构成。
 	resolver := NewWolfResolver()
 	state := NewState()
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	// 使用 NightContext 设置保护状态
 	state.RoundCtx.ProtectedPlayers["victim"] = true
 	config := DefaultGameConfig()
@@ -273,14 +276,19 @@ func TestWolfResolver_SameGuardKill_Empty(t *testing.T) {
 
 	effects := resolver.Resolve(uses, state, config)
 
-	// 同守同杀时不返回任何 effect
-	if len(effects) != 0 {
-		t.Errorf("expected 0 effects when same guard kill, got %d", len(effects))
+	// 目标被守护，但刀口仍应被记录
+	if len(effects) != 1 {
+		t.Fatalf("expected 1 effect (SET_NIGHT_KILL) even when protected, got %d", len(effects))
+	}
+	if effects[0].Type != pb.EventType_EVENT_TYPE_SET_NIGHT_KILL {
+		t.Errorf("expected SET_NIGHT_KILL, got %v", effects[0].Type)
 	}
 
-	// Night.KillTarget 应该为空
-	if state.RoundCtx.KillTarget != "" {
-		t.Errorf("expected empty Night.KillTarget, got %s", state.RoundCtx.KillTarget)
+	for _, e := range effects {
+		state.ApplyEffect(e)
+	}
+	if state.RoundCtx.KillTarget != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", state.RoundCtx.KillTarget)
 	}
 }
 
@@ -288,8 +296,8 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	// 当 SameGuardKillIsEmpty=false 时，即使目标被保护也设置击杀目标
 	resolver := NewWolfResolver()
 	state := NewState()
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	// 使用 NightContext 设置保护状态
 	state.RoundCtx.ProtectedPlayers["victim"] = true
 	config := DefaultGameConfig()
@@ -322,8 +330,8 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 func TestWitchResolver_QueryKillTarget(t *testing.T) {
 	resolver := NewWitchResolver()
 	state := NewState()
-	state.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	state.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	// 使用 NightContext 设置击杀目标
 	state.RoundCtx.KillTarget = "victim"
 	config := DefaultGameConfig()
@@ -335,9 +343,11 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 
 	effects := resolver.Resolve(uses, state, config)
 
-	// 应该有3个effect: USE_ANTIDOTE, CLEAR_NIGHT_KILL, SAVE
-	if len(effects) != 3 {
-		t.Fatalf("expected 3 effects, got %d", len(effects))
+	// 应该有2个effect: USE_ANTIDOTE, SAVE
+	// 解药不再直接清除刀口——是否真的救回由 NightResolveResolver
+	// 综合「是否同时被守卫守护」判定
+	if len(effects) != 2 {
+		t.Fatalf("expected 2 effects, got %d", len(effects))
 	}
 
 	saveEffects := filterEffects(effects, pb.EventType_EVENT_TYPE_SAVE)
@@ -350,9 +360,12 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 		state.ApplyEffect(e)
 	}
 
-	// Night.KillTarget 应该被清除
-	if state.RoundCtx.KillTarget != "" {
-		t.Errorf("expected Night.KillTarget cleared after applying effects, got %s", state.RoundCtx.KillTarget)
+	// 刀口保留到结算阶段，但目标已被标记为「已救」
+	if state.RoundCtx.KillTarget != "victim" {
+		t.Errorf("expected Night.KillTarget kept until resolve, got %s", state.RoundCtx.KillTarget)
+	}
+	if !state.RoundCtx.IsSaved("victim") {
+		t.Error("expected victim to be marked as saved")
 	}
 
 	// 解药应该被消耗
@@ -365,8 +378,8 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 func TestWitchResolver_Poison(t *testing.T) {
 	resolver := NewWitchResolver()
 	state := NewState()
-	state.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	state.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -396,7 +409,7 @@ func TestWitchResolver_Poison(t *testing.T) {
 func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 	resolver := NewWitchResolver()
 	state := NewState()
-	state.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
 	state.RoundCtx.KillTarget = "witch" // 狼人杀女巫
 	config := DefaultGameConfig()
 	config.WitchCanSaveSelf = false
@@ -426,8 +439,8 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 func TestGuardResolver_Protect(t *testing.T) {
 	resolver := NewGuardResolver()
 	state := NewState()
-	state.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("target", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	state.AddPlayer("target", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -473,8 +486,8 @@ func TestGuardResolver_Protect(t *testing.T) {
 func TestSeerResolver_CheckWolf(t *testing.T) {
 	resolver := NewSeerResolver()
 	state := NewState()
-	state.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	state.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -497,8 +510,8 @@ func TestSeerResolver_CheckWolf(t *testing.T) {
 func TestSeerResolver_CheckGood(t *testing.T) {
 	resolver := NewSeerResolver()
 	state := NewState()
-	state.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	state.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
@@ -522,10 +535,10 @@ func TestSeerResolver_CheckGood(t *testing.T) {
 
 func TestState_GetWolfTeammates(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("wolf3", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("wolf3", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	teammates := state.GetWolfTeammates("wolf1")
 
@@ -555,8 +568,8 @@ func TestState_GetWolfTeammates(t *testing.T) {
 
 func TestState_GetWolfTeammates_NonWolf(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 非狼人查询应该返回空
 	teammates := state.GetWolfTeammates("villager")

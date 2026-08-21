@@ -9,13 +9,16 @@ import (
 // ==================== Complete Game Tests ====================
 
 func TestFullGame_WolvesWin(t *testing.T) {
-	engine := NewEngine(nil)
+	// 本局无神职，屠边条件（屠神/屠民）不适用，故显式使用屠城判定
+	config := DefaultGameConfig()
+	config.VictoryMode = VictoryModeTownWipe
+	engine := NewEngine(config)
 
 	// 2 wolves vs 2 villagers
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -46,7 +49,7 @@ func TestFullGame_WolvesWin(t *testing.T) {
 	}
 
 	winner := pb.Camp_CAMP_EVIL
-	_, actualWinner := engine.state.CheckVictory()
+	_, actualWinner := engine.state.CheckVictory(engine.config.VictoryMode)
 	if actualWinner != winner {
 		t.Errorf("expected EVIL wins, got %v", actualWinner)
 	}
@@ -56,10 +59,10 @@ func TestFullGame_GoodWins(t *testing.T) {
 	engine := NewEngine(nil)
 
 	// 1 wolf vs 3 villagers
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -98,7 +101,7 @@ func TestFullGame_GoodWins(t *testing.T) {
 		t.Error("expected game to be over (good wins)")
 	}
 
-	_, winner := engine.state.CheckVictory()
+	_, winner := engine.state.CheckVictory(engine.config.VictoryMode)
 	if winner != pb.Camp_CAMP_GOOD {
 		t.Errorf("expected GOOD wins, got %v", winner)
 	}
@@ -109,10 +112,10 @@ func TestFullGame_GoodWins(t *testing.T) {
 func TestScenario_WitchSavesVictim(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -149,10 +152,10 @@ func TestScenario_GuardProtects(t *testing.T) {
 	config.SameGuardKillIsEmpty = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -185,11 +188,11 @@ func TestScenario_GuardProtects(t *testing.T) {
 func TestScenario_VoteTie(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -235,11 +238,11 @@ func TestScenario_VoteTie(t *testing.T) {
 func TestScenario_MultipleRounds(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -281,10 +284,10 @@ func TestConfig_WitchCanSaveSelf_Enabled(t *testing.T) {
 	config.WitchCanSaveSelf = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -321,10 +324,10 @@ func TestConfig_WitchCanSaveSelf_Disabled(t *testing.T) {
 	config.WitchCanSaveSelf = false
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -361,10 +364,10 @@ func TestConfig_SameGuardKill_Empty(t *testing.T) {
 	config.SameGuardKillIsEmpty = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -399,10 +402,10 @@ func TestConfig_SameGuardKill_NotEmpty(t *testing.T) {
 	config.SameGuardKillIsEmpty = false
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -434,67 +437,127 @@ func TestConfig_SameGuardKill_NotEmpty(t *testing.T) {
 
 // ==================== Complex Scenario Tests ====================
 
-func TestScenario_WitchPoisonAndSaveOnSameNight(t *testing.T) {
-	engine := NewEngine(nil)
+// TestConfig_WitchCanUseBothPotions 女巫同夜双开药的规则变体。
+//
+// 维基「狼人殺」条目规定「解藥和毒藥不可以在同一夜使用」，故默认禁止；
+// 需要放宽的板子可通过 GameConfig.WitchCanUseBothPotions 打开。
+//
+// 规则层面的完整断言见 rules_test.go:TestRule_R3_WitchCannotUseBothPotionsInOneNight，
+// 本用例聚焦配置开关本身的双向行为。
+func TestConfig_WitchCanUseBothPotions(t *testing.T) {
+	setup := func(canUseBoth bool) *Engine {
+		config := DefaultGameConfig()
+		config.WitchCanUseBothPotions = canUseBoth
+		engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+		engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+		engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+		engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+		engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+		engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
-	engine.Start()
+		if err := engine.Start(); err != nil {
+			t.Fatalf("Start() 失败: %v", err)
+		}
 
-	// NIGHT_GUARD -> NIGHT_WOLF
-	engine.EndPhase()
+		// NIGHT_GUARD -> NIGHT_WOLF
+		if _, err := engine.EndPhase(); err != nil {
+			t.Fatalf("EndPhase() 失败: %v", err)
+		}
 
-	// NIGHT_WOLF: Wolf kills victim
-	engine.SubmitSkillUse(&SkillUse{
-		PlayerID: "wolf",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
-		TargetID: "victim",
-	})
-	engine.EndPhase() // NIGHT_WOLF -> NIGHT_WITCH
+		// NIGHT_WOLF: 狼刀 victim
+		if err := engine.SubmitSkillUse(&SkillUse{
+			PlayerID: "wolf",
+			Skill:    pb.SkillType_SKILL_TYPE_KILL,
+			TargetID: "victim",
+		}); err != nil {
+			t.Fatalf("提交击杀失败: %v", err)
+		}
+		if _, err := engine.EndPhase(); err != nil { // -> NIGHT_WITCH
+			t.Fatalf("EndPhase() 失败: %v", err)
+		}
 
-	// NIGHT_WITCH: Witch saves victim AND poisons wolf
-	engine.SubmitSkillUse(&SkillUse{
-		PlayerID: "witch",
-		Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
-		TargetID: "victim",
-	})
-	engine.SubmitSkillUse(&SkillUse{
-		PlayerID: "witch",
-		Skill:    pb.SkillType_SKILL_TYPE_POISON,
-		TargetID: "wolf",
-	})
-	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndPhase() // NIGHT_RESOLVE -> DAY
+		// NIGHT_WITCH: 先救 victim，再毒 wolf
+		if err := engine.SubmitSkillUse(&SkillUse{
+			PlayerID: "witch",
+			Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
+			TargetID: "victim",
+		}); err != nil {
+			t.Fatalf("提交解药失败: %v", err)
+		}
+		if err := engine.SubmitSkillUse(&SkillUse{
+			PlayerID: "witch",
+			Skill:    pb.SkillType_SKILL_TYPE_POISON,
+			TargetID: "wolf",
+		}); err != nil {
+			t.Fatalf("提交毒药失败: %v", err)
+		}
 
-	// Victim saved, wolf poisoned
-	victim, _ := engine.state.getPlayer("victim")
-	wolf, _ := engine.state.getPlayer("wolf")
-
-	if !victim.Alive {
-		t.Error("expected victim to be saved")
+		for i := 0; i < 3; i++ { // NIGHT_WITCH -> NIGHT_SEER -> NIGHT_RESOLVE -> DAY
+			if _, err := engine.EndPhase(); err != nil {
+				t.Fatalf("EndPhase() 失败: %v", err)
+			}
+		}
+		return engine
 	}
-	if wolf.Alive {
-		t.Error("expected wolf to be poisoned")
-	}
 
-	// Game should be over (good wins)
-	if !engine.IsGameOver() {
-		t.Error("expected game over (good wins after wolf poisoned)")
-	}
+	t.Run("默认禁止同夜双开药", func(t *testing.T) {
+		engine := setup(false)
+
+		victim, _ := engine.state.getPlayer("victim")
+		wolf, _ := engine.state.getPlayer("wolf")
+		witch, _ := engine.state.getPlayer("witch")
+
+		// 先提交的解药生效
+		if !victim.Alive {
+			t.Error("解药先提交，victim 应当被救")
+		}
+		if witch.HasAntidote {
+			t.Error("解药应当已被消耗")
+		}
+
+		// 后提交的毒药被拒
+		if !wolf.Alive {
+			t.Error("同夜第二瓶药应当无效，wolf 不应被毒死")
+		}
+		if !witch.HasPoison {
+			t.Error("毒药未生效，不应被消耗")
+		}
+		if engine.IsGameOver() {
+			t.Error("狼人存活，游戏不应结束")
+		}
+	})
+
+	t.Run("放宽后允许同夜双开药", func(t *testing.T) {
+		engine := setup(true)
+
+		victim, _ := engine.state.getPlayer("victim")
+		wolf, _ := engine.state.getPlayer("wolf")
+		witch, _ := engine.state.getPlayer("witch")
+
+		if !victim.Alive {
+			t.Error("expected victim to be saved")
+		}
+		if wolf.Alive {
+			t.Error("expected wolf to be poisoned")
+		}
+		if witch.HasAntidote || witch.HasPoison {
+			t.Error("两瓶药都应当被消耗")
+		}
+		if !engine.IsGameOver() {
+			t.Error("expected game over (good wins after wolf poisoned)")
+		}
+	})
 }
 
 func TestScenario_SeerIdentifiesWolf(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -545,12 +608,12 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	engine := NewEngine(nil)
 
 	// 设置玩家
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 启动分步模式
 	err := engine.Start()
@@ -568,7 +631,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "seer",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 阶段2：狼人阶段
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
@@ -592,7 +655,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v1",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 阶段3：女巫阶段
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
@@ -611,7 +674,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
 		TargetID: "v1",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 阶段4：预言家阶段
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
@@ -623,7 +686,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_CHECK,
 		TargetID: "wolf1",
 	})
-	effects, _ := engine.EndSubStep()
+	effects, _ := engine.EndPhase()
 
 	// 验证预言家查验结果
 	var checkEffect *Effect
@@ -644,7 +707,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
 		t.Errorf("expected NIGHT_RESOLVE, got %v", engine.GetCurrentPhase())
 	}
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	// 阶段6：白天
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
@@ -666,18 +729,18 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
 	// 守卫阶段
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 狼人阶段：平票（wolf1 投 v1, wolf2 投 v2）
 	engine.SubmitSkillUse(&SkillUse{
@@ -690,7 +753,7 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "v2",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 女巫阶段：平票导致无击杀，NightKillTarget 应为空
 	killTarget := engine.GetNightKillTarget()
@@ -699,9 +762,9 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	}
 
 	// 完成剩余阶段
-	engine.EndSubStep() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndSubStep() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
+	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	// v1 和 v2 都应该存活（没有达成共识）
 	v1, _ := engine.state.getPlayer("v1")
@@ -716,11 +779,11 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 	config.SameGuardKillIsEmpty = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -730,7 +793,7 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
 		TargetID: "victim",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
 	// 狼人杀 victim（应该被守卫挡住）
 	engine.SubmitSkillUse(&SkillUse{
@@ -738,18 +801,19 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 		Skill:    pb.SkillType_SKILL_TYPE_KILL,
 		TargetID: "victim",
 	})
-	engine.EndSubStep()
+	engine.EndPhase()
 
-	// 女巫阶段：守卫保护成功，NightKillTarget 应为空
+	// 女巫阶段：刀口照常记录（女巫不知道守卫守了谁），
+	// 守护是否抵消由 NIGHT_RESOLVE 判定
 	killTarget := engine.GetNightKillTarget()
-	if killTarget != "" {
-		t.Errorf("expected empty NightKillTarget when guard protects, got %s", killTarget)
+	if killTarget != "victim" {
+		t.Errorf("expected NightKillTarget=victim (protection resolves later), got %s", killTarget)
 	}
 
 	// 完成剩余阶段
-	engine.EndSubStep() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndSubStep() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
+	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	// victim 存活
 	victim, _ := engine.state.getPlayer("victim")
@@ -761,13 +825,13 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 func TestSubStepMode_MultipleRounds(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -776,25 +840,25 @@ func TestSubStepMode_MultipleRounds(t *testing.T) {
 	}
 
 	// 第一轮夜晚：空过
-	engine.EndSubStep() // NIGHT_GUARD -> NIGHT_WOLF
-	engine.EndSubStep() // NIGHT_WOLF -> NIGHT_WITCH
-	engine.EndSubStep() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndSubStep() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndSubStep() // NIGHT_RESOLVE -> DAY
+	engine.EndPhase() // NIGHT_GUARD -> NIGHT_WOLF
+	engine.EndPhase() // NIGHT_WOLF -> NIGHT_WITCH
+	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
+	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	engine.EndPhase() // NIGHT_RESOLVE -> DAY
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
 		t.Errorf("expected DAY, got %v", engine.GetCurrentPhase())
 	}
 
 	// 白天 -> 投票
-	engine.EndSubStep() // DAY -> VOTE
+	engine.EndPhase() // DAY -> VOTE
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_VOTE {
 		t.Errorf("expected VOTE, got %v", engine.GetCurrentPhase())
 	}
 
 	// 投票 -> 第二轮夜晚
-	engine.EndSubStep() // VOTE -> NIGHT_GUARD
+	engine.EndPhase() // VOTE -> NIGHT_GUARD
 
 	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
 		t.Errorf("expected NIGHT_GUARD, got %v", engine.GetCurrentPhase())
@@ -809,13 +873,13 @@ func TestScenario_AllRolesActive(t *testing.T) {
 	engine := NewEngine(nil)
 
 	// Full game with all roles
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 

@@ -87,9 +87,9 @@ type Metrics interface {
 // NopMetrics 空指标实现（默认）
 type NopMetrics struct{}
 
-func (m *NopMetrics) IncSkillSubmitted(skill pb.SkillType)   {}
-func (m *NopMetrics) IncPhaseEnded(phase pb.PhaseType)       {}
-func (m *NopMetrics) IncGameEnded(winner pb.Camp)            {}
+func (m *NopMetrics) IncSkillSubmitted(skill pb.SkillType)    {}
+func (m *NopMetrics) IncPhaseEnded(phase pb.PhaseType)        {}
+func (m *NopMetrics) IncGameEnded(winner pb.Camp)             {}
 func (m *NopMetrics) IncEffectApplied(eventType pb.EventType) {}
 
 // NewNopMetrics 创建空指标收集器

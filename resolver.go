@@ -179,16 +179,12 @@ func (r *WolfResolver) Resolve(uses []*SkillUse, state *State, config *GameConfi
 		return effects
 	}
 
-	// 检查同守同杀：使用 RoundContext 检查保护状态
-	// Guard 的 PROTECT Effect 已经在上一阶段应用到 RoundContext
-	if state.RoundCtx.IsProtected(result.Winner) && config.SameGuardKillIsEmpty {
-		// 同守同杀空刀 - 不设置击杀目标
-		// 女巫不知道有人被攻击
-		return effects
-	}
-
-	// 通过 Effect 设置狼人击杀目标（供女巫查询）
-	// 不直接修改 state，由 ApplyEffect 统一处理
+	// 无论目标是否被守卫守护，都记录刀口。
+	//
+	// 守护能否抵消、解药能否救回，统一由 NightResolveResolver 判定：
+	//   - 狼人不知道守卫守了谁，刀是照砍的
+	//   - 女巫看到的是「狼刀目标」，她同样不知道守卫的动作
+	// 若在此处因守护而不记录刀口，「同守同救」这一局面根本无法构成。
 	setKillEffect := NewEffect(pb.EventType_EVENT_TYPE_SET_NIGHT_KILL, "", result.Winner)
 	effects = append(effects, setKillEffect)
 
@@ -208,14 +204,22 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 	// 获取击杀目标（RoundContext 保证非 nil）
 	killTarget := state.RoundCtx.KillTarget
 
-	// 防止同一玩家重复使用同一技能（女巫可以同时使用解药和毒药，但不能重复）
+	// 防止同一玩家重复使用同一技能
 	usedSkills := make(map[string]bool) // key: "playerID:skillType"
+
+	// 规则「解藥和毒藥不可以在同一夜使用」：记录本夜已成功用药的女巫。
+	// 只有真正生效的用药才计入——若解药因「今晚没人被杀」等原因被取消，
+	// 女巫本夜仍可以正常使用毒药。
+	potionUsed := make(map[string]bool) // key: playerID
 
 	for _, use := range uses {
 		skillKey := use.PlayerID + ":" + use.Skill.String()
 		if usedSkills[skillKey] {
 			continue
 		}
+
+		// 本夜是否已经用过另一瓶药
+		bothPotionsBlocked := !config.WitchCanUseBothPotions && potionUsed[use.PlayerID]
 
 		switch use.Skill {
 		case pb.SkillType_SKILL_TYPE_ANTIDOTE:
@@ -224,7 +228,9 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 				saveEffect := NewEffect(pb.EventType_EVENT_TYPE_SAVE, use.PlayerID, use.TargetID)
 
 				// 检查是否有解药
-				if !state.CanUseAntidote(use.PlayerID) {
+				if bothPotionsBlocked {
+					saveEffect.Cancel("cannot use both potions in one night")
+				} else if !state.CanUseAntidote(use.PlayerID) {
 					saveEffect.Cancel("no antidote")
 				} else if use.PlayerID == use.TargetID && !config.WitchCanSaveSelf {
 					// 检查是否自救
@@ -236,12 +242,12 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 					// 只能救被杀的人
 					saveEffect.Cancel("target is not dying")
 				} else {
-					// 救的是被杀的人，通过 Effect 消耗解药并清除击杀目标
+					// 救的是被杀的人，消耗解药。
+					// 这里不再清除刀口——是否真的救回由 NightResolveResolver
+					// 综合「是否同时被守卫守护」判定（同守同救可能依然死亡）。
+					potionUsed[use.PlayerID] = true
 					useAntidoteEffect := NewEffect(pb.EventType_EVENT_TYPE_USE_ANTIDOTE, use.PlayerID, "")
 					effects = append(effects, useAntidoteEffect)
-
-					clearKillEffect := NewEffect(pb.EventType_EVENT_TYPE_CLEAR_NIGHT_KILL, use.PlayerID, "")
-					effects = append(effects, clearKillEffect)
 				}
 
 				effects = append(effects, saveEffect)
@@ -251,7 +257,11 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 				usedSkills[skillKey] = true
 
 				// 检查是否有毒药
-				if !state.CanUsePoison(use.PlayerID) {
+				if bothPotionsBlocked {
+					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
+					canceledEffect.Cancel("cannot use both potions in one night")
+					effects = append(effects, canceledEffect)
+				} else if !state.CanUsePoison(use.PlayerID) {
 					// 无毒药，产生一个被取消的效果用于通知
 					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
 					canceledEffect.Cancel("no poison")
@@ -263,6 +273,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 					effects = append(effects, canceledEffect)
 				} else {
 					// 通过 Effect 消耗毒药并标记目标（实际死亡在 NightResolveResolver 处理）
+					potionUsed[use.PlayerID] = true
 					usePoisonEffect := NewEffect(pb.EventType_EVENT_TYPE_USE_POISON, use.PlayerID, use.TargetID)
 					effects = append(effects, usePoisonEffect)
 				}
@@ -318,18 +329,41 @@ func NewNightResolveResolver() *NightResolveResolver {
 func (r *NightResolveResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 
-	// 处理狼人击杀
+	// 处理狼人击杀。
+	//
+	// 刀口的最终结果由「是否被守卫守护」与「女巫是否用了解药」共同决定：
+	//
+	//	被守 + 被救 -> GuardSaveTogetherDies 决定生死（同守同救，默认死亡）
+	//	被守       -> SameGuardKillIsEmpty 决定守护是否生效
+	//	被救       -> 救回
+	//	都没有      -> 死亡
 	if state.RoundCtx.KillTarget != "" {
 		killTarget := state.RoundCtx.KillTarget
+		protected := state.RoundCtx.IsProtected(killTarget)
+		saved := state.RoundCtx.IsSaved(killTarget)
 
-		// 检查同守同杀：目标被保护 + 配置为空刀
-		if state.RoundCtx.IsProtected(killTarget) && config.SameGuardKillIsEmpty {
-			// 同守同杀空刀 - 不产生击杀效果
-			clearKillEffect := NewEffect(pb.EventType_EVENT_TYPE_CLEAR_NIGHT_KILL, "", "")
-			effects = append(effects, clearKillEffect)
-		} else {
-			// 正常击杀
+		var dies bool
+		var reason string
+		switch {
+		case protected && saved:
+			// 同守同救
+			dies = config.GuardSaveTogetherDies
+			reason = "guard and antidote used on the same target"
+		case protected:
+			dies = !config.SameGuardKillIsEmpty
+			reason = "protected by guard"
+		case saved:
+			dies = false
+			reason = "saved by witch antidote"
+		default:
+			dies = true
+		}
+
+		if dies {
 			killEffect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "", killTarget)
+			if reason != "" {
+				killEffect.WithData("reason", reason)
+			}
 			effects = append(effects, killEffect)
 
 			// 检查被杀者是否是猎人，如果是则触发猎人技能
@@ -339,21 +373,21 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, state *State, config *G
 					effects = append(effects, hunterTriggerEffect)
 				}
 			}
+		} else {
+			// 刀口未生效，清除击杀目标
+			clearKillEffect := NewEffect(pb.EventType_EVENT_TYPE_CLEAR_NIGHT_KILL, "", "").
+				WithData("reason", reason)
+			effects = append(effects, clearKillEffect)
 		}
 	}
 
 	// 处理女巫毒杀（毒杀的玩家已在 WitchResolver 中标记到 RoundContext）
+	//
+	// 规则「除殉情或被毒殺外，以任何其他方式被淘汰時可以…開槍」：
+	// 被毒死的猎人不触发开枪，这正是毒药相对于狼刀的战术价值所在。
 	for playerID := range state.RoundCtx.PoisonedPlayers {
 		poisonKillEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "", playerID)
 		effects = append(effects, poisonKillEffect)
-
-		// 检查被毒者是否是猎人
-		if target, ok := state.GetPlayerInfo(playerID); ok {
-			if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-				hunterTriggerEffect := NewEffect(pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED, playerID, "")
-				effects = append(effects, hunterTriggerEffect)
-			}
-		}
 	}
 
 	return effects

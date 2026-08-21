@@ -39,6 +39,18 @@ var (
 	ErrGameEnded         = &GameError{Code: pb.ErrorCode_ERROR_CODE_GAME_ENDED, Message: "game has ended"}
 	ErrInvalidPhase      = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_PHASE, Message: "invalid phase"}
 	ErrMessageNotAllowed = &GameError{Code: pb.ErrorCode_ERROR_CODE_MESSAGE_NOT_ALLOWED, Message: "message not allowed in this phase"}
+
+	// 玩家与开局校验
+	ErrPlayerExists       = &GameError{Code: pb.ErrorCode_ERROR_CODE_PLAYER_EXISTS, Message: "player already exists"}
+	ErrInvalidPlayerID    = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_PLAYER_ID, Message: "player id must not be empty"}
+	ErrInvalidRole        = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_ROLE, Message: "role cannot be assigned to a player"}
+	ErrGameAlreadyStarted = &GameError{Code: pb.ErrorCode_ERROR_CODE_GAME_ALREADY_STARTED, Message: "game already started"}
+	ErrNoWerewolf         = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_BOARD, Message: "board must contain at least one werewolf"}
+	ErrNoGoodPlayer       = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_BOARD, Message: "board must contain at least one good player"}
+
+	// 快照
+	ErrNilSnapshot     = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT, Message: "snapshot must not be nil"}
+	ErrSnapshotVersion = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT, Message: "unsupported snapshot version"}
 )
 
 // IsErrorCode 检查错误是否匹配指定错误码

@@ -1,408 +1,233 @@
-# Werewolf 游戏引擎架构文档
+# Werewolf 游戏引擎架构
 
 ## 概述
 
-Werewolf 游戏引擎采用**状态机驱动**的架构设计，以**Phase（阶段）为中心**，使用**声明式配置**描述游戏规则。
+本引擎是一个**无时钟、无 IO、无并发调度**的纯状态机库。它不决定「什么时候
+天亮」，只回答「在当前阶段，谁能做什么，做完之后世界变成什么样」。计时、网络、
+持久化、AI 决策全部由调用方负责。
+
+这条边界决定了后面所有的设计。
 
 ## 设计理念
 
-### 核心原则
+### 1. Phase 为中心，而非 Role 为中心
 
-1. **状态机驱动** - 游戏流程是显式的阶段流转，而非事件驱动
-2. **Phase 为中心** - 阶段决定规则（谁能做什么），而非角色
-3. **声明式配置** - 规则用数据描述，不硬编码在代码中
-4. **单包设计** - 用户只需导入一个包
+规则挂在**阶段**上，不挂在角色上。「守卫能守谁」不是守卫这个类的方法，而是
+`NIGHT_GUARD` 阶段的配置加上 `GuardResolver` 的判定。
 
-### 架构演进
+好处是加角色不需要改引擎：新角色 = 新的 `PhaseConfig` + 新的 `Resolver`。
+
+### 2. 状态变更一律经由 Effect
+
+Resolver **不允许直接修改 State**，只能产出 `Effect` 描述「想发生什么」，
+由 `State.ApplyEffect` 统一落地。
 
 ```
-之前（命令式、多包）           之后（声明式、单包）
-├── event/                    ├── config.go
-├── executor/                 ├── effect.go
-├── phase/          ──────►   ├── engine.go
-├── player/                   ├── phase_manager.go
-├── role/                     ├── resolver.go
-├── skill/                    ├── state.go
-└── engine.go                 └── proto/
+SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ──► 新状态
+  (输入)      (纯函数)      (描述)         (唯一写入点)
 ```
+
+这带来三个直接收益：
+
+- **可测**：Resolver 是纯函数，给定输入必得确定的 Effect 列表
+- **可审计**：一局游戏就是一串 Effect，可序列化、可回放、可做战报
+- **可取消**：`Effect.Canceled` + `Reason` 让「为什么没生效」成为一等公民
+  （被守护、无解药、连守限制……都是取消原因而不是静默丢弃）
+
+历史教训：曾经 `WolfResolver` 在目标被守护时直接不产出刀口 Effect，
+导致「同守同救」这个局面在引擎里根本无法构成。现在刀口一律记录，
+生死判定统一收敛到结算阶段——**判定要集中，信息不要提前丢弃**。
+
+### 3. 配置是数据，不是代码
+
+阶段流转、每阶段可用技能、规则变体全部是可序列化的数据结构。
+`GameConfig` 里每个布尔开关都对应维基条目中的一条规则变体。
+
+### 4. 单一真相来源
+
+「玩家此刻能用什么技能」只有一个来源：`PhaseConfig.Steps`。
+`SubmitSkillUse` 的校验与 `GetPhaseInfo` 的对外宣告都从它派生。
+
+历史教训：这两者曾各自硬编码技能列表，导致 `GetPhaseInfo` 宣告猎人可以
+`SKIP`、而 `SubmitSkillUse` 拒绝 `SKIP` 的自相矛盾。
 
 ## 架构图
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         Engine                               │
-│                    （轻量状态机）                              │
-│                                                              │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│   │ GameState   │  │PhaseManager │  │  GameConfig │        │
-│   │ （游戏状态） │  │ （阶段管理） │  │ （规则配置） │        │
-│   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘        │
-│          │                │                │                │
-│          └────────────────┼────────────────┘                │
-│                           │                                  │
-│                    ┌──────▼──────┐                          │
-│                    │  Resolver   │                          │
-│                    │ （冲突解析） │                          │
-│                    └──────┬──────┘                          │
-│                           │                                  │
-│                    ┌──────▼──────┐                          │
-│                    │   Effect    │                          │
-│                    │ （效果描述） │                          │
-│                    └─────────────┘                          │
-└─────────────────────────────────────────────────────────────┘
+                     ┌──────────────────────────────┐
+   调用方             │           Engine             │
+  （计时/网络/AI）  ──►│  ┌────────────────────────┐  │
+                     │  │ SubmitSkillUse         │  │  收集技能
+                     │  │   └─ Phase.Validate    │  │  （校验依据 Steps）
+                     │  ├────────────────────────┤  │
+                     │  │ EndPhase               │  │  推进游戏
+                     │  │   1. Resolver.Resolve  │──┼──► []*Effect
+                     │  │   2. State.ApplyEffect │  │
+                     │  │   3. 猎人待结算？        │  │
+                     │  │   4. CheckVictory      │  │
+                     │  │   5. 流转下一阶段        │  │
+                     │  ├────────────────────────┤  │
+                     │  │ GetPhaseInfo           │──┼──► 谁该行动、能用什么
+                     │  │ SendMessage            │──┼──► 按阶段路由发言
+                     │  └────────────────────────┘  │
+                     └───────┬──────────────┬───────┘
+                             │              │
+                     ┌───────▼──────┐  ┌────▼─────────┐
+                     │    State     │  │    Phase     │
+                     │  玩家/回合上下文 │  │ 配置 + 解析器注册 │
+                     └──────────────┘  └──────────────┘
 ```
 
 ## 核心模块
 
-### 1. Engine（引擎）
+### Engine（engine.go）
 
-**文件**: `engine.go`
+轻量状态机，对外只有三类方法：
 
-**职责**: 轻量级状态机，协调所有模块
+| 类别 | 方法 | 说明 |
+|------|------|------|
+| 建局 | `AddPlayer` / `AddCustomPlayer` | 只能在 `Start` 之前调用，全部返回 error |
+| 推进 | `Start` / `EndPhase` | `EndPhase` 是唯一推进入口 |
+| 输入 | `SubmitSkillUse` / `SendMessage` | 技能与发言两条独立通道 |
+| 读取 | `GetPhaseInfo` / `GetPlayerInfo` / `GetRoundContext` … | 一律返回只读副本 |
 
-```go
-type Engine struct {
-    config       *GameConfig     // 规则配置
-    state        *GameState      // 游戏状态
-    phaseManager *PhaseManager   // 阶段管理
-    pendingUses  []*SkillUse     // 待处理技能
-    eventHandlers []EventHandler // 事件处理器
-}
-```
+**非法输入一律返回 error，不静默生效**：重复 ID、空 ID、把上帝当玩家、
+开局后再加人、缺狼或缺好人的板子，都在入口处拒绝。阵营与角色类别由角色推导
+（`CampOf` / `CategoryOf`），调用方无从传错；扩展角色走 `AddCustomPlayer`
+显式指定。
 
-**核心方法**:
-- `NewEngine(config)` - 创建引擎
-- `AddPlayer(id, role, camp)` - 添加玩家
-- `Start()` - 开始游戏
-- `SubmitSkillUse(use)` - 提交技能使用
-- `EndPhase()` - 结束阶段，解析技能，流转状态
+**并发模型**：所有导出方法可并发调用。用户回调（`OnEvent` / `OnMessage`）
+一律在**释放锁之后**执行，且 handler 列表在锁内快照——既不会死锁（回调里
+可以安全调用 Engine 方法），也不会与 `OnEvent` 的并发注册产生竞争。
+单个 handler panic 被隔离并记录 Error 日志，不影响其他 handler。
 
-**设计要点**:
-- Engine 只做协调，不做具体逻辑
-- 技能解析委托给 Resolver
-- 状态管理委托给 GameState
+### State（state.go）
 
----
+持有全部游戏状态，是**唯一的写入点**（`ApplyEffect`）。
 
-### 2. GameState（游戏状态）
+- `PlayerState`：身份、存活、女巫药剂、守卫上回合目标
+- `RoundContext`：回合内的临时状态（刀口、被守、被救、被毒、猎人触发），
+  每进入新的一夜重建
+- `RoleCategory`：神职 / 平民 / 狼人，屠边判定需要这个维度，
+  而 `pb.Camp` 只有好人/狼人两值，表达不了
 
-**文件**: `state.go`
+**猎人触发标记是一次性的**：由死亡结算置位，进入猎人阶段后必须
+`ConsumeHunterTrigger` 消费。不消费的话它会在整个回合内持续为真，
+导致夜里开过枪的猎人在当天投票后被再次拉进 `DAY_HUNTER`。
 
-**职责**: 管理游戏状态，线程安全
+### Phase（phase.go）
 
-```go
-type GameState struct {
-    Phase   pb.PhaseType            // 当前阶段
-    Round   int                     // 当前回合
-    Players map[string]*PlayerState // 玩家状态
-}
+阶段配置的查询入口 + 解析器注册表 + 技能校验（`ValidateSkillUse`）。
 
-type PlayerState struct {
-    ID        string
-    Role      pb.RoleType
-    Camp      pb.Camp
-    Alive     bool
-    Protected bool
-}
-```
+### Resolver（resolver.go）
 
-**核心方法**:
-- `AddPlayer()` - 添加玩家
-- `GetPlayerInfo()` - 获取玩家信息只读副本
-- `ApplyEffect()` - 应用效果（改变状态）
-- `CheckVictory()` - 检查胜利条件
-- `NextPhase()` - 切换阶段
-
----
-
-### 3. GameConfig（游戏配置）
-
-**文件**: `config.go`
-
-**职责**: 声明式规则配置
+每阶段一个，签名统一：
 
 ```go
-type GameConfig struct {
-    // 规则变体
-    WitchCanSaveSelf     bool  // 女巫能否自救
-    GuardCanProtectSelf  bool  // 守卫能否自守
-    GuardCanRepeat       bool  // 守卫能否连续守同一人
-    SameGuardKillIsEmpty bool  // 同守同杀是否空刀
-
-    // 阶段配置
-    Phases map[pb.PhaseType]*PhaseConfig
-}
+Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect
 ```
 
-**PhaseConfig（阶段配置）**:
-
-```go
-type PhaseConfig struct {
-    Type    pb.PhaseType  // 阶段类型
-    Steps   []PhaseStep   // 步骤列表
-    Timeout time.Duration // 超时时间
-}
-
-type PhaseStep struct {
-    Role     pb.RoleType   // 哪个角色
-    Skill    pb.SkillType  // 使用什么技能
-    Order    int           // 执行顺序
-    Required bool          // 是否必须行动
-    Multiple bool          // 是否允许多个玩家
-}
-```
-
-**标准夜晚配置示例**:
-
-```go
-Steps: []PhaseStep{
-    {Role: Guard,    Skill: Protect,  Order: 1},
-    {Role: Werewolf, Skill: Kill,     Order: 2, Multiple: true},
-    {Role: Witch,    Skill: Antidote, Order: 3},
-    {Role: Witch,    Skill: Poison,   Order: 4},
-    {Role: Seer,     Skill: Check,    Order: 5},
-}
-```
-
----
-
-### 4. PhaseManager（阶段管理器）
-
-**文件**: `phase_manager.go`
-
-**职责**: 管理阶段配置和解析器
-
-```go
-type PhaseManager struct {
-    config    *GameConfig
-    resolvers map[pb.PhaseType]Resolver
-}
-```
-
-**核心方法**:
-- `GetPhaseConfig()` - 获取阶段配置
-- `GetResolver()` - 获取阶段解析器
-- `GetAllowedSkills()` - 获取角色允许的技能
-- `NextPhase()` - 计算下一阶段
-- `ValidateSkillUse()` - 验证技能使用
-
----
-
-### 5. Resolver（冲突解析器）
-
-**文件**: `resolver.go`
-
-**职责**: 解析技能冲突，产生效果
-
-```go
-type Resolver interface {
-    Resolve(uses []*SkillUse, state *GameState, config *GameConfig) []*Effect
-}
-```
-
-**三种解析器**:
-
-| 解析器 | 阶段 | 职责 |
-|--------|------|------|
-| NightResolver | 夜晚 | 解析守卫/狼人/女巫/预言家的技能冲突 |
-| DayResolver | 白天 | 发言阶段，无状态变化 |
-| VoteResolver | 投票 | 统计投票，处理平票 |
-
-**NightResolver 优先级**:
+夜晚的判定顺序值得单独说明。**信息在前面的阶段收集，判定在结算阶段集中**：
 
 ```
-1. 守卫保护 → 标记目标为 Protected
-2. 狼人击杀 → 检查是否被保护，产生 Kill 效果
-3. 女巫解药 → 可取消 Kill 效果
-4. 女巫毒药 → 产生 Poison 效果
-5. 预言家查验 → 产生 Check 效果（仅返回信息）
+NIGHT_GUARD    GuardResolver   ──► PROTECT（可能被连守/自守限制取消）
+NIGHT_WOLF     WolfResolver    ──► SET_NIGHT_KILL（无论是否被守都记录）
+NIGHT_WITCH    WitchResolver   ──► SAVE / USE_POISON（同夜只能用一瓶药）
+NIGHT_SEER     SeerResolver    ──► CHECK（只报阵营，不报角色）
+NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
+                                   ↑ 刀口生死在这里才定
 ```
 
----
+刀口结算表：
 
-### 6. Effect（效果）
+| 被守 | 被救 | 结果 |
+|:---:|:---:|------|
+| ✓ | ✓ | `GuardSaveTogetherDies`（默认死亡，即同守同救） |
+| ✓ | ✗ | `SameGuardKillIsEmpty`（默认空刀） |
+| ✗ | ✓ | 救回 |
+| ✗ | ✗ | 死亡 |
 
-**文件**: `effect.go`
+### Effect（effect.go）
 
-**职责**: 描述状态变更
+状态变更的描述。事件类型按编号分两类：
 
-```go
-type Effect struct {
-    Type     EffectType             // 效果类型
-    SourceID string                 // 效果来源
-    TargetID string                 // 效果目标
-    Data     map[string]interface{} // 附加数据
-    Canceled bool                   // 是否被取消
-    Reason   string                 // 取消原因
-}
-```
-
-**效果类型**:
-
-| 类型 | 说明 | 状态变化 |
-|------|------|----------|
-| EffectKill | 击杀 | Alive = false |
-| EffectProtect | 保护 | Protected = true |
-| EffectSave | 救活 | Alive = true |
-| EffectPoison | 毒杀 | Alive = false |
-| EffectCheck | 查验 | 无（返回阵营信息） |
-| EffectEliminate | 投票出局 | Alive = false |
-
----
+- `< 100`：外部可见事件，会通过 `OnEvent` 推给调用方
+- `>= 100`：内部状态变更（`SET_NIGHT_KILL`、`USE_ANTIDOTE`、
+  `HUNTER_TRIGGERED` 等），不外发
 
 ## 数据流
 
-### 完整游戏流程
+### 一个阶段的完整生命周期
 
 ```
-1. 创建引擎
-   NewEngine(config)
-
-2. 添加玩家
-   AddPlayer("p1", Werewolf, Evil)
-   AddPlayer("p2", Seer, Good)
-   ...
-
-3. 开始游戏
-   Start() → Phase = Night, Round = 1
-
-4. 夜晚阶段
-   SubmitSkillUse(Kill, "p1" → "p3")
-   SubmitSkillUse(Check, "p2" → "p1")
-   ...
-
-5. 结束阶段
-   EndPhase()
-   ├── Resolver.Resolve(uses) → [Effect...]
-   ├── ApplyEffect(each effect)
-   ├── CheckVictory()
-   └── NextPhase() → Day
-
-6. 白天阶段
-   (发言，无技能提交)
-   EndPhase() → Vote
-
-7. 投票阶段
-   SubmitSkillUse(Vote, "p1" → "p3")
-   SubmitSkillUse(Vote, "p2" → "p3")
-   ...
-   EndPhase()
-   ├── VoteResolver.Resolve()
-   ├── ApplyEffect(Eliminate)
-   ├── CheckVictory()
-   └── NextPhase() → Night (Round 2)
-
-8. 循环直到胜利条件满足
+1. 调用方读 GetPhaseInfo()      ──► 得知本阶段谁该行动、能用什么技能
+2. 调用方收集玩家决策            ──► （超时、AI、网络，都是调用方的事）
+3. SubmitSkillUse() × N         ──► Phase.ValidateSkillUse 校验后入队
+4. 调用方调 EndPhase()
+   ├─ Resolver.Resolve(pendingUses) ──► []*Effect
+   ├─ State.ApplyEffect(每个 effect)
+   ├─ 计算下一阶段（含猎人动态触发）
+   ├─ CheckVictory —— 若下一阶段是猎人阶段则推迟
+   └─ 锁外分发外部可见事件
+5. 回到 1
 ```
 
-### 技能解析流程
-
-```
-SubmitSkillUse()
-      │
-      ▼
-ValidateSkillUse()  ← 检查玩家存活、技能允许、目标有效
-      │
-      ▼
-pendingUses.append()
-      │
-      ▼
-EndPhase()
-      │
-      ▼
-Resolver.Resolve()  ← 按规则解析冲突
-      │
-      ├── 分组：protect, kill, antidote, poison, check
-      │
-      ├── 处理保护：标记 protectedTarget
-      │
-      ├── 处理击杀：检查是否被保护
-      │
-      ├── 处理解药：取消击杀效果
-      │
-      ├── 处理毒药：产生毒杀效果
-      │
-      └── 处理查验：返回阵营信息
-      │
-      ▼
-[]*Effect
-      │
-      ▼
-ApplyEffect()  ← 修改 GameState
-      │
-      ▼
-CheckVictory()  ← 判定胜负
-```
-
----
-
-## 设计模式
-
-| 模式 | 位置 | 作用 |
-|------|------|------|
-| **State Machine** | Engine | 阶段流转 |
-| **Strategy** | Resolver | 不同阶段不同解析策略 |
-| **Configuration** | GameConfig | 声明式规则 |
-| **Observer** | EventHandler | 事件通知（可选） |
-
----
+**为什么胜负判定要推迟**：猎人被刀时可能已经构成屠神，但他那一枪可能带走
+最后一只狼、让好人反胜。判定必须排在死亡技能结算之后。
 
 ## 扩展点
 
-### 1. 添加新角色
+### 添加新角色
 
-只需修改 PhaseConfig，添加新的 Step：
+1. `proto/event.proto` 加 `RoleType`（及所需的 `SkillType`）
+2. `CategoryOf` 加类别映射，或调用方用 `State.SetPlayerCategory` 指定
+3. 若需要独立行动窗口：加 `PhaseConfig` 并接进流转链
+4. 写对应的 `Resolver`，在 `NewPhase` 注册
 
-```go
-Steps: []PhaseStep{
-    // ... 现有步骤
-    {Role: NewRole, Skill: NewSkill, Order: 6},
-}
-```
+### 添加规则变体
 
-### 2. 添加新技能
+在 `GameConfig` 加开关，在对应 Resolver 读取。**默认值以维基条目为准**，
+并在 `rules_test.go` 里补双向测试（开、关各一条）。
 
-1. 在 proto 中定义新的 SkillType
-2. 在 Resolver 中添加处理逻辑
-3. 在 PhaseConfig 中配置
+### 自定义阶段流程
 
-### 3. 自定义规则变体
+`GameConfig.Phases` 是一张 `map[PhaseType]*PhaseConfig`，每个配置声明自己的
+`NextPhase`。替换这张表即可改变整个流程，无需改动引擎代码。
 
-修改 GameConfig：
+## 不做什么
 
-```go
-config := &GameConfig{
-    WitchCanSaveSelf: true,  // 允许女巫自救
-    // ...
-}
-```
+明确排除在范围外的东西，避免误解：
 
-### 4. 自定义阶段流程
+- **不计时**：`Timeout` 字段只是给调用方的建议值
+- **不做角色分配**：谁是狼由调用方决定并通过 `AddPlayer` 告知
+- **不做发牌随机**：没有洗牌逻辑，座位与身份的对应关系由调用方给定
+- **不做存储**：提供 `Snapshot` / `RestoreEngine` 导出与重建局面，
+  但存到哪、怎么存由调用方决定
+- **不做网络与 AI**
 
-实现新的 Resolver，或修改 PhaseManager.NextPhase() 逻辑。
+## 存档
 
----
+`Engine.Snapshot()` 导出局面，`RestoreEngine(config, snap)` 重建引擎。
 
-## 与旧架构对比
+**快照类型与引擎内部类型是刻意分开的两套**：内部结构随重构演进，
+而快照是写进存储的格式，字段名必须稳定。转换集中在 `snapshot.go`，
+增减字段时那里会显式报错，不会悄悄丢数据。
 
-| 方面 | 旧架构 | 新架构 |
-|------|--------|--------|
-| 驱动方式 | 事件驱动 | 状态机驱动 |
-| 中心概念 | Role（角色） | Phase（阶段） |
-| 规则定义 | 代码（命令式） | 配置（声明式） |
-| 包结构 | 8个包 | 2个包 |
-| 技能执行 | Skill + Executor 分离 | Effect 统一表达 |
-| 复杂度 | ~6000行 | ~900行 |
+设计取舍：
 
----
+- **不含规则配置**。快照只记录局面，`GameConfig` 由调用方在恢复时提供——
+  规则的版本管理是调用方的事，把规则混进存档只会让两边都说不清。
+- **含未结算技能**。`pendingUses` 一并导出，因此存档点不必卡在阶段边界。
+- **枚举按数值序列化**。protobuf 的枚举编号是稳定契约，名称则可能被重命名。
+- **输出确定**。集合与玩家列表都排序后导出，同一局面的字节一致，
+  便于比对与幂等写入（Go 的 map 遍历顺序是随机的，不排序就做不到）。
+- **版本不匹配直接拒绝**，而不是按新结构去解读旧数据——那会得到一个
+  看似正常、实则错乱的局面。
 
-## 总结
+## 规则依据
 
-新架构的优势：
+规则以中文维基百科「狼人殺」条目为基准，逐条固化在 `rules_test.go`（R1–R11），
+引擎自定的口径另行编号（D1–D3）。新增规则请先在那里写测试。
 
-- **简单** - 单包设计，核心概念少
-- **清晰** - 状态机流转显式可见
-- **灵活** - 声明式配置，易于扩展
-- **可维护** - 代码量减少 85%
-
-核心思想：**狼人杀的本质是阶段驱动的状态机，规则应该用数据描述，而非代码实现。**
+`rules_test.go` 中的 `knownDeviations` 用于登记「已知不符、尚未修复」的行为，
+登记项默认 Skip；`WEREWOLF_STRICT_RULES=1` 可强制执行，用于驱动修复。

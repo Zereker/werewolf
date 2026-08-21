@@ -1,6 +1,8 @@
 package werewolf
 
 import (
+	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -126,9 +128,25 @@ func (e *Engine) SetMetrics(metrics Metrics) {
 	}
 }
 
-// AddPlayer 添加玩家
-func (e *Engine) AddPlayer(id string, role pb.RoleType, camp pb.Camp) {
-	e.state.AddPlayer(id, role, camp)
+// AddPlayer 添加玩家。阵营与角色类别由角色推导。
+//
+// 只能在 Start 之前调用。返回错误：游戏已开始、ID 为空、ID 已存在、
+// 角色不能作为玩家身份。
+func (e *Engine) AddPlayer(id string, role pb.RoleType) error {
+	return e.AddCustomPlayer(id, role, CampOf(role), CategoryOf(role))
+}
+
+// AddCustomPlayer 添加玩家并显式指定阵营与角色类别，供扩展角色使用。
+func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// 开局后再改动玩家会让已发出的身份信息与引擎状态不一致
+	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
+		return ErrGameAlreadyStarted
+	}
+
+	return e.state.AddCustomPlayer(id, role, camp, category)
 }
 
 // Start 开始游戏
@@ -137,7 +155,17 @@ func (e *Engine) Start() error {
 	defer e.mu.Unlock()
 
 	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
-		return ErrGameNotStarted
+		return ErrGameAlreadyStarted
+	}
+
+	// 校验板子：缺任一阵营的局面从第一次结算起就已分出胜负，
+	// 与其让它「开局即结束」，不如在这里直接拒绝
+	good, evil := e.state.countCamps()
+	if evil == 0 {
+		return ErrNoWerewolf
+	}
+	if good == 0 {
+		return ErrNoGoodPlayer
 	}
 
 	// 进入第一个夜晚（从守卫阶段开始）
@@ -178,12 +206,8 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 	return nil
 }
 
-// nextPhaseFunc 定义计算下一阶段的函数类型
-type nextPhaseFunc func(current pb.PhaseType) pb.PhaseType
-
 // endPhaseInternal 结束阶段的公共逻辑
-// calcNextPhase: 计算下一阶段的函数
-func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error) {
+func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 	// 收集需要发布的事件（在锁外发布，避免死锁）
 	var eventsToPublish []*pb.Event
 	var gameEndEvent *pb.Event
@@ -214,8 +238,8 @@ func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error
 	// 3. 应用效果，收集外部事件
 	for _, effect := range effects {
 		e.state.ApplyEffect(effect)
-		// 只发布外部可见事件（内部事件类型 >= 100）
-		if effect.Type < 100 {
+		// 只发布外部可见事件
+		if !isInternalEvent(effect.Type) {
 			eventsToPublish = append(eventsToPublish, effect.ToEvent())
 			e.logger.Debug("effect applied",
 				EventField(effect.Type),
@@ -229,8 +253,16 @@ func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error
 	e.pendingUses = make([]*SkillUse, 0)
 	e.metrics.IncPhaseEnded(currentPhase)
 
-	// 5. 检查胜利条件
-	if gameOver, winner := e.state.CheckVictory(); gameOver {
+	// 5. 计算下一阶段
+	nextPhase := e.calculateNextPhase(currentPhase)
+
+	// 猎人的枪可能改变胜负：被刀的猎人开枪带走最后一只狼，好人反而获胜。
+	// 因此当下一阶段是猎人阶段时，推迟胜负判定，先让这一枪打完。
+	hunterPending := nextPhase == pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER ||
+		nextPhase == pb.PhaseType_PHASE_TYPE_DAY_HUNTER
+
+	// 6. 检查胜利条件
+	if gameOver, winner := e.state.CheckVictory(e.config.VictoryMode); gameOver && !hunterPending {
 		e.state.Phase = pb.PhaseType_PHASE_TYPE_END
 		e.logger.Info("game ended", F("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
@@ -239,31 +271,38 @@ func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error
 			Data: map[string]string{"winner": winner.String()},
 		}
 	} else {
-		// 6. 流转到下一阶段
-		nextPhase := calcNextPhase(currentPhase)
+		// 7. 流转到下一阶段
 		e.state.NextPhase(nextPhase)
 		e.logger.Debug("phase transition",
 			F("from", currentPhase.String()),
 			F("to", nextPhase.String()))
 	}
 
+	// 在锁内快照 handler 与 logger：回调要在锁外执行，
+	// 但直接在锁外读取 e.eventHandlers 会与 OnEvent 竞争。
+	handlers := e.snapshotEventHandlersLocked()
+	logger := e.logger
+
 	// 释放锁后再发布事件，避免用户回调中调用 Engine 方法导致死锁
 	e.mu.Unlock()
 
 	// 发布收集的事件
 	for _, event := range eventsToPublish {
-		e.publishEvent(event)
+		dispatchEvent(handlers, logger, event)
 	}
 	if gameEndEvent != nil {
-		e.publishEvent(gameEndEvent)
+		dispatchEvent(handlers, logger, gameEndEvent)
 	}
 
 	return effects, nil
 }
 
-// EndPhase 结束当前阶段，解析技能，流转到下一阶段
+// EndPhase 结束当前阶段：解析技能、应用效果、判定胜负、流转到下一阶段。
+//
+// 这是驱动游戏推进的唯一入口。流转规则以阶段配置（PhaseConfig.NextPhase）
+// 为准，并处理动态触发的阶段（猎人死亡后的开枪阶段）。
 func (e *Engine) EndPhase() ([]*Effect, error) {
-	return e.endPhaseInternal(e.phase.NextSubPhase)
+	return e.endPhaseInternal()
 }
 
 // GetPlayerInfo 获取玩家信息的只读副本（推荐使用）
@@ -294,7 +333,14 @@ func (e *Engine) GetAllowedSkills(playerID string) []pb.SkillType {
 	defer e.mu.RUnlock()
 
 	player, ok := e.state.getPlayer(playerID)
-	if !ok || !player.Alive {
+	if !ok {
+		return nil
+	}
+
+	// 猎人阶段：本次被触发的猎人即便已死亡，仍持有开枪/跳过技能
+	isTriggeredHunter := player.Role == pb.RoleType_ROLE_TYPE_HUNTER &&
+		e.state.RoundCtx.TriggeredHunterID == playerID
+	if !player.Alive && !isTriggeredHunter {
 		return nil
 	}
 
@@ -306,13 +352,6 @@ func (e *Engine) IsGameOver() bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.state.Phase == pb.PhaseType_PHASE_TYPE_END
-}
-
-// GetCurrentSubStep 获取当前子步骤
-func (e *Engine) GetCurrentSubStep() int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.state.SubStep
 }
 
 // GetNightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）
@@ -357,9 +396,11 @@ func (e *Engine) GetPhaseInfo() *PhaseInfo {
 	}
 
 	// 获取当前阶段的配置
+	// 返回副本：Steps 直接暴露会让调用方改到引擎内部的阶段配置
 	phaseConfig := e.phase.GetPhaseConfig(e.state.Phase)
 	if phaseConfig != nil {
-		info.Steps = phaseConfig.Steps
+		info.Steps = make([]PhaseStep, len(phaseConfig.Steps))
+		copy(info.Steps, phaseConfig.Steps)
 	}
 
 	switch e.state.Phase {
@@ -399,11 +440,20 @@ func (e *Engine) GetPhaseInfo() *PhaseInfo {
 	return info
 }
 
+// allowedSkillsFor 返回指定角色在当前阶段可用的技能。
+//
+// 唯一真相来源是阶段配置（PhaseConfig.Steps），与 ValidateSkillUse 走同一条路径。
+// 此前 build*PhaseInfo 各自硬编码技能列表，导致 GetPhaseInfo 宣告 SKIP 可用、
+// SubmitSkillUse 却拒绝 SKIP 的自相矛盾。
+func (e *Engine) allowedSkillsFor(role pb.RoleType) []pb.SkillType {
+	return e.phase.GetAllowedSkills(e.state.Phase, role)
+}
+
 // buildGuardPhaseInfo 构建守卫阶段信息
 func (e *Engine) buildGuardPhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_GUARD),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_PROTECT},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_GUARD),
 	}
 }
 
@@ -416,28 +466,32 @@ func (e *Engine) buildWolfPhaseInfo() *RolePhaseInfo {
 	}
 	return &RolePhaseInfo{
 		PlayerIDs:     playerIDs,
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_KILL},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_WEREWOLF),
 		Teammates:     teammates,
 	}
 }
 
 // buildWitchPhaseInfo 构建女巫阶段信息
 func (e *Engine) buildWitchPhaseInfo() *RolePhaseInfo {
-	return &RolePhaseInfo{
-		PlayerIDs: e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WITCH),
-		AllowedSkills: []pb.SkillType{
-			pb.SkillType_SKILL_TYPE_ANTIDOTE,
-			pb.SkillType_SKILL_TYPE_POISON,
-		},
-		KillTarget: e.state.RoundCtx.KillTarget,
+	info := &RolePhaseInfo{
+		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WITCH),
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_WITCH),
 	}
+
+	// 规则「解藥未使用時可以得知狼人的殺害對象」：
+	// 解药一旦用掉，女巫便不再获知当晚刀口。
+	if e.state.AnyAliveWitchHasAntidote() {
+		info.KillTarget = e.state.RoundCtx.KillTarget
+	}
+
+	return info
 }
 
 // buildSeerPhaseInfo 构建预言家阶段信息
 func (e *Engine) buildSeerPhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_SEER),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_CHECK},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_SEER),
 	}
 }
 
@@ -445,7 +499,7 @@ func (e *Engine) buildSeerPhaseInfo() *RolePhaseInfo {
 func (e *Engine) buildDayPhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDs(),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_SPEAK},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_UNSPECIFIED),
 	}
 }
 
@@ -453,7 +507,7 @@ func (e *Engine) buildDayPhaseInfo() *RolePhaseInfo {
 func (e *Engine) buildVotePhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDs(),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_VOTE},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_UNSPECIFIED),
 	}
 }
 
@@ -466,40 +520,33 @@ func (e *Engine) buildHunterPhaseInfo() *RolePhaseInfo {
 		playerIDs = []string{hunterID}
 	}
 	return &RolePhaseInfo{
-		PlayerIDs: playerIDs,
-		AllowedSkills: []pb.SkillType{
-			pb.SkillType_SKILL_TYPE_SHOOT,
-			pb.SkillType_SKILL_TYPE_SKIP,
-		},
+		PlayerIDs:     playerIDs,
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_HUNTER),
 	}
-}
-
-// EndSubStep 结束当前子阶段（子步骤模式）
-// 与 EndPhase 类似，但使用 calculateNextPhase 支持动态阶段转换（如猎人触发）
-func (e *Engine) EndSubStep() ([]*Effect, error) {
-	return e.endPhaseInternal(e.calculateNextPhase)
-}
-
-// isValidPhase 检查是否是有效的游戏阶段
-func (e *Engine) isValidPhase(phase pb.PhaseType) bool {
-	return e.phase.GetPhaseConfig(phase) != nil
 }
 
 // calculateNextPhase 计算下一阶段（考虑动态触发）
+//
+// 猎人触发标记是「一次性」的：由死亡结算置位，进入猎人阶段后必须消费掉。
+// 若不消费，标记会在整个回合内持续为真——夜里开过枪的猎人，会在当天
+// 投票结束后被再次拉进 DAY_HUNTER 并开出第二枪。
 func (e *Engine) calculateNextPhase(currentPhase pb.PhaseType) pb.PhaseType {
-	// 夜晚结算阶段后，检查是否有猎人被触发
-	if currentPhase == pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
-		if e.state.RoundCtx.HunterTriggered {
+	switch currentPhase {
+	case pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE:
+		// 夜晚结算后，检查是否有猎人被触发
+		if e.state.HunterPending() {
 			return pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER
 		}
-	}
 
-	// 投票阶段后，检查被投票出局的是否是猎人
-	if currentPhase == pb.PhaseType_PHASE_TYPE_VOTE {
-		// 检查是否有猎人刚刚死亡（通过 RoundContext 判断）
-		if e.state.RoundCtx.HunterTriggered {
+	case pb.PhaseType_PHASE_TYPE_VOTE:
+		// 投票后，检查被投票出局的是否是猎人
+		if e.state.HunterPending() {
 			return pb.PhaseType_PHASE_TYPE_DAY_HUNTER
 		}
+
+	case pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER, pb.PhaseType_PHASE_TYPE_DAY_HUNTER:
+		// 猎人阶段结束，消费掉触发标记，避免同一回合重复进入
+		e.state.ConsumeHunterTrigger()
 	}
 
 	// 使用声明式配置获取下一阶段
@@ -513,18 +560,42 @@ func (e *Engine) OnEvent(handler EventHandler) {
 	e.eventHandlers = append(e.eventHandlers, handler)
 }
 
-// publishEvent 发布事件
-// 每个 handler 独立执行，单个 handler panic 不影响其他 handler
-func (e *Engine) publishEvent(event *pb.Event) {
-	for _, handler := range e.eventHandlers {
+// snapshotEventHandlersLocked 复制事件处理器列表。
+// 调用前必须持有 e.mu（读锁或写锁）。
+func (e *Engine) snapshotEventHandlersLocked() []EventHandler {
+	handlers := make([]EventHandler, len(e.eventHandlers))
+	copy(handlers, e.eventHandlers)
+	return handlers
+}
+
+// dispatchEvent 在锁外分发事件。
+// 每个 handler 独立执行，单个 handler panic 不影响其他 handler。
+func dispatchEvent(handlers []EventHandler, logger Logger, event *pb.Event) {
+	for _, handler := range handlers {
 		func() {
-			defer func() {
-				// 捕获 panic，防止单个 handler 影响其他 handler
-				_ = recover()
-			}()
+			defer recoverHandlerPanic(logger, "event handler", EventField(event.Type))
 			handler(event)
 		}()
 	}
+}
+
+// recoverHandlerPanic 捕获用户回调中的 panic 并记录。
+//
+// 吞掉 panic 是为了让单个 handler 的故障不波及其他 handler，
+// 但必须留下日志——静默吞掉会让线上问题完全没有痕迹。
+func recoverHandlerPanic(logger Logger, kind string, fields ...Field) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	if logger == nil {
+		return
+	}
+	logger.Error(kind+" panicked",
+		append(fields,
+			F("panic", fmt.Sprintf("%v", r)),
+			F("stack", string(debug.Stack())),
+		)...)
 }
 
 // ==================== 消息系统 ====================
@@ -570,16 +641,17 @@ func (e *Engine) SendMessage(senderID, content string) error {
 		Timestamp: time.Now(),
 	}
 
-	// 复制 handlers 以避免在回调中死锁
+	// 复制 handlers 与 logger 以避免在回调中死锁、并避免锁外读取竞争
 	handlers := make([]MessageHandler, len(e.messageHandlers))
 	copy(handlers, e.messageHandlers)
+	logger := e.logger
 
 	e.mu.RUnlock()
 
 	// 发布消息（锁外执行，避免死锁）
-	e.publishMessage(msg, receiverIDs, handlers)
+	publishMessage(handlers, logger, msg, receiverIDs)
 
-	e.logger.Debug("message sent",
+	logger.Debug("message sent",
 		PlayerField(senderID),
 		PhaseField(msg.Phase),
 		F("receiver_count", len(receiverIDs)))
@@ -621,13 +693,12 @@ func (e *Engine) getMessageReceivers(senderID string) []string {
 	}
 }
 
-// publishMessage 发布消息
-func (e *Engine) publishMessage(msg *Message, receiverIDs []string, handlers []MessageHandler) {
+// publishMessage 在锁外发布消息。
+func publishMessage(handlers []MessageHandler, logger Logger, msg *Message, receiverIDs []string) {
 	for _, handler := range handlers {
 		func() {
-			defer func() {
-				_ = recover()
-			}()
+			defer recoverHandlerPanic(logger, "message handler",
+				PlayerField(msg.SenderID), PhaseField(msg.Phase))
 			handler(msg, receiverIDs)
 		}()
 	}
