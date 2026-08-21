@@ -83,6 +83,8 @@ enum EventType {
   EVENT_TYPE_USE_ANTIDOTE = 103;        // 消耗解药
   EVENT_TYPE_USE_POISON = 104;          // 消耗毒药
   EVENT_TYPE_ABILITY_TRIGGERED = 105;   // 死亡技能触发，待进入对应阶段结算
+  EVENT_TYPE_PLAYER_ADDED = 106;        // 玩家入座（用于效果流回放）
+  EVENT_TYPE_PHASE_CHANGED = 107;       // 阶段流转（用于效果流回放）
 }
 
 // ErrorCode 错误码

@@ -435,6 +435,16 @@ func (s *gameState) resetRoundStateUnlocked() {
 	s.RoundCtx = NewRoundContext()
 }
 
+// startAt 把状态置到开局：指定阶段、第一回合、干净的回合上下文
+func (s *gameState) startAt(phase pb.PhaseType) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.Phase = phase
+	s.Round = 1
+	s.resetRoundStateUnlocked()
+}
+
 // nextPhase 切换到下一阶段
 func (s *gameState) nextPhase(phase pb.PhaseType) {
 	s.mu.Lock()

@@ -85,6 +85,9 @@ type Engine struct {
 	// 当前阶段收集的技能使用
 	pendingUses []*SkillUse
 
+	// 自建局以来的完整效果流，只追加
+	effectLog []*Effect
+
 	// 事件通知（可选）
 	eventHandlers []EventHandler
 
@@ -112,6 +115,7 @@ func NewEngine(config *GameConfig) (*Engine, error) {
 		logger:          NewNopLogger(),
 		metrics:         NewNopMetrics(),
 		pendingUses:     make([]*SkillUse, 0),
+		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
 		messageHandlers: make([]MessageHandler, 0),
 	}, nil
@@ -164,7 +168,11 @@ func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, cate
 		return ErrGameAlreadyStarted
 	}
 
-	return e.state.addCustomPlayer(id, role, camp, category)
+	if err := e.state.addCustomPlayer(id, role, camp, category); err != nil {
+		return err
+	}
+	e.effectLog = append(e.effectLog, newPlayerAddedEffect(id, role, camp, category))
+	return nil
 }
 
 // RegisterResolver 注册或替换某个阶段的解析器。
@@ -225,10 +233,9 @@ func (e *Engine) Start() error {
 	}
 
 	start := e.config.startPhase()
-	e.state.Phase = start
-	e.state.Round = 1
-	e.state.resetRoundState()
+	e.state.startAt(start)
 
+	e.effectLog = append(e.effectLog, newGameStartedEffect(start))
 	e.logger.Info("game started", RoundField(1), PhaseField(start))
 
 	return nil
@@ -305,6 +312,8 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 		}
 	}
 
+	e.effectLog = append(e.effectLog, effects...)
+
 	// 4. 清空待处理列表
 	e.pendingUses = make([]*SkillUse, 0)
 	e.metrics.IncPhaseEnded(currentPhase)
@@ -325,9 +334,13 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 			Type: pb.EventType_EVENT_TYPE_GAME_ENDED,
 			Data: map[string]string{"winner": winner.String()},
 		}
+		e.effectLog = append(e.effectLog,
+			NewEffect(pb.EventType_EVENT_TYPE_GAME_ENDED, "", "").
+				WithData("winner", winner.String()))
 	} else {
 		// 7. 流转到下一阶段
 		e.state.nextPhase(nextPhase)
+		e.effectLog = append(e.effectLog, newPhaseChangedEffect(nextPhase))
 		e.logger.Debug("phase transition",
 			F("from", currentPhase.String()),
 			F("to", nextPhase.String()))
