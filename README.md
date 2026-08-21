@@ -10,6 +10,8 @@
 - **状态机驱动** - 清晰的阶段流转，声明式规则配置
 - **规则对齐维基** - 以维基百科「狼人殺」条目为基准，规则逐条有测试覆盖
 - **规则可配置** - 女巫自救、守卫连守、同守同救、屠边/屠城均可切换
+- **可扩展** - 自定义角色与阶段无需 fork：注册解析器即可
+- **管住信息** - 提供玩家视角与效果受众，不必自己实现信息过滤
 - **单包设计** - 只需 `import "github.com/Zereker/werewolf"`
 - **依赖极简** - 仅依赖 `google.golang.org/protobuf`（用于事件与枚举定义）
 - **可存档** - 局面可完整导出为 JSON，恢复后继续推进
@@ -35,8 +37,12 @@ import (
 )
 
 func main() {
-	// 1. 创建引擎（nil 表示使用默认配置）
-	engine := werewolf.NewEngine(nil)
+	// 1. 创建引擎（nil 表示使用默认配置）。
+	//    配置会先经校验，残缺的阶段流转图在这里就会被拒绝
+	engine, err := werewolf.NewEngine(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// 2. 添加玩家：2 狼、4 神、2 民（阵营与角色类别由角色推导）
 	for id, role := range map[string]pb.RoleType{
@@ -254,6 +260,86 @@ type Effect struct {
 }
 ```
 
+## 玩家视角
+
+狼人杀最难的部分是「谁能知道什么」。引擎把这件事收在库内，
+`GetPlayerView` 返回的内容可以直接发给该玩家：
+
+```go
+v := engine.GetPlayerView("p1")
+
+v.Self            // 自己的身份、阵营、（女巫的）药剂
+v.Players         // 全场公开信息；身份只对自己与狼队友可见
+v.AllowedSkills   // 本阶段自己能提交的技能，为空即「还没轮到我」
+v.Teammates       // 狼人可见：队友
+v.KillTarget      // 女巫可见：今晚刀口（解药用完即为空）
+```
+
+配套的 `AudienceOf` 回答「发生的事该告诉谁」：
+
+```go
+for _, effect := range effects {
+    for _, id := range engine.AudienceOf(effect) {
+        send(id, effect)   // 死亡全场可见；查验/守护/解药只给行动者
+    }
+}
+```
+
+`GetPhaseInfo` / `GetPlayerInfo` / `GetWolfTeammates` / `GetNightKillTarget`
+是**上帝视角**接口，供调用方作为主持人使用，不可整体转发给玩家。
+
+## 阶段就绪
+
+引擎不计时，但它知道谁还没行动：
+
+```go
+r := engine.PhaseReadiness()
+if !r.Ready {
+    fmt.Println("还差:", r.Pending)   // 谁、什么角色、什么技能
+}
+engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用方决定
+```
+
+由 `PhaseStep.Required` / `Multiple` 声明：狼人商刀与投票要求全员参与，
+其余步骤可选。没有合格行动者的必需步骤（守卫已出局）视为自动满足。
+
+## 扩展新角色
+
+内置六个角色只是一套默认板子。加入狼王、白痴、骑士等角色不需要 fork：
+
+```go
+const (
+    roleWolfKing  = pb.RoleType(1000)   // 自定义取值从 1000 起
+    skillWolfClaw = pb.SkillType(1000)
+    phaseWolfKing = pb.PhaseType(1000)
+)
+
+cfg := werewolf.DefaultGameConfig()
+cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
+    Type:      phaseWolfKing,
+    Steps:     []werewolf.PhaseStep{{Role: roleWolfKing, Skill: skillWolfClaw}},
+    NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
+}
+
+engine, _ := werewolf.NewEngine(cfg)
+engine.RegisterResolver(phaseWolfKing, &wolfKingResolver{})
+engine.AddCustomPlayer("wk", roleWolfKing, pb.Camp_CAMP_EVIL, werewolf.RoleCategoryWolf)
+```
+
+死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
+引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
+完整可运行的例子见 [extension_test.go](extension_test.go)。
+
+## 效果流与回放
+
+```go
+log := engine.EffectLog()                    // 自建局以来的完整事件流
+replayed, _ := werewolf.ReplayEngine(cfg, log) // 按流重建局面
+```
+
+效果流是**历史**，快照是**状态**：持久化用 `Snapshot`，
+进程内的回放、复盘与排查用 `EffectLog`。
+
 ## 存档与恢复
 
 `Engine.Snapshot()` 导出完整局面，`RestoreEngine` 从快照重建引擎。
@@ -273,7 +359,7 @@ import (
 
 func main() {
 	config := werewolf.DefaultGameConfig()
-	engine := werewolf.NewEngine(config)
+	engine := werewolf.MustNewEngine(config) // 配置是常量时可用 Must 版本
 	for id, role := range map[string]pb.RoleType{
 		"w1": pb.RoleType_ROLE_TYPE_WEREWOLF,
 		"wi": pb.RoleType_ROLE_TYPE_WITCH,
@@ -383,9 +469,14 @@ werewolf/
 ├── logger.go       # 日志与指标接口
 ├── phase.go        # 阶段管理器、技能校验
 ├── resolver.go     # 各阶段解析器
+├── effectlog.go    # 效果流日志与回放
+├── player_view.go  # 玩家视角与效果受众
+├── readiness.go    # 阶段就绪判定
 ├── snapshot.go     # 存档导出与恢复
 ├── state.go        # 游戏状态、角色类别、胜负判定
-├── rules_test.go   # 以维基百科规则为基准的一致性测试
+├── view.go         # Resolver 的只读视图
+├── rules_test.go      # 以维基百科规则为基准的一致性测试
+├── extension_test.go  # 第三方扩展契约（以狼王为例）
 ├── proto/          # Protobuf 定义（枚举与事件）
 ├── example/        # 可运行示例
 └── docs/
