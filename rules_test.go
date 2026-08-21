@@ -216,8 +216,8 @@ func (g *ruleGame) vote(target string, voters ...string) {
 // setDead 直接把玩家置为死亡，用于构造胜负判定的局面。
 func (g *ruleGame) setDead(ids ...string) {
 	g.t.Helper()
-	g.e.state.mu.Lock()
-	defer g.e.state.mu.Unlock()
+	g.e.mu.Lock()
+	defer g.e.mu.Unlock()
 	for _, id := range ids {
 		p, ok := g.e.state.players[id]
 		if !ok {

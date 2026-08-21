@@ -125,6 +125,11 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 		return nil, err
 	}
 
+	// 引擎尚未交给调用方，但仍走一遍锁：状态的所有访问都在引擎锁内，
+	// 是这套并发模型唯一的前提，不留例外
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+
 	// 阶段必须能在配置里找到，否则恢复出来的引擎推进不下去。
 	// START 与 END 是流程的两端，不出现在阶段配置中，单独放行。
 	if snap.Phase != pb.PhaseType_PHASE_TYPE_START &&
@@ -169,9 +174,6 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 
 // snapshotPlayers 导出玩家列表（按 ID 排序，保证快照可比较）
 func (s *gameState) snapshotPlayers() []PlayerSnapshot {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	out := make([]PlayerSnapshot, 0, len(s.players))
 	for _, p := range s.players {
 		out = append(out, PlayerSnapshot{
@@ -191,9 +193,6 @@ func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 
 // snapshotRoundCtx 导出回合上下文
 func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	if s.RoundCtx == nil {
 		return RoundCtxSnapshot{}
 	}
@@ -212,9 +211,6 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 // 不走 AddPlayer：恢复时要原样还原快照里的存活状态与药剂，
 // 而 AddPlayer 会按「新玩家」的规则重新初始化。
 func (s *gameState) restorePlayer(p PlayerSnapshot) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.players[p.ID] = &PlayerState{
 		ID:                  p.ID,
 		Role:                p.Role,
@@ -229,9 +225,6 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 
 // restoreProgress 还原阶段、回合与回合上下文
 func (s *gameState) restoreProgress(phase pb.PhaseType, round int, rc RoundCtxSnapshot) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.Phase = phase
 	s.Round = round
 	s.RoundCtx = &RoundContext{

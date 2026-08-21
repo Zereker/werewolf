@@ -67,6 +67,9 @@ func ReplayEngine(config *GameConfig, log []*Effect) (*Engine, error) {
 		return nil, err
 	}
 
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+
 	for i, effect := range log {
 		if effect == nil {
 			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
@@ -77,9 +80,7 @@ func ReplayEngine(config *GameConfig, log []*Effect) (*Engine, error) {
 		}
 	}
 
-	engine.mu.Lock()
 	engine.effectLog = append(engine.effectLog, log...)
-	engine.mu.Unlock()
 
 	return engine, nil
 }
