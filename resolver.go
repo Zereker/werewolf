@@ -103,8 +103,8 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 	// 检查被处决者是否是猎人
 	if target, ok := view.Player(result.Winner); ok {
 		if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-			hunterTriggerEffect := NewEffect(pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED, result.Winner, "")
-			effects = append(effects, hunterTriggerEffect)
+			effects = append(effects,
+				NewAbilityTriggerEffect(result.Winner, pb.PhaseType_PHASE_TYPE_DAY_HUNTER))
 		}
 	}
 
@@ -377,8 +377,8 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 			// 检查被杀者是否是猎人，如果是则触发猎人技能
 			if target, ok := view.Player(killTarget); ok {
 				if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-					hunterTriggerEffect := NewEffect(pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED, killTarget, "")
-					effects = append(effects, hunterTriggerEffect)
+					effects = append(effects,
+						NewAbilityTriggerEffect(killTarget, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER))
 				}
 			}
 		} else {

@@ -10,7 +10,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 1
+const SnapshotVersion = 2
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -50,12 +50,17 @@ type PlayerSnapshot struct {
 
 // RoundCtxSnapshot 回合上下文的快照
 type RoundCtxSnapshot struct {
-	KillTarget        string   `json:"kill_target,omitempty"`
-	ProtectedPlayers  []string `json:"protected_players,omitempty"`
-	SavedPlayers      []string `json:"saved_players,omitempty"`
-	PoisonedPlayers   []string `json:"poisoned_players,omitempty"`
-	HunterTriggered   bool     `json:"hunter_triggered,omitempty"`
-	TriggeredHunterID string   `json:"triggered_hunter_id,omitempty"`
+	KillTarget       string                   `json:"kill_target,omitempty"`
+	ProtectedPlayers []string                 `json:"protected_players,omitempty"`
+	SavedPlayers     []string                 `json:"saved_players,omitempty"`
+	PoisonedPlayers  []string                 `json:"poisoned_players,omitempty"`
+	PendingTriggers  []PendingTriggerSnapshot `json:"pending_triggers,omitempty"`
+}
+
+// PendingTriggerSnapshot 一个待结算的死亡技能
+type PendingTriggerSnapshot struct {
+	PlayerID string       `json:"player_id"`
+	Phase    pb.PhaseType `json:"phase"`
 }
 
 // SkillUseSnapshot 已提交但尚未结算的技能
@@ -194,12 +199,11 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 	}
 
 	return RoundCtxSnapshot{
-		KillTarget:        s.RoundCtx.KillTarget,
-		ProtectedPlayers:  sortedKeys(s.RoundCtx.ProtectedPlayers),
-		SavedPlayers:      sortedKeys(s.RoundCtx.SavedPlayers),
-		PoisonedPlayers:   sortedKeys(s.RoundCtx.PoisonedPlayers),
-		HunterTriggered:   s.RoundCtx.HunterTriggered,
-		TriggeredHunterID: s.RoundCtx.TriggeredHunterID,
+		KillTarget:       s.RoundCtx.KillTarget,
+		ProtectedPlayers: sortedKeys(s.RoundCtx.ProtectedPlayers),
+		SavedPlayers:     sortedKeys(s.RoundCtx.SavedPlayers),
+		PoisonedPlayers:  sortedKeys(s.RoundCtx.PoisonedPlayers),
+		PendingTriggers:  snapshotTriggers(s.RoundCtx.PendingTriggers),
 	}
 }
 
@@ -231,12 +235,11 @@ func (s *gameState) restoreProgress(phase pb.PhaseType, round int, rc RoundCtxSn
 	s.Phase = phase
 	s.Round = round
 	s.RoundCtx = &RoundContext{
-		KillTarget:        rc.KillTarget,
-		ProtectedPlayers:  keySet(rc.ProtectedPlayers),
-		SavedPlayers:      keySet(rc.SavedPlayers),
-		PoisonedPlayers:   keySet(rc.PoisonedPlayers),
-		HunterTriggered:   rc.HunterTriggered,
-		TriggeredHunterID: rc.TriggeredHunterID,
+		KillTarget:       rc.KillTarget,
+		ProtectedPlayers: keySet(rc.ProtectedPlayers),
+		SavedPlayers:     keySet(rc.SavedPlayers),
+		PoisonedPlayers:  keySet(rc.PoisonedPlayers),
+		PendingTriggers:  restoreTriggers(rc.PendingTriggers),
 	}
 }
 
@@ -273,4 +276,32 @@ func keySet(ids []string) map[string]bool {
 // sortPlayerSnapshots 按 ID 排序
 func sortPlayerSnapshots(ps []PlayerSnapshot) {
 	sort.Slice(ps, func(i, j int) bool { return ps[i].ID < ps[j].ID })
+}
+
+// snapshotTriggers 导出待结算队列
+func snapshotTriggers(ts []PendingTrigger) []PendingTriggerSnapshot {
+	if len(ts) == 0 {
+		return nil
+	}
+	out := make([]PendingTriggerSnapshot, 0, len(ts))
+	for _, t := range ts {
+		// 刻意逐字段写而不是做类型转换：两个类型当前恰好同形，
+		// 但快照是存储格式、PendingTrigger 是内部结构，不应绑定在一起。
+		//nolint:staticcheck // S1016: 见上
+		out = append(out, PendingTriggerSnapshot{PlayerID: t.PlayerID, Phase: t.Phase})
+	}
+	return out
+}
+
+// restoreTriggers 还原待结算队列（顺序即结算顺序，不排序）
+func restoreTriggers(ts []PendingTriggerSnapshot) []PendingTrigger {
+	if len(ts) == 0 {
+		return nil
+	}
+	out := make([]PendingTrigger, 0, len(ts))
+	for _, t := range ts {
+		//nolint:staticcheck // S1016: 同 snapshotTriggers，刻意不做类型转换
+		out = append(out, PendingTrigger{PlayerID: t.PlayerID, Phase: t.Phase})
+	}
+	return out
 }

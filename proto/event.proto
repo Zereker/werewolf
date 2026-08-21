@@ -82,7 +82,7 @@ enum EventType {
   EVENT_TYPE_SET_LAST_PROTECTED = 102;  // 设置守卫上回合保护目标
   EVENT_TYPE_USE_ANTIDOTE = 103;        // 消耗解药
   EVENT_TYPE_USE_POISON = 104;          // 消耗毒药
-  EVENT_TYPE_HUNTER_TRIGGERED = 105;    // 猎人技能触发（死亡时）
+  EVENT_TYPE_ABILITY_TRIGGERED = 105;   // 死亡技能触发，待进入对应阶段结算
 }
 
 // ErrorCode 错误码

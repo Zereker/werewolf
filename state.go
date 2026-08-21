@@ -10,12 +10,23 @@ import (
 // 用于管理回合内各阶段之间共享的临时状态
 // 包含夜晚和白天的相关状态（如猎人触发可能发生在投票阶段）
 type RoundContext struct {
-	KillTarget        string          // 狼人击杀目标（女巫可查询）
-	ProtectedPlayers  map[string]bool // 被守卫保护的玩家
-	SavedPlayers      map[string]bool // 被女巫救的玩家
-	PoisonedPlayers   map[string]bool // 被女巫毒的玩家
-	HunterTriggered   bool            // 猎人是否被触发（死亡时）
-	TriggeredHunterID string          // 被触发的猎人ID
+	KillTarget       string          // 狼人击杀目标（女巫可查询）
+	ProtectedPlayers map[string]bool // 被守卫保护的玩家
+	SavedPlayers     map[string]bool // 被女巫救的玩家
+	PoisonedPlayers  map[string]bool // 被女巫毒的玩家
+
+	// PendingTriggers 待结算的死亡技能，先进先出。
+	//
+	// 此前这里是 HunterTriggered / TriggeredHunterID 两个猎人专属字段，
+	// 每加一个死亡触发角色（狼王、白痴）就要再加两个字段、
+	// 并在引擎的阶段流转里多一个分支。改成队列后引擎不认识任何具体角色。
+	PendingTriggers []PendingTrigger
+}
+
+// PendingTrigger 一个待结算的死亡技能
+type PendingTrigger struct {
+	PlayerID string       // 触发者
+	Phase    pb.PhaseType // 该去哪个阶段结算
 }
 
 // NewRoundContext 创建新的回合上下文
@@ -80,8 +91,10 @@ func (c RoleCategory) String() string {
 
 // CategoryOf 由角色推导默认类别。
 //
-// 自定义角色（狼王、白痴、骑士等）若不在此表中，会落到 Unknown，
-// 需要调用方通过 Engine.SetPlayerCategory 显式指定，否则不参与屠边判定。
+// 只覆盖内置的六个角色。pb.RoleType 的底层是 int32，调用方可以用
+// 超出内置枚举的取值来定义自己的角色（建议从 1000 起，避免与后续
+// 内置角色撞号）；这类角色会落到 Unknown，需通过 AddCustomPlayer
+// 显式给出阵营与类别，否则不参与屠边判定。
 func CategoryOf(role pb.RoleType) RoleCategory {
 	switch role {
 	case pb.RoleType_ROLE_TYPE_WEREWOLF:
@@ -384,10 +397,12 @@ func (s *gameState) applyEffect(effect *Effect) {
 			witch.HasPoison = false
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
-	case pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED:
-		// 标记猎人被触发
-		s.RoundCtx.HunterTriggered = true
-		s.RoundCtx.TriggeredHunterID = effect.SourceID
+	case pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED:
+		// 死亡技能入队，等待流转到对应阶段结算
+		if phase, ok := effect.triggerPhase(); ok && effect.SourceID != "" {
+			s.RoundCtx.PendingTriggers = append(s.RoundCtx.PendingTriggers,
+				PendingTrigger{PlayerID: effect.SourceID, Phase: phase})
+		}
 	}
 }
 
@@ -529,44 +544,32 @@ func (s *gameState) anyAliveWitchHasAntidote() bool {
 	return false
 }
 
-// hunterPending 是否有猎人技能待结算（尚未进入猎人阶段）。
-func (s *gameState) hunterPending() bool {
+// peekTrigger 查看队首的待结算死亡技能
+func (s *gameState) peekTrigger() (PendingTrigger, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if s.RoundCtx == nil {
-		return false
+	if s.RoundCtx == nil || len(s.RoundCtx.PendingTriggers) == 0 {
+		return PendingTrigger{}, false
 	}
-	return s.RoundCtx.HunterTriggered
+	return s.RoundCtx.PendingTriggers[0], true
 }
 
-// triggeredHunterID 返回本次被触发的猎人ID，无则为空。
-func (s *gameState) triggeredHunterID() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if s.RoundCtx == nil {
-		return ""
-	}
-	return s.RoundCtx.TriggeredHunterID
-}
-
-// consumeHunterTrigger 消费猎人触发标记（读取并清除）。
-//
-// 猎人阶段结束时调用。标记必须被消费，否则它会在整个回合内持续为真，
-// 导致同一回合的投票阶段再次进入猎人阶段、让已开过枪的猎人开出第二枪。
-func (s *gameState) consumeHunterTrigger() (bool, string) {
+// popTrigger 弹出队首的待结算死亡技能
+func (s *gameState) popTrigger() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.RoundCtx == nil {
-		return false, ""
+	if s.RoundCtx == nil || len(s.RoundCtx.PendingTriggers) == 0 {
+		return
 	}
+	s.RoundCtx.PendingTriggers = s.RoundCtx.PendingTriggers[1:]
+}
 
-	triggered, hunterID := s.RoundCtx.HunterTriggered, s.RoundCtx.TriggeredHunterID
-	s.RoundCtx.HunterTriggered = false
-	s.RoundCtx.TriggeredHunterID = ""
-	return triggered, hunterID
+// hasPendingTrigger 是否还有未结算的死亡技能
+func (s *gameState) hasPendingTrigger() bool {
+	_, ok := s.peekTrigger()
+	return ok
 }
 
 // GetRoundContext 获取回合上下文的只读副本
@@ -580,12 +583,11 @@ func (s *gameState) GetRoundContext() *RoundContext {
 
 	// 返回副本以避免外部修改
 	return &RoundContext{
-		KillTarget:        s.RoundCtx.KillTarget,
-		ProtectedPlayers:  copyStringBoolMap(s.RoundCtx.ProtectedPlayers),
-		SavedPlayers:      copyStringBoolMap(s.RoundCtx.SavedPlayers),
-		PoisonedPlayers:   copyStringBoolMap(s.RoundCtx.PoisonedPlayers),
-		HunterTriggered:   s.RoundCtx.HunterTriggered,
-		TriggeredHunterID: s.RoundCtx.TriggeredHunterID,
+		KillTarget:       s.RoundCtx.KillTarget,
+		ProtectedPlayers: copyStringBoolMap(s.RoundCtx.ProtectedPlayers),
+		SavedPlayers:     copyStringBoolMap(s.RoundCtx.SavedPlayers),
+		PoisonedPlayers:  copyStringBoolMap(s.RoundCtx.PoisonedPlayers),
+		PendingTriggers:  append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
 	}
 }
 

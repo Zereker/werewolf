@@ -28,6 +28,28 @@ func isInternalEvent(t pb.EventType) bool {
 	return t >= internalEventThreshold
 }
 
+// triggerPhaseKey 触发效果中记录「该去哪个阶段结算」的键
+const triggerPhaseKey = "trigger_phase"
+
+// NewAbilityTriggerEffect 声明「某玩家的死亡技能待结算」。
+//
+// 死亡触发是一整类能力（猎人开枪、狼王自爆、白痴翻牌），
+// 引擎不认识其中任何一个具体角色，只认识「谁、去哪个阶段」。
+func NewAbilityTriggerEffect(playerID string, phase pb.PhaseType) *Effect {
+	return NewEffect(pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED, playerID, "").
+		WithData(triggerPhaseKey, phase)
+}
+
+// triggerPhase 从触发效果中读出目标阶段
+func (e *Effect) triggerPhase() (pb.PhaseType, bool) {
+	v, ok := e.Data[triggerPhaseKey]
+	if !ok {
+		return pb.PhaseType_PHASE_TYPE_UNSPECIFIED, false
+	}
+	phase, ok := v.(pb.PhaseType)
+	return phase, ok
+}
+
 // NewEffect 创建效果
 func NewEffect(eventType pb.EventType, sourceID, targetID string) *Effect {
 	return &Effect{

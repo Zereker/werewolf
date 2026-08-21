@@ -167,6 +167,38 @@ func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, cate
 	return e.state.addCustomPlayer(id, role, camp, category)
 }
 
+// RegisterResolver 注册或替换某个阶段的解析器。
+//
+// 这是扩展新角色的入口。引擎内置的六个角色只是一套默认板子，
+// 加入狼王、白痴、骑士等角色不应该要求 fork 这个库：
+//
+//	cfg := werewolf.DefaultGameConfig()
+//	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }   // 声明阶段
+//	engine, _ := werewolf.NewEngine(cfg)
+//	engine.RegisterResolver(myPhase, myResolver)          // 注册解析器
+//	engine.AddCustomPlayer("p1", myRole, camp, category)  // 指定阵营与类别
+//
+// 死亡时触发的能力由 Resolver 产出 NewAbilityTriggerEffect 即可，
+// 引擎不需要认识具体角色。
+//
+// 只能在 Start 之前调用。resolver 为 nil 时报错——若想让某阶段
+// 不产生任何效果，注册一个返回空切片的解析器。
+func (e *Engine) RegisterResolver(phase pb.PhaseType, resolver Resolver) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
+		return ErrGameAlreadyStarted
+	}
+	if resolver == nil {
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+			"resolver for phase %v must not be nil", phase)
+	}
+
+	e.phase.registerResolver(phase, resolver)
+	return nil
+}
+
 // Start 开始游戏
 func (e *Engine) Start() error {
 	e.mu.Lock()
@@ -280,13 +312,12 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 	// 5. 计算下一阶段
 	nextPhase := e.calculateNextPhase(currentPhase)
 
-	// 猎人的枪可能改变胜负：被刀的猎人开枪带走最后一只狼，好人反而获胜。
-	// 因此当下一阶段是猎人阶段时，推迟胜负判定，先让这一枪打完。
-	hunterPending := nextPhase == pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER ||
-		nextPhase == pb.PhaseType_PHASE_TYPE_DAY_HUNTER
+	// 死亡技能可能改变胜负：被刀的猎人开枪带走最后一只狼，好人反而获胜。
+	// 因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
+	triggerPending := e.state.hasPendingTrigger()
 
 	// 6. 检查胜利条件
-	if gameOver, winner := e.state.checkVictory(e.config.VictoryMode); gameOver && !hunterPending {
+	if gameOver, winner := e.state.checkVictory(e.config.VictoryMode); gameOver && !triggerPending {
 		e.state.Phase = pb.PhaseType_PHASE_TYPE_END
 		e.logger.Info("game ended", F("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
@@ -361,14 +392,19 @@ func (e *Engine) GetAllowedSkills(playerID string) []pb.SkillType {
 		return nil
 	}
 
-	// 猎人阶段：本次被触发的猎人即便已死亡，仍持有开枪/跳过技能
-	isTriggeredHunter := player.Role == pb.RoleType_ROLE_TYPE_HUNTER &&
-		e.state.RoundCtx.TriggeredHunterID == playerID
-	if !player.Alive && !isTriggeredHunter {
+	// 待结算死亡技能的玩家即便已出局，本阶段仍持有其技能
+	if !player.Alive && !e.isPendingActor(playerID) {
 		return nil
 	}
 
 	return e.phase.GetAllowedSkills(e.state.Phase, player.Role)
+}
+
+// isPendingActor 该玩家是否是当前阶段待结算死亡技能的持有者。
+// 调用前需持有 e.mu。
+func (e *Engine) isPendingActor(playerID string) bool {
+	t, ok := e.state.peekTrigger()
+	return ok && t.PlayerID == playerID && t.Phase == e.state.Phase
 }
 
 // IsGameOver 游戏是否结束
@@ -537,11 +573,10 @@ func (e *Engine) buildVotePhaseInfo() *RolePhaseInfo {
 
 // buildHunterPhaseInfo 构建猎人阶段信息
 func (e *Engine) buildHunterPhaseInfo() *RolePhaseInfo {
-	// 获取被触发的猎人ID
-	hunterID := e.state.RoundCtx.TriggeredHunterID
+	// 待结算的死亡技能属于谁，本阶段就只有谁能行动
 	playerIDs := []string{}
-	if hunterID != "" {
-		playerIDs = []string{hunterID}
+	if t, ok := e.state.peekTrigger(); ok && t.Phase == e.state.Phase {
+		playerIDs = []string{t.PlayerID}
 	}
 	return &RolePhaseInfo{
 		PlayerIDs:     playerIDs,
@@ -555,22 +590,15 @@ func (e *Engine) buildHunterPhaseInfo() *RolePhaseInfo {
 // 若不消费，标记会在整个回合内持续为真——夜里开过枪的猎人，会在当天
 // 投票结束后被再次拉进 DAY_HUNTER 并开出第二枪。
 func (e *Engine) calculateNextPhase(currentPhase pb.PhaseType) pb.PhaseType {
-	switch currentPhase {
-	case pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE:
-		// 夜晚结算后，检查是否有猎人被触发
-		if e.state.hunterPending() {
-			return pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER
-		}
+	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队。
+	// 不出队的话标记会在整个回合内持续为真，同一个玩家会被反复拉回来。
+	if t, ok := e.state.peekTrigger(); ok && t.Phase == currentPhase {
+		e.state.popTrigger()
+	}
 
-	case pb.PhaseType_PHASE_TYPE_VOTE:
-		// 投票后，检查被投票出局的是否是猎人
-		if e.state.hunterPending() {
-			return pb.PhaseType_PHASE_TYPE_DAY_HUNTER
-		}
-
-	case pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER, pb.PhaseType_PHASE_TYPE_DAY_HUNTER:
-		// 猎人阶段结束，消费掉触发标记，避免同一回合重复进入
-		e.state.consumeHunterTrigger()
+	// 还有待结算的死亡技能，先去处理（可能有多个，逐个来）
+	if t, ok := e.state.peekTrigger(); ok {
+		return t.Phase
 	}
 
 	// 使用声明式配置获取下一阶段
