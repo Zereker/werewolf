@@ -434,57 +434,117 @@ func TestConfig_SameGuardKill_NotEmpty(t *testing.T) {
 
 // ==================== Complex Scenario Tests ====================
 
-func TestScenario_WitchPoisonAndSaveOnSameNight(t *testing.T) {
-	engine := NewEngine(nil)
+// TestConfig_WitchCanUseBothPotions 女巫同夜双开药的规则变体。
+//
+// 维基「狼人殺」条目规定「解藥和毒藥不可以在同一夜使用」，故默认禁止；
+// 需要放宽的板子可通过 GameConfig.WitchCanUseBothPotions 打开。
+//
+// 规则层面的完整断言见 rules_test.go:TestRule_R3_WitchCannotUseBothPotionsInOneNight，
+// 本用例聚焦配置开关本身的双向行为。
+func TestConfig_WitchCanUseBothPotions(t *testing.T) {
+	setup := func(canUseBoth bool) *Engine {
+		config := DefaultGameConfig()
+		config.WitchCanUseBothPotions = canUseBoth
+		engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+		engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+		engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
+		engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+		engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+		engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
 
-	engine.Start()
+		if err := engine.Start(); err != nil {
+			t.Fatalf("Start() 失败: %v", err)
+		}
 
-	// NIGHT_GUARD -> NIGHT_WOLF
-	engine.EndPhase()
+		// NIGHT_GUARD -> NIGHT_WOLF
+		if _, err := engine.EndPhase(); err != nil {
+			t.Fatalf("EndPhase() 失败: %v", err)
+		}
 
-	// NIGHT_WOLF: Wolf kills victim
-	engine.SubmitSkillUse(&SkillUse{
-		PlayerID: "wolf",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
-		TargetID: "victim",
-	})
-	engine.EndPhase() // NIGHT_WOLF -> NIGHT_WITCH
+		// NIGHT_WOLF: 狼刀 victim
+		if err := engine.SubmitSkillUse(&SkillUse{
+			PlayerID: "wolf",
+			Skill:    pb.SkillType_SKILL_TYPE_KILL,
+			TargetID: "victim",
+		}); err != nil {
+			t.Fatalf("提交击杀失败: %v", err)
+		}
+		if _, err := engine.EndPhase(); err != nil { // -> NIGHT_WITCH
+			t.Fatalf("EndPhase() 失败: %v", err)
+		}
 
-	// NIGHT_WITCH: Witch saves victim AND poisons wolf
-	engine.SubmitSkillUse(&SkillUse{
-		PlayerID: "witch",
-		Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
-		TargetID: "victim",
-	})
-	engine.SubmitSkillUse(&SkillUse{
-		PlayerID: "witch",
-		Skill:    pb.SkillType_SKILL_TYPE_POISON,
-		TargetID: "wolf",
-	})
-	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
-	engine.EndPhase() // NIGHT_RESOLVE -> DAY
+		// NIGHT_WITCH: 先救 victim，再毒 wolf
+		if err := engine.SubmitSkillUse(&SkillUse{
+			PlayerID: "witch",
+			Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
+			TargetID: "victim",
+		}); err != nil {
+			t.Fatalf("提交解药失败: %v", err)
+		}
+		if err := engine.SubmitSkillUse(&SkillUse{
+			PlayerID: "witch",
+			Skill:    pb.SkillType_SKILL_TYPE_POISON,
+			TargetID: "wolf",
+		}); err != nil {
+			t.Fatalf("提交毒药失败: %v", err)
+		}
 
-	// Victim saved, wolf poisoned
-	victim, _ := engine.state.getPlayer("victim")
-	wolf, _ := engine.state.getPlayer("wolf")
-
-	if !victim.Alive {
-		t.Error("expected victim to be saved")
+		for i := 0; i < 3; i++ { // NIGHT_WITCH -> NIGHT_SEER -> NIGHT_RESOLVE -> DAY
+			if _, err := engine.EndPhase(); err != nil {
+				t.Fatalf("EndPhase() 失败: %v", err)
+			}
+		}
+		return engine
 	}
-	if wolf.Alive {
-		t.Error("expected wolf to be poisoned")
-	}
 
-	// Game should be over (good wins)
-	if !engine.IsGameOver() {
-		t.Error("expected game over (good wins after wolf poisoned)")
-	}
+	t.Run("默认禁止同夜双开药", func(t *testing.T) {
+		engine := setup(false)
+
+		victim, _ := engine.state.getPlayer("victim")
+		wolf, _ := engine.state.getPlayer("wolf")
+		witch, _ := engine.state.getPlayer("witch")
+
+		// 先提交的解药生效
+		if !victim.Alive {
+			t.Error("解药先提交，victim 应当被救")
+		}
+		if witch.HasAntidote {
+			t.Error("解药应当已被消耗")
+		}
+
+		// 后提交的毒药被拒
+		if !wolf.Alive {
+			t.Error("同夜第二瓶药应当无效，wolf 不应被毒死")
+		}
+		if !witch.HasPoison {
+			t.Error("毒药未生效，不应被消耗")
+		}
+		if engine.IsGameOver() {
+			t.Error("狼人存活，游戏不应结束")
+		}
+	})
+
+	t.Run("放宽后允许同夜双开药", func(t *testing.T) {
+		engine := setup(true)
+
+		victim, _ := engine.state.getPlayer("victim")
+		wolf, _ := engine.state.getPlayer("wolf")
+		witch, _ := engine.state.getPlayer("witch")
+
+		if !victim.Alive {
+			t.Error("expected victim to be saved")
+		}
+		if wolf.Alive {
+			t.Error("expected wolf to be poisoned")
+		}
+		if witch.HasAntidote || witch.HasPoison {
+			t.Error("两瓶药都应当被消耗")
+		}
+		if !engine.IsGameOver() {
+			t.Error("expected game over (good wins after wolf poisoned)")
+		}
+	})
 }
 
 func TestScenario_SeerIdentifiesWolf(t *testing.T) {

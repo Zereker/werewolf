@@ -51,13 +51,8 @@ import (
 // knownDeviations 登记「实现与规则不符、尚未修复」的条目。
 // key 为规则编号，value 为偏差描述。
 var knownDeviations = map[string]string{
-	"R2":       "解药用完后 buildWitchPhaseInfo 仍无条件返回 KillTarget",
-	"R3":       "WitchResolver 只防重复用同一技能，未禁止同夜解药+毒药",
-	"R7.同守同救":  "WolfResolver 在目标被守时不设 KillTarget，同守同救无法触发",
-	"R8.毒杀不开枪": "NightResolveResolver 对毒杀也触发 HUNTER_TRIGGERED",
-	"R8.显式跳过":  "buildHunterPhaseInfo 宣告 SKIP 可用，但 Steps 里没有 SKIP，ValidateSkillUse 会拒绝",
-	"R8.一局一枪":  "RoundCtx.HunterTriggered 触发后未清除，投票阶段会重复进入猎人阶段",
-	"R10":      "CheckVictory 只做屠城判定；Camp 无神职/平民之分，屠边无法表达",
+	"R7.同守同救": "WolfResolver 在目标被守时不设 KillTarget，同守同救无法触发",
+	"R10":     "CheckVictory 只做屠城判定；Camp 无神职/平民之分，屠边无法表达",
 }
 
 // requireRule 在规则尚未实现时跳过用例。
@@ -732,7 +727,8 @@ func TestRule_R8_PoisonedHunterCannotShoot(t *testing.T) {
 	g.mustUse("wi", pb.SkillType_SKILL_TYPE_POISON, "h")
 	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
 
-	// 猎人被毒死，不应进入猎人阶段
+	// 猎人被毒死，结算后应直接进入白天，不经过猎人阶段
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
 	g.end(pb.PhaseType_PHASE_TYPE_DAY)
 	g.assertAlive("h", false, "猎人被毒杀")
 }

@@ -134,10 +134,16 @@ func (p *Phase) ValidateSkillUse(use *SkillUse, state *State) error {
 		return ErrPlayerNotFound
 	}
 
-	// 猎人阶段特殊处理：死亡的猎人可以使用技能
+	// 猎人阶段特殊处理：被触发的猎人即便已经死亡也可以使用技能，
+	// 但仅限「本次被触发的那名猎人」——否则任何已出局的猎人都能在
+	// 猎人阶段再开一枪。
 	isHunterPhase := state.Phase == pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER ||
 		state.Phase == pb.PhaseType_PHASE_TYPE_DAY_HUNTER
-	if !player.Alive && !isHunterPhase {
+	if isHunterPhase && player.Role == pb.RoleType_ROLE_TYPE_HUNTER {
+		if state.TriggeredHunterID() != use.PlayerID {
+			return ErrSkillNotAllowed
+		}
+	} else if !player.Alive {
 		return ErrPlayerDead
 	}
 

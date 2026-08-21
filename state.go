@@ -101,10 +101,10 @@ type State struct {
 // NewState 创建游戏状态
 func NewState() *State {
 	return &State{
-		Phase:   pb.PhaseType_PHASE_TYPE_START,
-		Round:   0,
-		players: make(map[string]*PlayerState),
-		RoundCtx:  NewRoundContext(),
+		Phase:    pb.PhaseType_PHASE_TYPE_START,
+		Round:    0,
+		players:  make(map[string]*PlayerState),
+		RoundCtx: NewRoundContext(),
 	}
 }
 
@@ -505,6 +505,63 @@ func (s *State) CanProtect(guardID, targetID string, canRepeat bool) bool {
 
 	// 否则检查是否与上一回合保护相同目标
 	return guard.LastProtectedTarget != targetID
+}
+
+// AnyAliveWitchHasAntidote 是否还有存活女巫持有解药。
+//
+// 用于规则「解藥未使用時可以得知狼人的殺害對象」：解药用完后，
+// 女巫不再获知刀口。标准板子只有一名女巫，此时即「该女巫是否仍持有解药」；
+// 多女巫板子下只要有一人持有解药，刀口就仍需下发。
+func (s *State) AnyAliveWitchHasAntidote() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, p := range s.players {
+		if p.Alive && p.Role == pb.RoleType_ROLE_TYPE_WITCH && p.HasAntidote {
+			return true
+		}
+	}
+	return false
+}
+
+// HunterPending 是否有猎人技能待结算（尚未进入猎人阶段）。
+func (s *State) HunterPending() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.RoundCtx == nil {
+		return false
+	}
+	return s.RoundCtx.HunterTriggered
+}
+
+// TriggeredHunterID 返回本次被触发的猎人ID，无则为空。
+func (s *State) TriggeredHunterID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.RoundCtx == nil {
+		return ""
+	}
+	return s.RoundCtx.TriggeredHunterID
+}
+
+// ConsumeHunterTrigger 消费猎人触发标记（读取并清除）。
+//
+// 猎人阶段结束时调用。标记必须被消费，否则它会在整个回合内持续为真，
+// 导致同一回合的投票阶段再次进入猎人阶段、让已开过枪的猎人开出第二枪。
+func (s *State) ConsumeHunterTrigger() (bool, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.RoundCtx == nil {
+		return false, ""
+	}
+
+	triggered, hunterID := s.RoundCtx.HunterTriggered, s.RoundCtx.TriggeredHunterID
+	s.RoundCtx.HunterTriggered = false
+	s.RoundCtx.TriggeredHunterID = ""
+	return triggered, hunterID
 }
 
 // GetRoundContext 获取回合上下文的只读副本

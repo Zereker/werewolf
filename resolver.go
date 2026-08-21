@@ -208,14 +208,22 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 	// 获取击杀目标（RoundContext 保证非 nil）
 	killTarget := state.RoundCtx.KillTarget
 
-	// 防止同一玩家重复使用同一技能（女巫可以同时使用解药和毒药，但不能重复）
+	// 防止同一玩家重复使用同一技能
 	usedSkills := make(map[string]bool) // key: "playerID:skillType"
+
+	// 规则「解藥和毒藥不可以在同一夜使用」：记录本夜已成功用药的女巫。
+	// 只有真正生效的用药才计入——若解药因「今晚没人被杀」等原因被取消，
+	// 女巫本夜仍可以正常使用毒药。
+	potionUsed := make(map[string]bool) // key: playerID
 
 	for _, use := range uses {
 		skillKey := use.PlayerID + ":" + use.Skill.String()
 		if usedSkills[skillKey] {
 			continue
 		}
+
+		// 本夜是否已经用过另一瓶药
+		bothPotionsBlocked := !config.WitchCanUseBothPotions && potionUsed[use.PlayerID]
 
 		switch use.Skill {
 		case pb.SkillType_SKILL_TYPE_ANTIDOTE:
@@ -224,7 +232,9 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 				saveEffect := NewEffect(pb.EventType_EVENT_TYPE_SAVE, use.PlayerID, use.TargetID)
 
 				// 检查是否有解药
-				if !state.CanUseAntidote(use.PlayerID) {
+				if bothPotionsBlocked {
+					saveEffect.Cancel("cannot use both potions in one night")
+				} else if !state.CanUseAntidote(use.PlayerID) {
 					saveEffect.Cancel("no antidote")
 				} else if use.PlayerID == use.TargetID && !config.WitchCanSaveSelf {
 					// 检查是否自救
@@ -237,6 +247,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 					saveEffect.Cancel("target is not dying")
 				} else {
 					// 救的是被杀的人，通过 Effect 消耗解药并清除击杀目标
+					potionUsed[use.PlayerID] = true
 					useAntidoteEffect := NewEffect(pb.EventType_EVENT_TYPE_USE_ANTIDOTE, use.PlayerID, "")
 					effects = append(effects, useAntidoteEffect)
 
@@ -251,7 +262,11 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 				usedSkills[skillKey] = true
 
 				// 检查是否有毒药
-				if !state.CanUsePoison(use.PlayerID) {
+				if bothPotionsBlocked {
+					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
+					canceledEffect.Cancel("cannot use both potions in one night")
+					effects = append(effects, canceledEffect)
+				} else if !state.CanUsePoison(use.PlayerID) {
 					// 无毒药，产生一个被取消的效果用于通知
 					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
 					canceledEffect.Cancel("no poison")
@@ -263,6 +278,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 					effects = append(effects, canceledEffect)
 				} else {
 					// 通过 Effect 消耗毒药并标记目标（实际死亡在 NightResolveResolver 处理）
+					potionUsed[use.PlayerID] = true
 					usePoisonEffect := NewEffect(pb.EventType_EVENT_TYPE_USE_POISON, use.PlayerID, use.TargetID)
 					effects = append(effects, usePoisonEffect)
 				}
@@ -343,17 +359,12 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, state *State, config *G
 	}
 
 	// 处理女巫毒杀（毒杀的玩家已在 WitchResolver 中标记到 RoundContext）
+	//
+	// 规则「除殉情或被毒殺外，以任何其他方式被淘汰時可以…開槍」：
+	// 被毒死的猎人不触发开枪，这正是毒药相对于狼刀的战术价值所在。
 	for playerID := range state.RoundCtx.PoisonedPlayers {
 		poisonKillEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "", playerID)
 		effects = append(effects, poisonKillEffect)
-
-		// 检查被毒者是否是猎人
-		if target, ok := state.GetPlayerInfo(playerID); ok {
-			if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-				hunterTriggerEffect := NewEffect(pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED, playerID, "")
-				effects = append(effects, hunterTriggerEffect)
-			}
-		}
 	}
 
 	return effects

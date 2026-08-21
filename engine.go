@@ -294,7 +294,14 @@ func (e *Engine) GetAllowedSkills(playerID string) []pb.SkillType {
 	defer e.mu.RUnlock()
 
 	player, ok := e.state.getPlayer(playerID)
-	if !ok || !player.Alive {
+	if !ok {
+		return nil
+	}
+
+	// 猎人阶段：本次被触发的猎人即便已死亡，仍持有开枪/跳过技能
+	isTriggeredHunter := player.Role == pb.RoleType_ROLE_TYPE_HUNTER &&
+		e.state.RoundCtx.TriggeredHunterID == playerID
+	if !player.Alive && !isTriggeredHunter {
 		return nil
 	}
 
@@ -399,11 +406,20 @@ func (e *Engine) GetPhaseInfo() *PhaseInfo {
 	return info
 }
 
+// allowedSkillsFor 返回指定角色在当前阶段可用的技能。
+//
+// 唯一真相来源是阶段配置（PhaseConfig.Steps），与 ValidateSkillUse 走同一条路径。
+// 此前 build*PhaseInfo 各自硬编码技能列表，导致 GetPhaseInfo 宣告 SKIP 可用、
+// SubmitSkillUse 却拒绝 SKIP 的自相矛盾。
+func (e *Engine) allowedSkillsFor(role pb.RoleType) []pb.SkillType {
+	return e.phase.GetAllowedSkills(e.state.Phase, role)
+}
+
 // buildGuardPhaseInfo 构建守卫阶段信息
 func (e *Engine) buildGuardPhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_GUARD),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_PROTECT},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_GUARD),
 	}
 }
 
@@ -416,28 +432,32 @@ func (e *Engine) buildWolfPhaseInfo() *RolePhaseInfo {
 	}
 	return &RolePhaseInfo{
 		PlayerIDs:     playerIDs,
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_KILL},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_WEREWOLF),
 		Teammates:     teammates,
 	}
 }
 
 // buildWitchPhaseInfo 构建女巫阶段信息
 func (e *Engine) buildWitchPhaseInfo() *RolePhaseInfo {
-	return &RolePhaseInfo{
-		PlayerIDs: e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WITCH),
-		AllowedSkills: []pb.SkillType{
-			pb.SkillType_SKILL_TYPE_ANTIDOTE,
-			pb.SkillType_SKILL_TYPE_POISON,
-		},
-		KillTarget: e.state.RoundCtx.KillTarget,
+	info := &RolePhaseInfo{
+		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WITCH),
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_WITCH),
 	}
+
+	// 规则「解藥未使用時可以得知狼人的殺害對象」：
+	// 解药一旦用掉，女巫便不再获知当晚刀口。
+	if e.state.AnyAliveWitchHasAntidote() {
+		info.KillTarget = e.state.RoundCtx.KillTarget
+	}
+
+	return info
 }
 
 // buildSeerPhaseInfo 构建预言家阶段信息
 func (e *Engine) buildSeerPhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_SEER),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_CHECK},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_SEER),
 	}
 }
 
@@ -445,7 +465,7 @@ func (e *Engine) buildSeerPhaseInfo() *RolePhaseInfo {
 func (e *Engine) buildDayPhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDs(),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_SPEAK},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_UNSPECIFIED),
 	}
 }
 
@@ -453,7 +473,7 @@ func (e *Engine) buildDayPhaseInfo() *RolePhaseInfo {
 func (e *Engine) buildVotePhaseInfo() *RolePhaseInfo {
 	return &RolePhaseInfo{
 		PlayerIDs:     e.state.getAlivePlayerIDs(),
-		AllowedSkills: []pb.SkillType{pb.SkillType_SKILL_TYPE_VOTE},
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_UNSPECIFIED),
 	}
 }
 
@@ -466,11 +486,8 @@ func (e *Engine) buildHunterPhaseInfo() *RolePhaseInfo {
 		playerIDs = []string{hunterID}
 	}
 	return &RolePhaseInfo{
-		PlayerIDs: playerIDs,
-		AllowedSkills: []pb.SkillType{
-			pb.SkillType_SKILL_TYPE_SHOOT,
-			pb.SkillType_SKILL_TYPE_SKIP,
-		},
+		PlayerIDs:     playerIDs,
+		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_HUNTER),
 	}
 }
 
@@ -486,20 +503,27 @@ func (e *Engine) isValidPhase(phase pb.PhaseType) bool {
 }
 
 // calculateNextPhase 计算下一阶段（考虑动态触发）
+//
+// 猎人触发标记是「一次性」的：由死亡结算置位，进入猎人阶段后必须消费掉。
+// 若不消费，标记会在整个回合内持续为真——夜里开过枪的猎人，会在当天
+// 投票结束后被再次拉进 DAY_HUNTER 并开出第二枪。
 func (e *Engine) calculateNextPhase(currentPhase pb.PhaseType) pb.PhaseType {
-	// 夜晚结算阶段后，检查是否有猎人被触发
-	if currentPhase == pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
-		if e.state.RoundCtx.HunterTriggered {
+	switch currentPhase {
+	case pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE:
+		// 夜晚结算后，检查是否有猎人被触发
+		if e.state.HunterPending() {
 			return pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER
 		}
-	}
 
-	// 投票阶段后，检查被投票出局的是否是猎人
-	if currentPhase == pb.PhaseType_PHASE_TYPE_VOTE {
-		// 检查是否有猎人刚刚死亡（通过 RoundContext 判断）
-		if e.state.RoundCtx.HunterTriggered {
+	case pb.PhaseType_PHASE_TYPE_VOTE:
+		// 投票后，检查被投票出局的是否是猎人
+		if e.state.HunterPending() {
 			return pb.PhaseType_PHASE_TYPE_DAY_HUNTER
 		}
+
+	case pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER, pb.PhaseType_PHASE_TYPE_DAY_HUNTER:
+		// 猎人阶段结束，消费掉触发标记，避免同一回合重复进入
+		e.state.ConsumeHunterTrigger()
 	}
 
 	// 使用声明式配置获取下一阶段

@@ -85,10 +85,11 @@ effects, _ := engine.EndPhase()
 
 ```go
 config := &werewolf.GameConfig{
-    WitchCanSaveSelf:     false, // 女巫不能自救
-    GuardCanProtectSelf:  true,  // 守卫可以自守
-    GuardCanRepeat:       false, // 守卫不能连续守同一人
-    SameGuardKillIsEmpty: true,  // 同守同杀是空刀
+    WitchCanSaveSelf:       false, // 女巫不能自救
+    WitchCanUseBothPotions: false, // 女巫不能在同一夜同时用解药和毒药
+    GuardCanProtectSelf:    true,  // 守卫可以自守
+    GuardCanRepeat:         false, // 守卫不能连续守同一人
+    SameGuardKillIsEmpty:   true,  // 同守同杀是空刀
 }
 ```
 

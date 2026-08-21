@@ -18,10 +18,11 @@ const (
 // GameConfig 游戏配置
 type GameConfig struct {
 	// 规则变体
-	WitchCanSaveSelf     bool // 女巫能否自救
-	GuardCanProtectSelf  bool // 守卫能否自守
-	GuardCanRepeat       bool // 守卫能否连续守同一人
-	SameGuardKillIsEmpty bool // 同守同杀是否空刀
+	WitchCanSaveSelf       bool // 女巫能否自救
+	WitchCanUseBothPotions bool // 女巫能否在同一夜同时使用解药和毒药
+	GuardCanProtectSelf    bool // 守卫能否自守
+	GuardCanRepeat         bool // 守卫能否连续守同一人
+	SameGuardKillIsEmpty   bool // 同守同杀是否空刀
 
 	// 阶段配置
 	Phases map[pb.PhaseType]*PhaseConfig
@@ -72,11 +73,12 @@ type SkillUse struct {
 // DefaultGameConfig 默认游戏配置
 func DefaultGameConfig() *GameConfig {
 	return &GameConfig{
-		WitchCanSaveSelf:     false,
-		GuardCanProtectSelf:  true,
-		GuardCanRepeat:       false,
-		SameGuardKillIsEmpty: true,
-		DefaultTimeout:       DefaultPhaseTimeout,
+		WitchCanSaveSelf:       false,
+		WitchCanUseBothPotions: false,
+		GuardCanProtectSelf:    true,
+		GuardCanRepeat:         false,
+		SameGuardKillIsEmpty:   true,
+		DefaultTimeout:         DefaultPhaseTimeout,
 		Phases: map[pb.PhaseType]*PhaseConfig{
 			// 白天和投票阶段
 			pb.PhaseType_PHASE_TYPE_DAY:        StandardDayPhase(),
@@ -127,6 +129,7 @@ func DayHunterPhase() *PhaseConfig {
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
 			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Order: 1, Required: false},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Order: 2, Required: false},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 猎人行动后进入下一夜
@@ -205,6 +208,7 @@ func NightHunterPhase() *PhaseConfig {
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE, Order: 0, Required: true},
 			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Order: 1, Required: false},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Order: 2, Required: false},
 		},
 		Timeout:   NightPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
