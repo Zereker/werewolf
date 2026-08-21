@@ -1,6 +1,8 @@
 package werewolf
 
 import (
+	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -178,12 +180,8 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 	return nil
 }
 
-// nextPhaseFunc 定义计算下一阶段的函数类型
-type nextPhaseFunc func(current pb.PhaseType) pb.PhaseType
-
 // endPhaseInternal 结束阶段的公共逻辑
-// calcNextPhase: 计算下一阶段的函数
-func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error) {
+func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 	// 收集需要发布的事件（在锁外发布，避免死锁）
 	var eventsToPublish []*pb.Event
 	var gameEndEvent *pb.Event
@@ -230,7 +228,7 @@ func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error
 	e.metrics.IncPhaseEnded(currentPhase)
 
 	// 5. 计算下一阶段
-	nextPhase := calcNextPhase(currentPhase)
+	nextPhase := e.calculateNextPhase(currentPhase)
 
 	// 猎人的枪可能改变胜负：被刀的猎人开枪带走最后一只狼，好人反而获胜。
 	// 因此当下一阶段是猎人阶段时，推迟胜负判定，先让这一枪打完。
@@ -254,23 +252,31 @@ func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error
 			F("to", nextPhase.String()))
 	}
 
+	// 在锁内快照 handler 与 logger：回调要在锁外执行，
+	// 但直接在锁外读取 e.eventHandlers 会与 OnEvent 竞争。
+	handlers := e.snapshotEventHandlersLocked()
+	logger := e.logger
+
 	// 释放锁后再发布事件，避免用户回调中调用 Engine 方法导致死锁
 	e.mu.Unlock()
 
 	// 发布收集的事件
 	for _, event := range eventsToPublish {
-		e.publishEvent(event)
+		dispatchEvent(handlers, logger, event)
 	}
 	if gameEndEvent != nil {
-		e.publishEvent(gameEndEvent)
+		dispatchEvent(handlers, logger, gameEndEvent)
 	}
 
 	return effects, nil
 }
 
-// EndPhase 结束当前阶段，解析技能，流转到下一阶段
+// EndPhase 结束当前阶段：解析技能、应用效果、判定胜负、流转到下一阶段。
+//
+// 这是驱动游戏推进的唯一入口。流转规则以阶段配置（PhaseConfig.NextPhase）
+// 为准，并处理动态触发的阶段（猎人死亡后的开枪阶段）。
 func (e *Engine) EndPhase() ([]*Effect, error) {
-	return e.endPhaseInternal(e.phase.NextSubPhase)
+	return e.endPhaseInternal()
 }
 
 // GetPlayerInfo 获取玩家信息的只读副本（推荐使用）
@@ -498,10 +504,14 @@ func (e *Engine) buildHunterPhaseInfo() *RolePhaseInfo {
 	}
 }
 
-// EndSubStep 结束当前子阶段（子步骤模式）
-// 与 EndPhase 类似，但使用 calculateNextPhase 支持动态阶段转换（如猎人触发）
+// EndSubStep 结束当前子阶段。
+//
+// Deprecated: 请改用 EndPhase。
+//
+// 两者此前是不同的实现：EndSubStep 支持猎人等动态阶段转换，EndPhase 不支持，
+// 调用方选错就会让猎人技能静默失效。现已合并为同一套逻辑，本方法仅作兼容保留。
 func (e *Engine) EndSubStep() ([]*Effect, error) {
-	return e.endPhaseInternal(e.calculateNextPhase)
+	return e.EndPhase()
 }
 
 // isValidPhase 检查是否是有效的游戏阶段
@@ -544,18 +554,52 @@ func (e *Engine) OnEvent(handler EventHandler) {
 	e.eventHandlers = append(e.eventHandlers, handler)
 }
 
+// snapshotEventHandlersLocked 复制事件处理器列表。
+// 调用前必须持有 e.mu（读锁或写锁）。
+func (e *Engine) snapshotEventHandlersLocked() []EventHandler {
+	handlers := make([]EventHandler, len(e.eventHandlers))
+	copy(handlers, e.eventHandlers)
+	return handlers
+}
+
 // publishEvent 发布事件
-// 每个 handler 独立执行，单个 handler panic 不影响其他 handler
 func (e *Engine) publishEvent(event *pb.Event) {
-	for _, handler := range e.eventHandlers {
+	e.mu.RLock()
+	handlers := e.snapshotEventHandlersLocked()
+	logger := e.logger
+	e.mu.RUnlock()
+
+	dispatchEvent(handlers, logger, event)
+}
+
+// dispatchEvent 在锁外分发事件。
+// 每个 handler 独立执行，单个 handler panic 不影响其他 handler。
+func dispatchEvent(handlers []EventHandler, logger Logger, event *pb.Event) {
+	for _, handler := range handlers {
 		func() {
-			defer func() {
-				// 捕获 panic，防止单个 handler 影响其他 handler
-				_ = recover()
-			}()
+			defer recoverHandlerPanic(logger, "event handler", EventField(event.Type))
 			handler(event)
 		}()
 	}
+}
+
+// recoverHandlerPanic 捕获用户回调中的 panic 并记录。
+//
+// 吞掉 panic 是为了让单个 handler 的故障不波及其他 handler，
+// 但必须留下日志——静默吞掉会让线上问题完全没有痕迹。
+func recoverHandlerPanic(logger Logger, kind string, fields ...Field) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	if logger == nil {
+		return
+	}
+	logger.Error(kind+" panicked",
+		append(fields,
+			F("panic", fmt.Sprintf("%v", r)),
+			F("stack", string(debug.Stack())),
+		)...)
 }
 
 // ==================== 消息系统 ====================
@@ -601,16 +645,17 @@ func (e *Engine) SendMessage(senderID, content string) error {
 		Timestamp: time.Now(),
 	}
 
-	// 复制 handlers 以避免在回调中死锁
+	// 复制 handlers 与 logger 以避免在回调中死锁、并避免锁外读取竞争
 	handlers := make([]MessageHandler, len(e.messageHandlers))
 	copy(handlers, e.messageHandlers)
+	logger := e.logger
 
 	e.mu.RUnlock()
 
 	// 发布消息（锁外执行，避免死锁）
-	e.publishMessage(msg, receiverIDs, handlers)
+	publishMessage(handlers, logger, msg, receiverIDs)
 
-	e.logger.Debug("message sent",
+	logger.Debug("message sent",
 		PlayerField(senderID),
 		PhaseField(msg.Phase),
 		F("receiver_count", len(receiverIDs)))
@@ -652,13 +697,12 @@ func (e *Engine) getMessageReceivers(senderID string) []string {
 	}
 }
 
-// publishMessage 发布消息
-func (e *Engine) publishMessage(msg *Message, receiverIDs []string, handlers []MessageHandler) {
+// publishMessage 在锁外发布消息。
+func publishMessage(handlers []MessageHandler, logger Logger, msg *Message, receiverIDs []string) {
 	for _, handler := range handlers {
 		func() {
-			defer func() {
-				_ = recover()
-			}()
+			defer recoverHandlerPanic(logger, "message handler",
+				PlayerField(msg.SenderID), PhaseField(msg.Phase))
 			handler(msg, receiverIDs)
 		}()
 	}

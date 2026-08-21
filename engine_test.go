@@ -751,3 +751,110 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 		t.Errorf("expected GUARD role, got %v", actionSteps[0].Role)
 	}
 }
+
+// ==================== 并发安全回归测试 ====================
+
+// TestEngine_ConcurrentOnEventAndEndPhase 事件分发与 OnEvent 注册并发。
+//
+// 回归：publishEvent 此前在释放 e.mu 之后才遍历 e.eventHandlers，
+// 与并发的 OnEvent 追加构成数据竞争（需 -race 才能发现）。
+func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
+	engine := NewEngine(nil)
+	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	engine.AddPlayer("s", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	if err := engine.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			engine.OnEvent(func(*pb.Event) {})
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			engine.OnMessage(func(*Message, []string) {})
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			_, _ = engine.EndPhase()
+			_ = engine.SendMessage("v1", "hi")
+			engine.SetLogger(NewNopLogger())
+		}
+	}()
+
+	wg.Wait()
+}
+
+// TestEngine_HandlerPanicIsIsolatedAndLogged 单个 handler panic 不影响其他
+// handler，且必须留下错误日志（此前是 `_ = recover()` 静默吞掉）。
+func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
+	engine := NewEngine(nil)
+	rec := &recordingLogger{}
+	engine.SetLogger(rec)
+
+	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	if err := engine.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	survivorCalled := false
+	engine.OnEvent(func(*pb.Event) { panic("boom") })
+	engine.OnEvent(func(*pb.Event) { survivorCalled = true })
+
+	engine.EndPhase() // NIGHT_GUARD -> NIGHT_WOLF
+	engine.SubmitSkillUse(&SkillUse{
+		PlayerID: "w1",
+		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		TargetID: "v1",
+	})
+	for i := 0; i < 4; i++ {
+		engine.EndPhase() // 走到 NIGHT_RESOLVE 之后，产生 KILL 事件
+	}
+
+	if !survivorCalled {
+		t.Error("前一个 handler panic 后，后续 handler 仍应被调用")
+	}
+	if !rec.hasError("event handler panicked") {
+		t.Errorf("handler panic 应当被记录为 Error 日志，实际日志: %v", rec.errors)
+	}
+}
+
+// recordingLogger 记录 Error 级别日志，用于断言 panic 被记录
+type recordingLogger struct {
+	mu     sync.Mutex
+	errors []string
+}
+
+func (l *recordingLogger) Debug(string, ...Field) {}
+func (l *recordingLogger) Info(string, ...Field)  {}
+func (l *recordingLogger) Warn(string, ...Field)  {}
+func (l *recordingLogger) Error(msg string, _ ...Field) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.errors = append(l.errors, msg)
+}
+
+func (l *recordingLogger) hasError(msg string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, e := range l.errors {
+		if e == msg {
+			return true
+		}
+	}
+	return false
+}
