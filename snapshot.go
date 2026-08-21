@@ -115,7 +115,10 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 			"unsupported snapshot version %d (expected %d)", snap.Version, SnapshotVersion)
 	}
 
-	engine := NewEngine(config)
+	engine, err := NewEngine(config)
+	if err != nil {
+		return nil, err
+	}
 
 	// 阶段必须能在配置里找到，否则恢复出来的引擎推进不下去。
 	// START 与 END 是流程的两端，不出现在阶段配置中，单独放行。

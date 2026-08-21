@@ -284,8 +284,27 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 	})
 
 	t.Run("阶段不在配置中", func(t *testing.T) {
-		cfg := DefaultGameConfig()
-		delete(cfg.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+		// 构造一个自身合法、但不含快照所在阶段的配置：
+		// 只有白天与投票互相流转，没有任何夜晚阶段
+		cfg := &GameConfig{
+			VictoryMode: VictoryModeSideWipe,
+			StartPhase:  pb.PhaseType_PHASE_TYPE_DAY,
+			Phases: map[pb.PhaseType]*PhaseConfig{
+				pb.PhaseType_PHASE_TYPE_DAY: {
+					Type:      pb.PhaseType_PHASE_TYPE_DAY,
+					NextPhase: pb.PhaseType_PHASE_TYPE_VOTE,
+				},
+				pb.PhaseType_PHASE_TYPE_VOTE: {
+					Type:      pb.PhaseType_PHASE_TYPE_VOTE,
+					NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
+				},
+			},
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("前置：该配置本身应当合法，实际 %v", err)
+		}
+
+		// 快照停在 NIGHT_GUARD，而该配置里没有这个阶段
 		_, err := RestoreEngine(cfg, valid)
 		if !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)

@@ -93,7 +93,7 @@ type ruleGame struct {
 // newRuleGame 按座位表创建并开局。cfg 为 nil 时使用默认配置。
 func newRuleGame(t *testing.T, cfg *GameConfig, seats ...seat) *ruleGame {
 	t.Helper()
-	e := NewEngine(cfg)
+	e := MustNewEngine(cfg)
 	for _, st := range seats {
 		if err := e.AddPlayer(st.id, st.role); err != nil {
 			t.Fatalf("AddPlayer(%s, %v) 失败: %v", st.id, st.role, err)
@@ -1027,7 +1027,7 @@ func TestRule_R10_CategoryOf(t *testing.T) {
 	}
 	// 扩展角色用 AddCustomPlayer 显式指定阵营与类别：
 	// 隐狼是「好人牌面的狼」，阵营与类别都无法从角色推导
-	e2 := NewEngine(nil)
+	e2 := MustNewEngine(nil)
 	if err := e2.AddCustomPlayer("hidden", pb.RoleType_ROLE_TYPE_VILLAGER,
 		pb.Camp_CAMP_EVIL, RoleCategoryWolf); err != nil {
 		t.Fatalf("AddCustomPlayer 失败: %v", err)

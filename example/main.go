@@ -60,7 +60,7 @@ func basicGameSetup() {
 	config.SameGuardKillIsEmpty = true // 同守同杀为空刀
 
 	// 2. 创建游戏引擎
-	engine := werewolf.NewEngine(config)
+	engine := werewolf.MustNewEngine(config)
 
 	// 3. 设置日志（可选）
 	engine.SetLogger(&SimpleLogger{})
@@ -97,7 +97,7 @@ func basicGameSetup() {
 func godNarratorDemo() {
 	fmt.Println("【示例2: 上帝（主持人）引导游戏】")
 
-	engine := werewolf.NewEngine(nil)
+	engine := werewolf.MustNewEngine(nil)
 
 	// 添加玩家
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -238,7 +238,7 @@ func fullGameFlow() {
 	fmt.Println("【示例3: 完整游戏流程】")
 
 	// 创建引擎和玩家
-	engine := werewolf.NewEngine(nil) // 使用默认配置
+	engine := werewolf.MustNewEngine(nil) // 使用默认配置
 
 	// 添加玩家
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -420,7 +420,7 @@ func fullGameFlow() {
 func messagingDemo() {
 	fmt.Println("【示例4: 消息系统演示】")
 
-	engine := werewolf.NewEngine(nil)
+	engine := werewolf.MustNewEngine(nil)
 
 	// 添加玩家（需要足够多的好人防止游戏过早结束）
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)

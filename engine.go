@@ -92,10 +92,17 @@ type Engine struct {
 	messageHandlers []MessageHandler
 }
 
-// NewEngine 创建游戏引擎
-func NewEngine(config *GameConfig) *Engine {
+// NewEngine 创建游戏引擎。
+//
+// config 为 nil 时使用默认配置。配置会先经 GameConfig.Validate 校验——
+// 阶段流转图是使用者可替换的数据，悬空的 NextPhase 会让游戏推进到一半
+// 静默结束，这类问题必须在构造时暴露。
+func NewEngine(config *GameConfig) (*Engine, error) {
 	if config == nil {
 		config = DefaultGameConfig()
+	}
+	if err := config.Validate(); err != nil {
+		return nil, err
 	}
 
 	return &Engine{
@@ -107,7 +114,18 @@ func NewEngine(config *GameConfig) *Engine {
 		pendingUses:     make([]*SkillUse, 0),
 		eventHandlers:   make([]EventHandler, 0),
 		messageHandlers: make([]MessageHandler, 0),
+	}, nil
+}
+
+// MustNewEngine 同 NewEngine，配置不合法时 panic。
+//
+// 适用于配置是编译期常量的场合（示例、测试、写死默认配置的服务启动路径）。
+func MustNewEngine(config *GameConfig) *Engine {
+	engine, err := NewEngine(config)
+	if err != nil {
+		panic("werewolf: invalid game config: " + err.Error())
 	}
+	return engine
 }
 
 // SetLogger 设置日志接口
@@ -168,12 +186,18 @@ func (e *Engine) Start() error {
 		return ErrNoGoodPlayer
 	}
 
-	// 进入第一个夜晚（从守卫阶段开始）
-	e.state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_GUARD
+	// 每个阶段都必须有解析器，否则推进到那里时技能会被静默丢弃。
+	// 解析器可以在构造之后注册，故此项校验放在这里而非 NewEngine。
+	if err := e.phase.validateResolvers(); err != nil {
+		return err
+	}
+
+	start := e.config.startPhase()
+	e.state.Phase = start
 	e.state.Round = 1
 	e.state.ResetRoundState()
 
-	e.logger.Info("game started", RoundField(1), PhaseField(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD))
+	e.logger.Info("game started", RoundField(1), PhaseField(start))
 
 	return nil
 }

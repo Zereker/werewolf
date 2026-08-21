@@ -36,6 +36,20 @@ func NewPhase(config *GameConfig) *Phase {
 	return p
 }
 
+// validateResolvers 检查每个已配置的阶段都注册了解析器。
+//
+// 缺失解析器不会报错，只会让该阶段收到的技能被悄悄丢弃——这种失败
+// 在对局中几乎无法定位，必须在开局前拦下。
+func (p *Phase) validateResolvers() error {
+	for phaseType := range p.config.Phases {
+		if p.resolvers[phaseType] == nil {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				"phase %v has no resolver registered", phaseType)
+		}
+	}
+	return nil
+}
+
 // GetPhaseConfig 获取阶段配置
 func (p *Phase) GetPhaseConfig(phase pb.PhaseType) *PhaseConfig {
 	return p.config.Phases[phase]
@@ -88,7 +102,7 @@ func (p *Phase) GetAllowedSkills(phase pb.PhaseType, role pb.RoleType) []pb.Skil
 func (p *Phase) NextSubPhase(current pb.PhaseType) pb.PhaseType {
 	// 游戏开始阶段的特殊处理
 	if current == pb.PhaseType_PHASE_TYPE_START {
-		return pb.PhaseType_PHASE_TYPE_NIGHT_GUARD
+		return p.config.startPhase()
 	}
 
 	// 从配置中获取下一阶段
