@@ -294,7 +294,7 @@ func TestCheckVictory_AllWolvesDead(t *testing.T) {
 	// Kill all wolves
 	state.players["w1"].Alive = false
 
-	gameOver, winner := state.CheckVictory()
+	gameOver, winner := state.CheckVictory(VictoryModeSideWipe)
 	if !gameOver {
 		t.Error("expected gameOver=true when all wolves dead")
 	}
@@ -313,7 +313,7 @@ func TestCheckVictory_GoodLessOrEqual(t *testing.T) {
 	// Kill one good player, now good(1) <= evil(2)
 	state.players["s1"].Alive = false
 
-	gameOver, winner := state.CheckVictory()
+	gameOver, winner := state.CheckVictory(VictoryModeSideWipe)
 	if !gameOver {
 		t.Error("expected gameOver=true when good <= evil")
 	}
@@ -330,7 +330,7 @@ func TestCheckVictory_GameContinues(t *testing.T) {
 	state.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
 
 	// good(3) > evil(1), game continues
-	gameOver, winner := state.CheckVictory()
+	gameOver, winner := state.CheckVictory(VictoryModeSideWipe)
 	if gameOver {
 		t.Error("expected gameOver=false when good > evil")
 	}
@@ -343,7 +343,7 @@ func TestCheckVictory_NoPlayers(t *testing.T) {
 	state := NewState()
 
 	// No players means 0 wolves, good wins
-	gameOver, winner := state.CheckVictory()
+	gameOver, winner := state.CheckVictory(VictoryModeSideWipe)
 	if !gameOver {
 		t.Error("expected gameOver=true with no players")
 	}
@@ -357,8 +357,8 @@ func TestCheckVictory_Equal(t *testing.T) {
 	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
 	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
 
-	// good(1) == evil(1), evil wins
-	gameOver, winner := state.CheckVictory()
+	// 屠城模式下 good(1) == evil(1) 即狼人胜利
+	gameOver, winner := state.CheckVictory(VictoryModeTownWipe)
 	if !gameOver {
 		t.Error("expected gameOver=true when good == evil")
 	}

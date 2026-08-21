@@ -234,9 +234,10 @@ func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
 
 	// Continue through night phases
 	engine.EndPhase() // NIGHT_WITCH -> NIGHT_SEER
-	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE (kill applied here)
+	engine.EndPhase() // NIGHT_SEER -> NIGHT_RESOLVE
+	engine.EndPhase() // NIGHT_RESOLVE -> 击杀在此结算
 
-	// After NIGHT_RESOLVE, v1 is killed, good(0) <= evil(1), wolves win
+	// v1 出局后平民全灭，狼人按屠边获胜
 	if !engine.IsGameOver() {
 		t.Error("expected game to be over")
 	}
@@ -489,6 +490,8 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
 	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
 	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	// v2 保证 v1 出局后平民未被屠尽，游戏得以进入白天
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
 
 	// Start game
 	err := engine.Start()

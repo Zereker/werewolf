@@ -229,8 +229,16 @@ func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error
 	e.pendingUses = make([]*SkillUse, 0)
 	e.metrics.IncPhaseEnded(currentPhase)
 
-	// 5. 检查胜利条件
-	if gameOver, winner := e.state.CheckVictory(); gameOver {
+	// 5. 计算下一阶段
+	nextPhase := calcNextPhase(currentPhase)
+
+	// 猎人的枪可能改变胜负：被刀的猎人开枪带走最后一只狼，好人反而获胜。
+	// 因此当下一阶段是猎人阶段时，推迟胜负判定，先让这一枪打完。
+	hunterPending := nextPhase == pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER ||
+		nextPhase == pb.PhaseType_PHASE_TYPE_DAY_HUNTER
+
+	// 6. 检查胜利条件
+	if gameOver, winner := e.state.CheckVictory(e.config.VictoryMode); gameOver && !hunterPending {
 		e.state.Phase = pb.PhaseType_PHASE_TYPE_END
 		e.logger.Info("game ended", F("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
@@ -239,8 +247,7 @@ func (e *Engine) endPhaseInternal(calcNextPhase nextPhaseFunc) ([]*Effect, error
 			Data: map[string]string{"winner": winner.String()},
 		}
 	} else {
-		// 6. 流转到下一阶段
-		nextPhase := calcNextPhase(currentPhase)
+		// 7. 流转到下一阶段
 		e.state.NextPhase(nextPhase)
 		e.logger.Debug("phase transition",
 			F("from", currentPhase.String()),

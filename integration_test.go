@@ -9,7 +9,10 @@ import (
 // ==================== Complete Game Tests ====================
 
 func TestFullGame_WolvesWin(t *testing.T) {
-	engine := NewEngine(nil)
+	// 本局无神职，屠边条件（屠神/屠民）不适用，故显式使用屠城判定
+	config := DefaultGameConfig()
+	config.VictoryMode = VictoryModeTownWipe
+	engine := NewEngine(config)
 
 	// 2 wolves vs 2 villagers
 	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
@@ -46,7 +49,7 @@ func TestFullGame_WolvesWin(t *testing.T) {
 	}
 
 	winner := pb.Camp_CAMP_EVIL
-	_, actualWinner := engine.state.CheckVictory()
+	_, actualWinner := engine.state.CheckVictory(engine.config.VictoryMode)
 	if actualWinner != winner {
 		t.Errorf("expected EVIL wins, got %v", actualWinner)
 	}
@@ -98,7 +101,7 @@ func TestFullGame_GoodWins(t *testing.T) {
 		t.Error("expected game to be over (good wins)")
 	}
 
-	_, winner := engine.state.CheckVictory()
+	_, winner := engine.state.CheckVictory(engine.config.VictoryMode)
 	if winner != pb.Camp_CAMP_GOOD {
 		t.Errorf("expected GOOD wins, got %v", winner)
 	}
@@ -800,10 +803,11 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 	})
 	engine.EndSubStep()
 
-	// 女巫阶段：守卫保护成功，NightKillTarget 应为空
+	// 女巫阶段：刀口照常记录（女巫不知道守卫守了谁），
+	// 守护是否抵消由 NIGHT_RESOLVE 判定
 	killTarget := engine.GetNightKillTarget()
-	if killTarget != "" {
-		t.Errorf("expected empty NightKillTarget when guard protects, got %s", killTarget)
+	if killTarget != "victim" {
+		t.Errorf("expected NightKillTarget=victim (protection resolves later), got %s", killTarget)
 	}
 
 	// 完成剩余阶段

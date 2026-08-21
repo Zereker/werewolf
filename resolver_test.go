@@ -255,9 +255,12 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 	}
 }
 
-func TestWolfResolver_SameGuardKill_Empty(t *testing.T) {
-	// 同守同杀空刀：当守卫保护的目标被狼人攻击时，不设置击杀目标
-	// 这样女巫不知道有人被攻击
+func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
+	// 狼人不知道守卫守了谁，刀是照砍的：无论目标是否被守护都记录刀口。
+	// 守护能否抵消由 NightResolveResolver 判定。
+	//
+	// 若此处因守护而不记录刀口，女巫就看不到刀口，
+	// 「同守同救」（守卫守护 + 女巫解药 -> 依然死亡）这一局面将无法构成。
 	resolver := NewWolfResolver()
 	state := NewState()
 	state.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
@@ -273,14 +276,19 @@ func TestWolfResolver_SameGuardKill_Empty(t *testing.T) {
 
 	effects := resolver.Resolve(uses, state, config)
 
-	// 同守同杀时不返回任何 effect
-	if len(effects) != 0 {
-		t.Errorf("expected 0 effects when same guard kill, got %d", len(effects))
+	// 目标被守护，但刀口仍应被记录
+	if len(effects) != 1 {
+		t.Fatalf("expected 1 effect (SET_NIGHT_KILL) even when protected, got %d", len(effects))
+	}
+	if effects[0].Type != pb.EventType_EVENT_TYPE_SET_NIGHT_KILL {
+		t.Errorf("expected SET_NIGHT_KILL, got %v", effects[0].Type)
 	}
 
-	// Night.KillTarget 应该为空
-	if state.RoundCtx.KillTarget != "" {
-		t.Errorf("expected empty Night.KillTarget, got %s", state.RoundCtx.KillTarget)
+	for _, e := range effects {
+		state.ApplyEffect(e)
+	}
+	if state.RoundCtx.KillTarget != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", state.RoundCtx.KillTarget)
 	}
 }
 
@@ -335,9 +343,11 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 
 	effects := resolver.Resolve(uses, state, config)
 
-	// 应该有3个effect: USE_ANTIDOTE, CLEAR_NIGHT_KILL, SAVE
-	if len(effects) != 3 {
-		t.Fatalf("expected 3 effects, got %d", len(effects))
+	// 应该有2个effect: USE_ANTIDOTE, SAVE
+	// 解药不再直接清除刀口——是否真的救回由 NightResolveResolver
+	// 综合「是否同时被守卫守护」判定
+	if len(effects) != 2 {
+		t.Fatalf("expected 2 effects, got %d", len(effects))
 	}
 
 	saveEffects := filterEffects(effects, pb.EventType_EVENT_TYPE_SAVE)
@@ -350,9 +360,12 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 		state.ApplyEffect(e)
 	}
 
-	// Night.KillTarget 应该被清除
-	if state.RoundCtx.KillTarget != "" {
-		t.Errorf("expected Night.KillTarget cleared after applying effects, got %s", state.RoundCtx.KillTarget)
+	// 刀口保留到结算阶段，但目标已被标记为「已救」
+	if state.RoundCtx.KillTarget != "victim" {
+		t.Errorf("expected Night.KillTarget kept until resolve, got %s", state.RoundCtx.KillTarget)
+	}
+	if !state.RoundCtx.IsSaved("victim") {
+		t.Error("expected victim to be marked as saved")
 	}
 
 	// 解药应该被消耗

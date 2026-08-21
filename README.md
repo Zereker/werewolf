@@ -89,8 +89,28 @@ config := &werewolf.GameConfig{
     WitchCanUseBothPotions: false, // 女巫不能在同一夜同时用解药和毒药
     GuardCanProtectSelf:    true,  // 守卫可以自守
     GuardCanRepeat:         false, // 守卫不能连续守同一人
-    SameGuardKillIsEmpty:   true,  // 同守同杀是空刀
+    SameGuardKillIsEmpty:   true,  // 守卫守住刀口时空刀（守护生效）
+    GuardSaveTogetherDies:  true,  // 同守同救，目标依然死亡
+
+    VictoryMode: werewolf.VictoryModeSideWipe, // 屠边判定
 }
+```
+
+### 胜负判定
+
+| 模式 | 狼人胜利条件 |
+|------|--------------|
+| `VictoryModeSideWipe`（默认，屠边） | 所有平民出局 **或** 所有神职出局 |
+| `VictoryModeTownWipe`（屠城） | 好人存活数 <= 狼人存活数 |
+
+好人阵营的胜利条件与模式无关：狼人全部出局即获胜。
+
+屠边需要区分神职与平民，`PlayerState.Category` 由 `CategoryOf(role)` 自动推导
+（预言家/女巫/猎人/守卫为神职，村民为平民）。自定义角色可通过
+`State.SetPlayerCategory` 显式指定，未指定的角色不参与屠边判定。
+
+屠边判定只对开局就存在的类别生效：没有神职的板子不会因「神职全灭」在开局
+瞬间判负，平民同理。
 ```
 
 ### PhaseConfig（阶段配置）

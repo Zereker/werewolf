@@ -51,12 +51,60 @@ func (rc *RoundContext) IsPoisoned(playerID string) bool {
 	return rc.PoisonedPlayers[playerID]
 }
 
+// RoleCategory 角色类别
+//
+// 屠边判定需要区分「神职」与「平民」，而 pb.Camp 只有好人/狼人两值，
+// 表达不了这个维度，故单列一个类别。
+type RoleCategory int
+
+const (
+	RoleCategoryUnknown  RoleCategory = iota // 未知（上帝等系统角色）
+	RoleCategoryWolf                         // 狼人阵营
+	RoleCategoryGod                          // 神职：预言家、女巫、猎人、守卫
+	RoleCategoryVillager                     // 平民
+)
+
+// String 实现 fmt.Stringer
+func (c RoleCategory) String() string {
+	switch c {
+	case RoleCategoryWolf:
+		return "WOLF"
+	case RoleCategoryGod:
+		return "GOD"
+	case RoleCategoryVillager:
+		return "VILLAGER"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+// CategoryOf 由角色推导默认类别。
+//
+// 自定义角色（狼王、白痴、骑士等）若不在此表中，会落到 Unknown，
+// 需要调用方通过 Engine.SetPlayerCategory 显式指定，否则不参与屠边判定。
+func CategoryOf(role pb.RoleType) RoleCategory {
+	switch role {
+	case pb.RoleType_ROLE_TYPE_WEREWOLF:
+		return RoleCategoryWolf
+	case pb.RoleType_ROLE_TYPE_SEER,
+		pb.RoleType_ROLE_TYPE_WITCH,
+		pb.RoleType_ROLE_TYPE_HUNTER,
+		pb.RoleType_ROLE_TYPE_GUARD:
+		return RoleCategoryGod
+	case pb.RoleType_ROLE_TYPE_VILLAGER:
+		return RoleCategoryVillager
+	default:
+		return RoleCategoryUnknown
+	}
+}
+
 // PlayerState 玩家状态
 type PlayerState struct {
-	ID    string
-	Role  pb.RoleType
-	Camp  pb.Camp
-	Alive bool
+	ID       string
+	Role     pb.RoleType
+	Camp     pb.Camp
+	Category RoleCategory // 角色类别（神职/平民/狼人），用于屠边判定
+	Alive    bool
 
 	// 女巫药剂状态
 	HasAntidote bool // 是否有解药
@@ -117,10 +165,11 @@ func (s *State) AddPlayer(id string, role pb.RoleType, camp pb.Camp) {
 	// 检查是否已存在（可选：记录警告或返回错误）
 	// 目前采用覆盖策略，允许重新设置玩家属性
 	player := &PlayerState{
-		ID:    id,
-		Role:  role,
-		Camp:  camp,
-		Alive: true,
+		ID:       id,
+		Role:     role,
+		Camp:     camp,
+		Category: CategoryOf(role),
+		Alive:    true,
 	}
 
 	// 女巫初始有解药和毒药各一瓶
@@ -143,10 +192,11 @@ func (s *State) AddPlayerIfNotExists(id string, role pb.RoleType, camp pb.Camp) 
 	}
 
 	player := &PlayerState{
-		ID:    id,
-		Role:  role,
-		Camp:  camp,
-		Alive: true,
+		ID:       id,
+		Role:     role,
+		Camp:     camp,
+		Category: CategoryOf(role),
+		Alive:    true,
 	}
 
 	if role == pb.RoleType_ROLE_TYPE_WITCH {
@@ -155,6 +205,23 @@ func (s *State) AddPlayerIfNotExists(id string, role pb.RoleType, camp pb.Camp) 
 	}
 
 	s.players[id] = player
+	return true
+}
+
+// SetPlayerCategory 覆盖玩家的角色类别。
+//
+// 供自定义角色使用：CategoryOf 只覆盖内置的六个角色，
+// 狼王、白痴、骑士等扩展角色需要显式指定类别才能参与屠边判定。
+// 返回 false 表示玩家不存在。
+func (s *State) SetPlayerCategory(id string, category RoleCategory) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	p, ok := s.players[id]
+	if !ok {
+		return false
+	}
+	p.Category = category
 	return true
 }
 
@@ -174,6 +241,7 @@ type PlayerInfo struct {
 	ID          string
 	Role        pb.RoleType
 	Camp        pb.Camp
+	Category    RoleCategory
 	Alive       bool
 	Protected   bool // 今晚是否被保护（从 NightContext 计算）
 	HasAntidote bool
@@ -194,6 +262,7 @@ func (s *State) GetPlayerInfo(id string) (PlayerInfo, bool) {
 		ID:          p.ID,
 		Role:        p.Role,
 		Camp:        p.Camp,
+		Category:    p.Category,
 		Alive:       p.Alive,
 		Protected:   s.RoundCtx.IsProtected(id), // 从 RoundContext 获取
 		HasAntidote: p.HasAntidote,
@@ -381,15 +450,38 @@ func (s *State) GetWolfTeammates(playerID string) []string {
 	return result
 }
 
-// CheckVictory 检查胜利条件
-func (s *State) CheckVictory() (bool, pb.Camp) {
+// CheckVictory 按指定方式检查胜利条件。
+//
+// 好人阵营的胜利条件与判定方式无关：「將狼人淘汰以獲取勝利」。
+// 狼人阵营的胜利条件取决于 mode：
+//
+//	VictoryModeSideWipe（屠边）「需要淘汰所有平民或神職人員」
+//	VictoryModeTownWipe（屠城）好人存活数 <= 狼人存活数
+//
+// 屠边判定只对开局就存在的类别生效：没有神职的板子不会因
+// 「神职全灭」在开局瞬间判负，平民同理。
+func (s *State) CheckVictory(mode VictoryMode) (bool, pb.Camp) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	goodAlive := 0
-	evilAlive := 0
+	var goodAlive, evilAlive int
+	var godsTotal, godsAlive int
+	var villagersTotal, villagersAlive int
 
 	for _, p := range s.players {
+		switch p.Category {
+		case RoleCategoryGod:
+			godsTotal++
+			if p.Alive {
+				godsAlive++
+			}
+		case RoleCategoryVillager:
+			villagersTotal++
+			if p.Alive {
+				villagersAlive++
+			}
+		}
+
 		if !p.Alive {
 			continue
 		}
@@ -401,14 +493,31 @@ func (s *State) CheckVictory() (bool, pb.Camp) {
 		}
 	}
 
-	// 狼人全死，好人胜利
+	// 狼人全死，好人胜利（两种判定方式一致）
 	if evilAlive == 0 {
 		return true, pb.Camp_CAMP_GOOD
 	}
 
-	// 好人数量 <= 狼人数量，狼人胜利
-	if goodAlive <= evilAlive {
+	// 好人全灭，狼人胜利（兜底，避免无神职无平民的板子永不结束）
+	if goodAlive == 0 {
 		return true, pb.Camp_CAMP_EVIL
+	}
+
+	switch mode {
+	case VictoryModeTownWipe:
+		if goodAlive <= evilAlive {
+			return true, pb.Camp_CAMP_EVIL
+		}
+
+	default: // VictoryModeSideWipe
+		// 屠神：开局有神职且已全部出局
+		if godsTotal > 0 && godsAlive == 0 {
+			return true, pb.Camp_CAMP_EVIL
+		}
+		// 屠民：开局有平民且已全部出局
+		if villagersTotal > 0 && villagersAlive == 0 {
+			return true, pb.Camp_CAMP_EVIL
+		}
 	}
 
 	return false, pb.Camp_CAMP_UNSPECIFIED

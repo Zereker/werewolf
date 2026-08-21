@@ -15,6 +15,19 @@ const (
 	WolfPhaseTimeout    = 30 * time.Second // 狼人阶段超时（需要协商）
 )
 
+// VictoryMode 胜负判定方式
+type VictoryMode int
+
+const (
+	// VictoryModeSideWipe 屠边（默认）：狼人需淘汰「所有平民」或「所有神职」之一。
+	// 依据维基「狼人殺」条目：「狼人陣營需要淘汰所有平民或神職人員以獲取勝利」。
+	VictoryModeSideWipe VictoryMode = iota
+
+	// VictoryModeTownWipe 屠城：好人存活数 <= 狼人存活数即狼人胜利。
+	// 不区分神职与平民，适合无神职或角色板子简单的场合。
+	VictoryModeTownWipe
+)
+
 // GameConfig 游戏配置
 type GameConfig struct {
 	// 规则变体
@@ -22,7 +35,11 @@ type GameConfig struct {
 	WitchCanUseBothPotions bool // 女巫能否在同一夜同时使用解药和毒药
 	GuardCanProtectSelf    bool // 守卫能否自守
 	GuardCanRepeat         bool // 守卫能否连续守同一人
-	SameGuardKillIsEmpty   bool // 同守同杀是否空刀
+	SameGuardKillIsEmpty   bool // 守卫守住刀口时是否空刀（守护是否生效）
+	GuardSaveTogetherDies  bool // 同守同救（守卫守护 + 女巫解药）目标是否依然死亡
+
+	// 胜负判定方式
+	VictoryMode VictoryMode
 
 	// 阶段配置
 	Phases map[pb.PhaseType]*PhaseConfig
@@ -78,6 +95,8 @@ func DefaultGameConfig() *GameConfig {
 		GuardCanProtectSelf:    true,
 		GuardCanRepeat:         false,
 		SameGuardKillIsEmpty:   true,
+		GuardSaveTogetherDies:  true,
+		VictoryMode:            VictoryModeSideWipe,
 		DefaultTimeout:         DefaultPhaseTimeout,
 		Phases: map[pb.PhaseType]*PhaseConfig{
 			// 白天和投票阶段

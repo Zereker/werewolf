@@ -30,16 +30,15 @@ package werewolf
 //
 // # 已知偏差与 WEREWOLF_STRICT_RULES
 //
-// 部分规则当前实现尚未满足，登记在 knownDeviations 中。
-// 登记粒度是「具体行为」而非「整条规则」——例如 R8 的正向用例
-// （被刀/被放逐可开枪）已经符合规则，常驻执行；只有「毒杀不开枪」
-// 和「一局一枪」两个行为被登记为偏差。
-// 这些用例默认 Skip，以免 CI 因「已知待办」变红；
-// 设置 WEREWOLF_STRICT_RULES=1 可强制全部执行，用于驱动修复：
+// knownDeviations 登记「实现与规则不符、尚未修复」的行为，登记项默认 Skip，
+// 以免 CI 因已知待办变红；设 WEREWOLF_STRICT_RULES=1 可强制全部执行：
 //
 //	WEREWOLF_STRICT_RULES=1 go test -run TestRule -v ./
 //
-// 修复某条规则后，从 knownDeviations 中删掉对应条目即可让它转为常驻用例。
+// 登记粒度是「具体行为」而非「整条规则」，这样同一条规则下已经符合的
+// 正向用例仍然常驻执行，不会被一并跳过。
+//
+// 当前该表为空——R1–R11 全部通过。新发现偏差时在此登记，修复后删除。
 
 import (
 	"os"
@@ -50,10 +49,7 @@ import (
 
 // knownDeviations 登记「实现与规则不符、尚未修复」的条目。
 // key 为规则编号，value 为偏差描述。
-var knownDeviations = map[string]string{
-	"R7.同守同救": "WolfResolver 在目标被守时不设 KillTarget，同守同救无法触发",
-	"R10":     "CheckVictory 只做屠城判定；Camp 无神职/平民之分，屠边无法表达",
-}
+var knownDeviations = map[string]string{}
 
 // requireRule 在规则尚未实现时跳过用例。
 func requireRule(t *testing.T, id string) {
@@ -423,7 +419,7 @@ func TestRule_R4_WitchCannotSaveSelf(t *testing.T) {
 			cfg := DefaultGameConfig()
 			cfg.WitchCanSaveSelf = tc.canSaveSelf
 			g := newRuleGame(t, cfg, seats(
-				wolf("w1"), wolf("w2"), witch("wi"),
+				wolf("w1"), wolf("w2"), witch("wi"), seer("s"),
 				villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 			)...)
 
@@ -465,7 +461,7 @@ func TestRule_R5_GuardMayProtectSelf(t *testing.T) {
 			cfg := DefaultGameConfig()
 			cfg.GuardCanProtectSelf = tc.canProtectSelf
 			g := newRuleGame(t, cfg, seats(
-				wolf("w1"), wolf("w2"), guard("g"),
+				wolf("w1"), wolf("w2"), guard("g"), seer("s"),
 				villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 			)...)
 
@@ -671,7 +667,7 @@ func TestRule_R8_HunterShootsWhenKilledByWolves(t *testing.T) {
 	requireRule(t, "R8")
 
 	g := newRuleGame(t, nil, seats(
-		wolf("w1"), wolf("w2"), hunter("h"),
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
@@ -695,7 +691,7 @@ func TestRule_R8_HunterShootsWhenVotedOut(t *testing.T) {
 	requireRule(t, "R8")
 
 	g := newRuleGame(t, nil, seats(
-		wolf("w1"), wolf("w2"), hunter("h"),
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
@@ -739,7 +735,7 @@ func TestRule_R8_HunterMayNotShoot(t *testing.T) {
 	requireRule(t, "R8")
 
 	g := newRuleGame(t, nil, seats(
-		wolf("w1"), wolf("w2"), hunter("h"),
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
@@ -770,7 +766,7 @@ func TestRule_R8_HunterMaySkipExplicitly(t *testing.T) {
 	requireRule(t, "R8.显式跳过")
 
 	g := newRuleGame(t, nil, seats(
-		wolf("w1"), wolf("w2"), hunter("h"),
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
@@ -812,7 +808,7 @@ func TestRule_R8_HunterShootsOnlyOnce(t *testing.T) {
 	requireRule(t, "R8.一局一枪")
 
 	g := newRuleGame(t, nil, seats(
-		wolf("w1"), wolf("w2"), hunter("h"),
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
@@ -856,7 +852,7 @@ func TestRule_R9_GoodWinsWhenAllWolvesDead(t *testing.T) {
 
 	g.setDead("w1", "w2")
 
-	over, winner := g.e.state.CheckVictory()
+	over, winner := g.e.state.CheckVictory(g.e.config.VictoryMode)
 	if !over {
 		t.Fatal("狼人全部出局，游戏应当结束")
 	}
@@ -885,7 +881,7 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 
 		g.setDead("s", "wi") // 神职全灭，5 平民 vs 2 狼
 
-		over, winner := g.e.state.CheckVictory()
+		over, winner := g.e.state.CheckVictory(g.e.config.VictoryMode)
 		if !over || winner != pb.Camp_CAMP_EVIL {
 			t.Errorf("神职全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
@@ -900,7 +896,7 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 
 		g.setDead("v1", "v2") // 平民全灭，4 神职 vs 2 狼
 
-		over, winner := g.e.state.CheckVictory()
+		over, winner := g.e.state.CheckVictory(g.e.config.VictoryMode)
 		if !over || winner != pb.Camp_CAMP_EVIL {
 			t.Errorf("平民全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
@@ -915,11 +911,168 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 
 		g.setDead("wi", "v1") // 神职剩预言家，平民剩 2 人
 
-		over, winner := g.e.state.CheckVictory()
+		over, winner := g.e.state.CheckVictory(g.e.config.VictoryMode)
 		if over {
 			t.Errorf("神职与平民都尚有存活，游戏不应结束，实际 winner=%v", winner)
 		}
 	})
+}
+
+// TestRule_R7_GuardSaveTogetherDiesDisabled 同守同救致死的变体开关。
+//
+// 维基记载的是「依然會死亡」，故 GuardSaveTogetherDies 默认为 true；
+// 关掉之后守护与解药叠加，目标存活。
+func TestRule_R7_GuardSaveTogetherDiesDisabled(t *testing.T) {
+	cfg := DefaultGameConfig()
+	cfg.GuardSaveTogetherDies = false
+
+	g := newRuleGame(t, cfg, seats(
+		wolf("w1"), wolf("w2"), guard("g"), witch("wi"),
+		villagers("v1", "v2", "v3", "v4", "v5"),
+	)...)
+
+	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+
+	g.assertAlive("v1", true, "关闭同守同救致死后")
+}
+
+// TestRule_R10_VictoryModeTownWipe 屠城判定的变体开关。
+func TestRule_R10_VictoryModeTownWipe(t *testing.T) {
+	cfg := DefaultGameConfig()
+	cfg.VictoryMode = VictoryModeTownWipe
+
+	g := newRuleGame(t, cfg, seats(
+		wolf("w1"), wolf("w2"),
+		seer("s"), witch("wi"),
+		villagers("v1", "v2"),
+	)...)
+
+	// 好人 4 > 狼 2，游戏继续
+	if over, _ := g.e.state.CheckVictory(VictoryModeTownWipe); over {
+		t.Fatal("好人多于狼人时游戏不应结束")
+	}
+
+	// 好人降到 2 == 狼 2，屠城成立
+	g.setDead("v1", "v2")
+	over, winner := g.e.state.CheckVictory(VictoryModeTownWipe)
+	if !over || winner != pb.Camp_CAMP_EVIL {
+		t.Errorf("屠城模式下 好人数 <= 狼人数 应判狼人胜利，实际 over=%v winner=%v", over, winner)
+	}
+
+	// 同一局面在屠边模式下：神职还在、平民全灭 -> 同样是狼胜（屠民）
+	if over, winner := g.e.state.CheckVictory(VictoryModeSideWipe); !over || winner != pb.Camp_CAMP_EVIL {
+		t.Errorf("屠边模式下平民全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
+	}
+}
+
+// TestRule_R10_MissingCategoryDoesNotEndGame 屠边判定只对开局存在的类别生效。
+//
+// 没有神职的板子不应在开局瞬间因「神职全灭」判负，平民同理。
+func TestRule_R10_MissingCategoryDoesNotEndGame(t *testing.T) {
+	t.Run("无神职板子", func(t *testing.T) {
+		g := newRuleGame(t, nil, seats(
+			wolf("w1"), villagers("v1", "v2", "v3"),
+		)...)
+		if over, winner := g.e.state.CheckVictory(VictoryModeSideWipe); over {
+			t.Errorf("板子上本就没有神职，不应判负，实际 winner=%v", winner)
+		}
+	})
+
+	t.Run("无平民板子", func(t *testing.T) {
+		g := newRuleGame(t, nil, seats(
+			wolf("w1"), seer("s"), witch("wi"), guard("g"),
+		)...)
+		if over, winner := g.e.state.CheckVictory(VictoryModeSideWipe); over {
+			t.Errorf("板子上本就没有平民，不应判负，实际 winner=%v", winner)
+		}
+	})
+
+	t.Run("好人全灭仍然判负", func(t *testing.T) {
+		g := newRuleGame(t, nil, seats(
+			wolf("w1"), villagers("v1", "v2"),
+		)...)
+		g.setDead("v1", "v2")
+		over, winner := g.e.state.CheckVictory(VictoryModeSideWipe)
+		if !over || winner != pb.Camp_CAMP_EVIL {
+			t.Errorf("好人全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
+		}
+	})
+}
+
+// TestRule_R10_CategoryOf 角色类别的默认映射。
+func TestRule_R10_CategoryOf(t *testing.T) {
+	cases := []struct {
+		role pb.RoleType
+		want RoleCategory
+	}{
+		{pb.RoleType_ROLE_TYPE_WEREWOLF, RoleCategoryWolf},
+		{pb.RoleType_ROLE_TYPE_SEER, RoleCategoryGod},
+		{pb.RoleType_ROLE_TYPE_WITCH, RoleCategoryGod},
+		{pb.RoleType_ROLE_TYPE_HUNTER, RoleCategoryGod},
+		{pb.RoleType_ROLE_TYPE_GUARD, RoleCategoryGod},
+		{pb.RoleType_ROLE_TYPE_VILLAGER, RoleCategoryVillager},
+		{pb.RoleType_ROLE_TYPE_GOD, RoleCategoryUnknown},
+	}
+	for _, tc := range cases {
+		if got := CategoryOf(tc.role); got != tc.want {
+			t.Errorf("CategoryOf(%v): 期望 %v，实际 %v", tc.role, tc.want, got)
+		}
+	}
+
+	// AddPlayer 应自动填充类别，且可被覆盖（供自定义角色使用）
+	g := newRuleGame(t, nil, seats(wolf("w1"), seer("s"), villagers("v1", "v2"))...)
+	if got := g.info("s").Category; got != RoleCategoryGod {
+		t.Errorf("预言家类别: 期望 GOD，实际 %v", got)
+	}
+	if !g.e.state.SetPlayerCategory("v1", RoleCategoryGod) {
+		t.Fatal("SetPlayerCategory 应当成功")
+	}
+	if got := g.info("v1").Category; got != RoleCategoryGod {
+		t.Errorf("覆盖后类别: 期望 GOD，实际 %v", got)
+	}
+	if g.e.state.SetPlayerCategory("不存在", RoleCategoryGod) {
+		t.Error("对不存在的玩家应返回 false")
+	}
+}
+
+// TestRule_R10_HunterShotCanFlipVictory 猎人的枪可以翻盘。
+//
+// 胜负判定必须排在死亡技能结算之后：猎人被刀时神职即将全灭，
+// 但他开枪带走最后一只狼，好人反而获胜。
+func TestRule_R10_HunterShotCanFlipVictory(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), hunter("h"), villagers("v1", "v2"),
+	)...)
+
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+
+	// 猎人是唯一神职，此刻「屠神」已成立，但必须先让他开枪
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	if g.e.IsGameOver() {
+		t.Fatal("猎人尚未开枪，游戏不应结束")
+	}
+
+	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
+	g.endAny()
+
+	if !g.e.IsGameOver() {
+		t.Fatal("最后一只狼被带走，游戏应当结束")
+	}
+	over, winner := g.e.state.CheckVictory(VictoryModeSideWipe)
+	if !over || winner != pb.Camp_CAMP_GOOD {
+		t.Errorf("猎人带走最后一只狼，应判好人胜利，实际 over=%v winner=%v", over, winner)
+	}
 }
 
 // ==================== R11 白天发言后投票放逐 ====================
