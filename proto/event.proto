@@ -102,6 +102,7 @@ enum ErrorCode {
   ERROR_CODE_INVALID_ROLE = 12;         // 该角色不能作为玩家身份
   ERROR_CODE_GAME_ALREADY_STARTED = 13; // 游戏已开始
   ERROR_CODE_INVALID_BOARD = 14;        // 板子配置不合法
+  ERROR_CODE_INVALID_SNAPSHOT = 15;     // 快照不合法或版本不兼容
 }
 
 // ==================== 消息定义 ====================

@@ -408,6 +408,7 @@ const (
 	ErrorCode_ERROR_CODE_INVALID_ROLE         ErrorCode = 12 // 该角色不能作为玩家身份
 	ErrorCode_ERROR_CODE_GAME_ALREADY_STARTED ErrorCode = 13 // 游戏已开始
 	ErrorCode_ERROR_CODE_INVALID_BOARD        ErrorCode = 14 // 板子配置不合法
+	ErrorCode_ERROR_CODE_INVALID_SNAPSHOT     ErrorCode = 15 // 快照不合法或版本不兼容
 )
 
 // Enum value maps for ErrorCode.
@@ -428,6 +429,7 @@ var (
 		12: "ERROR_CODE_INVALID_ROLE",
 		13: "ERROR_CODE_GAME_ALREADY_STARTED",
 		14: "ERROR_CODE_INVALID_BOARD",
+		15: "ERROR_CODE_INVALID_SNAPSHOT",
 	}
 	ErrorCode_value = map[string]int32{
 		"ERROR_CODE_UNSPECIFIED":          0,
@@ -445,6 +447,7 @@ var (
 		"ERROR_CODE_INVALID_ROLE":         12,
 		"ERROR_CODE_GAME_ALREADY_STARTED": 13,
 		"ERROR_CODE_INVALID_BOARD":        14,
+		"ERROR_CODE_INVALID_SNAPSHOT":     15,
 	}
 )
 
@@ -616,7 +619,7 @@ const file_proto_event_proto_rawDesc = "" +
 	"\x1dEVENT_TYPE_SET_LAST_PROTECTED\x10f\x12\x1b\n" +
 	"\x17EVENT_TYPE_USE_ANTIDOTE\x10g\x12\x19\n" +
 	"\x15EVENT_TYPE_USE_POISON\x10h\x12\x1f\n" +
-	"\x1bEVENT_TYPE_HUNTER_TRIGGERED\x10i*\xe1\x03\n" +
+	"\x1bEVENT_TYPE_HUNTER_TRIGGERED\x10i*\x82\x04\n" +
 	"\tErrorCode\x12\x1a\n" +
 	"\x16ERROR_CODE_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bERROR_CODE_PLAYER_NOT_FOUND\x10\x01\x12\x1a\n" +
@@ -633,7 +636,8 @@ const file_proto_event_proto_rawDesc = "" +
 	"\x1cERROR_CODE_INVALID_PLAYER_ID\x10\v\x12\x1b\n" +
 	"\x17ERROR_CODE_INVALID_ROLE\x10\f\x12#\n" +
 	"\x1fERROR_CODE_GAME_ALREADY_STARTED\x10\r\x12\x1c\n" +
-	"\x18ERROR_CODE_INVALID_BOARD\x10\x0eB#Z!github.com/Zereker/werewolf/protob\x06proto3"
+	"\x18ERROR_CODE_INVALID_BOARD\x10\x0e\x12\x1f\n" +
+	"\x1bERROR_CODE_INVALID_SNAPSHOT\x10\x0fB#Z!github.com/Zereker/werewolf/protob\x06proto3"
 
 var (
 	file_proto_event_proto_rawDescOnce sync.Once

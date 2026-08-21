@@ -12,6 +12,7 @@
 - **规则可配置** - 女巫自救、守卫连守、同守同救、屠边/屠城均可切换
 - **单包设计** - 只需 `import "github.com/Zereker/werewolf"`
 - **依赖极简** - 仅依赖 `google.golang.org/protobuf`（用于事件与枚举定义）
+- **可存档** - 局面可完整导出为 JSON，恢复后继续推进
 - **线程安全** - 引擎的所有导出方法都可并发调用
 
 ## 安装
@@ -253,6 +254,83 @@ type Effect struct {
 }
 ```
 
+## 存档与恢复
+
+`Engine.Snapshot()` 导出完整局面，`RestoreEngine` 从快照重建引擎。
+快照是纯数据结构，可直接用 `encoding/json` 序列化。
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+
+	"github.com/Zereker/werewolf"
+	pb "github.com/Zereker/werewolf/proto"
+)
+
+func main() {
+	config := werewolf.DefaultGameConfig()
+	engine := werewolf.NewEngine(config)
+	for id, role := range map[string]pb.RoleType{
+		"w1": pb.RoleType_ROLE_TYPE_WEREWOLF,
+		"wi": pb.RoleType_ROLE_TYPE_WITCH,
+		"v1": pb.RoleType_ROLE_TYPE_VILLAGER,
+		"v2": pb.RoleType_ROLE_TYPE_VILLAGER,
+	} {
+		if err := engine.AddPlayer(id, role); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if err := engine.Start(); err != nil {
+		log.Fatal(err)
+	}
+	engine.EndPhase() // -> NIGHT_WOLF
+	engine.SubmitSkillUse(&werewolf.SkillUse{
+		PlayerID: "w1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1",
+	})
+
+	// 保存：技能已提交、尚未结算，快照会把它一并带上
+	data, err := json.Marshal(engine.Snapshot())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 恢复：配置由调用方提供，必须与保存时一致
+	var snap werewolf.Snapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		log.Fatal(err)
+	}
+	restored, err := werewolf.RestoreEngine(config, &snap)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	restored.EndPhase() // 结算狼刀
+	fmt.Printf("恢复后阶段=%v，女巫看到的刀口=%s\n",
+		restored.GetCurrentPhase(),
+		restored.GetPhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_WITCH].KillTarget)
+}
+```
+
+输出：
+
+```
+恢复后阶段=PHASE_TYPE_NIGHT_WITCH，女巫看到的刀口=v1
+```
+
+要点：
+
+- **快照包含当前阶段已提交但未结算的技能**，可以在阶段中途保存，
+  恢复后继续收技能再 `EndPhase`
+- **快照不包含规则配置**，`GameConfig` 由调用方在恢复时提供。
+  用不同的配置恢复，等于中途换了规则
+- 快照是深拷贝，导出后引擎继续推进不会改动它
+- 同一局面导出的字节是确定的（集合与玩家列表都做了排序），便于比对与幂等写入
+- `SnapshotVersion` 不匹配会直接报错，而不是按新结构误读旧数据
+
 ## 游戏流程
 
 引擎把夜晚拆成了若干子阶段，每个子阶段只让一个角色行动：
@@ -305,6 +383,7 @@ werewolf/
 ├── logger.go       # 日志与指标接口
 ├── phase.go        # 阶段管理器、技能校验
 ├── resolver.go     # 各阶段解析器
+├── snapshot.go     # 存档导出与恢复
 ├── state.go        # 游戏状态、角色类别、胜负判定
 ├── rules_test.go   # 以维基百科规则为基准的一致性测试
 ├── proto/          # Protobuf 定义（枚举与事件）

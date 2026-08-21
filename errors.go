@@ -47,6 +47,10 @@ var (
 	ErrGameAlreadyStarted = &GameError{Code: pb.ErrorCode_ERROR_CODE_GAME_ALREADY_STARTED, Message: "game already started"}
 	ErrNoWerewolf         = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_BOARD, Message: "board must contain at least one werewolf"}
 	ErrNoGoodPlayer       = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_BOARD, Message: "board must contain at least one good player"}
+
+	// 快照
+	ErrNilSnapshot     = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT, Message: "snapshot must not be nil"}
+	ErrSnapshotVersion = &GameError{Code: pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT, Message: "unsupported snapshot version"}
 )
 
 // IsErrorCode 检查错误是否匹配指定错误码
