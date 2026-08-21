@@ -86,9 +86,15 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
 
 | 类别 | 方法 | 说明 |
 |------|------|------|
+| 建局 | `AddPlayer` / `AddCustomPlayer` | 只能在 `Start` 之前调用，全部返回 error |
 | 推进 | `Start` / `EndPhase` | `EndPhase` 是唯一推进入口 |
 | 输入 | `SubmitSkillUse` / `SendMessage` | 技能与发言两条独立通道 |
 | 读取 | `GetPhaseInfo` / `GetPlayerInfo` / `GetRoundContext` … | 一律返回只读副本 |
+
+**非法输入一律返回 error，不静默生效**：重复 ID、空 ID、把上帝当玩家、
+开局后再加人、缺狼或缺好人的板子，都在入口处拒绝。阵营与角色类别由角色推导
+（`CampOf` / `CategoryOf`），调用方无从传错；扩展角色走 `AddCustomPlayer`
+显式指定。
 
 **并发模型**：所有导出方法可并发调用。用户回调（`OnEvent` / `OnMessage`）
 一律在**释放锁之后**执行，且 handler 列表在锁内快照——既不会死锁（回调里
@@ -194,6 +200,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 
 - **不计时**：`Timeout` 字段只是给调用方的建议值
 - **不做角色分配**：谁是狼由调用方决定并通过 `AddPlayer` 告知
+- **不做发牌随机**：没有洗牌逻辑，座位与身份的对应关系由调用方给定
 - **不做持久化**：State 目前不可序列化，进程重启即丢失
 - **不做网络与 AI**
 

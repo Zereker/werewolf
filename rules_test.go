@@ -84,14 +84,6 @@ func villagers(ids ...string) []seat {
 	return out
 }
 
-// campOf 由角色推导阵营。
-func campOf(role pb.RoleType) pb.Camp {
-	if role == pb.RoleType_ROLE_TYPE_WEREWOLF {
-		return pb.Camp_CAMP_EVIL
-	}
-	return pb.Camp_CAMP_GOOD
-}
-
 // ruleGame 包装 Engine，提供面向规则测试的断言辅助。
 type ruleGame struct {
 	t *testing.T
@@ -102,8 +94,10 @@ type ruleGame struct {
 func newRuleGame(t *testing.T, cfg *GameConfig, seats ...seat) *ruleGame {
 	t.Helper()
 	e := NewEngine(cfg)
-	for _, s := range seats {
-		e.AddPlayer(s.id, s.role, campOf(s.role))
+	for _, st := range seats {
+		if err := e.AddPlayer(st.id, st.role); err != nil {
+			t.Fatalf("AddPlayer(%s, %v) 失败: %v", st.id, st.role, err)
+		}
 	}
 	if err := e.Start(); err != nil {
 		t.Fatalf("Start() 失败: %v", err)
@@ -1031,14 +1025,16 @@ func TestRule_R10_CategoryOf(t *testing.T) {
 	if got := g.info("s").Category; got != RoleCategoryGod {
 		t.Errorf("预言家类别: 期望 GOD，实际 %v", got)
 	}
-	if !g.e.state.SetPlayerCategory("v1", RoleCategoryGod) {
-		t.Fatal("SetPlayerCategory 应当成功")
+	// 扩展角色用 AddCustomPlayer 显式指定阵营与类别：
+	// 隐狼是「好人牌面的狼」，阵营与类别都无法从角色推导
+	e2 := NewEngine(nil)
+	if err := e2.AddCustomPlayer("hidden", pb.RoleType_ROLE_TYPE_VILLAGER,
+		pb.Camp_CAMP_EVIL, RoleCategoryWolf); err != nil {
+		t.Fatalf("AddCustomPlayer 失败: %v", err)
 	}
-	if got := g.info("v1").Category; got != RoleCategoryGod {
-		t.Errorf("覆盖后类别: 期望 GOD，实际 %v", got)
-	}
-	if g.e.state.SetPlayerCategory("不存在", RoleCategoryGod) {
-		t.Error("对不存在的玩家应返回 false")
+	hidden, _ := e2.GetPlayerInfo("hidden")
+	if hidden.Camp != pb.Camp_CAMP_EVIL || hidden.Category != RoleCategoryWolf {
+		t.Errorf("自定义玩家: 期望 EVIL/WOLF，实际 %v/%v", hidden.Camp, hidden.Category)
 	}
 }
 

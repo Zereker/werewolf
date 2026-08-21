@@ -128,9 +128,25 @@ func (e *Engine) SetMetrics(metrics Metrics) {
 	}
 }
 
-// AddPlayer 添加玩家
-func (e *Engine) AddPlayer(id string, role pb.RoleType, camp pb.Camp) {
-	e.state.AddPlayer(id, role, camp)
+// AddPlayer 添加玩家。阵营与角色类别由角色推导。
+//
+// 只能在 Start 之前调用。返回错误：游戏已开始、ID 为空、ID 已存在、
+// 角色不能作为玩家身份。
+func (e *Engine) AddPlayer(id string, role pb.RoleType) error {
+	return e.AddCustomPlayer(id, role, CampOf(role), CategoryOf(role))
+}
+
+// AddCustomPlayer 添加玩家并显式指定阵营与角色类别，供扩展角色使用。
+func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// 开局后再改动玩家会让已发出的身份信息与引擎状态不一致
+	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
+		return ErrGameAlreadyStarted
+	}
+
+	return e.state.AddCustomPlayer(id, role, camp, category)
 }
 
 // Start 开始游戏
@@ -139,7 +155,17 @@ func (e *Engine) Start() error {
 	defer e.mu.Unlock()
 
 	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
-		return ErrGameNotStarted
+		return ErrGameAlreadyStarted
+	}
+
+	// 校验板子：缺任一阵营的局面从第一次结算起就已分出胜负，
+	// 与其让它「开局即结束」，不如在这里直接拒绝
+	good, evil := e.state.countCamps()
+	if evil == 0 {
+		return ErrNoWerewolf
+	}
+	if good == 0 {
+		return ErrNoGoodPlayer
 	}
 
 	// 进入第一个夜晚（从守卫阶段开始）
@@ -212,8 +238,8 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 	// 3. 应用效果，收集外部事件
 	for _, effect := range effects {
 		e.state.ApplyEffect(effect)
-		// 只发布外部可见事件（内部事件类型 >= 100）
-		if effect.Type < 100 {
+		// 只发布外部可见事件
+		if !isInternalEvent(effect.Type) {
 			eventsToPublish = append(eventsToPublish, effect.ToEvent())
 			e.logger.Debug("effect applied",
 				EventField(effect.Type),
@@ -370,9 +396,11 @@ func (e *Engine) GetPhaseInfo() *PhaseInfo {
 	}
 
 	// 获取当前阶段的配置
+	// 返回副本：Steps 直接暴露会让调用方改到引擎内部的阶段配置
 	phaseConfig := e.phase.GetPhaseConfig(e.state.Phase)
 	if phaseConfig != nil {
-		info.Steps = phaseConfig.Steps
+		info.Steps = make([]PhaseStep, len(phaseConfig.Steps))
+		copy(info.Steps, phaseConfig.Steps)
 	}
 
 	switch e.state.Phase {
@@ -495,16 +523,6 @@ func (e *Engine) buildHunterPhaseInfo() *RolePhaseInfo {
 		PlayerIDs:     playerIDs,
 		AllowedSkills: e.allowedSkillsFor(pb.RoleType_ROLE_TYPE_HUNTER),
 	}
-}
-
-// EndSubStep 结束当前子阶段。
-//
-// Deprecated: 请改用 EndPhase。
-//
-// 两者此前是不同的实现：EndSubStep 支持猎人等动态阶段转换，EndPhase 不支持，
-// 调用方选错就会让猎人技能静默失效。现已合并为同一套逻辑，本方法仅作兼容保留。
-func (e *Engine) EndSubStep() ([]*Effect, error) {
-	return e.EndPhase()
 }
 
 // calculateNextPhase 计算下一阶段（考虑动态触发）

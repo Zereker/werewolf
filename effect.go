@@ -17,6 +17,17 @@ type Effect struct {
 	Reason   string                 // 取消原因
 }
 
+// internalEventThreshold 内部事件类型的起始编号。
+//
+// proto 中 EventType 按此分段：小于该值的是外部可见事件，会通过 OnEvent
+// 推给调用方；大于等于该值的是引擎内部的状态变更，不外发。
+const internalEventThreshold = 100
+
+// isInternalEvent 判断事件是否为引擎内部状态变更。
+func isInternalEvent(t pb.EventType) bool {
+	return t >= internalEventThreshold
+}
+
 // NewEffect 创建效果
 func NewEffect(eventType pb.EventType, sourceID, targetID string) *Effect {
 	return &Effect{

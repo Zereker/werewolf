@@ -23,7 +23,7 @@ func TestNewState(t *testing.T) {
 func TestAddPlayer(t *testing.T) {
 	state := NewState()
 
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 
 	player, ok := state.getPlayer("p1")
 	if !ok {
@@ -45,7 +45,7 @@ func TestAddPlayer(t *testing.T) {
 
 func TestGetPlayer_Exists(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_SEER)
 
 	player, ok := state.getPlayer("p1")
 	if !ok {
@@ -70,7 +70,7 @@ func TestGetPlayer_NotExists(t *testing.T) {
 
 func TestApplyEffect_Kill(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "p1")
 	state.ApplyEffect(effect)
@@ -83,7 +83,7 @@ func TestApplyEffect_Kill(t *testing.T) {
 
 func TestApplyEffect_Poison(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	effect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "witch", "p1")
 	state.ApplyEffect(effect)
@@ -96,7 +96,7 @@ func TestApplyEffect_Poison(t *testing.T) {
 
 func TestApplyEffect_Eliminate(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	effect := NewEffect(pb.EventType_EVENT_TYPE_ELIMINATE, "", "p1")
 	state.ApplyEffect(effect)
@@ -109,7 +109,7 @@ func TestApplyEffect_Eliminate(t *testing.T) {
 
 func TestApplyEffect_Protect(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	effect := NewEffect(pb.EventType_EVENT_TYPE_PROTECT, "guard", "p1")
 	state.ApplyEffect(effect)
@@ -122,7 +122,7 @@ func TestApplyEffect_Protect(t *testing.T) {
 
 func TestApplyEffect_Save(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.players["p1"].Alive = false
 
 	effect := NewEffect(pb.EventType_EVENT_TYPE_SAVE, "witch", "p1")
@@ -136,7 +136,7 @@ func TestApplyEffect_Save(t *testing.T) {
 
 func TestApplyEffect_Canceled(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "p1")
 	effect.Cancel("protected")
@@ -158,8 +158,8 @@ func TestApplyEffect_InvalidTarget(t *testing.T) {
 
 func TestResetRoundState(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 使用 NightContext 设置保护状态
 	state.RoundCtx.ProtectedPlayers["p1"] = true
@@ -197,7 +197,7 @@ func TestNextPhase_ToDay(t *testing.T) {
 
 func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.RoundCtx.ProtectedPlayers["p1"] = true
 	state.RoundCtx.KillTarget = "p1"
 	state.Phase = pb.PhaseType_PHASE_TYPE_VOTE
@@ -222,9 +222,9 @@ func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 
 func TestCheckVictory_AllWolvesDead(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("s1", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("s1", pb.RoleType_ROLE_TYPE_SEER)
+	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// Kill all wolves
 	state.players["w1"].Alive = false
@@ -240,10 +240,10 @@ func TestCheckVictory_AllWolvesDead(t *testing.T) {
 
 func TestCheckVictory_GoodLessOrEqual(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("w2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("s1", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("w2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("s1", pb.RoleType_ROLE_TYPE_SEER)
+	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// Kill one good player, now good(1) <= evil(2)
 	state.players["s1"].Alive = false
@@ -259,10 +259,10 @@ func TestCheckVictory_GoodLessOrEqual(t *testing.T) {
 
 func TestCheckVictory_GameContinues(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("s1", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	state.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("s1", pb.RoleType_ROLE_TYPE_SEER)
+	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// good(3) > evil(1), game continues
 	gameOver, winner := state.CheckVictory(VictoryModeSideWipe)
@@ -289,8 +289,8 @@ func TestCheckVictory_NoPlayers(t *testing.T) {
 
 func TestCheckVictory_Equal(t *testing.T) {
 	state := NewState()
-	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	state.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	state.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 屠城模式下 good(1) == evil(1) 即狼人胜利
 	gameOver, winner := state.CheckVictory(VictoryModeTownWipe)

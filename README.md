@@ -37,15 +37,19 @@ func main() {
 	// 1. 创建引擎（nil 表示使用默认配置）
 	engine := werewolf.NewEngine(nil)
 
-	// 2. 添加玩家：2 狼、4 神、2 民
-	engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("w2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("hunter", pb.RoleType_ROLE_TYPE_HUNTER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	// 2. 添加玩家：2 狼、4 神、2 民（阵营与角色类别由角色推导）
+	for id, role := range map[string]pb.RoleType{
+		"w1": pb.RoleType_ROLE_TYPE_WEREWOLF,
+		"w2": pb.RoleType_ROLE_TYPE_WEREWOLF,
+		"seer":   pb.RoleType_ROLE_TYPE_SEER,
+		"witch":  pb.RoleType_ROLE_TYPE_WITCH,
+		"guard":  pb.RoleType_ROLE_TYPE_GUARD,
+		"hunter": pb.RoleType_ROLE_TYPE_HUNTER,
+		"v1":     pb.RoleType_ROLE_TYPE_VILLAGER,
+		"v2":     pb.RoleType_ROLE_TYPE_VILLAGER,
+	} {
+		must(engine.AddPlayer(id, role))
+	}
 
 	// 3. 开始游戏，进入第一夜的守卫阶段
 	if err := engine.Start(); err != nil {
@@ -131,7 +135,29 @@ effects, _ := engine.EndPhase()
 ```
 
 `EndPhase` 是推进游戏的唯一入口，阶段流转与猎人等动态阶段都由它处理。
-（`EndSubStep` 已废弃，仅作兼容保留。）
+
+### 添加玩家
+
+```go
+// 阵营与角色类别由角色推导，只能在 Start 之前调用
+err := engine.AddPlayer("p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+
+// 扩展角色（隐狼、白痴等）阵营/类别无法从角色推导，显式指定
+err = engine.AddCustomPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER,
+    pb.Camp_CAMP_EVIL, werewolf.RoleCategoryWolf)
+```
+
+以下情况会返回错误，而不是静默生效：
+
+| 情况 | 错误 |
+|------|------|
+| ID 为空 | `ErrInvalidPlayerID` |
+| ID 重复 | `ERROR_CODE_PLAYER_EXISTS` |
+| 角色是上帝或未指定 | `ERROR_CODE_INVALID_ROLE` |
+| 游戏已开始 | `ErrGameAlreadyStarted` |
+
+`Start` 同样会校验板子：缺狼返回 `ErrNoWerewolf`，缺好人返回 `ErrNoGoodPlayer`，
+重复调用返回 `ErrGameAlreadyStarted`。
 
 ### GameConfig（游戏配置）
 

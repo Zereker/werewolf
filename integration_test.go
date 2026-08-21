@@ -15,10 +15,10 @@ func TestFullGame_WolvesWin(t *testing.T) {
 	engine := NewEngine(config)
 
 	// 2 wolves vs 2 villagers
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -59,10 +59,10 @@ func TestFullGame_GoodWins(t *testing.T) {
 	engine := NewEngine(nil)
 
 	// 1 wolf vs 3 villagers
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -112,10 +112,10 @@ func TestFullGame_GoodWins(t *testing.T) {
 func TestScenario_WitchSavesVictim(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -152,10 +152,10 @@ func TestScenario_GuardProtects(t *testing.T) {
 	config.SameGuardKillIsEmpty = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -188,11 +188,11 @@ func TestScenario_GuardProtects(t *testing.T) {
 func TestScenario_VoteTie(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -238,11 +238,11 @@ func TestScenario_VoteTie(t *testing.T) {
 func TestScenario_MultipleRounds(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v4", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -284,10 +284,10 @@ func TestConfig_WitchCanSaveSelf_Enabled(t *testing.T) {
 	config.WitchCanSaveSelf = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -324,10 +324,10 @@ func TestConfig_WitchCanSaveSelf_Disabled(t *testing.T) {
 	config.WitchCanSaveSelf = false
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -364,10 +364,10 @@ func TestConfig_SameGuardKill_Empty(t *testing.T) {
 	config.SameGuardKillIsEmpty = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -402,10 +402,10 @@ func TestConfig_SameGuardKill_NotEmpty(t *testing.T) {
 	config.SameGuardKillIsEmpty = false
 	engine := NewEngine(config)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -450,11 +450,11 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 		config.WitchCanUseBothPotions = canUseBoth
 		engine := NewEngine(config)
 
-		engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-		engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-		engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-		engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-		engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+		engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+		engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+		engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+		engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+		engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 		if err := engine.Start(); err != nil {
 			t.Fatalf("Start() 失败: %v", err)
@@ -553,11 +553,11 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 func TestScenario_SeerIdentifiesWolf(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -608,12 +608,12 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	engine := NewEngine(nil)
 
 	// 设置玩家
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 启动分步模式
 	err := engine.Start()
@@ -729,13 +729,13 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -779,11 +779,11 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 	config.SameGuardKillIsEmpty = true
 	engine := NewEngine(config)
 
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -825,13 +825,13 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 func TestSubStepMode_MultipleRounds(t *testing.T) {
 	engine := NewEngine(nil)
 
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v3", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 
@@ -873,13 +873,13 @@ func TestScenario_AllRolesActive(t *testing.T) {
 	engine := NewEngine(nil)
 
 	// Full game with all roles
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	engine.Start()
 

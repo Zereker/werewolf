@@ -155,19 +155,50 @@ func NewState() *State {
 	}
 }
 
-// AddPlayer 添加玩家
-// 如果玩家ID已存在，会被覆盖
-func (s *State) AddPlayer(id string, role pb.RoleType, camp pb.Camp) {
+// CampOf 由角色推导阵营。
+//
+// 内置的六个角色中只有狼人属于狼人阵营。扩展角色（隐狼、狼美人等）
+// 阵营与角色的对应关系不同，需用 AddCustomPlayer 显式指定。
+func CampOf(role pb.RoleType) pb.Camp {
+	if role == pb.RoleType_ROLE_TYPE_WEREWOLF {
+		return pb.Camp_CAMP_EVIL
+	}
+	return pb.Camp_CAMP_GOOD
+}
+
+// AddPlayer 添加玩家。阵营与角色类别由角色推导。
+//
+// 返回错误：ID 为空、ID 已存在、角色不能作为玩家身份（如上帝）。
+func (s *State) AddPlayer(id string, role pb.RoleType) error {
+	return s.AddCustomPlayer(id, role, CampOf(role), CategoryOf(role))
+}
+
+// AddCustomPlayer 添加玩家并显式指定阵营与角色类别。
+//
+// 供扩展角色使用：隐狼是好人牌面的狼、白痴是不参与屠边的好人，
+// 这类角色无法从内置映射推导，需要调用方直接给出。
+func (s *State) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
+	if id == "" {
+		return ErrInvalidPlayerID
+	}
+	// 上帝是系统角色，不是玩家身份
+	if role == pb.RoleType_ROLE_TYPE_UNSPECIFIED || role == pb.RoleType_ROLE_TYPE_GOD {
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
+			"role %v cannot be assigned to a player", role)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 检查是否已存在（可选：记录警告或返回错误）
-	// 目前采用覆盖策略，允许重新设置玩家属性
+	if _, exists := s.players[id]; exists {
+		return WrapError(pb.ErrorCode_ERROR_CODE_PLAYER_EXISTS, "player %q already exists", id)
+	}
+
 	player := &PlayerState{
 		ID:       id,
 		Role:     role,
 		Camp:     camp,
-		Category: CategoryOf(role),
+		Category: category,
 		Alive:    true,
 	}
 
@@ -178,50 +209,26 @@ func (s *State) AddPlayer(id string, role pb.RoleType, camp pb.Camp) {
 	}
 
 	s.players[id] = player
+	return nil
 }
 
-// AddPlayerIfNotExists 添加玩家（如果不存在）
-// 返回 true 表示添加成功，false 表示玩家已存在
-func (s *State) AddPlayerIfNotExists(id string, role pb.RoleType, camp pb.Camp) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// countCamps 统计各阵营存活人数（包内使用）
+func (s *State) countCamps() (good, evil int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
-	if _, exists := s.players[id]; exists {
-		return false
+	for _, p := range s.players {
+		if !p.Alive {
+			continue
+		}
+		switch p.Camp {
+		case pb.Camp_CAMP_GOOD:
+			good++
+		case pb.Camp_CAMP_EVIL:
+			evil++
+		}
 	}
-
-	player := &PlayerState{
-		ID:       id,
-		Role:     role,
-		Camp:     camp,
-		Category: CategoryOf(role),
-		Alive:    true,
-	}
-
-	if role == pb.RoleType_ROLE_TYPE_WITCH {
-		player.HasAntidote = true
-		player.HasPoison = true
-	}
-
-	s.players[id] = player
-	return true
-}
-
-// SetPlayerCategory 覆盖玩家的角色类别。
-//
-// 供自定义角色使用：CategoryOf 只覆盖内置的六个角色，
-// 狼王、白痴、骑士等扩展角色需要显式指定类别才能参与屠边判定。
-// 返回 false 表示玩家不存在。
-func (s *State) SetPlayerCategory(id string, category RoleCategory) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	p, ok := s.players[id]
-	if !ok {
-		return false
-	}
-	p.Category = category
-	return true
+	return good, evil
 }
 
 // getPlayer 获取玩家（包内使用）

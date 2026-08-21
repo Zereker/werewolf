@@ -67,12 +67,12 @@ func basicGameSetup() {
 
 	// 4. 添加玩家
 	// 6人局配置: 2狼人 + 1女巫 + 1预言家 + 1守卫 + 1村民
-	engine.AddPlayer("player1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("player2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("player3", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("player4", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("player5", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("player6", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("player1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("player2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("player3", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("player4", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("player5", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("player6", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 5. 注册事件处理器（可选）
 	engine.OnEvent(func(event *pb.Event) {
@@ -100,12 +100,12 @@ func godNarratorDemo() {
 	engine := werewolf.NewEngine(nil)
 
 	// 添加玩家
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 开始游戏
 	engine.Start()
@@ -241,12 +241,12 @@ func fullGameFlow() {
 	engine := werewolf.NewEngine(nil) // 使用默认配置
 
 	// 添加玩家
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
+	engine.AddPlayer("seer", pb.RoleType_ROLE_TYPE_SEER)
+	engine.AddPlayer("guard", pb.RoleType_ROLE_TYPE_GUARD)
+	engine.AddPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 注册事件处理器
 	engine.OnEvent(func(event *pb.Event) {
@@ -423,12 +423,12 @@ func messagingDemo() {
 	engine := werewolf.NewEngine(nil)
 
 	// 添加玩家（需要足够多的好人防止游戏过早结束）
-	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF, pb.Camp_CAMP_EVIL)
-	engine.AddPlayer("villager1", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager2", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager3", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
-	engine.AddPlayer("villager4", pb.RoleType_ROLE_TYPE_VILLAGER, pb.Camp_CAMP_GOOD)
+	engine.AddPlayer("wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	engine.AddPlayer("villager1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("villager2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("villager3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	engine.AddPlayer("villager4", pb.RoleType_ROLE_TYPE_VILLAGER)
 
 	// 注册消息处理器
 	engine.OnMessage(func(msg *werewolf.Message, receiverIDs []string) {
