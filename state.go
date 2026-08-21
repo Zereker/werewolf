@@ -319,8 +319,14 @@ func (s *gameState) getAlivePlayerIDs() []string {
 }
 
 // applyEffect 应用效果
+// applyEffect 应用一个效果。这是状态的唯一写入点。
+//
+// 未知的效果类型会被静默忽略——第三方 Resolver 若发出引擎不认识的类型，
+// 不会报错也不会改变状态。扩展时请复用已有类型，或让 Resolver 自己把
+// 语义拆解成引擎认识的效果。
 func (s *gameState) applyEffect(effect *Effect) {
-	// 检查效果是否被取消（必须在锁内检查以避免竞态）
+	// 被取消的效果不改变状态，但仍会出现在 EndPhase 的返回值里，
+	// 好让调用方知道「某人试了但没成」以及原因
 	if effect.Canceled {
 		return
 	}
@@ -331,24 +337,26 @@ func (s *gameState) applyEffect(effect *Effect) {
 	}
 
 	switch effect.Type {
-	// 外部可见效果 - 需要目标玩家
-	case pb.EventType_EVENT_TYPE_KILL, pb.EventType_EVENT_TYPE_POISON, pb.EventType_EVENT_TYPE_ELIMINATE:
+	// 各种死亡：狼刀、毒杀、放逐、开枪
+	case pb.EventType_EVENT_TYPE_KILL,
+		pb.EventType_EVENT_TYPE_POISON,
+		pb.EventType_EVENT_TYPE_ELIMINATE,
+		pb.EventType_EVENT_TYPE_SHOOT:
 		if target, ok := s.players[effect.TargetID]; ok {
 			target.Alive = false
 		}
+
 	case pb.EventType_EVENT_TYPE_PROTECT:
 		if _, ok := s.players[effect.TargetID]; ok {
 			s.RoundCtx.ProtectedPlayers[effect.TargetID] = true
 		}
+
 	case pb.EventType_EVENT_TYPE_SAVE:
-		if target, ok := s.players[effect.TargetID]; ok {
-			target.Alive = true
+		// 只记录「被救过」，不改存活状态。
+		// 死亡统一在夜晚结算阶段发生，此刻目标还活着；
+		// 若在这里置 Alive=true，就成了一个能让任意玩家复活的原语。
+		if _, ok := s.players[effect.TargetID]; ok {
 			s.RoundCtx.SavedPlayers[effect.TargetID] = true
-		}
-	case pb.EventType_EVENT_TYPE_SHOOT:
-		// 猎人开枪，目标死亡
-		if target, ok := s.players[effect.TargetID]; ok {
-			target.Alive = false
 		}
 
 	// 内部状态变更

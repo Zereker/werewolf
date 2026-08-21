@@ -123,14 +123,33 @@ func TestApplyEffect_Protect(t *testing.T) {
 func TestApplyEffect_Save(t *testing.T) {
 	state := newState()
 	state.addPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	state.players["p1"].Alive = false
 
-	effect := NewEffect(pb.EventType_EVENT_TYPE_SAVE, "witch", "p1")
-	state.applyEffect(effect)
+	state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SAVE, "witch", "p1"))
 
+	// 解药只记录「被救过」，生死由夜晚结算阶段综合守护与解药判定
+	if !state.RoundCtx.IsSaved("p1") {
+		t.Error("expected p1 to be marked as saved")
+	}
 	player, _ := state.getPlayer("p1")
 	if !player.Alive {
-		t.Error("expected player to be alive after Save effect")
+		t.Error("expected p1 to still be alive")
+	}
+}
+
+// TestApplyEffect_SaveDoesNotResurrect 解药不是复活原语。
+//
+// 死亡统一在夜晚结算阶段发生，SAVE 生效时目标还活着；若在这里置
+// Alive=true，任何一个 SAVE 效果都能把早已出局的玩家拉回场上。
+func TestApplyEffect_SaveDoesNotResurrect(t *testing.T) {
+	state := newState()
+	state.addPlayer("p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	state.players["p1"].Alive = false
+
+	state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SAVE, "witch", "p1"))
+
+	player, _ := state.getPlayer("p1")
+	if player.Alive {
+		t.Error("已出局的玩家不应被解药复活")
 	}
 }
 

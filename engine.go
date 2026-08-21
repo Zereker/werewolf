@@ -269,77 +269,97 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 	return nil
 }
 
-// endPhaseInternal 结束阶段的公共逻辑
-func (e *Engine) endPhaseInternal() ([]*Effect, error) {
-	// 收集需要发布的事件（在锁外发布，避免死锁）
-	var eventsToPublish []*pb.Event
-	var gameEndEvent *pb.Event
+// phaseOutcome 一次阶段推进的结果，供锁外使用
+type phaseOutcome struct {
+	effects  []*Effect      // 本阶段产生的全部效果（含内部效果）
+	events   []*pb.Event    // 需要对外发布的事件
+	handlers []EventHandler // 锁内快照的处理器
+	logger   Logger         // 锁内快照的日志器
+}
 
-	// 加锁处理状态变更
+// endPhaseInternal 结束阶段：先在锁内推进状态，再在锁外分发事件。
+//
+// 拆成两段是有意的：分发必须在锁外（用户回调里可能回调 Engine），
+// 而推进必须全程持锁。写在一个函数里就得手动 Unlock，
+// 任何人日后加一条提前返回都会漏掉解锁。
+func (e *Engine) endPhaseInternal() ([]*Effect, error) {
+	out, err := e.advancePhase()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, event := range out.events {
+		dispatchEvent(out.handlers, out.logger, event)
+	}
+
+	return out.effects, nil
+}
+
+// advancePhase 在锁内完成一次阶段推进，返回需要在锁外发布的内容。
+func (e *Engine) advancePhase() (phaseOutcome, error) {
 	e.mu.Lock()
+	defer e.mu.Unlock()
 
 	currentPhase := e.state.Phase
-	currentRound := e.state.Round
-
 	if currentPhase == pb.PhaseType_PHASE_TYPE_END {
-		e.mu.Unlock()
-		return nil, ErrGameEnded
+		return phaseOutcome{}, ErrGameEnded
 	}
 
-	e.logger.Debug("ending phase", PhaseField(currentPhase), RoundField(currentRound))
+	e.logger.Debug("ending phase", PhaseField(currentPhase), RoundField(e.state.Round))
 
-	// 1. 获取当前阶段的解析器
-	resolver := e.phase.GetResolver(currentPhase)
+	out := phaseOutcome{}
 
-	// 2. 解析技能，产生效果
-	var effects []*Effect
-	if resolver != nil {
-		effects = resolver.Resolve(e.pendingUses, newStateView(e.state), e.config)
-		e.logger.Debug("resolved effects", PhaseField(currentPhase), F("effect_count", len(effects)))
+	// 1. 解析技能，产生效果
+	if resolver := e.phase.GetResolver(currentPhase); resolver != nil {
+		out.effects = resolver.Resolve(e.pendingUses, newStateView(e.state), e.config)
+		e.logger.Debug("resolved effects", PhaseField(currentPhase), F("effect_count", len(out.effects)))
 	}
 
-	// 3. 应用效果，收集外部事件
-	for _, effect := range effects {
+	// 2. 应用效果，收集对外可见的事件
+	for _, effect := range out.effects {
 		e.state.applyEffect(effect)
-		// 只发布外部可见事件
-		if !isInternalEvent(effect.Type) {
-			eventsToPublish = append(eventsToPublish, effect.ToEvent())
-			e.logger.Debug("effect applied",
-				EventField(effect.Type),
-				PlayerField(effect.SourceID),
-				TargetField(effect.TargetID))
-			e.metrics.IncEffectApplied(effect.Type)
+		if isInternalEvent(effect.Type) {
+			continue
 		}
+		out.events = append(out.events, effect.ToEvent())
+		e.logger.Debug("effect applied",
+			EventField(effect.Type),
+			PlayerField(effect.SourceID),
+			TargetField(effect.TargetID))
+		e.metrics.IncEffectApplied(effect.Type)
 	}
+	e.effectLog = append(e.effectLog, out.effects...)
 
-	e.effectLog = append(e.effectLog, effects...)
-
-	// 4. 清空待处理列表
-	e.pendingUses = make([]*SkillUse, 0)
+	// 3. 清空待处理列表
+	e.pendingUses = nil
 	e.metrics.IncPhaseEnded(currentPhase)
 
-	// 5. 计算下一阶段
+	// 4. 计算下一阶段。
+	//    死亡技能可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
+	//    因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
 	nextPhase := e.calculateNextPhase(currentPhase)
 
-	// 死亡技能可能改变胜负：被刀的猎人开枪带走最后一只狼，好人反而获胜。
-	// 因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
-	triggerPending := e.state.hasPendingTrigger()
+	gameOver, winner := e.state.checkVictory(e.config.VictoryMode)
+	endNow := gameOver && !e.state.hasPendingTrigger()
+	if endNow {
+		nextPhase = pb.PhaseType_PHASE_TYPE_END
+	}
 
-	// 6. 检查胜利条件
-	if gameOver, winner := e.state.checkVictory(e.config.VictoryMode); gameOver && !triggerPending {
-		e.state.Phase = pb.PhaseType_PHASE_TYPE_END
+	// 5. 流转。END 也走 nextPhase，不直接赋值 Phase——
+	//    状态的每一次改动都经同一条路径，别处才不会漏掉伴随的逻辑
+	e.state.nextPhase(nextPhase)
+
+	if endNow {
+		// 结束事件与其他事件走同一条构造路径：Effect -> ToEvent，
+		// 避免同一个事件有两份分别构造、日后各自漂移的实现
+		endEffect := NewEffect(pb.EventType_EVENT_TYPE_GAME_ENDED, "", "").
+			WithData("winner", winner)
+		e.effectLog = append(e.effectLog, endEffect)
+		out.events = append(out.events, endEffect.ToEvent())
+
 		e.logger.Info("game ended", F("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
-		gameEndEvent = &pb.Event{
-			Type: pb.EventType_EVENT_TYPE_GAME_ENDED,
-			Data: map[string]string{"winner": winner.String()},
-		}
-		e.effectLog = append(e.effectLog,
-			NewEffect(pb.EventType_EVENT_TYPE_GAME_ENDED, "", "").
-				WithData("winner", winner.String()))
 	} else {
-		// 7. 流转到下一阶段
-		e.state.nextPhase(nextPhase)
 		e.effectLog = append(e.effectLog, newPhaseChangedEffect(nextPhase))
 		e.logger.Debug("phase transition",
 			F("from", currentPhase.String()),
@@ -347,22 +367,11 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 	}
 
 	// 在锁内快照 handler 与 logger：回调要在锁外执行，
-	// 但直接在锁外读取 e.eventHandlers 会与 OnEvent 竞争。
-	handlers := e.snapshotEventHandlersLocked()
-	logger := e.logger
+	// 而在锁外读取 e.eventHandlers 会与 OnEvent 竞争
+	out.handlers = e.snapshotEventHandlersLocked()
+	out.logger = e.logger
 
-	// 释放锁后再发布事件，避免用户回调中调用 Engine 方法导致死锁
-	e.mu.Unlock()
-
-	// 发布收集的事件
-	for _, event := range eventsToPublish {
-		dispatchEvent(handlers, logger, event)
-	}
-	if gameEndEvent != nil {
-		dispatchEvent(handlers, logger, gameEndEvent)
-	}
-
-	return effects, nil
+	return out, nil
 }
 
 // EndPhase 结束当前阶段：解析技能、应用效果、判定胜负、流转到下一阶段。
