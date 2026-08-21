@@ -163,7 +163,7 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 // ==================== State 侧的转换 ====================
 
 // snapshotPlayers 导出玩家列表（按 ID 排序，保证快照可比较）
-func (s *State) snapshotPlayers() []PlayerSnapshot {
+func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -185,7 +185,7 @@ func (s *State) snapshotPlayers() []PlayerSnapshot {
 }
 
 // snapshotRoundCtx 导出回合上下文
-func (s *State) snapshotRoundCtx() RoundCtxSnapshot {
+func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -207,7 +207,7 @@ func (s *State) snapshotRoundCtx() RoundCtxSnapshot {
 //
 // 不走 AddPlayer：恢复时要原样还原快照里的存活状态与药剂，
 // 而 AddPlayer 会按「新玩家」的规则重新初始化。
-func (s *State) restorePlayer(p PlayerSnapshot) {
+func (s *gameState) restorePlayer(p PlayerSnapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -224,7 +224,7 @@ func (s *State) restorePlayer(p PlayerSnapshot) {
 }
 
 // restoreProgress 还原阶段、回合与回合上下文
-func (s *State) restoreProgress(phase pb.PhaseType, round int, rc RoundCtxSnapshot) {
+func (s *gameState) restoreProgress(phase pb.PhaseType, round int, rc RoundCtxSnapshot) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

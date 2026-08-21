@@ -4,9 +4,14 @@ import (
 	pb "github.com/Zereker/werewolf/proto"
 )
 
-// Resolver 冲突解析器接口
+// Resolver 冲突解析器接口。
+//
+// 实现者只能读 GameView、只能通过返回 Effect 表达状态变更——
+// 这是引擎最重要的不变量，由签名保证而非靠约定。
+//
+// 注意：Resolve 在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法。
 type Resolver interface {
-	Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect
+	Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect
 }
 
 // VoteResult 投票结果
@@ -74,7 +79,7 @@ func NewVoteResolver() *VoteResolver {
 }
 
 // Resolve 解析投票结果
-func (r *VoteResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 
 	result := countVotes(uses, pb.SkillType_SKILL_TYPE_VOTE)
@@ -96,7 +101,7 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, state *State, config *GameConfi
 	effects = append(effects, effect)
 
 	// 检查被处决者是否是猎人
-	if target, ok := state.GetPlayerInfo(result.Winner); ok {
+	if target, ok := view.Player(result.Winner); ok {
 		if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
 			hunterTriggerEffect := NewEffect(pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED, result.Winner, "")
 			effects = append(effects, hunterTriggerEffect)
@@ -115,7 +120,7 @@ func NewDayResolver() *DayResolver {
 }
 
 // Resolve 解析白天行动（发言不产生状态变化）
-func (r *DayResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *DayResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	// 白天发言不产生游戏状态变化
 	return []*Effect{}
 }
@@ -129,7 +134,7 @@ func NewGuardResolver() *GuardResolver {
 	return &GuardResolver{}
 }
 
-func (r *GuardResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 	usedPlayers := make(map[string]bool)
 
@@ -143,8 +148,10 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 			usedPlayers[use.PlayerID] = true
 			protectEffect := NewEffect(pb.EventType_EVENT_TYPE_PROTECT, use.PlayerID, use.TargetID)
 
-			// 检查是否可以保护目标（连续保护限制）
-			if !state.CanProtect(use.PlayerID, use.TargetID, config.GuardCanRepeat) {
+			// 连守限制：视图只给「上回合守了谁」，是否允许由规则配置决定
+			repeatBlocked := !config.GuardCanRepeat &&
+				view.LastProtectedTarget(use.PlayerID) == use.TargetID
+			if repeatBlocked {
 				protectEffect.Cancel("cannot protect same target consecutively")
 			} else if use.PlayerID == use.TargetID && !config.GuardCanProtectSelf {
 				// 检查是否自守
@@ -168,7 +175,7 @@ func NewWolfResolver() *WolfResolver {
 	return &WolfResolver{}
 }
 
-func (r *WolfResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 
 	// 使用公共投票统计函数
@@ -198,11 +205,11 @@ func NewWitchResolver() *WitchResolver {
 	return &WitchResolver{}
 }
 
-func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 
 	// 获取击杀目标（RoundContext 保证非 nil）
-	killTarget := state.RoundCtx.KillTarget
+	killTarget := view.RoundContext().KillTarget
 
 	// 防止同一玩家重复使用同一技能
 	usedSkills := make(map[string]bool) // key: "playerID:skillType"
@@ -230,7 +237,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 				// 检查是否有解药
 				if bothPotionsBlocked {
 					saveEffect.Cancel("cannot use both potions in one night")
-				} else if !state.CanUseAntidote(use.PlayerID) {
+				} else if !witchHas(view, use.PlayerID, potionAntidote) {
 					saveEffect.Cancel("no antidote")
 				} else if use.PlayerID == use.TargetID && !config.WitchCanSaveSelf {
 					// 检查是否自救
@@ -261,7 +268,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, state *State, config *GameConf
 					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
 					canceledEffect.Cancel("cannot use both potions in one night")
 					effects = append(effects, canceledEffect)
-				} else if !state.CanUsePoison(use.PlayerID) {
+				} else if !witchHas(view, use.PlayerID, potionPoison) {
 					// 无毒药，产生一个被取消的效果用于通知
 					canceledEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, use.PlayerID, use.TargetID)
 					canceledEffect.Cancel("no poison")
@@ -292,7 +299,7 @@ func NewSeerResolver() *SeerResolver {
 	return &SeerResolver{}
 }
 
-func (r *SeerResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 	usedPlayers := make(map[string]bool)
 
@@ -306,7 +313,7 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, state *State, config *GameConfi
 			usedPlayers[use.PlayerID] = true
 			checkEffect := NewEffect(pb.EventType_EVENT_TYPE_CHECK, use.PlayerID, use.TargetID)
 			// 使用只读副本避免竞态风险
-			if target, ok := state.GetPlayerInfo(use.TargetID); ok {
+			if target, ok := view.Player(use.TargetID); ok {
 				checkEffect.
 					WithData("camp", target.Camp).
 					WithData("isGood", target.Camp == pb.Camp_CAMP_GOOD)
@@ -326,7 +333,7 @@ func NewNightResolveResolver() *NightResolveResolver {
 	return &NightResolveResolver{}
 }
 
-func (r *NightResolveResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 
 	// 处理狼人击杀。
@@ -337,10 +344,11 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, state *State, config *G
 	//	被守       -> SameGuardKillIsEmpty 决定守护是否生效
 	//	被救       -> 救回
 	//	都没有      -> 死亡
-	if state.RoundCtx.KillTarget != "" {
-		killTarget := state.RoundCtx.KillTarget
-		protected := state.RoundCtx.IsProtected(killTarget)
-		saved := state.RoundCtx.IsSaved(killTarget)
+	rc := view.RoundContext()
+	if rc.KillTarget != "" {
+		killTarget := rc.KillTarget
+		protected := rc.IsProtected(killTarget)
+		saved := rc.IsSaved(killTarget)
 
 		var dies bool
 		var reason string
@@ -367,7 +375,7 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, state *State, config *G
 			effects = append(effects, killEffect)
 
 			// 检查被杀者是否是猎人，如果是则触发猎人技能
-			if target, ok := state.GetPlayerInfo(killTarget); ok {
+			if target, ok := view.Player(killTarget); ok {
 				if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
 					hunterTriggerEffect := NewEffect(pb.EventType_EVENT_TYPE_HUNTER_TRIGGERED, killTarget, "")
 					effects = append(effects, hunterTriggerEffect)
@@ -385,7 +393,7 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, state *State, config *G
 	//
 	// 规则「除殉情或被毒殺外，以任何其他方式被淘汰時可以…開槍」：
 	// 被毒死的猎人不触发开枪，这正是毒药相对于狼刀的战术价值所在。
-	for playerID := range state.RoundCtx.PoisonedPlayers {
+	for playerID := range rc.PoisonedPlayers {
 		poisonKillEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "", playerID)
 		effects = append(effects, poisonKillEffect)
 	}
@@ -400,7 +408,7 @@ func NewHunterResolver() *HunterResolver {
 	return &HunterResolver{}
 }
 
-func (r *HunterResolver) Resolve(uses []*SkillUse, state *State, config *GameConfig) []*Effect {
+func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 	usedPlayers := make(map[string]bool)
 
@@ -426,4 +434,25 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, state *State, config *GameCon
 	}
 
 	return effects
+}
+
+// potionKind 女巫的两种药
+type potionKind int
+
+const (
+	potionAntidote potionKind = iota
+	potionPoison
+)
+
+// witchHas 该女巫是否还持有指定的药。
+// 非女巫一律返回 false。
+func witchHas(view GameView, playerID string, kind potionKind) bool {
+	p, ok := view.Player(playerID)
+	if !ok || p.Role != pb.RoleType_ROLE_TYPE_WITCH {
+		return false
+	}
+	if kind == potionAntidote {
+		return p.HasAntidote
+	}
+	return p.HasPoison
 }

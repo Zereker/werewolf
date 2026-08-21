@@ -77,7 +77,7 @@ type Engine struct {
 	mu sync.RWMutex
 
 	config  *GameConfig
-	state   *State
+	state   *gameState
 	phase   *Phase
 	logger  Logger
 	metrics Metrics
@@ -107,7 +107,7 @@ func NewEngine(config *GameConfig) (*Engine, error) {
 
 	return &Engine{
 		config:          config,
-		state:           NewState(),
+		state:           newState(),
 		phase:           NewPhase(config),
 		logger:          NewNopLogger(),
 		metrics:         NewNopMetrics(),
@@ -146,7 +146,7 @@ func (e *Engine) SetMetrics(metrics Metrics) {
 	}
 }
 
-// AddPlayer 添加玩家。阵营与角色类别由角色推导。
+// addPlayer 添加玩家。阵营与角色类别由角色推导。
 //
 // 只能在 Start 之前调用。返回错误：游戏已开始、ID 为空、ID 已存在、
 // 角色不能作为玩家身份。
@@ -154,7 +154,7 @@ func (e *Engine) AddPlayer(id string, role pb.RoleType) error {
 	return e.AddCustomPlayer(id, role, CampOf(role), CategoryOf(role))
 }
 
-// AddCustomPlayer 添加玩家并显式指定阵营与角色类别，供扩展角色使用。
+// addCustomPlayer 添加玩家并显式指定阵营与角色类别，供扩展角色使用。
 func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -164,7 +164,7 @@ func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, cate
 		return ErrGameAlreadyStarted
 	}
 
-	return e.state.AddCustomPlayer(id, role, camp, category)
+	return e.state.addCustomPlayer(id, role, camp, category)
 }
 
 // Start 开始游戏
@@ -195,7 +195,7 @@ func (e *Engine) Start() error {
 	start := e.config.startPhase()
 	e.state.Phase = start
 	e.state.Round = 1
-	e.state.ResetRoundState()
+	e.state.resetRoundState()
 
 	e.logger.Info("game started", RoundField(1), PhaseField(start))
 
@@ -255,13 +255,13 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 	// 2. 解析技能，产生效果
 	var effects []*Effect
 	if resolver != nil {
-		effects = resolver.Resolve(e.pendingUses, e.state, e.config)
+		effects = resolver.Resolve(e.pendingUses, newStateView(e.state), e.config)
 		e.logger.Debug("resolved effects", PhaseField(currentPhase), F("effect_count", len(effects)))
 	}
 
 	// 3. 应用效果，收集外部事件
 	for _, effect := range effects {
-		e.state.ApplyEffect(effect)
+		e.state.applyEffect(effect)
 		// 只发布外部可见事件
 		if !isInternalEvent(effect.Type) {
 			eventsToPublish = append(eventsToPublish, effect.ToEvent())
@@ -286,7 +286,7 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 		nextPhase == pb.PhaseType_PHASE_TYPE_DAY_HUNTER
 
 	// 6. 检查胜利条件
-	if gameOver, winner := e.state.CheckVictory(e.config.VictoryMode); gameOver && !hunterPending {
+	if gameOver, winner := e.state.checkVictory(e.config.VictoryMode); gameOver && !hunterPending {
 		e.state.Phase = pb.PhaseType_PHASE_TYPE_END
 		e.logger.Info("game ended", F("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
@@ -296,7 +296,7 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 		}
 	} else {
 		// 7. 流转到下一阶段
-		e.state.NextPhase(nextPhase)
+		e.state.nextPhase(nextPhase)
 		e.logger.Debug("phase transition",
 			F("from", currentPhase.String()),
 			F("to", nextPhase.String()))
@@ -392,7 +392,7 @@ func (e *Engine) GetRoundContext() *RoundContext {
 	return e.state.GetRoundContext()
 }
 
-// GetWolfTeammates 获取狼人队友
+// getWolfTeammates 获取狼人队友
 func (e *Engine) GetWolfTeammates(playerID string) []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -402,7 +402,7 @@ func (e *Engine) GetWolfTeammates(playerID string) []string {
 		return nil
 	}
 
-	return e.state.GetWolfTeammates(playerID)
+	return e.state.getWolfTeammates(playerID)
 }
 
 // GetPhaseInfo 获取当前阶段信息（纯状态，不含消息内容）
@@ -486,7 +486,7 @@ func (e *Engine) buildWolfPhaseInfo() *RolePhaseInfo {
 	playerIDs := e.state.getAlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WEREWOLF)
 	teammates := make(map[string][]string)
 	for _, id := range playerIDs {
-		teammates[id] = e.state.GetWolfTeammates(id)
+		teammates[id] = e.state.getWolfTeammates(id)
 	}
 	return &RolePhaseInfo{
 		PlayerIDs:     playerIDs,
@@ -504,7 +504,7 @@ func (e *Engine) buildWitchPhaseInfo() *RolePhaseInfo {
 
 	// 规则「解藥未使用時可以得知狼人的殺害對象」：
 	// 解药一旦用掉，女巫便不再获知当晚刀口。
-	if e.state.AnyAliveWitchHasAntidote() {
+	if e.state.anyAliveWitchHasAntidote() {
 		info.KillTarget = e.state.RoundCtx.KillTarget
 	}
 
@@ -558,19 +558,19 @@ func (e *Engine) calculateNextPhase(currentPhase pb.PhaseType) pb.PhaseType {
 	switch currentPhase {
 	case pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE:
 		// 夜晚结算后，检查是否有猎人被触发
-		if e.state.HunterPending() {
+		if e.state.hunterPending() {
 			return pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER
 		}
 
 	case pb.PhaseType_PHASE_TYPE_VOTE:
 		// 投票后，检查被投票出局的是否是猎人
-		if e.state.HunterPending() {
+		if e.state.hunterPending() {
 			return pb.PhaseType_PHASE_TYPE_DAY_HUNTER
 		}
 
 	case pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER, pb.PhaseType_PHASE_TYPE_DAY_HUNTER:
 		// 猎人阶段结束，消费掉触发标记，避免同一回合重复进入
-		e.state.ConsumeHunterTrigger()
+		e.state.consumeHunterTrigger()
 	}
 
 	// 使用声明式配置获取下一阶段

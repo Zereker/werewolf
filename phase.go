@@ -116,7 +116,7 @@ func (p *Phase) NextSubPhase(current pb.PhaseType) pb.PhaseType {
 }
 
 // ValidateSkillUse 验证技能使用是否合法
-func (p *Phase) ValidateSkillUse(use *SkillUse, state *State) error {
+func (p *Phase) ValidateSkillUse(use *SkillUse, state *gameState) error {
 	// 检查玩家是否存在
 	player, ok := state.getPlayer(use.PlayerID)
 	if !ok {
@@ -129,7 +129,7 @@ func (p *Phase) ValidateSkillUse(use *SkillUse, state *State) error {
 	isHunterPhase := state.Phase == pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER ||
 		state.Phase == pb.PhaseType_PHASE_TYPE_DAY_HUNTER
 	if isHunterPhase && player.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-		if state.TriggeredHunterID() != use.PlayerID {
+		if state.triggeredHunterID() != use.PlayerID {
 			return ErrSkillNotAllowed
 		}
 	} else if !player.Alive {

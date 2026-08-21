@@ -179,7 +179,7 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 }
 
 // mustAlive 测试辅助
-func (s *State) mustAlive(t *testing.T, id string) bool {
+func (s *gameState) mustAlive(t *testing.T, id string) bool {
 	t.Helper()
 	p, ok := s.getPlayer(id)
 	if !ok {
