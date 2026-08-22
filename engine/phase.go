@@ -122,6 +122,14 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 		return ErrPlayerDead
 	}
 
+	// 规则点名了这个阶段的行动者时，不在名单里的人一律拒绝。
+	//
+	// 内核自己拦，而不是收下来再让规则事后丢掉：一旦收下，AllowedSkills 与
+	// PhaseReadiness 就得跟着说谎，而那两个正是给玩家看的东西。
+	if ids, ok := state.actorsFor(state.Phase); ok && !contains(ids, use.PlayerID) {
+		return ErrSkillNotAllowed
+	}
+
 	// 检查技能是否在当前阶段允许，并取出它的声明
 	step, allowed := p.stepFor(state.Phase, player.Role, use.Skill)
 	if !allowed {

@@ -77,6 +77,15 @@ func leaderID(view engine.GameView) string {
 	return all[gameNum(view, varLeader)%len(all)].ID
 }
 
+// leaderAt 第 n 顺位的队长是谁。
+func leaderAt(view engine.GameView, n int) string {
+	all := view.AllPlayers()
+	if len(all) == 0 {
+		return ""
+	}
+	return all[n%len(all)].ID
+}
+
 // onTeam 这名玩家这一轮在不在任务队伍里。
 func onTeam(view engine.GameView, playerID string) bool {
 	return view.PlayerRoundVar(playerID, varOnTeam) != ""
@@ -98,3 +107,20 @@ func teamIDs(view engine.GameView) []string {
 
 // approved 这一轮的队伍表决通过了没有。
 func approved(view engine.GameView) bool { return view.RoundVar(varApproved) != "" }
+
+// gameSetup 开局那一刻把局面铺好。
+//
+// 两件事：把整局计数器显式初始化（而不是靠「读不到就当 0」），
+// 以及**点名第一个提名阶段的行动者**——第一个队长。
+//
+// 后者是 GameSetup 这个扩展点存在的直接原因：行动者名单通常由上一个阶段的
+// 解析器算出来（表决之后点名下一任队长，提名之后点名任务队伍），
+// 而第一个阶段前面没有阶段。没有它的话，开局第一次提名会退回按角色算
+// ——也就是全场都被告知可以提名，正是这条疤要消灭的东西。
+func gameSetup(view engine.GameView) []*engine.Effect {
+	return []*engine.Effect{
+		engine.NewSetGameVarEffect(varMission, "1"),
+		engine.NewSetGameVarEffect(varLeader, "0"),
+		engine.NewSetActorsEffect(PhasePropose, leaderAt(view, 0)),
+	}
+}

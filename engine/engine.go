@@ -29,6 +29,12 @@ type Engine struct {
 	// 开局带什么，走的是同一张表、同一条写入路径。
 	roleSetup map[RoleType]RoleSetup
 
+	// gameSetup 开局那一刻的初始化。与 roleSetup 是一对：那个管一名玩家
+	// 入座时带着什么，这个管整局开始时的局面——初始化整局计数器，
+	// 以及指定第一个阶段的行动者（后者是它存在的直接原因：行动者集合通常
+	// 由上一个阶段的解析器算出来，而第一个阶段前面没有阶段）。
+	gameSetup GameSetup
+
 	// 信息边界的三个问题，全部由规则回答（见 boundary.go）：
 	// 一件事该告诉谁、谁和谁是一边的、发言谁能听到。内核只保证
 	// 自己的状态原语永远不外发。
@@ -194,6 +200,13 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 
 	effect := newGameStartedEffect(start)
 	e.recordEffects(effect)
+
+	// 规则的开局初始化。走与其余效果完全相同的写入点，因此进效果流、
+	// 能回放。放在 GAME_STARTED 之后，好让效果流读起来就是事情发生的顺序。
+	if e.gameSetup != nil {
+		setupEffects, _ := e.applyEffects(e.gameSetup.Setup(newStateView(e.state)))
+		e.recordEffects(setupEffects...)
+	}
 	e.logger.Info("game started", roundField(1), phaseField(start))
 
 	return effect, e.snapshotEventHandlersLocked(), nil
@@ -289,6 +302,9 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	// 4. 计算下一阶段。
 	//    死亡技能可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
 	//    因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
+	// 本阶段的行动者指定用掉了：不清的话下一次进同一个阶段会沿用上一轮的名单
+	e.state.consumeActors(currentPhase)
+
 	nextPhase := e.calculateNextPhase(currentPhase, out.effects)
 
 	gameOver, winner := e.victory.CheckVictory(newStateView(e.state))

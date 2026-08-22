@@ -71,3 +71,17 @@ func (e *Engine) applyOptions(opts []EngineOption) error {
 	}
 	return nil
 }
+
+// WithGameSetup 注册开局时的初始化。
+//
+// 在 Start() 里调用一次，产出的效果经与其余效果相同的写入点落地。
+// 重复注册以最后一次为准。
+func WithGameSetup(setup GameSetup) EngineOption {
+	return func(e *Engine) error {
+		if setup == nil {
+			return WrapError(CodeInvalidConfig, "game setup must not be nil")
+		}
+		e.gameSetup = setup
+		return nil
+	}
+}

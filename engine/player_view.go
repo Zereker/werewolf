@@ -165,7 +165,23 @@ func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []Skil
 	if !info.Alive {
 		return []SkillType{}
 	}
+	// 规则点名了这个阶段的行动者时，不在名单里的人什么都不能做。
+	// 与 SubmitSkillUse 的校验同一个来源——否则会出现「内核收下了他的提交，
+	// 却告诉他不能行动」这种自相矛盾。
+	if ids, ok := e.state.actorsFor(e.state.Phase); ok && !contains(ids, playerID) {
+		return []SkillType{}
+	}
 	return e.allowedSkillsFor(info.Role)
+}
+
+// contains 名单里有没有这个人
+func contains(ids []string, id string) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }
 
 // ==================== 效果的接收者 ====================

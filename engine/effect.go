@@ -34,6 +34,7 @@ var kernelPrimitives = map[EventType]bool{
 	EventPhaseChanged:      true,
 	EventGotoPhase:         true,
 	EventSetGameVar:        true,
+	EventSetActors:         true,
 }
 
 // isInternalEvent 判断事件是否为内核的状态原语。
@@ -184,6 +185,48 @@ func playerVarOf(e *Effect) (key, value string) {
 	key, _ = e.Data[playerVarKeyKey].(string)
 	value, _ = e.Data[playerVarValueKey].(string)
 	return key, value
+}
+
+// actorsPhaseKey / actorsListKey 行动者效果里的两个键
+const (
+	actorsPhaseKey = "actors_phase"
+	actorsListKey  = "actors_list"
+)
+
+// NewSetActorsEffect 声明「这几个玩家可以在指定阶段行动」。
+//
+// 内核判定行动者的默认办法是拿 PhaseStep.Role 比对玩家角色——而角色是入座时
+// 定死的，任何**运行时才选出来的**行动者集合都表达不了：阿瓦隆的任务队伍是
+// 上一个阶段投票选出来的，队长是按座位轮转的。没有这条效果，规则只能让所有人
+// 都提交、再自己丢掉不该算的，而内核会对没资格的玩家说「你可以行动」。
+//
+// 优先级：待结算的触发队列 > 本效果 > PhaseStep.Role。与 NewGotoPhaseEffect
+// 是同一个分层——默认值加运行时改写。
+//
+// 名单在**更早的阶段**算出来是常态，所以要指定阶段而不是只作用于当前阶段。
+// 某个阶段结算完，它的这一份就被消费掉：不清的话下一次进同一个阶段会沿用
+// 上一轮的名单。
+//
+// 传空名单是有意义的：那是「这个阶段没有人能行动」，与「规则没指定」不同。
+//
+// 名单里不存在的玩家会被忽略；名单会按 ID 排序后存下，效果流因此是确定的。
+func NewSetActorsEffect(phase PhaseType, playerIDs ...string) *Effect {
+	return NewEffect(EventSetActors, "", "").
+		WithData(actorsPhaseKey, phase).
+		WithData(actorsListKey, append([]string(nil), playerIDs...))
+}
+
+// actorsOf 从效果里读出阶段与名单
+func actorsOf(e *Effect) (PhaseType, []string, bool) {
+	p, ok := e.Data[actorsPhaseKey].(PhaseType)
+	if !ok {
+		return PhaseUnspecified, nil, false
+	}
+	ids, ok := e.Data[actorsListKey].([]string)
+	if !ok {
+		return PhaseUnspecified, nil, false
+	}
+	return p, ids, true
 }
 
 // NewSetGameVarEffect 声明「把整局的某项状态改成某值」。

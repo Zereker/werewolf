@@ -40,6 +40,11 @@ type Snapshot struct {
 	// Vars 整局有效、不属于任何玩家的状态。
 	Vars map[string]string `json:"vars,omitempty"`
 
+	// Actors 规则为各阶段指定的行动者。名单往往在更早的阶段算出来
+	// （阿瓦隆的任务队伍是提名阶段选的），因此必须随快照走，
+	// 否则从提名与任务之间恢复出来的对局会丢掉队伍。
+	Actors map[PhaseType][]string `json:"actors,omitempty"`
+
 	Players      []PlayerSnapshot   `json:"players"`
 	RoundContext RoundCtxSnapshot   `json:"round_context"`
 	PendingUses  []SkillUseSnapshot `json:"pending_uses"`
@@ -102,6 +107,7 @@ func (e *Engine) Snapshot() *Snapshot {
 		Phase:        e.state.Phase,
 		Round:        e.state.Round,
 		Vars:         copyVars(e.state.Vars),
+		Actors:       copyActors(e.state.Actors),
 		Players:      e.state.snapshotPlayers(),
 		RoundContext: e.state.snapshotRoundCtx(),
 		PendingUses:  make([]SkillUseSnapshot, 0, len(e.pendingUses)),
@@ -166,6 +172,7 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 	}
 
 	engine.state.Vars = copyVars(snap.Vars)
+	engine.state.Actors = copyActors(snap.Actors)
 	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)
 
 	return engine, nil

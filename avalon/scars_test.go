@@ -12,38 +12,68 @@ import (
 // 意义是：SCARS.md 里的每一条都能被验证，而不是我说了算。内核补上对应
 // 能力之后，它们会变红——那时候就该把它们改写成正面断言。
 
-// TestScar1_AllowedSkillsLiesToNonTeamMembers 没上任务的人，被告知他可以投票。
+// TestOnlyNamedActorsMayAct 只有被点名的人能行动，内核自己拦。
 //
-// 内核判定行动者只看 (阶段, 角色, 技能)，而任务队伍是运行时定的，
-// 因此任务阶段只能对所有角色开放。后果是 AllowedSkills 与 PlayerView
-// 会对没被选上的玩家说「你可以投成功/失败」——而这两个正是这个库
-// 拿来给玩家看的东西。
-func TestScar1_AllowedSkillsLiesToNonTeamMembers(t *testing.T) {
+// **这条曾经是疤 1**，而且是六条里最贵的一条——代价直接落在给玩家看的东西上：
+// 内核判定行动者只看 (阶段, 角色, 技能)，而角色是入座时定死的，任何运行时
+// 选出来的集合都表达不了。阿瓦隆里它咬了两次（队长、任务队伍），
+// 狼人杀里咬了一次（猎人开枪，内核为它开了触发队列这个单人特例）。
+//
+// 后果是内核对没资格的玩家说谎：AllowedSkills 说他能动、PhaseReadiness
+// 等着他、SubmitSkillUse 收下他的提交再由解析器丢掉。
+//
+// 内核补上 NewSetActorsEffect 之后，三个问题（校验、AllowedSkills、
+// PhaseReadiness）改从同一处取数。这个测试把三处一起盯住。
+func TestOnlyNamedActorsMayAct(t *testing.T) {
 	e := fivePlayer(t)
-	proposeAndApprove(t, e, "a", "b") // 队伍是 a、b
 
-	notOnTeam := "c"
-	if onTeamNow(e, notOnTeam) {
-		t.Fatalf("%s 不该在队伍里，测试前提坏了", notOnTeam)
+	// 一、提名阶段：只有队长
+	leader := leaderID(e.View())
+	for _, id := range allPlayerIDs(e) {
+		allowed := e.AllowedSkills(id)
+		if id == leader {
+			if len(allowed) == 0 {
+				t.Errorf("队长 %s 该能提名，AllowedSkills 是空的", id)
+			}
+			continue
+		}
+		if len(allowed) != 0 {
+			t.Errorf("%s 不是队长，AllowedSkills 却给出 %v", id, allowed)
+		}
+		if err := e.SubmitSkillUse(&engine.SkillUse{
+			PlayerID: id, Skill: SkillPropose, TargetID: "a",
+		}); err == nil {
+			t.Errorf("%s 不是队长，内核却收下了他的提名", id)
+		}
 	}
 
-	allowed := e.AllowedSkills(notOnTeam)
-	if len(allowed) == 0 {
-		t.Skip("内核已经能按运行时名单划行动者了——这道疤该改成正面断言")
+	// 二、任务阶段：只有队伍成员
+	proposeAndApprove(t, e, "a", "b")
+	team := map[string]bool{"a": true, "b": true}
+	for _, id := range allPlayerIDs(e) {
+		allowed := e.AllowedSkills(id)
+		if team[id] {
+			if len(allowed) == 0 {
+				t.Errorf("队员 %s 该能投票，AllowedSkills 是空的", id)
+			}
+			continue
+		}
+		if len(allowed) != 0 {
+			t.Errorf("%s 没上任务，AllowedSkills 却给出 %v", id, allowed)
+		}
+		if err := e.SubmitSkillUse(&engine.SkillUse{
+			PlayerID: id, Skill: SkillMissionFail,
+		}); err == nil {
+			t.Errorf("%s 没上任务，内核却收下了他的失败票", id)
+		}
 	}
-	t.Logf("疤 1：%s 没上任务，AllowedSkills 却给出 %v", notOnTeam, allowed)
 
-	// 而且他真的提交得进去（只是解析器会丢掉）
-	if err := e.SubmitSkillUse(&engine.SkillUse{
-		PlayerID: notOnTeam, Skill: SkillMissionFail,
-	}); err != nil {
-		t.Skipf("内核已经拦住了非队员的提交：%v", err)
+	// 三、就绪判定也只等队伍成员
+	for _, p := range e.PhaseReadiness().Pending {
+		if !team[p.PlayerID] {
+			t.Errorf("PhaseReadiness 在等 %s，可他没上任务", p.PlayerID)
+		}
 	}
-	t.Logf("疤 1：%s 的失败票被内核收下了，只能靠解析器丢弃", notOnTeam)
-
-	// 就绪判定同样把他算进「还差谁」
-	r := e.PhaseReadiness()
-	t.Logf("疤 1：PhaseReadiness 认为还差 %v（队伍其实只有 a、b）", r.Pending)
 }
 
 // TestRejectedProposalGoesStraightBackToPropose 提名被否决，直接回提名，不空转任务阶段。
@@ -161,11 +191,6 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 // ==================== 测试辅助 ====================
 
 func allPlayerIDs(e *engine.Engine) []string { return e.AlivePlayerIDs() }
-
-func onTeamNow(e *engine.Engine, id string) bool {
-	v := e.View()
-	return onTeam(v, id)
-}
 
 func missionOf(e *engine.Engine) int { return mission(e.View()) }
 

@@ -19,10 +19,13 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 	leader := leaderID(view)
 	need := MissionSize(len(view.AllPlayers()), mission(view))
 
+	// 不再检查 u.PlayerID == leader：内核已经在 SubmitSkillUse 就拦下了
+	// 非队长的提交（这个阶段的行动者由 SetActors 指定）。留着那一行不算错，
+	// 但它会让人以为内核不管这件事。
 	seen := map[string]bool{}
 	var team []string
 	for _, u := range uses {
-		if u.Skill != SkillPropose || u.PlayerID != leader || u.TargetID == "" {
+		if u.Skill != SkillPropose || u.TargetID == "" {
 			continue
 		}
 		if seen[u.TargetID] || len(team) >= need {
@@ -55,7 +58,11 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 			engine.NewEffect(EventProposed, leader, id),
 			engine.NewSetPlayerRoundVarEffect(id, varOnTeam, engine.VarPresent))
 	}
-	return effects
+	// 点名任务阶段的行动者：只有这几个人能投成败。
+	//
+	// 名单在这里算出来、到下一个阶段才用——这正是 SetActors 要指定阶段
+	// 而不是只作用于当前阶段的原因。
+	return append(effects, engine.NewSetActorsEffect(PhaseMission, team...))
 }
 
 // teamVoteResolver 全员表决这支队伍。
@@ -92,9 +99,11 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 	ok := len(team) == need && need > 0 && approve > reject
 
 	// 队长每一轮都往下传一位，无论通过与否
+	next := gameNum(view, varLeader) + 1
 	effects = append(effects,
-		setGameNum(view, varLeader, gameNum(view, varLeader)+1),
-		engine.NewEffect(EventLeaderChanged, "", ""))
+		setGameNum(view, varLeader, next),
+		engine.NewEffect(EventLeaderChanged, "", ""),
+		engine.NewSetActorsEffect(PhasePropose, leaderAt(view, next)))
 
 	if ok {
 		return append(effects,
@@ -136,11 +145,7 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 		return nil // 上一轮表决没通过，这个阶段空转
 	}
 
-	team := map[string]bool{}
-	for _, id := range teamIDs(view) {
-		team[id] = true
-	}
-
+	// 不再检查「他在不在队伍里」：内核已经拦下了非队员的提交。
 	acted := map[string]bool{}
 	fails := 0
 	var effects []*engine.Effect
@@ -148,8 +153,8 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 		if u.Skill != SkillMissionSuccess && u.Skill != SkillMissionFail {
 			continue
 		}
-		if !team[u.PlayerID] || acted[u.PlayerID] {
-			continue // 没上任务的人投的票不算数
+		if acted[u.PlayerID] {
+			continue // 一人一票，以第一次为准
 		}
 		acted[u.PlayerID] = true
 		if u.Skill != SkillMissionFail {
