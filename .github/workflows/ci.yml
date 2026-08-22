@@ -61,3 +61,8 @@ jobs:
 
       - name: Build example
         run: go build -v -o /tmp/example ./example/...
+
+      # 只编译不运行是不够的：示例里一个必然 panic 的调用曾就此合入主干。
+      # 示例是给使用者照抄的，它跑不通比库本身出问题更误导人。
+      - name: Run example
+        run: go run ./example > /dev/null

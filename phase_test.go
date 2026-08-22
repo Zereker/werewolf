@@ -369,8 +369,8 @@ func TestValidateSkillUse_Valid(t *testing.T) {
 	p := NewPhase(config)
 
 	state := newState()
-	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	use := &SkillUse{
@@ -411,8 +411,8 @@ func TestValidateSkillUse_PlayerDead(t *testing.T) {
 	p := NewPhase(config)
 
 	state := newState()
-	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.players["wolf"].Alive = false
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
@@ -434,8 +434,8 @@ func TestValidateSkillUse_SkillNotAllowed(t *testing.T) {
 	p := NewPhase(config)
 
 	state := newState()
-	state.addPlayer("villager", pb.RoleType_ROLE_TYPE_VILLAGER)
-	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	// Villager tries to kill at night (not allowed)
@@ -457,7 +457,7 @@ func TestValidateSkillUse_TargetNotFound(t *testing.T) {
 	p := NewPhase(config)
 
 	state := newState()
-	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	use := &SkillUse{
@@ -478,8 +478,8 @@ func TestValidateSkillUse_TargetDead(t *testing.T) {
 	p := NewPhase(config)
 
 	state := newState()
-	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.players["victim"].Alive = false
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
@@ -501,8 +501,8 @@ func TestValidateSkillUse_AntidoteOnDead(t *testing.T) {
 	p := NewPhase(config)
 
 	state := newState()
-	state.addPlayer("witch", pb.RoleType_ROLE_TYPE_WITCH)
-	state.addPlayer("victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "witch", pb.RoleType_ROLE_TYPE_WITCH)
+	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
 	state.players["victim"].Alive = false
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WITCH
 
@@ -525,7 +525,7 @@ func TestValidateSkillUse_NoTarget(t *testing.T) {
 	p := NewPhase(config)
 
 	state := newState()
-	state.addPlayer("wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
 
 	// Empty target (wolf chooses not to kill)
