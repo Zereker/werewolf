@@ -2,14 +2,12 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func TestNewState(t *testing.T) {
 	state := newState()
 
-	if state.Phase != pb.PhaseType_PHASE_TYPE_START {
+	if state.Phase != PhaseStart {
 		t.Errorf("expected Phase=START, got %v", state.Phase)
 	}
 	if state.Round != 0 {
@@ -23,7 +21,7 @@ func TestNewState(t *testing.T) {
 func TestAddPlayer(t *testing.T) {
 	state := newState()
 
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "p1", RoleWerewolf)
 
 	player, ok := state.getPlayer("p1")
 	if !ok {
@@ -32,10 +30,10 @@ func TestAddPlayer(t *testing.T) {
 	if player.ID != "p1" {
 		t.Errorf("expected ID=p1, got %s", player.ID)
 	}
-	if player.Role != pb.RoleType_ROLE_TYPE_WEREWOLF {
+	if player.Role != RoleWerewolf {
 		t.Errorf("expected Role=WEREWOLF, got %v", player.Role)
 	}
-	if player.Camp != pb.Camp_CAMP_EVIL {
+	if player.Camp != CampEvil {
 		t.Errorf("expected Camp=EVIL, got %v", player.Camp)
 	}
 	if !player.Alive {
@@ -45,7 +43,7 @@ func TestAddPlayer(t *testing.T) {
 
 func TestGetPlayer_Exists(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_SEER)
+	mustAddTo(t, state, "p1", RoleSeer)
 
 	player, ok := state.getPlayer("p1")
 	if !ok {
@@ -70,9 +68,9 @@ func TestGetPlayer_NotExists(t *testing.T) {
 
 func TestApplyEffect_Kill(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 
-	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "p1")
+	effect := NewEffect(EventKill, "wolf", "p1")
 	state.applyEffect(effect)
 
 	player, _ := state.getPlayer("p1")
@@ -83,9 +81,9 @@ func TestApplyEffect_Kill(t *testing.T) {
 
 func TestApplyEffect_Poison(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 
-	effect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "witch", "p1")
+	effect := NewEffect(EventPoison, "witch", "p1")
 	state.applyEffect(effect)
 
 	player, _ := state.getPlayer("p1")
@@ -96,9 +94,9 @@ func TestApplyEffect_Poison(t *testing.T) {
 
 func TestApplyEffect_Eliminate(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 
-	effect := NewEffect(pb.EventType_EVENT_TYPE_ELIMINATE, "", "p1")
+	effect := NewEffect(EventEliminate, "", "p1")
 	state.applyEffect(effect)
 
 	player, _ := state.getPlayer("p1")
@@ -109,9 +107,9 @@ func TestApplyEffect_Eliminate(t *testing.T) {
 
 func TestApplyEffect_Protect(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 
-	effect := NewEffect(pb.EventType_EVENT_TYPE_PROTECT, "guard", "p1")
+	effect := NewEffect(EventProtect, "guard", "p1")
 	state.applyEffect(effect)
 
 	// 使用 NightContext 检查保护状态
@@ -122,9 +120,9 @@ func TestApplyEffect_Protect(t *testing.T) {
 
 func TestApplyEffect_Save(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 
-	state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SAVE, "witch", "p1"))
+	state.applyEffect(NewEffect(EventSave, "witch", "p1"))
 
 	// 解药只记录「被救过」，生死由夜晚结算阶段综合守护与解药判定
 	if !state.RoundCtx.IsSaved("p1") {
@@ -142,10 +140,10 @@ func TestApplyEffect_Save(t *testing.T) {
 // Alive=true，任何一个 SAVE 效果都能把早已出局的玩家拉回场上。
 func TestApplyEffect_SaveDoesNotResurrect(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 	state.players["p1"].Alive = false
 
-	state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SAVE, "witch", "p1"))
+	state.applyEffect(NewEffect(EventSave, "witch", "p1"))
 
 	player, _ := state.getPlayer("p1")
 	if player.Alive {
@@ -155,9 +153,9 @@ func TestApplyEffect_SaveDoesNotResurrect(t *testing.T) {
 
 func TestApplyEffect_Canceled(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 
-	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "p1")
+	effect := NewEffect(EventKill, "wolf", "p1")
 	effect.Cancel("protected")
 	state.applyEffect(effect)
 
@@ -170,15 +168,15 @@ func TestApplyEffect_Canceled(t *testing.T) {
 func TestApplyEffect_InvalidTarget(t *testing.T) {
 	state := newState()
 
-	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "nonexistent")
+	effect := NewEffect(EventKill, "wolf", "nonexistent")
 	// Should not panic
 	state.applyEffect(effect)
 }
 
 func TestResetRoundState(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
+	mustAddTo(t, state, "p2", RoleVillager)
 
 	// 使用 NightContext 设置保护状态
 	state.RoundCtx.ProtectedPlayers["p1"] = true
@@ -201,12 +199,12 @@ func TestResetRoundState(t *testing.T) {
 
 func TestNextPhase_ToDay(t *testing.T) {
 	state := newState()
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT
+	state.Phase = PhaseNight
 	state.Round = 1
 
-	state.nextPhase(pb.PhaseType_PHASE_TYPE_DAY, pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	state.nextPhase(PhaseDay, PhaseNightGuard)
 
-	if state.Phase != pb.PhaseType_PHASE_TYPE_DAY {
+	if state.Phase != PhaseDay {
 		t.Errorf("expected Phase=DAY, got %v", state.Phase)
 	}
 	if state.Round != 1 {
@@ -216,16 +214,16 @@ func TestNextPhase_ToDay(t *testing.T) {
 
 func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
 	state.RoundCtx.ProtectedPlayers["p1"] = true
 	state.RoundCtx.KillTarget = "p1"
-	state.Phase = pb.PhaseType_PHASE_TYPE_VOTE
+	state.Phase = PhaseVote
 	state.Round = 1
 
 	// 第二个参数是本局的起始阶段，绕回它即是新的一回合
-	state.nextPhase(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	state.nextPhase(PhaseNightGuard, PhaseNightGuard)
 
-	if state.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if state.Phase != PhaseNightGuard {
 		t.Errorf("expected Phase=NIGHT_GUARD, got %v", state.Phase)
 	}
 	if state.Round != 2 {
@@ -242,9 +240,9 @@ func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 
 func TestCheckVictory_AllWolvesDead(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "s1", pb.RoleType_ROLE_TYPE_SEER)
-	mustAddTo(t, state, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "w1", RoleWerewolf)
+	mustAddTo(t, state, "s1", RoleSeer)
+	mustAddTo(t, state, "v1", RoleVillager)
 
 	// Kill all wolves
 	state.players["w1"].Alive = false
@@ -253,17 +251,17 @@ func TestCheckVictory_AllWolvesDead(t *testing.T) {
 	if !gameOver {
 		t.Error("expected gameOver=true when all wolves dead")
 	}
-	if winner != pb.Camp_CAMP_GOOD {
+	if winner != CampGood {
 		t.Errorf("expected GOOD wins, got %v", winner)
 	}
 }
 
 func TestCheckVictory_GoodLessOrEqual(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "w2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "s1", pb.RoleType_ROLE_TYPE_SEER)
-	mustAddTo(t, state, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "w1", RoleWerewolf)
+	mustAddTo(t, state, "w2", RoleWerewolf)
+	mustAddTo(t, state, "s1", RoleSeer)
+	mustAddTo(t, state, "v1", RoleVillager)
 
 	// Kill one good player, now good(1) <= evil(2)
 	state.players["s1"].Alive = false
@@ -272,24 +270,24 @@ func TestCheckVictory_GoodLessOrEqual(t *testing.T) {
 	if !gameOver {
 		t.Error("expected gameOver=true when good <= evil")
 	}
-	if winner != pb.Camp_CAMP_EVIL {
+	if winner != CampEvil {
 		t.Errorf("expected EVIL wins, got %v", winner)
 	}
 }
 
 func TestCheckVictory_GameContinues(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "s1", pb.RoleType_ROLE_TYPE_SEER)
-	mustAddTo(t, state, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "w1", RoleWerewolf)
+	mustAddTo(t, state, "s1", RoleSeer)
+	mustAddTo(t, state, "v1", RoleVillager)
+	mustAddTo(t, state, "v2", RoleVillager)
 
 	// good(3) > evil(1), game continues
 	gameOver, winner := state.checkVictory(VictoryModeSideWipe)
 	if gameOver {
 		t.Error("expected gameOver=false when good > evil")
 	}
-	if winner != pb.Camp_CAMP_UNSPECIFIED {
+	if winner != CampUnspecified {
 		t.Errorf("expected UNSPECIFIED, got %v", winner)
 	}
 }
@@ -302,22 +300,22 @@ func TestCheckVictory_NoPlayers(t *testing.T) {
 	if !gameOver {
 		t.Error("expected gameOver=true with no players")
 	}
-	if winner != pb.Camp_CAMP_GOOD {
+	if winner != CampGood {
 		t.Errorf("expected GOOD wins (0 wolves), got %v", winner)
 	}
 }
 
 func TestCheckVictory_Equal(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "w1", RoleWerewolf)
+	mustAddTo(t, state, "v1", RoleVillager)
 
 	// 屠城模式下 good(1) == evil(1) 即狼人胜利
 	gameOver, winner := state.checkVictory(VictoryModeTownWipe)
 	if !gameOver {
 		t.Error("expected gameOver=true when good == evil")
 	}
-	if winner != pb.Camp_CAMP_EVIL {
+	if winner != CampEvil {
 		t.Errorf("expected EVIL wins, got %v", winner)
 	}
 }

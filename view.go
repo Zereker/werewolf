@@ -1,8 +1,6 @@
 package werewolf
 
-import (
-	pb "github.com/Zereker/werewolf/proto"
-)
+import ()
 
 // GameView 只读的游戏视图。
 //
@@ -21,7 +19,7 @@ type GameView interface {
 	AlivePlayers() []PlayerInfo
 
 	// AlivePlayerIDsByRole 返回指定角色的存活玩家 ID
-	AlivePlayerIDsByRole(role pb.RoleType) []string
+	AlivePlayerIDsByRole(role RoleType) []string
 
 	// RoundContext 返回本回合上下文的只读副本
 	RoundContext() RoundContext
@@ -36,7 +34,7 @@ type GameView interface {
 	Round() int
 
 	// Phase 返回当前阶段
-	Phase() pb.PhaseType
+	Phase() PhaseType
 }
 
 // stateView 是 GameView 的实现。
@@ -64,7 +62,7 @@ func (v stateView) AlivePlayers() []PlayerInfo {
 	return out
 }
 
-func (v stateView) AlivePlayerIDsByRole(role pb.RoleType) []string {
+func (v stateView) AlivePlayerIDsByRole(role RoleType) []string {
 	return v.s.getAlivePlayerIDsByRole(role)
 }
 
@@ -82,4 +80,4 @@ func (v stateView) LastProtectedTarget(guardID string) string {
 
 func (v stateView) Round() int { return v.s.currentRound() }
 
-func (v stateView) Phase() pb.PhaseType { return v.s.currentPhase() }
+func (v stateView) Phase() PhaseType { return v.s.currentPhase() }

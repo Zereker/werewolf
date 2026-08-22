@@ -5,20 +5,18 @@
 
 package werewolf
 
-import (
-	pb "github.com/Zereker/werewolf/proto"
-)
+import ()
 
 // PhaseInfo 当前阶段的信息（上帝视角）。
 //
 // 调用方据此组织本阶段的流程与公告。内容包含狼队名单、女巫可见的刀口
 // 等敏感信息，不可整体转发给玩家——面向玩家的内容用 Engine.PlayerView。
 type PhaseInfo struct {
-	Phase       pb.PhaseType                   // 当前阶段
-	Round       int                            // 当前回合
-	Steps       []PhaseStep                    // 当前阶段的步骤配置（包含上帝公告和玩家行动）
-	ActiveRoles []pb.RoleType                  // 需要行动的玩家角色（不含上帝）
-	RoleInfos   map[pb.RoleType]*RolePhaseInfo // 各角色的阶段信息
+	Phase       PhaseType                   // 当前阶段
+	Round       int                         // 当前回合
+	Steps       []PhaseStep                 // 当前阶段的步骤配置（包含上帝公告和玩家行动）
+	ActiveRoles []RoleType                  // 需要行动的玩家角色（不含上帝）
+	RoleInfos   map[RoleType]*RolePhaseInfo // 各角色的阶段信息
 }
 
 // NeedsGodAnnouncement 判断当前阶段是否需要上帝公告
@@ -26,8 +24,8 @@ func (p *PhaseInfo) NeedsGodAnnouncement() bool {
 	if len(p.Steps) == 0 {
 		return false
 	}
-	return p.Steps[0].Role == pb.RoleType_ROLE_TYPE_GOD &&
-		p.Steps[0].Skill == pb.SkillType_SKILL_TYPE_ANNOUNCE
+	return p.Steps[0].Role == RoleGod &&
+		p.Steps[0].Skill == SkillAnnounce
 }
 
 // GodAnnouncementStep 获取上帝公告步骤（如果存在）
@@ -52,7 +50,7 @@ func (p *PhaseInfo) PlayerActionSteps() []PhaseStep {
 // RolePhaseInfo 角色阶段信息
 type RolePhaseInfo struct {
 	PlayerIDs     []string            // 该角色的玩家ID列表
-	AllowedSkills []pb.SkillType      // 可用技能
+	AllowedSkills []SkillType         // 可用技能
 	Teammates     map[string][]string // 队友信息（狼人：玩家ID -> 队友IDs）
 	KillTarget    string              // 被杀目标（女巫可见）
 }
@@ -73,8 +71,8 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 		Phase:       e.state.Phase,
 		Round:       e.state.Round,
 		Steps:       make([]PhaseStep, 0),
-		ActiveRoles: make([]pb.RoleType, 0),
-		RoleInfos:   make(map[pb.RoleType]*RolePhaseInfo),
+		ActiveRoles: make([]RoleType, 0),
+		RoleInfos:   make(map[RoleType]*RolePhaseInfo),
 	}
 
 	phaseConfig := e.phase.phaseConfig(e.state.Phase)
@@ -90,10 +88,10 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 	trigger, hasTrigger := e.state.peekTrigger()
 	triggerActive := hasTrigger && trigger.Phase == e.state.Phase
 
-	seen := make(map[pb.RoleType]bool)
+	seen := make(map[RoleType]bool)
 	for _, step := range phaseConfig.Steps {
 		// 上帝是系统角色，不是需要行动的玩家
-		if step.Role == pb.RoleType_ROLE_TYPE_GOD || seen[step.Role] {
+		if step.Role == RoleGod || seen[step.Role] {
 			continue
 		}
 		seen[step.Role] = true
@@ -108,13 +106,13 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 // allowedSkillsFor 返回指定角色在当前阶段可用的技能。
 //
 // 唯一真相来源是阶段配置（PhaseConfig.Steps），与 ValidateSkillUse 走同一条路径。
-func (e *Engine) allowedSkillsFor(role pb.RoleType) []pb.SkillType {
+func (e *Engine) allowedSkillsFor(role RoleType) []SkillType {
 	return e.phase.allowedSkills(e.state.Phase, role)
 }
 
 // buildRolePhaseInfo 组装某个角色在当前阶段的信息。
 // 调用前需持有 e.mu。
-func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigger PendingTrigger) *RolePhaseInfo {
+func (e *Engine) buildRolePhaseInfo(role RoleType, triggerActive bool, trigger PendingTrigger) *RolePhaseInfo {
 	ri := &RolePhaseInfo{
 		AllowedSkills: e.allowedSkillsFor(role),
 	}
@@ -124,13 +122,13 @@ func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigge
 	ri.PlayerIDs = e.actorsForStep(role, triggerActive, trigger)
 
 	switch role {
-	case pb.RoleType_ROLE_TYPE_WEREWOLF:
+	case RoleWerewolf:
 		// 狼人需要知道队友才能协商（getWolfTeammates 按阵营给全狼队）
 		ri.Teammates = make(map[string][]string, len(ri.PlayerIDs))
 		for _, id := range ri.PlayerIDs {
 			ri.Teammates[id] = e.state.getWolfTeammates(id)
 		}
-	case pb.RoleType_ROLE_TYPE_WITCH:
+	case RoleWitch:
 		// 规则：解药未使用时才可得知刀口
 		if e.state.anyAliveWitchHasAntidote() {
 			ri.KillTarget = e.state.RoundCtx.KillTarget

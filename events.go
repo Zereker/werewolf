@@ -8,12 +8,10 @@ package werewolf
 import (
 	"fmt"
 	"runtime/debug"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // EventHandler 事件处理器
-type EventHandler func(event *pb.Event)
+type EventHandler func(event *Event)
 
 // OnEvent 注册事件处理器
 func (e *Engine) OnEvent(handler EventHandler) {
@@ -32,7 +30,7 @@ func (e *Engine) snapshotEventHandlersLocked() []EventHandler {
 
 // dispatchEvent 在锁外分发事件。
 // 每个 handler 独立执行，单个 handler panic 不影响其他 handler。
-func dispatchEvent(handlers []EventHandler, logger Logger, event *pb.Event) {
+func dispatchEvent(handlers []EventHandler, logger Logger, event *Event) {
 	for _, handler := range handlers {
 		func() {
 			defer recoverHandlerPanic(logger, "event handler", EventField(event.Type))

@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // 本文件是给「按脚本推进一局游戏」的测试用的辅助函数。
@@ -19,7 +17,7 @@ import (
 // 期待 Start()/AddPlayer() 报错的、断言开局前状态或内部字段的、以及并发用例。
 
 // mustAdd 添加玩家，失败即终止
-func mustAdd(t *testing.T, e *Engine, id string, role pb.RoleType) {
+func mustAdd(t *testing.T, e *Engine, id string, role RoleType) {
 	t.Helper()
 	if err := e.AddPlayer(id, role); err != nil {
 		t.Fatalf("AddPlayer(%q, %v): %v", id, role, err)
@@ -45,7 +43,7 @@ func mustSubmit(t *testing.T, e *Engine, use *SkillUse) {
 
 // mustAddTo 直接向状态添加玩家，失败即终止。
 // 供不经 Engine、直接测试 Resolver 与状态的单元测试使用。
-func mustAddTo(t *testing.T, s *gameState, id string, role pb.RoleType) {
+func mustAddTo(t *testing.T, s *gameState, id string, role RoleType) {
 	t.Helper()
 	if err := s.addPlayer(id, role); err != nil {
 		t.Fatalf("addPlayer(%q, %v): %v", id, role, err)

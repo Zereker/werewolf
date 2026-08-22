@@ -5,8 +5,6 @@ import (
 	"errors"
 	"reflect"
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // buildMidGameEngine 造一个局面复杂的引擎：第二夜、守卫守过人、
@@ -21,23 +19,23 @@ func buildMidGameEngine(t *testing.T) *Engine {
 	)...)
 
 	// 第一夜：守卫守 v1，狼刀 v1，女巫解药救回
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v2")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.mustUse("s", pb.SkillType_SKILL_TYPE_CHECK, "w1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("g", SkillProtect, "v2")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.mustUse("wi", SkillAntidote, "v1")
+	g.end(PhaseNightSeer)
+	g.mustUse("s", SkillCheck, "w1")
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// 白天投票放逐 v3
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 	g.vote("v3", "w1", "w2", "v1", "v2", "s")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	g.end(PhaseNightGuard)
 
 	// 第二夜：守卫已提交技能，但本阶段尚未结算
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "s")
+	g.mustUse("g", SkillProtect, "s")
 
 	return g.e
 }
@@ -79,13 +77,13 @@ func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 	// 两个引擎并行走完第二夜，每一步都比对
 	steps := []struct {
 		player string
-		skill  pb.SkillType
+		skill  SkillType
 		target string
 	}{
 		{"", 0, ""}, // NIGHT_GUARD 结算（技能已在快照里）
-		{"w1", pb.SkillType_SKILL_TYPE_KILL, "s"},
-		{"wi", pb.SkillType_SKILL_TYPE_POISON, "w2"},
-		{"s", pb.SkillType_SKILL_TYPE_CHECK, "w2"},
+		{"w1", SkillKill, "s"},
+		{"wi", SkillPoison, "w2"},
+		{"s", SkillCheck, "w2"},
 		{"", 0, ""}, // NIGHT_RESOLVE
 	}
 
@@ -160,7 +158,7 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	})
 
 	t.Run("阶段与回合", func(t *testing.T) {
-		if restored.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+		if restored.Phase() != PhaseNightGuard {
 			t.Errorf("阶段: 期望 NIGHT_GUARD，实际 %v", restored.Phase())
 		}
 		if restored.Round() != 2 {
@@ -173,7 +171,7 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 			t.Fatalf("待结算技能数: 期望 1，实际 %d", len(restored.pendingUses))
 		}
 		u := restored.pendingUses[0]
-		if u.PlayerID != "g" || u.Skill != pb.SkillType_SKILL_TYPE_PROTECT || u.TargetID != "s" {
+		if u.PlayerID != "g" || u.Skill != SkillProtect || u.TargetID != "s" {
 			t.Errorf("待结算技能内容不符: %+v", u)
 		}
 	})
@@ -248,7 +246,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		bad := *valid
 		bad.Version = SnapshotVersion + 1
 		_, err := RestoreEngine(nil, &bad)
-		if !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT) {
+		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
@@ -266,7 +264,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		bad := *valid
 		bad.Players = append(append([]PlayerSnapshot(nil), valid.Players...), valid.Players[0])
 		_, err := RestoreEngine(nil, &bad)
-		if !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT) {
+		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
@@ -275,11 +273,11 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		bad := *valid
 		bad.PendingUses = []SkillUseSnapshot{{
 			PlayerID: "查无此人",
-			Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
+			Skill:    SkillProtect,
 			TargetID: "s",
 		}}
 		_, err := RestoreEngine(nil, &bad)
-		if !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT) {
+		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
@@ -289,15 +287,15 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		// 只有白天与投票互相流转，没有任何夜晚阶段
 		cfg := &GameConfig{
 			VictoryMode: VictoryModeSideWipe,
-			StartPhase:  pb.PhaseType_PHASE_TYPE_DAY,
-			Phases: map[pb.PhaseType]*PhaseConfig{
-				pb.PhaseType_PHASE_TYPE_DAY: {
-					Type:      pb.PhaseType_PHASE_TYPE_DAY,
-					NextPhase: pb.PhaseType_PHASE_TYPE_VOTE,
+			StartPhase:  PhaseDay,
+			Phases: map[PhaseType]*PhaseConfig{
+				PhaseDay: {
+					Type:      PhaseDay,
+					NextPhase: PhaseVote,
 				},
-				pb.PhaseType_PHASE_TYPE_VOTE: {
-					Type:      pb.PhaseType_PHASE_TYPE_VOTE,
-					NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
+				PhaseVote: {
+					Type:      PhaseVote,
+					NextPhase: PhaseDay,
 				},
 			},
 		}
@@ -307,7 +305,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 
 		// 快照停在 NIGHT_GUARD，而该配置里没有这个阶段
 		_, err := RestoreEngine(cfg, valid)
-		if !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT) {
+		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
@@ -343,17 +341,17 @@ func TestSnapshot_EndedGame(t *testing.T) {
 // 解析器只能在构造时给出。漏掉的话恢复本身就会报错，
 // 而不是给出一个「那个阶段的技能被静默丢弃」的引擎。
 func TestRestoreEngine_WithCustomResolver(t *testing.T) {
-	const customPhase = pb.PhaseType(77)
+	const customPhase = PhaseType(77)
 
 	cfg := DefaultGameConfig()
 	cfg.Phases[customPhase] = &PhaseConfig{
 		Type:      customPhase,
-		NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
+		NextPhase: PhaseDay,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_VILLAGER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
+			{Role: RoleVillager, Skill: SkillSkip},
 		},
 	}
-	cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE].NextPhase = customPhase
+	cfg.Phases[PhaseNightResolve].NextPhase = customPhase
 
 	marker := &markerResolver{}
 
@@ -361,9 +359,9 @@ func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewEngine 失败: %v", err)
 	}
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
+	mustAdd(t, engine, "v2", RoleVillager)
 	if err := engine.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
@@ -386,7 +384,7 @@ func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 		t.Fatalf("RestoreEngine 失败: %v", err)
 	}
 	if err := restored.SubmitSkillUse(&SkillUse{
-		PlayerID: "v1", Skill: pb.SkillType_SKILL_TYPE_SKIP,
+		PlayerID: "v1", Skill: SkillSkip,
 	}); err != nil {
 		t.Fatalf("提交技能失败: %v", err)
 	}
@@ -405,7 +403,7 @@ type markerResolver struct{}
 func (r *markerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	out := make([]*Effect, 0, len(uses))
 	for _, use := range uses {
-		out = append(out, NewEffect(pb.EventType_EVENT_TYPE_SKIP, use.PlayerID, ""))
+		out = append(out, NewEffect(EventSkip, use.PlayerID, ""))
 	}
 	return out
 }
@@ -419,11 +417,11 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 	base := func() *Snapshot {
 		return &Snapshot{
 			Version: SnapshotVersion,
-			Phase:   pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+			Phase:   PhaseNightWolf,
 			Round:   1,
 			Players: []PlayerSnapshot{
-				{ID: "w1", Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Camp: pb.Camp_CAMP_EVIL, Alive: true},
-				{ID: "v1", Role: pb.RoleType_ROLE_TYPE_VILLAGER, Camp: pb.Camp_CAMP_GOOD, Alive: true},
+				{ID: "w1", Role: RoleWerewolf, Camp: CampEvil, Alive: true},
+				{ID: "v1", Role: RoleVillager, Camp: CampGood, Alive: true},
 			},
 		}
 	}
@@ -434,7 +432,7 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 	}
 
 	snap := base()
-	snap.Players[0].Role = pb.RoleType_ROLE_TYPE_GOD
+	snap.Players[0].Role = RoleGod
 	if _, err := RestoreEngine(nil, snap); !errors.Is(err, ErrInvalidRole) {
 		t.Errorf("上帝不是玩家身份，恢复应当被拒，实际 %v", err)
 	}
@@ -442,9 +440,9 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 	snap = base()
 	snap.PendingUses = []SkillUseSnapshot{{
 		PlayerID: "w1",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "查无此人",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 		Round:    1,
 	}}
 	if _, err := RestoreEngine(nil, snap); err == nil {

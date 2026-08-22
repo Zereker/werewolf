@@ -1,8 +1,6 @@
 package werewolf
 
-import (
-	pb "github.com/Zereker/werewolf/proto"
-)
+import ()
 
 // Logger 日志接口
 // 允许外部注入日志实现，用于记录游戏事件和调试信息
@@ -29,7 +27,7 @@ func F(key string, value interface{}) Field {
 }
 
 // PhaseField 创建阶段字段
-func PhaseField(phase pb.PhaseType) Field {
+func PhaseField(phase PhaseType) Field {
 	return Field{Key: "phase", Value: phase.String()}
 }
 
@@ -49,12 +47,12 @@ func TargetField(targetID string) Field {
 }
 
 // SkillField 创建技能字段
-func SkillField(skill pb.SkillType) Field {
+func SkillField(skill SkillType) Field {
 	return Field{Key: "skill", Value: skill.String()}
 }
 
 // EventField 创建事件字段
-func EventField(event pb.EventType) Field {
+func EventField(event EventType) Field {
 	return Field{Key: "event", Value: event.String()}
 }
 
@@ -75,25 +73,25 @@ func NewNopLogger() *NopLogger {
 // 允许外部注入指标实现，用于生产环境监控
 type Metrics interface {
 	// IncSkillSubmitted 技能提交计数
-	IncSkillSubmitted(skill pb.SkillType)
+	IncSkillSubmitted(skill SkillType)
 	// IncPhaseEnded 阶段结束计数
-	IncPhaseEnded(phase pb.PhaseType)
+	IncPhaseEnded(phase PhaseType)
 	// IncGameEnded 游戏结束计数
-	IncGameEnded(winner pb.Camp)
+	IncGameEnded(winner Camp)
 	// IncEffectApplied 效果应用计数。
 	//
 	// 含内部效果（SET_NIGHT_KILL、USE_POISON 这类真正的状态变更）
 	// 与被规则否决的效果——夜晚结算出了什么问题，恰恰要靠它们才看得出来。
-	IncEffectApplied(eventType pb.EventType)
+	IncEffectApplied(eventType EventType)
 }
 
 // NopMetrics 空指标实现（默认）
 type NopMetrics struct{}
 
-func (m *NopMetrics) IncSkillSubmitted(skill pb.SkillType)    {}
-func (m *NopMetrics) IncPhaseEnded(phase pb.PhaseType)        {}
-func (m *NopMetrics) IncGameEnded(winner pb.Camp)             {}
-func (m *NopMetrics) IncEffectApplied(eventType pb.EventType) {}
+func (m *NopMetrics) IncSkillSubmitted(skill SkillType)    {}
+func (m *NopMetrics) IncPhaseEnded(phase PhaseType)        {}
+func (m *NopMetrics) IncGameEnded(winner Camp)             {}
+func (m *NopMetrics) IncEffectApplied(eventType EventType) {}
 
 // NewNopMetrics 创建空指标收集器
 func NewNopMetrics() *NopMetrics {

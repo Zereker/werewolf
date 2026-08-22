@@ -1,8 +1,6 @@
 package werewolf
 
-import (
-	pb "github.com/Zereker/werewolf/proto"
-)
+import ()
 
 // 效果流中用于重建局面的几个键
 const (
@@ -13,22 +11,22 @@ const (
 )
 
 // newPlayerAddedEffect 记录一名玩家入座
-func newPlayerAddedEffect(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) *Effect {
-	return NewEffect(pb.EventType_EVENT_TYPE_PLAYER_ADDED, "", id).
+func newPlayerAddedEffect(id string, role RoleType, camp Camp, category RoleCategory) *Effect {
+	return NewEffect(EventPlayerAdded, "", id).
 		WithData(roleKey, role).
 		WithData(campKey, camp).
 		WithData(categoryKey, category)
 }
 
 // newPhaseChangedEffect 记录一次阶段流转
-func newPhaseChangedEffect(phase pb.PhaseType) *Effect {
-	return NewEffect(pb.EventType_EVENT_TYPE_PHASE_CHANGED, "", "").
+func newPhaseChangedEffect(phase PhaseType) *Effect {
+	return NewEffect(EventPhaseChanged, "", "").
 		WithData(phaseKey, phase)
 }
 
 // newGameStartedEffect 记录开局
-func newGameStartedEffect(phase pb.PhaseType) *Effect {
-	return NewEffect(pb.EventType_EVENT_TYPE_GAME_STARTED, "", "").
+func newGameStartedEffect(phase PhaseType) *Effect {
+	return NewEffect(EventGameStarted, "", "").
 		WithData(phaseKey, phase)
 }
 
@@ -78,7 +76,7 @@ func ReplayEngine(config *GameConfig, log []*Effect, opts ...EngineOption) (*Eng
 
 	for i, effect := range log {
 		if effect == nil {
-			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_EFFECT_LOG,
+			return nil, WrapError(CodeInvalidEffectLog,
 				"effect log contains a nil entry at index %d", i)
 		}
 		if err := engine.replayEffect(effect); err != nil {
@@ -94,26 +92,26 @@ func ReplayEngine(config *GameConfig, log []*Effect, opts ...EngineOption) (*Eng
 // replayEffect 重放单个效果
 func (e *Engine) replayEffect(effect *Effect) error {
 	switch effect.Type {
-	case pb.EventType_EVENT_TYPE_PLAYER_ADDED:
-		role, _ := effect.Data[roleKey].(pb.RoleType)
-		camp, _ := effect.Data[campKey].(pb.Camp)
+	case EventPlayerAdded:
+		role, _ := effect.Data[roleKey].(RoleType)
+		camp, _ := effect.Data[campKey].(Camp)
 		category, _ := effect.Data[categoryKey].(RoleCategory)
 		if err := e.state.addCustomPlayer(effect.TargetID, role, camp, category); err != nil {
 			return err
 		}
 
-	case pb.EventType_EVENT_TYPE_GAME_STARTED:
-		phase, ok := effect.Data[phaseKey].(pb.PhaseType)
+	case EventGameStarted:
+		phase, ok := effect.Data[phaseKey].(PhaseType)
 		if !ok {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_EFFECT_LOG,
+			return WrapError(CodeInvalidEffectLog,
 				"game started effect carries no phase")
 		}
 		e.state.startAt(phase)
 
-	case pb.EventType_EVENT_TYPE_PHASE_CHANGED:
-		phase, ok := effect.Data[phaseKey].(pb.PhaseType)
+	case EventPhaseChanged:
+		phase, ok := effect.Data[phaseKey].(PhaseType)
 		if !ok {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_EFFECT_LOG,
+			return WrapError(CodeInvalidEffectLog,
 				"phase changed effect carries no phase")
 		}
 		// 离开一个阶段时消费掉它对应的待结算技能，与正常推进
@@ -122,8 +120,8 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		e.state.consumeTriggerFor(e.state.Phase)
 		e.state.nextPhase(phase, e.config.startPhase())
 
-	case pb.EventType_EVENT_TYPE_GAME_ENDED:
-		e.state.nextPhase(pb.PhaseType_PHASE_TYPE_END, e.config.startPhase())
+	case EventGameEnded:
+		e.state.nextPhase(PhaseEnd, e.config.startPhase())
 
 	default:
 		e.state.applyEffect(effect)

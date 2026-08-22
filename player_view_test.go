@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func newViewGame(t *testing.T) *Engine {
@@ -23,7 +21,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 
 	t.Run("平民只知道自己", func(t *testing.T) {
 		v := e.PlayerView("v1")
-		if v.Self.Role != pb.RoleType_ROLE_TYPE_VILLAGER {
+		if v.Self.Role != RoleVillager {
 			t.Errorf("自己的身份应当可见，实际 %v", v.Self.Role)
 		}
 		if len(v.Teammates) != 0 {
@@ -33,7 +31,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 			if p.ID == "v1" {
 				continue
 			}
-			if p.Role != pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+			if p.Role != RoleUnspecified {
 				t.Errorf("不应看到 %s 的身份，实际 %v", p.ID, p.Role)
 			}
 		}
@@ -47,11 +45,11 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 		for _, p := range v.Players {
 			switch p.ID {
 			case "w1", "w2":
-				if p.Role != pb.RoleType_ROLE_TYPE_WEREWOLF {
+				if p.Role != RoleWerewolf {
 					t.Errorf("%s 对狼人应当可见为狼，实际 %v", p.ID, p.Role)
 				}
 			default:
-				if p.Role != pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+				if p.Role != RoleUnspecified {
 					t.Errorf("狼人不应看到 %s 的身份，实际 %v", p.ID, p.Role)
 				}
 			}
@@ -84,7 +82,7 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := e.SubmitSkillUse(&SkillUse{
-		PlayerID: "w1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1",
+		PlayerID: "w1", Skill: SkillKill, TargetID: "v1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +102,7 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 
 	// 用掉解药后不再可见
 	if err := e.SubmitSkillUse(&SkillUse{
-		PlayerID: "wi", Skill: pb.SkillType_SKILL_TYPE_ANTIDOTE, TargetID: "v1",
+		PlayerID: "wi", Skill: SkillAntidote, TargetID: "v1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +111,7 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for e.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
+	for e.Phase() != PhaseNightWitch {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +127,7 @@ func TestPlayerView_AllowedSkillsGateAction(t *testing.T) {
 
 	// NIGHT_GUARD：只有守卫能行动
 	if got := e.PlayerView("g").AllowedSkills; len(got) != 1 ||
-		got[0] != pb.SkillType_SKILL_TYPE_PROTECT {
+		got[0] != SkillProtect {
 		t.Errorf("守卫阶段守卫应可守护，实际 %v", got)
 	}
 	for _, id := range []string{"w1", "s", "wi", "v1"} {
@@ -139,7 +137,7 @@ func TestPlayerView_AllowedSkillsGateAction(t *testing.T) {
 	}
 
 	// 出局玩家没有可用技能
-	e.state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "g"))
+	e.state.applyEffect(NewEffect(EventKill, "", "g"))
 	if got := e.PlayerView("g").AllowedSkills; len(got) != 0 {
 		t.Errorf("已出局玩家不应有可用技能，实际 %v", got)
 	}
@@ -157,19 +155,19 @@ func TestPlayerView_DeadWitchCannotSeeKillTarget(t *testing.T) {
 	)...)
 
 	// 第一夜刀死女巫，她不救自己
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "wi")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "wi")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 	g.assertAlive("wi", false, "第一夜被刀")
 
 	// 第二夜狼队刀预言家，此刻停在女巫阶段
 	g.toNextNight()
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "s")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "s")
+	g.end(PhaseNightWitch)
 
 	v := g.e.PlayerView("wi")
 	if v == nil {
@@ -197,8 +195,8 @@ func TestPlayerView_SelfDoesNotLeakProtection(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("g", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
 
 	// 前置：守护确实生效了（上帝视角看得到）
 	if !g.info("v1").Protected {
@@ -225,21 +223,21 @@ func TestAudienceOf(t *testing.T) {
 		want   []string // nil 表示只校验数量
 		count  int
 	}{
-		{"击杀全场可见", NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "v1"), nil, all},
-		{"放逐全场可见", NewEffect(pb.EventType_EVENT_TYPE_ELIMINATE, "", "v1"), nil, all},
-		{"开枪全场可见", NewEffect(pb.EventType_EVENT_TYPE_SHOOT, "h", "v1"), nil, all},
-		{"平票全场可见", NewEffect(pb.EventType_EVENT_TYPE_VOTE_TIED, "", ""), nil, all},
-		{"游戏结束全场可见", NewEffect(pb.EventType_EVENT_TYPE_GAME_ENDED, "", ""), nil, all},
-		{"查验只给预言家", NewEffect(pb.EventType_EVENT_TYPE_CHECK, "s", "w1"), []string{"s"}, 1},
-		{"守护只给守卫", NewEffect(pb.EventType_EVENT_TYPE_PROTECT, "g", "v1"), []string{"g"}, 1},
-		{"解药只给女巫", NewEffect(pb.EventType_EVENT_TYPE_SAVE, "wi", "v1"), []string{"wi"}, 1},
-		{"内部效果不给任何人", NewEffect(pb.EventType_EVENT_TYPE_SET_NIGHT_KILL, "", "v1"), nil, 0},
-		{"消耗解药不给任何人", NewEffect(pb.EventType_EVENT_TYPE_USE_ANTIDOTE, "wi", ""), nil, 0},
-		{"触发效果不给任何人", NewAbilityTriggerEffect("h", pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER), nil, 0},
+		{"击杀全场可见", NewEffect(EventKill, "", "v1"), nil, all},
+		{"放逐全场可见", NewEffect(EventEliminate, "", "v1"), nil, all},
+		{"开枪全场可见", NewEffect(EventShoot, "h", "v1"), nil, all},
+		{"平票全场可见", NewEffect(EventVoteTied, "", ""), nil, all},
+		{"游戏结束全场可见", NewEffect(EventGameEnded, "", ""), nil, all},
+		{"查验只给预言家", NewEffect(EventCheck, "s", "w1"), []string{"s"}, 1},
+		{"守护只给守卫", NewEffect(EventProtect, "g", "v1"), []string{"g"}, 1},
+		{"解药只给女巫", NewEffect(EventSave, "wi", "v1"), []string{"wi"}, 1},
+		{"内部效果不给任何人", NewEffect(EventSetNightKill, "", "v1"), nil, 0},
+		{"消耗解药不给任何人", NewEffect(EventUseAntidote, "wi", ""), nil, 0},
+		{"触发效果不给任何人", NewAbilityTriggerEffect("h", PhaseNightHunter), nil, 0},
 		{"被否决的用毒只给女巫本人", canceledEffect(
-			NewEffect(pb.EventType_EVENT_TYPE_POISON, "wi", "v1")), []string{"wi"}, 1},
+			NewEffect(EventPoison, "wi", "v1")), []string{"wi"}, 1},
 		{"被否决的守护只给守卫本人", canceledEffect(
-			NewEffect(pb.EventType_EVENT_TYPE_PROTECT, "g", "v1")), []string{"g"}, 1},
+			NewEffect(EventProtect, "g", "v1")), []string{"g"}, 1},
 	}
 
 	for _, tc := range cases {
@@ -265,7 +263,7 @@ func TestAudienceOf(t *testing.T) {
 
 	// 第三方自定义的外部事件类型：引擎无从判断可见性，必须说「不知道」，
 	// 而不是给出一个看起来权威的空受众
-	custom := NewEffect(pb.EventType(50), "w1", "v1")
+	custom := NewEffect(EventType(50), "w1", "v1")
 	if got, known := e.AudienceOf(custom); known || got != nil {
 		t.Errorf("未知外部类型应返回 (nil, false)，实际 (%v, %v)", got, known)
 	}
@@ -285,9 +283,9 @@ func canceledEffect(e *Effect) *Effect {
 func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 	e := newViewGame(t)
 
-	for num, name := range pb.EventType_name {
-		typ := pb.EventType(num)
-		if typ == pb.EventType_EVENT_TYPE_UNSPECIFIED || isInternalEvent(typ) {
+	for num, name := range eventTypeNames {
+		typ := EventType(num)
+		if typ == EventUnspecified || isInternalEvent(typ) {
 			continue
 		}
 		ef := NewEffect(typ, "s", "v1")
@@ -306,13 +304,13 @@ func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 func TestAudienceOf_UnknownActorGetsNobody(t *testing.T) {
 	e := newViewGame(t)
 
-	canceled := NewEffect(pb.EventType_EVENT_TYPE_POISON, "查无此人", "v1")
+	canceled := NewEffect(EventPoison, "查无此人", "v1")
 	canceled.Cancel("no poison")
 	if got, known := e.AudienceOf(canceled); len(got) != 0 || !known {
 		t.Errorf("被否决效果的 source 不在场上，受众应为空，实际 (%v, %v)", got, known)
 	}
 
-	private := NewEffect(pb.EventType_EVENT_TYPE_CHECK, "查无此人", "v1")
+	private := NewEffect(EventCheck, "查无此人", "v1")
 	if got, _ := e.AudienceOf(private); len(got) != 0 {
 		t.Errorf("私密效果的 source 不在场上，受众应为空，实际 %v", got)
 	}

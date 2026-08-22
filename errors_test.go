@@ -4,14 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func TestGameError_Error(t *testing.T) {
 	// With message
 	err := &GameError{
-		Code:    pb.ErrorCode_ERROR_CODE_PLAYER_NOT_FOUND,
+		Code:    CodePlayerNotFound,
 		Message: "player p1 not found",
 	}
 	if err.Error() != "player p1 not found" {
@@ -20,53 +18,53 @@ func TestGameError_Error(t *testing.T) {
 
 	// Without message (uses code string)
 	err2 := &GameError{
-		Code: pb.ErrorCode_ERROR_CODE_PLAYER_DEAD,
+		Code: CodePlayerDead,
 	}
 	if err2.Error() != "ERROR_CODE_PLAYER_DEAD" {
 		t.Errorf("expected 'ERROR_CODE_PLAYER_DEAD', got '%s'", err2.Error())
 	}
 }
 
-func TestIsErrorCode(t *testing.T) {
+func TestHasCode(t *testing.T) {
 	gameErr := &GameError{
-		Code:    pb.ErrorCode_ERROR_CODE_SKILL_NOT_ALLOWED,
+		Code:    CodeSkillNotAllowed,
 		Message: "skill not allowed",
 	}
 
-	if !IsErrorCode(gameErr, pb.ErrorCode_ERROR_CODE_SKILL_NOT_ALLOWED) {
-		t.Error("expected IsErrorCode to return true for matching code")
+	if !HasCode(gameErr, CodeSkillNotAllowed) {
+		t.Error("expected HasCode to return true for matching code")
 	}
-	if IsErrorCode(gameErr, pb.ErrorCode_ERROR_CODE_PLAYER_DEAD) {
-		t.Error("expected IsErrorCode to return false for non-matching code")
+	if HasCode(gameErr, CodePlayerDead) {
+		t.Error("expected HasCode to return false for non-matching code")
 	}
 
 	// Non-GameError
-	if IsErrorCode(nil, pb.ErrorCode_ERROR_CODE_PLAYER_NOT_FOUND) {
-		t.Error("expected IsErrorCode to return false for nil")
+	if HasCode(nil, CodePlayerNotFound) {
+		t.Error("expected HasCode to return false for nil")
 	}
 }
 
-func TestGetErrorCode(t *testing.T) {
+func TestCodeOf(t *testing.T) {
 	gameErr := &GameError{
-		Code: pb.ErrorCode_ERROR_CODE_GAME_ENDED,
+		Code: CodeGameEnded,
 	}
 
-	code := ErrorCode(gameErr)
-	if code != pb.ErrorCode_ERROR_CODE_GAME_ENDED {
+	code := CodeOf(gameErr)
+	if code != CodeGameEnded {
 		t.Errorf("expected ERROR_CODE_GAME_ENDED, got %v", code)
 	}
 
 	// Non-GameError returns UNSPECIFIED
-	code2 := ErrorCode(nil)
-	if code2 != pb.ErrorCode_ERROR_CODE_UNSPECIFIED {
+	code2 := CodeOf(nil)
+	if code2 != CodeUnspecified {
 		t.Errorf("expected ERROR_CODE_UNSPECIFIED, got %v", code2)
 	}
 }
 
 func TestWrapError(t *testing.T) {
-	err := WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE, "invalid phase: %s", "START")
+	err := WrapError(CodeInvalidPhase, "invalid phase: %s", "START")
 
-	if err.Code != pb.ErrorCode_ERROR_CODE_INVALID_PHASE {
+	if err.Code != CodeInvalidPhase {
 		t.Errorf("expected ERROR_CODE_INVALID_PHASE, got %v", err.Code)
 	}
 	if err.Message != "invalid phase: START" {
@@ -77,17 +75,17 @@ func TestWrapError(t *testing.T) {
 func TestPredefinedErrors(t *testing.T) {
 	tests := []struct {
 		err  *GameError
-		code pb.ErrorCode
+		code ErrorCode
 		msg  string
 	}{
-		{ErrPlayerNotFound, pb.ErrorCode_ERROR_CODE_PLAYER_NOT_FOUND, "player not found"},
-		{ErrPlayerDead, pb.ErrorCode_ERROR_CODE_PLAYER_DEAD, "player is dead"},
-		{ErrTargetNotFound, pb.ErrorCode_ERROR_CODE_TARGET_NOT_FOUND, "target not found"},
-		{ErrTargetDead, pb.ErrorCode_ERROR_CODE_TARGET_DEAD, "target is dead"},
-		{ErrSkillNotAllowed, pb.ErrorCode_ERROR_CODE_SKILL_NOT_ALLOWED, "skill not allowed in this phase"},
-		{ErrGameNotStarted, pb.ErrorCode_ERROR_CODE_GAME_NOT_STARTED, "game not started"},
-		{ErrGameEnded, pb.ErrorCode_ERROR_CODE_GAME_ENDED, "game has ended"},
-		{ErrInvalidPhase, pb.ErrorCode_ERROR_CODE_INVALID_PHASE, "invalid phase"},
+		{ErrPlayerNotFound, CodePlayerNotFound, "player not found"},
+		{ErrPlayerDead, CodePlayerDead, "player is dead"},
+		{ErrTargetNotFound, CodeTargetNotFound, "target not found"},
+		{ErrTargetDead, CodeTargetDead, "target is dead"},
+		{ErrSkillNotAllowed, CodeSkillNotAllowed, "skill not allowed in this phase"},
+		{ErrGameNotStarted, CodeGameNotStarted, "game not started"},
+		{ErrGameEnded, CodeGameEnded, "game has ended"},
+		{ErrInvalidPhase, CodeInvalidPhase, "invalid phase"},
 	}
 
 	for _, tt := range tests {
@@ -107,22 +105,22 @@ func TestPredefinedErrors(t *testing.T) {
 // TestErrorCode_ThroughWrappedError 调用方包一层上下文之后仍要能判断错误。
 //
 // 裸类型断言在 fmt.Errorf("...: %w", err) 之后就再也不命中了，
-// 而这是库使用者最常见的写法，IsErrorCode / ErrorCode 又是本库导出的
+// 而这是库使用者最常见的写法，HasCode / ErrorCode 又是本库导出的
 // 唯一错误判定入口。
-func TestErrorCode_ThroughWrappedError(t *testing.T) {
+func TestCodeOf_ThroughWrappedError(t *testing.T) {
 	wrapped := fmt.Errorf("submit failed: %w", ErrPlayerNotFound)
 
 	if !errors.Is(wrapped, ErrPlayerNotFound) {
 		t.Fatal("errors.Is 应当命中")
 	}
-	if !IsErrorCode(wrapped, pb.ErrorCode_ERROR_CODE_PLAYER_NOT_FOUND) {
-		t.Error("IsErrorCode 应当穿透包装")
+	if !HasCode(wrapped, CodePlayerNotFound) {
+		t.Error("HasCode 应当穿透包装")
 	}
-	if got := ErrorCode(wrapped); got != pb.ErrorCode_ERROR_CODE_PLAYER_NOT_FOUND {
-		t.Errorf("ErrorCode: 期望 PLAYER_NOT_FOUND，实际 %v", got)
+	if got := CodeOf(wrapped); got != CodePlayerNotFound {
+		t.Errorf("CodeOf: 期望 PLAYER_NOT_FOUND，实际 %v", got)
 	}
 
-	if got := ErrorCode(errors.New("plain")); got != pb.ErrorCode_ERROR_CODE_UNSPECIFIED {
+	if got := CodeOf(errors.New("plain")); got != CodeUnspecified {
 		t.Errorf("非本库错误应返回 UNSPECIFIED，实际 %v", got)
 	}
 }
@@ -134,13 +132,13 @@ func TestErrorCode_ThroughWrappedError(t *testing.T) {
 // 而读 errors.go 的人会理所当然地以为它们能用。
 func TestWrapError_MatchesSentinel(t *testing.T) {
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "w1", RoleWerewolf)
 
-	err := engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	err := engine.AddPlayer("w1", RoleVillager)
 	if !errors.Is(err, ErrPlayerExists) {
 		t.Errorf("重复加玩家应当命中 ErrPlayerExists，实际 %v", err)
 	}
-	if err := engine.AddPlayer("x", pb.RoleType_ROLE_TYPE_GOD); !errors.Is(err, ErrInvalidRole) {
+	if err := engine.AddPlayer("x", RoleGod); !errors.Is(err, ErrInvalidRole) {
 		t.Errorf("非法角色应当命中 ErrInvalidRole，实际 %v", err)
 	}
 

@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // ==================== VoteResolver Tests ====================
@@ -18,7 +16,7 @@ func TestVoteResolver_Empty(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (tied), got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_VOTE_TIED {
+	if effects[0].Type != EventVoteTied {
 		t.Errorf("expected EVENT_TYPE_VOTE_TIED for empty votes, got %v", effects[0].Type)
 	}
 }
@@ -26,12 +24,12 @@ func TestVoteResolver_Empty(t *testing.T) {
 func TestVoteResolver_Single(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
+	mustAddTo(t, state, "p2", RoleVillager)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "p2"},
+		{PlayerID: "p1", Skill: SkillVote, TargetID: "p2"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -39,7 +37,7 @@ func TestVoteResolver_Single(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_ELIMINATE {
+	if effects[0].Type != EventEliminate {
 		t.Errorf("expected EVENT_TYPE_ELIMINATE, got %v", effects[0].Type)
 	}
 	if effects[0].TargetID != "p2" {
@@ -50,16 +48,16 @@ func TestVoteResolver_Single(t *testing.T) {
 func TestVoteResolver_Clear(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p3", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "p1", RoleVillager)
+	mustAddTo(t, state, "p2", RoleVillager)
+	mustAddTo(t, state, "p3", RoleVillager)
+	mustAddTo(t, state, "wolf", RoleWerewolf)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "wolf"},
-		{PlayerID: "p2", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "wolf"},
-		{PlayerID: "p3", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "p1"},
+		{PlayerID: "p1", Skill: SkillVote, TargetID: "wolf"},
+		{PlayerID: "p2", Skill: SkillVote, TargetID: "wolf"},
+		{PlayerID: "p3", Skill: SkillVote, TargetID: "p1"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -67,7 +65,7 @@ func TestVoteResolver_Clear(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_ELIMINATE {
+	if effects[0].Type != EventEliminate {
 		t.Errorf("expected EVENT_TYPE_ELIMINATE, got %v", effects[0].Type)
 	}
 	if effects[0].TargetID != "wolf" {
@@ -78,17 +76,17 @@ func TestVoteResolver_Clear(t *testing.T) {
 func TestVoteResolver_Tie(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p3", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p4", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
+	mustAddTo(t, state, "p2", RoleVillager)
+	mustAddTo(t, state, "p3", RoleVillager)
+	mustAddTo(t, state, "p4", RoleVillager)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "p3"},
-		{PlayerID: "p2", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "p3"},
-		{PlayerID: "p3", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "p4"},
-		{PlayerID: "p4", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "p4"},
+		{PlayerID: "p1", Skill: SkillVote, TargetID: "p3"},
+		{PlayerID: "p2", Skill: SkillVote, TargetID: "p3"},
+		{PlayerID: "p3", Skill: SkillVote, TargetID: "p4"},
+		{PlayerID: "p4", Skill: SkillVote, TargetID: "p4"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -96,7 +94,7 @@ func TestVoteResolver_Tie(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_VOTE_TIED {
+	if effects[0].Type != EventVoteTied {
 		t.Errorf("expected EVENT_TYPE_VOTE_TIED for tie, got %v", effects[0].Type)
 	}
 	if effects[0].Data["result"] != "tied" {
@@ -107,15 +105,15 @@ func TestVoteResolver_Tie(t *testing.T) {
 func TestVoteResolver_Invalid(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := newState()
-	mustAddTo(t, state, "p1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "p2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "p1", RoleVillager)
+	mustAddTo(t, state, "p2", RoleVillager)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		// Not a vote skill
-		{PlayerID: "p1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "p2"},
+		{PlayerID: "p1", Skill: SkillKill, TargetID: "p2"},
 		// Empty target
-		{PlayerID: "p2", Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: ""},
+		{PlayerID: "p2", Skill: SkillVote, TargetID: ""},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -124,7 +122,7 @@ func TestVoteResolver_Invalid(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_VOTE_TIED {
+	if effects[0].Type != EventVoteTied {
 		t.Errorf("expected EVENT_TYPE_VOTE_TIED for invalid votes, got %v", effects[0].Type)
 	}
 }
@@ -137,8 +135,8 @@ func TestDayResolver(t *testing.T) {
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: pb.SkillType_SKILL_TYPE_SPEAK, TargetID: ""},
-		{PlayerID: "p2", Skill: pb.SkillType_SKILL_TYPE_SPEAK, TargetID: ""},
+		{PlayerID: "p1", Skill: SkillSpeak, TargetID: ""},
+		{PlayerID: "p2", Skill: SkillSpeak, TargetID: ""},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -153,22 +151,22 @@ func TestDayResolver(t *testing.T) {
 func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 	resolver := NewWolfResolver()
 	state := newState()
-	mustAddTo(t, state, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf1", RoleWerewolf)
+	mustAddTo(t, state, "wolf2", RoleWerewolf)
+	mustAddTo(t, state, "v1", RoleVillager)
+	mustAddTo(t, state, "v2", RoleVillager)
 	config := DefaultGameConfig()
 
 	// 平票：wolf1 投 v1, wolf2 投 v2
 	uses := []*SkillUse{
-		{PlayerID: "wolf1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1"},
-		{PlayerID: "wolf2", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v2"},
+		{PlayerID: "wolf1", Skill: SkillKill, TargetID: "v1"},
+		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "v2"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
 	// 平票应该不产生击杀
-	killEffects := filterEffects(effects, pb.EventType_EVENT_TYPE_KILL)
+	killEffects := filterEffects(effects, EventKill)
 	if len(killEffects) != 0 {
 		t.Errorf("expected 0 kill effects for tie vote, got %d", len(killEffects))
 	}
@@ -182,15 +180,15 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 func TestWolfResolver_Consensus_Kill(t *testing.T) {
 	resolver := NewWolfResolver()
 	state := newState()
-	mustAddTo(t, state, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf1", RoleWerewolf)
+	mustAddTo(t, state, "wolf2", RoleWerewolf)
+	mustAddTo(t, state, "victim", RoleVillager)
 	config := DefaultGameConfig()
 
 	// 达成共识：两个狼人投同一个目标
 	uses := []*SkillUse{
-		{PlayerID: "wolf1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "victim"},
-		{PlayerID: "wolf2", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "victim"},
+		{PlayerID: "wolf1", Skill: SkillKill, TargetID: "victim"},
+		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "victim"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -201,7 +199,7 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 		t.Errorf("expected 1 effect from WolfResolver, got %d", len(effects))
 	}
 
-	if effects[0].Type != pb.EventType_EVENT_TYPE_SET_NIGHT_KILL {
+	if effects[0].Type != EventSetNightKill {
 		t.Errorf("expected SET_NIGHT_KILL effect, got %v", effects[0].Type)
 	}
 
@@ -221,18 +219,18 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 func TestWolfResolver_Majority_Kill(t *testing.T) {
 	resolver := NewWolfResolver()
 	state := newState()
-	mustAddTo(t, state, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "wolf3", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf1", RoleWerewolf)
+	mustAddTo(t, state, "wolf2", RoleWerewolf)
+	mustAddTo(t, state, "wolf3", RoleWerewolf)
+	mustAddTo(t, state, "v1", RoleVillager)
+	mustAddTo(t, state, "v2", RoleVillager)
 	config := DefaultGameConfig()
 
 	// 多数决：2票 v1, 1票 v2
 	uses := []*SkillUse{
-		{PlayerID: "wolf1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1"},
-		{PlayerID: "wolf2", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1"},
-		{PlayerID: "wolf3", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v2"},
+		{PlayerID: "wolf1", Skill: SkillKill, TargetID: "v1"},
+		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "v1"},
+		{PlayerID: "wolf3", Skill: SkillKill, TargetID: "v2"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -263,15 +261,15 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	// 「同守同救」（守卫守护 + 女巫解药 -> 依然死亡）这一局面将无法构成。
 	resolver := NewWolfResolver()
 	state := newState()
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf", RoleWerewolf)
+	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置保护状态
 	state.RoundCtx.ProtectedPlayers["victim"] = true
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = true
 
 	uses := []*SkillUse{
-		{PlayerID: "wolf", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "victim"},
+		{PlayerID: "wolf", Skill: SkillKill, TargetID: "victim"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -280,7 +278,7 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (SET_NIGHT_KILL) even when protected, got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_SET_NIGHT_KILL {
+	if effects[0].Type != EventSetNightKill {
 		t.Errorf("expected SET_NIGHT_KILL, got %v", effects[0].Type)
 	}
 
@@ -296,15 +294,15 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	// 当 SameGuardKillIsEmpty=false 时，即使目标被保护也设置击杀目标
 	resolver := NewWolfResolver()
 	state := newState()
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf", RoleWerewolf)
+	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置保护状态
 	state.RoundCtx.ProtectedPlayers["victim"] = true
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = false // 不是空刀
 
 	uses := []*SkillUse{
-		{PlayerID: "wolf", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "victim"},
+		{PlayerID: "wolf", Skill: SkillKill, TargetID: "victim"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -330,15 +328,15 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 func TestWitchResolver_QueryKillTarget(t *testing.T) {
 	resolver := NewWitchResolver()
 	state := newState()
-	mustAddTo(t, state, "witch", pb.RoleType_ROLE_TYPE_WITCH)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "witch", RoleWitch)
+	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置击杀目标
 	state.RoundCtx.KillTarget = "victim"
 	config := DefaultGameConfig()
 
 	// 女巫使用解药救人
 	uses := []*SkillUse{
-		{PlayerID: "witch", Skill: pb.SkillType_SKILL_TYPE_ANTIDOTE, TargetID: "victim"},
+		{PlayerID: "witch", Skill: SkillAntidote, TargetID: "victim"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -350,7 +348,7 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 		t.Fatalf("expected 2 effects, got %d", len(effects))
 	}
 
-	saveEffects := filterEffects(effects, pb.EventType_EVENT_TYPE_SAVE)
+	saveEffects := filterEffects(effects, EventSave)
 	if len(saveEffects) != 1 {
 		t.Fatalf("expected 1 save effect, got %d", len(saveEffects))
 	}
@@ -378,18 +376,18 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 func TestWitchResolver_Poison(t *testing.T) {
 	resolver := NewWitchResolver()
 	state := newState()
-	mustAddTo(t, state, "witch", pb.RoleType_ROLE_TYPE_WITCH)
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "witch", RoleWitch)
+	mustAddTo(t, state, "wolf", RoleWerewolf)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "witch", Skill: pb.SkillType_SKILL_TYPE_POISON, TargetID: "wolf"},
+		{PlayerID: "witch", Skill: SkillPoison, TargetID: "wolf"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
 	// WitchResolver 只产生 USE_POISON 效果，实际死亡由 NightResolveResolver 处理
-	usePoisonEffects := filterEffects(effects, pb.EventType_EVENT_TYPE_USE_POISON)
+	usePoisonEffects := filterEffects(effects, EventUsePoison)
 	if len(usePoisonEffects) != 1 {
 		t.Fatalf("expected 1 USE_POISON effect, got %d", len(usePoisonEffects))
 	}
@@ -409,18 +407,18 @@ func TestWitchResolver_Poison(t *testing.T) {
 func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 	resolver := NewWitchResolver()
 	state := newState()
-	mustAddTo(t, state, "witch", pb.RoleType_ROLE_TYPE_WITCH)
+	mustAddTo(t, state, "witch", RoleWitch)
 	state.RoundCtx.KillTarget = "witch" // 狼人杀女巫
 	config := DefaultGameConfig()
 	config.WitchCanSaveSelf = false
 
 	uses := []*SkillUse{
-		{PlayerID: "witch", Skill: pb.SkillType_SKILL_TYPE_ANTIDOTE, TargetID: "witch"},
+		{PlayerID: "witch", Skill: SkillAntidote, TargetID: "witch"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
-	saveEffects := filterEffects(effects, pb.EventType_EVENT_TYPE_SAVE)
+	saveEffects := filterEffects(effects, EventSave)
 	if len(saveEffects) != 1 {
 		t.Fatalf("expected 1 save effect, got %d", len(saveEffects))
 	}
@@ -439,12 +437,12 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 func TestGuardResolver_Protect(t *testing.T) {
 	resolver := NewGuardResolver()
 	state := newState()
-	mustAddTo(t, state, "guard", pb.RoleType_ROLE_TYPE_GUARD)
-	mustAddTo(t, state, "target", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "guard", RoleGuard)
+	mustAddTo(t, state, "target", RoleVillager)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "guard", Skill: pb.SkillType_SKILL_TYPE_PROTECT, TargetID: "target"},
+		{PlayerID: "guard", Skill: SkillProtect, TargetID: "target"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -455,12 +453,12 @@ func TestGuardResolver_Protect(t *testing.T) {
 	}
 
 	// 检查 SET_LAST_PROTECTED effect
-	if effects[0].Type != pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED {
+	if effects[0].Type != EventSetLastProtected {
 		t.Errorf("expected EVENT_TYPE_SET_LAST_PROTECTED, got %v", effects[0].Type)
 	}
 
 	// 检查 PROTECT effect
-	if effects[1].Type != pb.EventType_EVENT_TYPE_PROTECT {
+	if effects[1].Type != EventProtect {
 		t.Errorf("expected EVENT_TYPE_PROTECT, got %v", effects[1].Type)
 	}
 
@@ -486,12 +484,12 @@ func TestGuardResolver_Protect(t *testing.T) {
 func TestSeerResolver_CheckWolf(t *testing.T) {
 	resolver := NewSeerResolver()
 	state := newState()
-	mustAddTo(t, state, "seer", pb.RoleType_ROLE_TYPE_SEER)
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAddTo(t, state, "seer", RoleSeer)
+	mustAddTo(t, state, "wolf", RoleWerewolf)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "seer", Skill: pb.SkillType_SKILL_TYPE_CHECK, TargetID: "wolf"},
+		{PlayerID: "seer", Skill: SkillCheck, TargetID: "wolf"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -502,7 +500,7 @@ func TestSeerResolver_CheckWolf(t *testing.T) {
 	if effects[0].Data["isGood"] != false {
 		t.Error("expected isGood=false for wolf")
 	}
-	if effects[0].Data["camp"] != pb.Camp_CAMP_EVIL {
+	if effects[0].Data["camp"] != CampEvil {
 		t.Errorf("expected camp=EVIL, got %v", effects[0].Data["camp"])
 	}
 }
@@ -510,12 +508,12 @@ func TestSeerResolver_CheckWolf(t *testing.T) {
 func TestSeerResolver_CheckGood(t *testing.T) {
 	resolver := NewSeerResolver()
 	state := newState()
-	mustAddTo(t, state, "seer", pb.RoleType_ROLE_TYPE_SEER)
-	mustAddTo(t, state, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "seer", RoleSeer)
+	mustAddTo(t, state, "villager", RoleVillager)
 	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
-		{PlayerID: "seer", Skill: pb.SkillType_SKILL_TYPE_CHECK, TargetID: "villager"},
+		{PlayerID: "seer", Skill: SkillCheck, TargetID: "villager"},
 	}
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
@@ -526,7 +524,7 @@ func TestSeerResolver_CheckGood(t *testing.T) {
 	if effects[0].Data["isGood"] != true {
 		t.Error("expected isGood=true for villager")
 	}
-	if effects[0].Data["camp"] != pb.Camp_CAMP_GOOD {
+	if effects[0].Data["camp"] != CampGood {
 		t.Errorf("expected camp=GOOD, got %v", effects[0].Data["camp"])
 	}
 }
@@ -535,10 +533,10 @@ func TestSeerResolver_CheckGood(t *testing.T) {
 
 func TestState_GetWolfTeammates(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "wolf2", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "wolf3", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf1", RoleWerewolf)
+	mustAddTo(t, state, "wolf2", RoleWerewolf)
+	mustAddTo(t, state, "wolf3", RoleWerewolf)
+	mustAddTo(t, state, "villager", RoleVillager)
 
 	teammates := state.getWolfTeammates("wolf1")
 
@@ -568,8 +566,8 @@ func TestState_GetWolfTeammates(t *testing.T) {
 
 func TestState_GetWolfTeammates_NonWolf(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "wolf1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf1", RoleWerewolf)
+	mustAddTo(t, state, "villager", RoleVillager)
 
 	// 非狼人查询应该返回空
 	teammates := state.getWolfTeammates("villager")
@@ -580,7 +578,7 @@ func TestState_GetWolfTeammates_NonWolf(t *testing.T) {
 
 // ==================== Helper Functions ====================
 
-func filterEffects(effects []*Effect, eventType pb.EventType) []*Effect {
+func filterEffects(effects []*Effect, eventType EventType) []*Effect {
 	result := make([]*Effect, 0)
 	for _, e := range effects {
 		if e.Type == eventType {
@@ -597,7 +595,7 @@ func filterEffects(effects []*Effect, eventType pb.EventType) []*Effect {
 func TestNightResolveResolver_PoisonOrderIsDeterministic(t *testing.T) {
 	st := newState()
 	for _, id := range []string{"a", "b", "c", "d", "e"} {
-		if err := st.addPlayer(id, pb.RoleType_ROLE_TYPE_VILLAGER); err != nil {
+		if err := st.addPlayer(id, RoleVillager); err != nil {
 			t.Fatal(err)
 		}
 		st.RoundCtx.PoisonedPlayers[id] = true

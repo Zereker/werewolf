@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // 本文件用「加一个狼王」验证扩展契约：
@@ -14,9 +12,9 @@ import (
 
 const (
 	// 自定义取值从 1000 起，避免与后续内置枚举撞号
-	roleWolfKing  = pb.RoleType(1000)
-	skillWolfClaw = pb.SkillType(1000)
-	phaseWolfKing = pb.PhaseType(1000)
+	roleWolfKing  = RoleType(1000)
+	skillWolfClaw = SkillType(1000)
+	phaseWolfKing = PhaseType(1000)
 )
 
 // wolfKingResolver 狼王的开枪结算。第三方实现，只依赖导出的 GameView。
@@ -27,7 +25,7 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView, config *Game
 	for _, use := range uses {
 		if use.Skill == skillWolfClaw && use.TargetID != "" {
 			effects = append(effects,
-				NewEffect(pb.EventType_EVENT_TYPE_SHOOT, use.PlayerID, use.TargetID))
+				NewEffect(EventShoot, use.PlayerID, use.TargetID))
 			break // 一枪
 		}
 	}
@@ -44,7 +42,7 @@ type voteWithWolfKing struct {
 func (r *voteWithWolfKing) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := r.inner.Resolve(uses, view, config)
 	for _, ef := range effects {
-		if ef.Type != pb.EventType_EVENT_TYPE_ELIMINATE || ef.Canceled {
+		if ef.Type != EventEliminate || ef.Canceled {
 			continue
 		}
 		if p, ok := view.Player(ef.TargetID); ok && p.Role == roleWolfKing {
@@ -65,15 +63,15 @@ func newWolfKingGame(t *testing.T) *Engine {
 		Type: phaseWolfKing,
 		Steps: []PhaseStep{
 			{Role: roleWolfKing, Skill: skillWolfClaw},
-			{Role: roleWolfKing, Skill: pb.SkillType_SKILL_TYPE_SKIP},
+			{Role: roleWolfKing, Skill: SkillSkip},
 		},
-		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
+		NextPhase: PhaseNightGuard,
 	}
 
 	// 2. 构造时注册狼王阶段的解析器，并装饰投票解析器
 	engine, err := NewEngine(cfg,
 		WithResolver(phaseWolfKing, &wolfKingResolver{}),
-		WithResolver(pb.PhaseType_PHASE_TYPE_VOTE,
+		WithResolver(PhaseVote,
 			&voteWithWolfKing{inner: NewVoteResolver()}))
 	if err != nil {
 		t.Fatalf("配置应当合法: %v", err)
@@ -81,16 +79,16 @@ func newWolfKingGame(t *testing.T) *Engine {
 
 	// 3. 狼王的阵营与类别推导不出来，显式给出
 	if err := engine.AddCustomPlayer("wk", roleWolfKing,
-		pb.Camp_CAMP_EVIL, RoleCategoryWolf); err != nil {
+		CampEvil, RoleCategoryWolf); err != nil {
 		t.Fatal(err)
 	}
-	for id, role := range map[string]pb.RoleType{
-		"w1": pb.RoleType_ROLE_TYPE_WEREWOLF,
-		"s":  pb.RoleType_ROLE_TYPE_SEER,
-		"g":  pb.RoleType_ROLE_TYPE_GUARD,
-		"v1": pb.RoleType_ROLE_TYPE_VILLAGER,
-		"v2": pb.RoleType_ROLE_TYPE_VILLAGER,
-		"v3": pb.RoleType_ROLE_TYPE_VILLAGER,
+	for id, role := range map[string]RoleType{
+		"w1": RoleWerewolf,
+		"s":  RoleSeer,
+		"g":  RoleGuard,
+		"v1": RoleVillager,
+		"v2": RoleVillager,
+		"v3": RoleVillager,
 	} {
 		if err := engine.AddPlayer(id, role); err != nil {
 			t.Fatal(err)
@@ -108,7 +106,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	engine := newWolfKingGame(t)
 
 	// 走完第一夜（狼人空刀）
-	for engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
+	for engine.Phase() != PhaseDay {
 		if _, err := engine.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -120,7 +118,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	// 放逐狼王
 	for _, voter := range []string{"s", "g", "v1", "v2"} {
 		if err := engine.SubmitSkillUse(&SkillUse{
-			PlayerID: voter, Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "wk",
+			PlayerID: voter, Skill: SkillVote, TargetID: "wk",
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +152,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	if alive := mustInfo(t, engine, "s").Alive; alive {
 		t.Error("狼王开枪带走的预言家应当出局")
 	}
-	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if got := engine.Phase(); got != PhaseNightGuard {
 		t.Errorf("狼王阶段结束后应进入下一夜，实际 %v", got)
 	}
 }
@@ -164,15 +162,15 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 	engine := newWolfKingGame(t)
 
 	// 内置狼人出局，狼王还在 —— 狼人阵营未灭，游戏继续
-	engine.state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "w1"))
+	engine.state.applyEffect(NewEffect(EventKill, "", "w1"))
 	if over, _ := engine.state.checkVictory(VictoryModeSideWipe); over {
 		t.Error("狼王仍在场，狼人阵营不应判为全灭")
 	}
 
 	// 狼王也出局 —— 好人获胜
-	engine.state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "wk"))
+	engine.state.applyEffect(NewEffect(EventKill, "", "wk"))
 	over, winner := engine.state.checkVictory(VictoryModeSideWipe)
-	if !over || winner != pb.Camp_CAMP_GOOD {
+	if !over || winner != CampGood {
 		t.Errorf("狼人阵营全灭应判好人胜利，实际 over=%v winner=%v", over, winner)
 	}
 }
@@ -182,7 +180,7 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 // 想让某阶段不产生任何效果，注册一个返回空切片的解析器；
 // 传 nil 只可能是漏了，必须在构造时就报出来。
 func TestExtension_WithResolverRejectsNil(t *testing.T) {
-	if _, err := NewEngine(nil, WithResolver(pb.PhaseType_PHASE_TYPE_DAY, nil)); err == nil {
+	if _, err := NewEngine(nil, WithResolver(PhaseDay, nil)); err == nil {
 		t.Error("nil 解析器应当被拒绝")
 	}
 	if !panicsOnNilResolver(t) {
@@ -193,7 +191,7 @@ func TestExtension_WithResolverRejectsNil(t *testing.T) {
 func panicsOnNilResolver(t *testing.T) (panicked bool) {
 	t.Helper()
 	defer func() { panicked = recover() != nil }()
-	MustNewEngine(nil, WithResolver(pb.PhaseType_PHASE_TYPE_DAY, nil))
+	MustNewEngine(nil, WithResolver(PhaseDay, nil))
 	return false
 }
 
@@ -213,7 +211,7 @@ func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
 func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	engine := newWolfKingGame(t)
 
-	for engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
+	for engine.Phase() != PhaseDay {
 		if _, err := engine.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -223,7 +221,7 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	}
 	for _, voter := range []string{"s", "g", "v1", "v2"} {
 		if err := engine.SubmitSkillUse(&SkillUse{
-			PlayerID: voter, Skill: pb.SkillType_SKILL_TYPE_VOTE, TargetID: "wk",
+			PlayerID: voter, Skill: SkillVote, TargetID: "wk",
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -266,17 +264,17 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 // AddCustomPlayer 加进来时 Camp 是 EVIL、Role 不是 WEREWOLF：
 // 他们看不到队友、不被真狼看到、夜里也发不出话——自定义狼队角色实际不可用。
 func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
-	const roleWolfKing = pb.RoleType(1000)
+	const roleWolfKing = RoleType(1000)
 
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "w1", RoleWerewolf)
 	if err := engine.AddCustomPlayer("wk", roleWolfKing,
-		pb.Camp_CAMP_EVIL, RoleCategoryWolf); err != nil {
+		CampEvil, RoleCategoryWolf); err != nil {
 		t.Fatalf("AddCustomPlayer 失败: %v", err)
 	}
-	mustAdd(t, engine, "s", pb.RoleType_ROLE_TYPE_SEER)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "s", RoleSeer)
+	mustAdd(t, engine, "v1", RoleVillager)
+	mustAdd(t, engine, "v2", RoleVillager)
 	if err := engine.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
@@ -294,19 +292,19 @@ func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 
 	// 视图里互相翻牌
 	view := engine.PlayerView("wk")
-	roles := make(map[string]pb.RoleType, len(view.Players))
+	roles := make(map[string]RoleType, len(view.Players))
 	for _, p := range view.Players {
 		roles[p.ID] = p.Role
 	}
-	if roles["w1"] != pb.RoleType_ROLE_TYPE_WEREWOLF {
+	if roles["w1"] != RoleWerewolf {
 		t.Errorf("狼王的视图里应能看到 w1 的身份，实际 %v", roles["w1"])
 	}
-	if roles["s"] != pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+	if roles["s"] != RoleUnspecified {
 		t.Errorf("狼王不该看到预言家的身份，实际 %v", roles["s"])
 	}
 
 	// 夜里能和狼队互通
-	for engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+	for engine.Phase() != PhaseNightWolf {
 		if _, err := engine.EndPhase(); err != nil {
 			t.Fatalf("推进失败: %v", err)
 		}
@@ -329,24 +327,24 @@ func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 // 下一次推进直接进 END——游戏在第一夜无声收场，连 GAME_ENDED 都没有。
 func TestExtension_TriggerToUnconfiguredPhaseIsRejected(t *testing.T) {
 	cfg := DefaultGameConfig()
-	delete(cfg.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	delete(cfg.Phases, PhaseNightHunter)
 	// 原本指向猎人阶段的静态边也要改掉，否则配置本身就不自洽
-	cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE].NextPhase = pb.PhaseType_PHASE_TYPE_DAY
+	cfg.Phases[PhaseNightResolve].NextPhase = PhaseDay
 
 	g := newRuleGame(t, cfg, seats(
 		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
 		villagers("v1", "v2", "v3", "v4"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 
 	// 猎人死了，触发指向已被删掉的阶段：应当照常进白天，且触发被否决
-	effects := g.end(pb.PhaseType_PHASE_TYPE_DAY)
-	trigger := findEffect(effects, pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED)
+	effects := g.end(PhaseDay)
+	trigger := findEffect(effects, EventAbilityTriggered)
 	if trigger == nil {
 		t.Fatal("期望产生 ABILITY_TRIGGERED 效果（即便被否决）")
 	}

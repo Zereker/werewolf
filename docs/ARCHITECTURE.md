@@ -124,7 +124,7 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
 - `RoundContext`：回合内的临时状态（刀口、被守、被救、被毒、猎人触发），
   每进入新的一夜重建
 - `RoleCategory`：神职 / 平民 / 狼人，屠边判定需要这个维度，
-  而 `pb.Camp` 只有好人/狼人两值，表达不了
+  而 `werewolf.Camp` 只有好人/狼人两值，表达不了
 
 **猎人触发标记是一次性的**：由死亡结算置位，进入猎人阶段后必须
 `ConsumeHunterTrigger` 消费。不消费的话它会在整个回合内持续为真，
@@ -194,7 +194,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 
 ### 添加新角色
 
-1. `proto/event.proto` 加 `RoleType`（及所需的 `SkillType`）
+1. `types.go` 加 `RoleType`（及所需的 `SkillType`）取值
 2. `CategoryOf` 加类别映射，或调用方用 `State.SetPlayerCategory` 指定
 3. 若需要独立行动窗口：加 `PhaseConfig` 并接进流转链
 4. 写对应的 `Resolver`，在 `NewPhase` 注册
@@ -246,7 +246,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 - **不含规则配置**。快照只记录局面，`GameConfig` 由调用方在恢复时提供——
   规则的版本管理是调用方的事，把规则混进存档只会让两边都说不清。
 - **含未结算技能**。`pendingUses` 一并导出，因此存档点不必卡在阶段边界。
-- **枚举按数值序列化**。protobuf 的枚举编号是稳定契约，名称则可能被重命名。
+- **枚举按数值序列化**。编号是写进存储的契约，名称则可能被重命名。
 - **输出确定**。集合与玩家列表都排序后导出，同一局面的字节一致，
   便于比对与幂等写入（Go 的 map 遍历顺序是随机的，不排序就做不到）。
 - **版本不匹配直接拒绝**，而不是按新结构去解读旧数据——那会得到一个
