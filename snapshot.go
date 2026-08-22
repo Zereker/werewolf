@@ -134,7 +134,7 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 	// START 与 END 是流程的两端，不出现在阶段配置中，单独放行。
 	if snap.Phase != pb.PhaseType_PHASE_TYPE_START &&
 		snap.Phase != pb.PhaseType_PHASE_TYPE_END &&
-		engine.phase.GetPhaseConfig(snap.Phase) == nil {
+		engine.phase.phaseConfig(snap.Phase) == nil {
 		return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 			"phase %v is not present in the supplied config", snap.Phase)
 	}

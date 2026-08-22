@@ -35,7 +35,7 @@ func mustEnd(t *testing.T, e *Engine) []*Effect {
 	t.Helper()
 	effects, err := e.EndPhase()
 	if err != nil {
-		t.Fatalf("EndPhase() 于 %v: %v", e.GetCurrentPhase(), err)
+		t.Fatalf("EndPhase() 于 %v: %v", e.Phase(), err)
 	}
 	return effects
 }
@@ -45,7 +45,7 @@ func mustSubmit(t *testing.T, e *Engine, use *SkillUse) {
 	t.Helper()
 	if err := e.SubmitSkillUse(use); err != nil {
 		t.Fatalf("SubmitSkillUse(player=%s skill=%v target=%s) 于 %v: %v",
-			use.PlayerID, use.Skill, use.TargetID, e.GetCurrentPhase(), err)
+			use.PlayerID, use.Skill, use.TargetID, e.Phase(), err)
 	}
 }
 

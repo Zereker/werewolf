@@ -288,7 +288,7 @@ func (c *GameConfig) Validate() error {
 			}
 		}
 
-		// 同一阶段内重复声明会让 GetAllowedSkills 返回重复项
+		// 同一阶段内重复声明会让 AllowedSkills 返回重复项
 		seen := make(map[[2]int32]bool, len(pc.Steps))
 		for _, step := range pc.Steps {
 			key := [2]int32{int32(step.Role), int32(step.Skill)}

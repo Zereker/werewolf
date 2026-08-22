@@ -48,17 +48,17 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
 ### 4. 单一真相来源
 
 「玩家此刻能用什么技能」只有一个来源：`PhaseConfig.Steps`。
-`SubmitSkillUse` 的校验、`GetPhaseInfo` 的对外宣告、`GetPlayerView`
+`SubmitSkillUse` 的校验、`PhaseInfo` 的对外宣告、`PlayerView`
 的视角、`PhaseReadiness` 的就绪判定，全部由它派生。
 
-历史教训：这两者曾各自硬编码技能列表，导致 `GetPhaseInfo` 宣告猎人可以
+历史教训：这两者曾各自硬编码技能列表，导致 `PhaseInfo` 宣告猎人可以
 `SKIP`、而 `SubmitSkillUse` 拒绝 `SKIP` 的自相矛盾。
 
 ### 5. 信息边界属于引擎
 
 调用方作为主持人需要上帝视角，但它不该被迫自己实现「投影」——
 那是整局游戏最安全攸关的一段逻辑，放在库外意味着每个使用者都要重写一遍，
-而且错一次游戏就废了。`GetPlayerView` 与 `AudienceOf` 把这件事收回库内。
+而且错一次游戏就废了。`PlayerView` 与 `AudienceOf` 把这件事收回库内。
 
 ### 6. 引擎不认识具体角色
 
@@ -82,7 +82,7 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
                      │  │   4. CheckVictory      │  │
                      │  │   5. 流转下一阶段        │  │
                      │  ├────────────────────────┤  │
-                     │  │ GetPhaseInfo           │──┼──► 谁该行动、能用什么
+                     │  │ PhaseInfo           │──┼──► 谁该行动、能用什么
                      │  │ SendMessage            │──┼──► 按阶段路由发言
                      │  └────────────────────────┘  │
                      └───────┬──────────────┬───────┘
@@ -104,7 +104,7 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
 | 建局 | `AddPlayer` / `AddCustomPlayer` | 只能在 `Start` 之前调用，全部返回 error |
 | 推进 | `Start` / `EndPhase` | `EndPhase` 是唯一推进入口 |
 | 输入 | `SubmitSkillUse` / `SendMessage` | 技能与发言两条独立通道 |
-| 读取 | `GetPhaseInfo` / `GetPlayerInfo` / `GetRoundContext` … | 一律返回只读副本 |
+| 读取 | `PhaseInfo` / `PlayerInfo` / `RoundContext` … | 一律返回只读副本 |
 
 **非法输入一律返回 error，不静默生效**：重复 ID、空 ID、把上帝当玩家、
 开局后再加人、缺狼或缺好人的板子，都在入口处拒绝。阵营与角色类别由角色推导
@@ -175,7 +175,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 ### 一个阶段的完整生命周期
 
 ```
-1. 调用方读 GetPhaseInfo()      ──► 得知本阶段谁该行动、能用什么技能
+1. 调用方读 PhaseInfo()      ──► 得知本阶段谁该行动、能用什么技能
 2. 调用方收集玩家决策            ──► （超时、AI、网络，都是调用方的事）
 3. SubmitSkillUse() × N         ──► Phase.ValidateSkillUse 校验后入队
 4. 调用方调 EndPhase()
@@ -208,6 +208,17 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 
 `GameConfig.Phases` 是一张 `map[PhaseType]*PhaseConfig`，每个配置声明自己的
 `NextPhase`。替换这张表即可改变整个流程，无需改动引擎代码。
+
+## 命名约定
+
+只读方法**不加 `Get` 前缀**——这是 Go 的通行风格（Effective Go）：
+`e.Phase()` 而不是 `e.GetCurrentPhase()`，`e.PlayerInfo(id)` 而不是
+`e.GetPlayerInfo(id)`。方法名与返回类型同名是可以的，标准库里
+`time.Time.Location()` 返回 `*Location` 就是这个形状。
+
+包外用不上的东西一律不导出。阶段管理器（`phaseManager`）没有注入口、
+状态对象（`gameState`）是实现细节、投票统计结果只在包内流转——
+它们导出只会让 `go doc` 更长，不会让任何人多做成一件事。
 
 ## 不做什么
 

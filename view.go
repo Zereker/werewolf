@@ -47,14 +47,14 @@ type stateView struct {
 func newStateView(s *gameState) GameView { return stateView{s: s} }
 
 func (v stateView) Player(id string) (PlayerInfo, bool) {
-	return v.s.GetPlayerInfo(id)
+	return v.s.PlayerInfo(id)
 }
 
 func (v stateView) AlivePlayers() []PlayerInfo {
 	ids := v.s.getAlivePlayerIDs()
 	out := make([]PlayerInfo, 0, len(ids))
 	for _, id := range ids {
-		if info, ok := v.s.GetPlayerInfo(id); ok {
+		if info, ok := v.s.PlayerInfo(id); ok {
 			out = append(out, info)
 		}
 	}
@@ -66,7 +66,7 @@ func (v stateView) AlivePlayerIDsByRole(role pb.RoleType) []string {
 }
 
 func (v stateView) RoundContext() RoundContext {
-	rc := v.s.GetRoundContext()
+	rc := v.s.RoundContext()
 	if rc == nil {
 		return RoundContext{}
 	}

@@ -251,8 +251,8 @@ func TestScenario_MultipleRounds(t *testing.T) {
 
 	mustStart(t, engine)
 
-	if engine.GetCurrentRound() != 1 {
-		t.Errorf("expected Round 1, got %d", engine.GetCurrentRound())
+	if engine.Round() != 1 {
+		t.Errorf("expected Round 1, got %d", engine.Round())
 	}
 
 	// Night 1 (all phases) -> Day 1 -> Vote 1 -> Night 2
@@ -264,8 +264,8 @@ func TestScenario_MultipleRounds(t *testing.T) {
 	mustEnd(t, engine) // DAY -> VOTE
 	mustEnd(t, engine) // VOTE -> NIGHT_GUARD (round 2)
 
-	if engine.GetCurrentRound() != 2 {
-		t.Errorf("expected Round 2, got %d", engine.GetCurrentRound())
+	if engine.Round() != 2 {
+		t.Errorf("expected Round 2, got %d", engine.Round())
 	}
 
 	// Night 2 (all phases) -> Day 2 -> Vote 2 -> Night 3
@@ -277,8 +277,8 @@ func TestScenario_MultipleRounds(t *testing.T) {
 	mustEnd(t, engine) // DAY -> VOTE
 	mustEnd(t, engine) // VOTE -> NIGHT_GUARD (round 3)
 
-	if engine.GetCurrentRound() != 3 {
-		t.Errorf("expected Round 3, got %d", engine.GetCurrentRound())
+	if engine.Round() != 3 {
+		t.Errorf("expected Round 3, got %d", engine.Round())
 	}
 }
 
@@ -627,8 +627,8 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	}
 
 	// 阶段1：守卫阶段
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
-		t.Errorf("expected NIGHT_GUARD, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+		t.Errorf("expected NIGHT_GUARD, got %v", engine.Phase())
 	}
 
 	mustSubmit(t, engine, &SkillUse{
@@ -639,12 +639,12 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	mustEnd(t, engine)
 
 	// 阶段2：狼人阶段
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
-		t.Errorf("expected NIGHT_WOLF, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+		t.Errorf("expected NIGHT_WOLF, got %v", engine.Phase())
 	}
 
 	// 狼人可以查询队友
-	teammates := engine.GetWolfTeammates("wolf1")
+	teammates := engine.WolfTeammates("wolf1")
 	if len(teammates) != 1 || teammates[0] != "wolf2" {
 		t.Errorf("wolf1 should have wolf2 as teammate, got %v", teammates)
 	}
@@ -663,12 +663,12 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	mustEnd(t, engine)
 
 	// 阶段3：女巫阶段
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
-		t.Errorf("expected NIGHT_WITCH, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
+		t.Errorf("expected NIGHT_WITCH, got %v", engine.Phase())
 	}
 
 	// 女巫可以查询被杀者
-	killTarget := engine.GetNightKillTarget()
+	killTarget := engine.NightKillTarget()
 	if killTarget != "v1" {
 		t.Errorf("expected NightKillTarget=v1, got %s", killTarget)
 	}
@@ -682,8 +682,8 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	mustEnd(t, engine)
 
 	// 阶段4：预言家阶段
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
-		t.Errorf("expected NIGHT_SEER, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
+		t.Errorf("expected NIGHT_SEER, got %v", engine.Phase())
 	}
 
 	mustSubmit(t, engine, &SkillUse{
@@ -709,14 +709,14 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	}
 
 	// 阶段5：夜晚结算
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
-		t.Errorf("expected NIGHT_RESOLVE, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
+		t.Errorf("expected NIGHT_RESOLVE, got %v", engine.Phase())
 	}
 	mustEnd(t, engine) // NIGHT_RESOLVE -> DAY
 
 	// 阶段6：白天
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
-		t.Errorf("expected DAY, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
+		t.Errorf("expected DAY, got %v", engine.Phase())
 	}
 
 	// 验证状态：v1 被救活
@@ -761,7 +761,7 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	mustEnd(t, engine)
 
 	// 女巫阶段：平票导致无击杀，NightKillTarget 应为空
-	killTarget := engine.GetNightKillTarget()
+	killTarget := engine.NightKillTarget()
 	if killTarget != "" {
 		t.Errorf("expected empty NightKillTarget for tie vote, got %s", killTarget)
 	}
@@ -810,7 +810,7 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 
 	// 女巫阶段：刀口照常记录（女巫不知道守卫守了谁），
 	// 守护是否抵消由 NIGHT_RESOLVE 判定
-	killTarget := engine.GetNightKillTarget()
+	killTarget := engine.NightKillTarget()
 	if killTarget != "victim" {
 		t.Errorf("expected NightKillTarget=victim (protection resolves later), got %s", killTarget)
 	}
@@ -840,8 +840,8 @@ func TestSubStepMode_MultipleRounds(t *testing.T) {
 
 	mustStart(t, engine)
 
-	if engine.GetCurrentRound() != 1 {
-		t.Errorf("expected Round 1, got %d", engine.GetCurrentRound())
+	if engine.Round() != 1 {
+		t.Errorf("expected Round 1, got %d", engine.Round())
 	}
 
 	// 第一轮夜晚：空过
@@ -851,26 +851,26 @@ func TestSubStepMode_MultipleRounds(t *testing.T) {
 	mustEnd(t, engine) // NIGHT_SEER -> NIGHT_RESOLVE
 	mustEnd(t, engine) // NIGHT_RESOLVE -> DAY
 
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
-		t.Errorf("expected DAY, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
+		t.Errorf("expected DAY, got %v", engine.Phase())
 	}
 
 	// 白天 -> 投票
 	mustEnd(t, engine) // DAY -> VOTE
 
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_VOTE {
-		t.Errorf("expected VOTE, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_VOTE {
+		t.Errorf("expected VOTE, got %v", engine.Phase())
 	}
 
 	// 投票 -> 第二轮夜晚
 	mustEnd(t, engine) // VOTE -> NIGHT_GUARD
 
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
-		t.Errorf("expected NIGHT_GUARD, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+		t.Errorf("expected NIGHT_GUARD, got %v", engine.Phase())
 	}
 
-	if engine.GetCurrentRound() != 2 {
-		t.Errorf("expected Round 2, got %d", engine.GetCurrentRound())
+	if engine.Round() != 2 {
+		t.Errorf("expected Round 2, got %d", engine.Round())
 	}
 }
 

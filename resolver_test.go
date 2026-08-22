@@ -531,7 +531,7 @@ func TestSeerResolver_CheckGood(t *testing.T) {
 	}
 }
 
-// ==================== State.GetWolfTeammates Tests ====================
+// ==================== State.WolfTeammates Tests ====================
 
 func TestState_GetWolfTeammates(t *testing.T) {
 	state := newState()

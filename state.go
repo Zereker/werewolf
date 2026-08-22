@@ -29,8 +29,8 @@ type PendingTrigger struct {
 	Phase    pb.PhaseType // 该去哪个阶段结算
 }
 
-// NewRoundContext 创建新的回合上下文
-func NewRoundContext() *RoundContext {
+// newRoundContext 创建新的回合上下文
+func newRoundContext() *RoundContext {
 	return &RoundContext{
 		ProtectedPlayers: make(map[string]bool),
 		SavedPlayers:     make(map[string]bool),
@@ -153,7 +153,7 @@ func newState() *gameState {
 		Phase:    pb.PhaseType_PHASE_TYPE_START,
 		Round:    0,
 		players:  make(map[string]*PlayerState),
-		RoundCtx: NewRoundContext(),
+		RoundCtx: newRoundContext(),
 	}
 }
 
@@ -248,7 +248,7 @@ func (s *gameState) currentRound() int {
 
 // getPlayer 获取玩家（包内使用）
 // 返回内部指针，仅限包内代码使用
-// 外部请使用 GetPlayerInfo(id) 获取只读副本
+// 外部请使用 PlayerInfo(id) 获取只读副本
 func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 	p, ok := s.players[id]
 	return p, ok
@@ -266,8 +266,8 @@ type PlayerInfo struct {
 	HasPoison   bool
 }
 
-// GetPlayerInfo 获取玩家信息的只读副本
-func (s *gameState) GetPlayerInfo(id string) (PlayerInfo, bool) {
+// PlayerInfo 获取玩家信息的只读副本
+func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	p, ok := s.players[id]
 	if !ok {
 		return PlayerInfo{}, false
@@ -333,7 +333,7 @@ func (s *gameState) applyEffect(effect *Effect) {
 
 	// 确保 RoundCtx 已初始化
 	if s.RoundCtx == nil {
-		s.RoundCtx = NewRoundContext()
+		s.RoundCtx = newRoundContext()
 	}
 
 	switch effect.Type {
@@ -394,7 +394,7 @@ func (s *gameState) resetRoundState() {
 // resetRoundStateUnlocked 内部方法，不获取锁
 func (s *gameState) resetRoundStateUnlocked() {
 	// 创建新的回合上下文
-	s.RoundCtx = NewRoundContext()
+	s.RoundCtx = newRoundContext()
 }
 
 // startAt 把状态置到开局：指定阶段、第一回合、干净的回合上下文
@@ -538,8 +538,8 @@ func (s *gameState) hasPendingTrigger() bool {
 	return ok
 }
 
-// GetRoundContext 获取回合上下文的只读副本
-func (s *gameState) GetRoundContext() *RoundContext {
+// RoundContext 获取回合上下文的只读副本
+func (s *gameState) RoundContext() *RoundContext {
 	if s.RoundCtx == nil {
 		return nil
 	}

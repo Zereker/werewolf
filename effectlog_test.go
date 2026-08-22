@@ -180,8 +180,8 @@ func TestReplayEngine_Rejects(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if e.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_START {
-			t.Errorf("期望 START，实际 %v", e.GetCurrentPhase())
+		if e.Phase() != pb.PhaseType_PHASE_TYPE_START {
+			t.Errorf("期望 START，实际 %v", e.Phase())
 		}
 	})
 }

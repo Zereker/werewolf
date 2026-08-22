@@ -4,40 +4,43 @@ import (
 	pb "github.com/Zereker/werewolf/proto"
 )
 
-// Phase 阶段管理器
-type Phase struct {
+// phaseManager 阶段管理器
+type phaseManager struct {
 	config    *GameConfig
 	resolvers map[pb.PhaseType]Resolver
 }
 
-// NewPhase 创建阶段管理器
-func NewPhase(config *GameConfig) *Phase {
-	p := &Phase{
+// builtinResolvers 内置阶段的解析器。
+//
+// 做成表而不是一串赋值：加内置阶段时只需要在这里加一行，
+// 也让「哪些阶段有解析器」一眼可见。
+// 第三方阶段通过 Engine.RegisterResolver 注册，不进这张表。
+var builtinResolvers = map[pb.PhaseType]func() Resolver{
+	pb.PhaseType_PHASE_TYPE_DAY:           func() Resolver { return NewDayResolver() },
+	pb.PhaseType_PHASE_TYPE_VOTE:          func() Resolver { return NewVoteResolver() },
+	pb.PhaseType_PHASE_TYPE_NIGHT_GUARD:   func() Resolver { return NewGuardResolver() },
+	pb.PhaseType_PHASE_TYPE_NIGHT_WOLF:    func() Resolver { return NewWolfResolver() },
+	pb.PhaseType_PHASE_TYPE_NIGHT_WITCH:   func() Resolver { return NewWitchResolver() },
+	pb.PhaseType_PHASE_TYPE_NIGHT_SEER:    func() Resolver { return NewSeerResolver() },
+	pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE: func() Resolver { return NewNightResolveResolver() },
+	pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER:  func() Resolver { return NewHunterResolver() },
+	pb.PhaseType_PHASE_TYPE_DAY_HUNTER:    func() Resolver { return NewHunterResolver() },
+}
+
+// newPhaseManager 创建阶段管理器
+func newPhaseManager(config *GameConfig) *phaseManager {
+	p := &phaseManager{
 		config:    config,
-		resolvers: make(map[pb.PhaseType]Resolver),
+		resolvers: make(map[pb.PhaseType]Resolver, len(builtinResolvers)),
 	}
-
-	// 注册解析器
-	p.resolvers[pb.PhaseType_PHASE_TYPE_DAY] = NewDayResolver()
-	p.resolvers[pb.PhaseType_PHASE_TYPE_VOTE] = NewVoteResolver()
-
-	// 注册夜晚子阶段解析器
-	p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_GUARD] = NewGuardResolver()
-	p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_WOLF] = NewWolfResolver()
-	p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_WITCH] = NewWitchResolver()
-	p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_SEER] = NewSeerResolver()
-	p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE] = NewNightResolveResolver()
-
-	// 注册猎人阶段解析器（夜晚和白天共用）
-	hunterResolver := NewHunterResolver()
-	p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER] = hunterResolver
-	p.resolvers[pb.PhaseType_PHASE_TYPE_DAY_HUNTER] = hunterResolver
-
+	for phase, make := range builtinResolvers {
+		p.resolvers[phase] = make()
+	}
 	return p
 }
 
 // registerResolver 注册或替换某阶段的解析器
-func (p *Phase) registerResolver(phase pb.PhaseType, r Resolver) {
+func (p *phaseManager) registerResolver(phase pb.PhaseType, r Resolver) {
 	p.resolvers[phase] = r
 }
 
@@ -45,7 +48,7 @@ func (p *Phase) registerResolver(phase pb.PhaseType, r Resolver) {
 //
 // 缺失解析器不会报错，只会让该阶段收到的技能被悄悄丢弃——这种失败
 // 在对局中几乎无法定位，必须在开局前拦下。
-func (p *Phase) validateResolvers() error {
+func (p *phaseManager) validateResolvers() error {
 	for phaseType := range p.config.Phases {
 		if p.resolvers[phaseType] == nil {
 			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
@@ -55,19 +58,19 @@ func (p *Phase) validateResolvers() error {
 	return nil
 }
 
-// GetPhaseConfig 获取阶段配置
-func (p *Phase) GetPhaseConfig(phase pb.PhaseType) *PhaseConfig {
+// phaseConfig 获取阶段配置
+func (p *phaseManager) phaseConfig(phase pb.PhaseType) *PhaseConfig {
 	return p.config.Phases[phase]
 }
 
-// GetResolver 获取阶段解析器
-func (p *Phase) GetResolver(phase pb.PhaseType) Resolver {
+// resolver 获取阶段解析器
+func (p *phaseManager) resolver(phase pb.PhaseType) Resolver {
 	return p.resolvers[phase]
 }
 
-// GetRequiredRoles 获取当前阶段需要行动的角色
-func (p *Phase) GetRequiredRoles(phase pb.PhaseType) []pb.RoleType {
-	config := p.GetPhaseConfig(phase)
+// requiredRoles 获取当前阶段需要行动的角色
+func (p *phaseManager) requiredRoles(phase pb.PhaseType) []pb.RoleType {
+	config := p.phaseConfig(phase)
 	if config == nil {
 		return nil
 	}
@@ -85,9 +88,9 @@ func (p *Phase) GetRequiredRoles(phase pb.PhaseType) []pb.RoleType {
 	return roles
 }
 
-// GetAllowedSkills 获取指定角色在当前阶段允许的技能
-func (p *Phase) GetAllowedSkills(phase pb.PhaseType, role pb.RoleType) []pb.SkillType {
-	config := p.GetPhaseConfig(phase)
+// allowedSkills 获取指定角色在当前阶段允许的技能
+func (p *phaseManager) allowedSkills(phase pb.PhaseType, role pb.RoleType) []pb.SkillType {
+	config := p.phaseConfig(phase)
 	if config == nil {
 		return nil
 	}
@@ -103,15 +106,15 @@ func (p *Phase) GetAllowedSkills(phase pb.PhaseType, role pb.RoleType) []pb.Skil
 	return skills
 }
 
-// NextSubPhase 计算下一阶段（使用声明式配置）
-func (p *Phase) NextSubPhase(current pb.PhaseType) pb.PhaseType {
+// nextSubPhase 计算下一阶段（使用声明式配置）
+func (p *phaseManager) nextSubPhase(current pb.PhaseType) pb.PhaseType {
 	// 游戏开始阶段的特殊处理
 	if current == pb.PhaseType_PHASE_TYPE_START {
 		return p.config.startPhase()
 	}
 
 	// 从配置中获取下一阶段
-	config := p.GetPhaseConfig(current)
+	config := p.phaseConfig(current)
 	if config != nil && config.NextPhase != pb.PhaseType_PHASE_TYPE_UNSPECIFIED {
 		return config.NextPhase
 	}
@@ -120,8 +123,8 @@ func (p *Phase) NextSubPhase(current pb.PhaseType) pb.PhaseType {
 	return pb.PhaseType_PHASE_TYPE_END
 }
 
-// ValidateSkillUse 验证技能使用是否合法
-func (p *Phase) ValidateSkillUse(use *SkillUse, state *gameState) error {
+// validateSkillUse 验证技能使用是否合法
+func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 	// 检查玩家是否存在
 	player, ok := state.getPlayer(use.PlayerID)
 	if !ok {
@@ -140,7 +143,7 @@ func (p *Phase) ValidateSkillUse(use *SkillUse, state *gameState) error {
 	}
 
 	// 检查技能是否在当前阶段允许
-	allowedSkills := p.GetAllowedSkills(state.Phase, player.Role)
+	allowedSkills := p.allowedSkills(state.Phase, player.Role)
 	allowed := false
 	for _, skill := range allowedSkills {
 		if skill == use.Skill {

@@ -61,7 +61,7 @@ func (e *Engine) PhaseReadiness() PhaseReadiness {
 		}
 	}
 
-	phaseConfig := e.phase.GetPhaseConfig(e.state.Phase)
+	phaseConfig := e.phase.phaseConfig(e.state.Phase)
 	if phaseConfig == nil {
 		return out
 	}

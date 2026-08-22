@@ -66,11 +66,11 @@ func TestEngine_Start(t *testing.T) {
 		t.Errorf("expected no error, got %v", err)
 	}
 
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
-		t.Errorf("expected Phase=NIGHT_GUARD, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+		t.Errorf("expected Phase=NIGHT_GUARD, got %v", engine.Phase())
 	}
-	if engine.GetCurrentRound() != 1 {
-		t.Errorf("expected Round=1, got %d", engine.GetCurrentRound())
+	if engine.Round() != 1 {
+		t.Errorf("expected Round=1, got %d", engine.Round())
 	}
 }
 
@@ -129,7 +129,7 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 	}
 
 	// 阵营由角色推导，调用方不再需要（也无法）传错
-	w1, _ := engine.GetPlayerInfo("w1")
+	w1, _ := engine.PlayerInfo("w1")
 	if w1.Camp != pb.Camp_CAMP_EVIL {
 		t.Errorf("狼人阵营应为 EVIL，实际 %v", w1.Camp)
 	}
@@ -142,7 +142,7 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 	if err := engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER); err != ErrGameAlreadyStarted {
 		t.Errorf("开局后添加玩家应返回 ErrGameAlreadyStarted，实际 %v", err)
 	}
-	if _, ok := engine.GetPlayerInfo("v2"); ok {
+	if _, ok := engine.PlayerInfo("v2"); ok {
 		t.Error("被拒绝的玩家不应进入状态")
 	}
 }
@@ -270,8 +270,8 @@ func TestEngine_EndPhase(t *testing.T) {
 	}
 
 	// Should transition to NIGHT_WOLF
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
-		t.Errorf("expected Phase=NIGHT_WOLF, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+		t.Errorf("expected Phase=NIGHT_WOLF, got %v", engine.Phase())
 	}
 
 	// Pending uses should be cleared
@@ -306,8 +306,8 @@ func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
 	if !engine.IsGameOver() {
 		t.Error("expected game to be over")
 	}
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_END {
-		t.Errorf("expected Phase=END, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_END {
+		t.Errorf("expected Phase=END, got %v", engine.Phase())
 	}
 }
 
@@ -362,32 +362,32 @@ func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 func TestEngine_GetCurrentPhase(t *testing.T) {
 	engine := MustNewEngine(nil)
 
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_START {
-		t.Errorf("expected Phase=START, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_START {
+		t.Errorf("expected Phase=START, got %v", engine.Phase())
 	}
 
 	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	mustStart(t, engine)
 
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
-		t.Errorf("expected Phase=NIGHT_GUARD after start, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+		t.Errorf("expected Phase=NIGHT_GUARD after start, got %v", engine.Phase())
 	}
 }
 
 func TestEngine_GetCurrentRound(t *testing.T) {
 	engine := MustNewEngine(nil)
 
-	if engine.GetCurrentRound() != 0 {
-		t.Errorf("expected Round=0, got %d", engine.GetCurrentRound())
+	if engine.Round() != 0 {
+		t.Errorf("expected Round=0, got %d", engine.Round())
 	}
 
 	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	mustStart(t, engine)
 
-	if engine.GetCurrentRound() != 1 {
-		t.Errorf("expected Round=1 after start, got %d", engine.GetCurrentRound())
+	if engine.Round() != 1 {
+		t.Errorf("expected Round=1 after start, got %d", engine.Round())
 	}
 }
 
@@ -398,7 +398,7 @@ func TestEngine_GetAllowedSkills(t *testing.T) {
 	mustStart(t, engine)
 
 	// In NIGHT_GUARD phase, guard can protect
-	skills := engine.GetAllowedSkills("guard")
+	skills := engine.AllowedSkills("guard")
 
 	if len(skills) != 1 {
 		t.Errorf("expected 1 skill, got %d", len(skills))
@@ -415,7 +415,7 @@ func TestEngine_GetAllowedSkills_Dead(t *testing.T) {
 	mustStart(t, engine)
 	engine.state.players["wolf"].Alive = false
 
-	skills := engine.GetAllowedSkills("wolf")
+	skills := engine.AllowedSkills("wolf")
 
 	if skills != nil {
 		t.Errorf("expected nil for dead player, got %v", skills)
@@ -428,7 +428,7 @@ func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
 	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
 	mustStart(t, engine)
 
-	skills := engine.GetAllowedSkills("nonexistent")
+	skills := engine.AllowedSkills("nonexistent")
 
 	if skills != nil {
 		t.Errorf("expected nil for nonexistent player, got %v", skills)
@@ -524,9 +524,9 @@ func TestEngine_Concurrency(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			_ = engine.state
-			engine.GetCurrentPhase()
-			engine.GetCurrentRound()
-			engine.GetAllowedSkills("guard")
+			engine.Phase()
+			engine.Round()
+			engine.AllowedSkills("guard")
 			engine.IsGameOver()
 		}()
 	}
@@ -573,10 +573,10 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// Night 1 - GUARD phase
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
-		t.Errorf("expected NIGHT_GUARD phase, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+		t.Errorf("expected NIGHT_GUARD phase, got %v", engine.Phase())
 	}
-	if engine.GetCurrentRound() != 1 {
+	if engine.Round() != 1 {
 		t.Error("expected Round 1")
 	}
 
@@ -589,8 +589,8 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	mustEnd(t, engine) // NIGHT_GUARD -> NIGHT_WOLF
 
 	// Night 1 - WOLF phase
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
-		t.Errorf("expected NIGHT_WOLF phase, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+		t.Errorf("expected NIGHT_WOLF phase, got %v", engine.Phase())
 	}
 
 	// Wolf kills v1
@@ -605,8 +605,8 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	mustEnd(t, engine) // NIGHT_WITCH -> NIGHT_SEER
 
 	// Night 1 - SEER phase
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
-		t.Errorf("expected NIGHT_SEER phase, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
+		t.Errorf("expected NIGHT_SEER phase, got %v", engine.Phase())
 	}
 
 	// Seer checks wolf
@@ -629,8 +629,8 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// NIGHT_RESOLVE phase - apply night kills
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
-		t.Errorf("expected NIGHT_RESOLVE phase, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
+		t.Errorf("expected NIGHT_RESOLVE phase, got %v", engine.Phase())
 	}
 	mustEnd(t, engine) // NIGHT_RESOLVE -> DAY (v1 killed here)
 
@@ -641,15 +641,15 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// Day 1
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
-		t.Errorf("expected DAY phase, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
+		t.Errorf("expected DAY phase, got %v", engine.Phase())
 	}
 
 	mustEnd(t, engine) // Day -> Vote
 
 	// Vote 1
-	if engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_VOTE {
-		t.Errorf("expected VOTE phase, got %v", engine.GetCurrentPhase())
+	if engine.Phase() != pb.PhaseType_PHASE_TYPE_VOTE {
+		t.Errorf("expected VOTE phase, got %v", engine.Phase())
 	}
 
 	// Vote out wolf
@@ -686,7 +686,7 @@ func TestEngine_GetPhaseInfo_NightGuard(t *testing.T) {
 
 	mustStart(t, engine)
 
-	info := engine.GetPhaseInfo()
+	info := engine.PhaseInfo()
 
 	if info.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
 		t.Errorf("expected NIGHT_GUARD phase, got %v", info.Phase)
@@ -721,7 +721,7 @@ func TestEngine_GetPhaseInfo_NightWolf(t *testing.T) {
 	mustStart(t, engine)
 	mustEnd(t, engine) // GUARD -> WOLF
 
-	info := engine.GetPhaseInfo()
+	info := engine.PhaseInfo()
 
 	if info.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
 		t.Errorf("expected NIGHT_WOLF phase, got %v", info.Phase)
@@ -766,7 +766,7 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 	})
 	mustEnd(t, engine) // WOLF -> WITCH
 
-	info := engine.GetPhaseInfo()
+	info := engine.PhaseInfo()
 
 	if info.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
 		t.Errorf("expected NIGHT_WITCH phase, got %v", info.Phase)
@@ -792,7 +792,7 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 
 	mustStart(t, engine)
 
-	info := engine.GetPhaseInfo()
+	info := engine.PhaseInfo()
 
 	// 验证阶段步骤包含上帝公告
 	if len(info.Steps) != 2 {
@@ -804,7 +804,7 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 		t.Error("expected god announcement needed")
 	}
 
-	godStep := info.GetGodAnnouncementStep()
+	godStep := info.GodAnnouncementStep()
 	if godStep == nil {
 		t.Fatal("expected god announcement step")
 	}
@@ -816,7 +816,7 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 	}
 
 	// 验证玩家行动步骤
-	actionSteps := info.GetPlayerActionSteps()
+	actionSteps := info.PlayerActionSteps()
 	if len(actionSteps) != 1 {
 		t.Errorf("expected 1 action step, got %d", len(actionSteps))
 	}

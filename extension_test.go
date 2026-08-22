@@ -113,7 +113,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	engine := newWolfKingGame(t)
 
 	// 走完第一夜（狼人空刀）
-	for engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
+	for engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
 		if _, err := engine.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +135,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	}
 
 	// 引擎应当自动流转到自定义的狼王阶段
-	if got := engine.GetCurrentPhase(); got != phaseWolfKing {
+	if got := engine.Phase(); got != phaseWolfKing {
 		t.Fatalf("期望进入狼王阶段，实际 %v", got)
 	}
 
@@ -159,7 +159,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	if alive := mustInfo(t, engine, "s").Alive; alive {
 		t.Error("狼王开枪带走的预言家应当出局")
 	}
-	if got := engine.GetCurrentPhase(); got != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
 		t.Errorf("狼王阶段结束后应进入下一夜，实际 %v", got)
 	}
 }
@@ -202,7 +202,7 @@ func TestExtension_RegisterResolverRejects(t *testing.T) {
 
 func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
 	t.Helper()
-	p, ok := e.GetPlayerInfo(id)
+	p, ok := e.PlayerInfo(id)
 	if !ok {
 		t.Fatalf("玩家不存在: %s", id)
 	}
@@ -211,12 +211,12 @@ func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
 
 // TestExtension_CustomPhaseGetsPhaseInfo 自定义阶段也能拿到阶段信息。
 //
-// 此前 GetPhaseInfo 是一个写死内置阶段的 switch，自定义阶段返回空，
+// 此前 PhaseInfo 是一个写死内置阶段的 switch，自定义阶段返回空，
 // 调用方无从得知该让谁行动。
 func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	engine := newWolfKingGame(t)
 
-	for engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
+	for engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
 		if _, err := engine.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -234,11 +234,11 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	if _, err := engine.EndPhase(); err != nil {
 		t.Fatal(err)
 	}
-	if engine.GetCurrentPhase() != phaseWolfKing {
-		t.Fatalf("期望进入狼王阶段，实际 %v", engine.GetCurrentPhase())
+	if engine.Phase() != phaseWolfKing {
+		t.Fatalf("期望进入狼王阶段，实际 %v", engine.Phase())
 	}
 
-	info := engine.GetPhaseInfo()
+	info := engine.PhaseInfo()
 	ri := info.RoleInfos[roleWolfKing]
 	if ri == nil {
 		t.Fatal("自定义角色应当出现在 RoleInfos 中")
@@ -254,11 +254,11 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	}
 
 	// 视角同样对自定义角色生效
-	v := engine.GetPlayerView("wk")
+	v := engine.PlayerView("wk")
 	if len(v.AllowedSkills) != 2 {
 		t.Errorf("狼王视角应当看到自己的两个技能，实际 %v", v.AllowedSkills)
 	}
-	if got := engine.GetPlayerView("v3").AllowedSkills; len(got) != 0 {
+	if got := engine.PlayerView("v3").AllowedSkills; len(got) != 0 {
 		t.Errorf("非触发者不应有可用技能，实际 %v", got)
 	}
 }

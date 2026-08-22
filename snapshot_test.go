@@ -129,7 +129,7 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	}
 
 	t.Run("女巫药剂", func(t *testing.T) {
-		wi, _ := restored.GetPlayerInfo("wi")
+		wi, _ := restored.PlayerInfo("wi")
 		if wi.HasAntidote {
 			t.Error("第一夜用掉的解药不应恢复回来")
 		}
@@ -159,11 +159,11 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	})
 
 	t.Run("阶段与回合", func(t *testing.T) {
-		if restored.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
-			t.Errorf("阶段: 期望 NIGHT_GUARD，实际 %v", restored.GetCurrentPhase())
+		if restored.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+			t.Errorf("阶段: 期望 NIGHT_GUARD，实际 %v", restored.Phase())
 		}
-		if restored.GetCurrentRound() != 2 {
-			t.Errorf("回合: 期望 2，实际 %d", restored.GetCurrentRound())
+		if restored.Round() != 2 {
+			t.Errorf("回合: 期望 2，实际 %d", restored.Round())
 		}
 	})
 

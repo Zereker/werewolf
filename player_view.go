@@ -9,7 +9,7 @@ import (
 // # 为什么需要它
 //
 // 狼人杀这个游戏唯一真正难的东西就是「谁能知道什么」。引擎此前只提供
-// 上帝视角（GetPlayerInfo 能查到任何人的身份、GetPhaseInfo 一次性交出
+// 上帝视角（PlayerInfo 能查到任何人的身份、PhaseInfo 一次性交出
 // 狼队名单与刀口），把最安全攸关的信息过滤逻辑推给了调用方——
 // 只要某个 handler 手滑把整个 PhaseInfo 广播出去，一局游戏当场作废。
 //
@@ -55,19 +55,19 @@ type PublicPlayerInfo struct {
 	Role pb.RoleType `json:"role,omitempty"`
 }
 
-// GetPlayerView 返回指定玩家的视角。
+// PlayerView 返回指定玩家的视角。
 //
 // 返回的内容可以直接发给该玩家，不需要调用方再做过滤。
 // 玩家不存在时返回 nil。
 //
-// 与之相对，GetPhaseInfo / GetPlayerInfo / GetWolfTeammates /
-// GetNightKillTarget 是上帝视角接口：调用方作为主持人需要它们，
+// 与之相对，PhaseInfo / PlayerInfo / WolfTeammates /
+// NightKillTarget 是上帝视角接口：调用方作为主持人需要它们，
 // 但它们的内容不可以整体转发给玩家。
-func (e *Engine) GetPlayerView(playerID string) *PlayerView {
+func (e *Engine) PlayerView(playerID string) *PlayerView {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	self, ok := e.state.GetPlayerInfo(playerID)
+	self, ok := e.state.PlayerInfo(playerID)
 	if !ok {
 		return nil
 	}
@@ -105,7 +105,7 @@ func (e *Engine) publicPlayers(revealed map[string]bool) []PublicPlayerInfo {
 	ids := e.state.allPlayerIDs()
 	out := make([]PublicPlayerInfo, 0, len(ids))
 	for _, id := range ids {
-		p, ok := e.state.GetPlayerInfo(id)
+		p, ok := e.state.PlayerInfo(id)
 		if !ok {
 			continue
 		}

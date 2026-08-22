@@ -61,8 +61,8 @@ func IsErrorCode(err error, code pb.ErrorCode) bool {
 	return false
 }
 
-// GetErrorCode 从错误获取错误码
-func GetErrorCode(err error) pb.ErrorCode {
+// ErrorCode 从错误获取错误码
+func ErrorCode(err error) pb.ErrorCode {
 	if gameErr, ok := err.(*GameError); ok {
 		return gameErr.Code
 	}

@@ -60,13 +60,13 @@ func TestGetErrorCode(t *testing.T) {
 		Code: pb.ErrorCode_ERROR_CODE_GAME_ENDED,
 	}
 
-	code := GetErrorCode(gameErr)
+	code := ErrorCode(gameErr)
 	if code != pb.ErrorCode_ERROR_CODE_GAME_ENDED {
 		t.Errorf("expected ERROR_CODE_GAME_ENDED, got %v", code)
 	}
 
 	// Non-GameError returns UNSPECIFIED
-	code2 := GetErrorCode(nil)
+	code2 := ErrorCode(nil)
 	if code2 != pb.ErrorCode_ERROR_CODE_UNSPECIFIED {
 		t.Errorf("expected ERROR_CODE_UNSPECIFIED, got %v", code2)
 	}

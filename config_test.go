@@ -202,7 +202,7 @@ func TestStartPhase_Configurable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := engine.GetCurrentPhase(); got != pb.PhaseType_PHASE_TYPE_DAY {
+	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_DAY {
 		t.Errorf("期望从 DAY 开局，实际 %v", got)
 	}
 }

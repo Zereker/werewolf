@@ -14,8 +14,8 @@ type Resolver interface {
 	Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect
 }
 
-// VoteResult 投票结果
-type VoteResult struct {
+// voteResult 投票结果（包内使用）
+type voteResult struct {
 	Winner  string              // 得票最多的目标（平票时为空）
 	Tied    bool                // 是否平票
 	Votes   map[string]int      // 各目标得票数
@@ -24,7 +24,7 @@ type VoteResult struct {
 }
 
 // countVotes 统计投票结果（公共函数，消除重复逻辑）
-func countVotes(uses []*SkillUse, skillType pb.SkillType) VoteResult {
+func countVotes(uses []*SkillUse, skillType pb.SkillType) voteResult {
 	votes := make(map[string]int)
 	voters := make(map[string][]string)
 	votedPlayers := make(map[string]bool)
@@ -68,7 +68,7 @@ func countVotes(uses []*SkillUse, skillType pb.SkillType) VoteResult {
 		winner = ""
 	}
 
-	return VoteResult{
+	return voteResult{
 		Winner:  winner,
 		Tied:    tied,
 		Votes:   votes,
@@ -152,6 +152,10 @@ func (r *DayResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfi
 // GuardResolver 守卫阶段解析器
 type GuardResolver struct{}
 
+// NewGuardResolver 创建守卫阶段解析器。
+//
+// 内置解析器都是导出的，扩展可以包装它们复用已有逻辑，
+// 再经 Engine.RegisterResolver 换上——参见 extension_test.go。
 func NewGuardResolver() *GuardResolver {
 	return &GuardResolver{}
 }
@@ -187,6 +191,7 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView, config *GameCon
 // WolfResolver 狼人阶段解析器
 type WolfResolver struct{}
 
+// NewWolfResolver 创建狼人阶段解析器。
 func NewWolfResolver() *WolfResolver {
 	return &WolfResolver{}
 }
@@ -217,6 +222,7 @@ func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 // WitchResolver 女巫阶段解析器
 type WitchResolver struct{}
 
+// NewWitchResolver 创建女巫阶段解析器。
 func NewWitchResolver() *WitchResolver {
 	return &WitchResolver{}
 }
@@ -331,6 +337,7 @@ func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool)
 // 仅处理预言家查验，夜晚结算由 NightResolveResolver 处理
 type SeerResolver struct{}
 
+// NewSeerResolver 创建预言家阶段解析器。
 func NewSeerResolver() *SeerResolver {
 	return &SeerResolver{}
 }
@@ -360,6 +367,7 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 // 处理狼人击杀结算、女巫毒杀结算、猎人触发检测等
 type NightResolveResolver struct{}
 
+// NewNightResolveResolver 创建夜晚结算解析器。
 func NewNightResolveResolver() *NightResolveResolver {
 	return &NightResolveResolver{}
 }
@@ -435,6 +443,7 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 // HunterResolver 猎人阶段解析器
 type HunterResolver struct{}
 
+// NewHunterResolver 创建猎人阶段解析器。
 func NewHunterResolver() *HunterResolver {
 	return &HunterResolver{}
 }

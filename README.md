@@ -64,7 +64,7 @@ func main() {
 	}
 
 	// 4. 按阶段推进：每个阶段先提交技能，再调用 EndPhase 结算
-	//    Start() 之后是 NIGHT_GUARD，各阶段可提交的技能由 GetPhaseInfo 给出
+	//    Start() 之后是 NIGHT_GUARD，各阶段可提交的技能由 PhaseInfo 给出
 	must(engine.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "guard", Skill: pb.SkillType_SKILL_TYPE_PROTECT, TargetID: "seer",
 	}))
@@ -79,7 +79,7 @@ func main() {
 	next(engine) // NIGHT_WOLF -> NIGHT_WITCH
 
 	// 女巫此刻可以看到刀口（解药还在手上）
-	info := engine.GetPhaseInfo()
+	info := engine.PhaseInfo()
 	fmt.Printf("女巫看到的刀口: %s\n", info.RoleInfos[pb.RoleType_ROLE_TYPE_WITCH].KillTarget)
 	next(engine) // NIGHT_WITCH -> NIGHT_SEER
 
@@ -97,8 +97,8 @@ func main() {
 		fmt.Printf("效果: %v -> %s (canceled=%v)\n", e.Type, e.TargetID, e.Canceled)
 	}
 
-	v1, _ := engine.GetPlayerInfo("v1")
-	fmt.Printf("天亮了，当前阶段=%v，v1 存活=%v\n", engine.GetCurrentPhase(), v1.Alive)
+	v1, _ := engine.PlayerInfo("v1")
+	fmt.Printf("天亮了，当前阶段=%v，v1 存活=%v\n", engine.Phase(), v1.Alive)
 }
 
 func next(e *werewolf.Engine) {
@@ -217,7 +217,7 @@ nightWolf := &werewolf.PhaseConfig{
 ```
 
 `Steps` 同时是技能校验的唯一依据：`SubmitSkillUse` 只放行当前阶段声明过的技能，
-`GetPhaseInfo` 对外宣告的可用技能也由它派生，两者不会出现分歧。
+`PhaseInfo` 对外宣告的可用技能也由它派生，两者不会出现分歧。
 
 `Timeout` 是给调用方参考的建议值——**引擎自身不计时**，阶段何时结束完全由
 调用方决定（调用 `EndPhase`）。
@@ -263,10 +263,10 @@ type Effect struct {
 ## 玩家视角
 
 狼人杀最难的部分是「谁能知道什么」。引擎把这件事收在库内，
-`GetPlayerView` 返回的内容可以直接发给该玩家：
+`PlayerView` 返回的内容可以直接发给该玩家：
 
 ```go
-v := engine.GetPlayerView("p1")
+v := engine.PlayerView("p1")
 
 v.Self            // 自己的身份、阵营、（女巫的）药剂
 v.Players         // 全场公开信息；身份只对自己与狼队友可见
@@ -285,7 +285,7 @@ for _, effect := range effects {
 }
 ```
 
-`GetPhaseInfo` / `GetPlayerInfo` / `GetWolfTeammates` / `GetNightKillTarget`
+`PhaseInfo` / `PlayerInfo` / `WolfTeammates` / `NightKillTarget`
 是**上帝视角**接口，供调用方作为主持人使用，不可整体转发给玩家。
 
 ## 阶段就绪
@@ -396,8 +396,8 @@ func main() {
 
 	restored.EndPhase() // 结算狼刀
 	fmt.Printf("恢复后阶段=%v，女巫看到的刀口=%s\n",
-		restored.GetCurrentPhase(),
-		restored.GetPhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_WITCH].KillTarget)
+		restored.Phase(),
+		restored.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_WITCH].KillTarget)
 }
 ```
 
@@ -470,6 +470,9 @@ werewolf/
 ├── phase.go        # 阶段管理器、技能校验
 ├── resolver.go     # 各阶段解析器
 ├── effectlog.go    # 效果流日志与回放
+├── events.go       # 事件通知
+├── messaging.go    # 玩家发言的路由
+├── phase_info.go   # 阶段信息（上帝视角）
 ├── player_view.go  # 玩家视角与效果受众
 ├── readiness.go    # 阶段就绪判定
 ├── snapshot.go     # 存档导出与恢复

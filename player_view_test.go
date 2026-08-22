@@ -20,7 +20,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 	e := newViewGame(t)
 
 	t.Run("平民只知道自己", func(t *testing.T) {
-		v := e.GetPlayerView("v1")
+		v := e.PlayerView("v1")
 		if v.Self.Role != pb.RoleType_ROLE_TYPE_VILLAGER {
 			t.Errorf("自己的身份应当可见，实际 %v", v.Self.Role)
 		}
@@ -38,7 +38,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 	})
 
 	t.Run("狼人互相可见但看不到神职", func(t *testing.T) {
-		v := e.GetPlayerView("w1")
+		v := e.PlayerView("w1")
 		if len(v.Teammates) != 1 || v.Teammates[0] != "w2" {
 			t.Errorf("狼队友: 期望 [w2]，实际 %v", v.Teammates)
 		}
@@ -57,7 +57,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 	})
 
 	t.Run("全场存活状态是公开的", func(t *testing.T) {
-		v := e.GetPlayerView("v1")
+		v := e.PlayerView("v1")
 		if len(v.Players) != 8 {
 			t.Errorf("应当看到全部 8 名玩家，实际 %d", len(v.Players))
 		}
@@ -69,7 +69,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 	})
 
 	t.Run("玩家不存在返回 nil", func(t *testing.T) {
-		if v := e.GetPlayerView("查无此人"); v != nil {
+		if v := e.PlayerView("查无此人"); v != nil {
 			t.Errorf("期望 nil，实际 %+v", v)
 		}
 	})
@@ -90,12 +90,12 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := e.GetPlayerView("wi").KillTarget; got != "v1" {
+	if got := e.PlayerView("wi").KillTarget; got != "v1" {
 		t.Errorf("解药在手时女巫应看到刀口，实际 %q", got)
 	}
 	// 别人看不到
 	for _, id := range []string{"v1", "w1", "s", "g"} {
-		if got := e.GetPlayerView(id).KillTarget; got != "" {
+		if got := e.PlayerView(id).KillTarget; got != "" {
 			t.Errorf("%s 不应看到刀口，实际 %q", id, got)
 		}
 	}
@@ -111,12 +111,12 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for e.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
+	for e.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if got := e.GetPlayerView("wi").KillTarget; got != "" {
+	if got := e.PlayerView("wi").KillTarget; got != "" {
 		t.Errorf("解药已用完，女巫不应再看到刀口，实际 %q", got)
 	}
 }
@@ -126,19 +126,19 @@ func TestPlayerView_AllowedSkillsGateAction(t *testing.T) {
 	e := newViewGame(t)
 
 	// NIGHT_GUARD：只有守卫能行动
-	if got := e.GetPlayerView("g").AllowedSkills; len(got) != 1 ||
+	if got := e.PlayerView("g").AllowedSkills; len(got) != 1 ||
 		got[0] != pb.SkillType_SKILL_TYPE_PROTECT {
 		t.Errorf("守卫阶段守卫应可守护，实际 %v", got)
 	}
 	for _, id := range []string{"w1", "s", "wi", "v1"} {
-		if got := e.GetPlayerView(id).AllowedSkills; len(got) != 0 {
+		if got := e.PlayerView(id).AllowedSkills; len(got) != 0 {
 			t.Errorf("守卫阶段 %s 不应有可用技能，实际 %v", id, got)
 		}
 	}
 
 	// 出局玩家没有可用技能
 	e.state.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "g"))
-	if got := e.GetPlayerView("g").AllowedSkills; len(got) != 0 {
+	if got := e.PlayerView("g").AllowedSkills; len(got) != 0 {
 		t.Errorf("已出局玩家不应有可用技能，实际 %v", got)
 	}
 }

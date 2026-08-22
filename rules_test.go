@@ -136,12 +136,12 @@ func (g *ruleGame) mustUse(playerID string, skill pb.SkillType, targetID string)
 // end 结束当前子阶段并断言流转到 expect。
 func (g *ruleGame) end(expect pb.PhaseType) []*Effect {
 	g.t.Helper()
-	from := g.e.GetCurrentPhase()
+	from := g.e.Phase()
 	effects, err := g.e.EndPhase()
 	if err != nil {
 		g.t.Fatalf("EndPhase() 于 %v 失败: %v", from, err)
 	}
-	if got := g.e.GetCurrentPhase(); got != expect {
+	if got := g.e.Phase(); got != expect {
 		g.t.Fatalf("阶段流转错误: %v 结束后期望 %v，实际 %v", from, expect, got)
 	}
 	return effects
@@ -177,7 +177,7 @@ func (g *ruleGame) toNextNight() {
 // info 取玩家只读信息。
 func (g *ruleGame) info(id string) PlayerInfo {
 	g.t.Helper()
-	pi, ok := g.e.GetPlayerInfo(id)
+	pi, ok := g.e.PlayerInfo(id)
 	if !ok {
 		g.t.Fatalf("玩家不存在: %s", id)
 	}
@@ -198,7 +198,7 @@ func (g *ruleGame) assertAlive(id string, want bool, msg string) {
 // witchSeesKill 返回当前 NIGHT_WITCH 阶段女巫看到的刀口。
 func (g *ruleGame) witchSeesKill() string {
 	g.t.Helper()
-	ri := g.e.GetPhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_WITCH]
+	ri := g.e.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_WITCH]
 	if ri == nil {
 		return ""
 	}
@@ -750,9 +750,9 @@ func TestRule_R8_HunterMayNotShoot(t *testing.T) {
 // TestRule_R8_HunterMaySkipExplicitly 猎人可以显式提交 SKIP 放弃开枪。
 //
 // 这不是维基规则问题，而是引擎自相矛盾：
-//   - GetPhaseInfo() 通过 buildHunterPhaseInfo 向调用方宣告 AllowedSkills = [SHOOT, SKIP]
+//   - PhaseInfo() 通过 buildHunterPhaseInfo 向调用方宣告 AllowedSkills = [SHOOT, SKIP]
 //   - 但 NightHunterPhase/DayHunterPhase 的 Steps 里没有 SKIP，
-//     ValidateSkillUse 走 GetAllowedSkills 时会拒绝 SKIP
+//     ValidateSkillUse 走 AllowedSkills 时会拒绝 SKIP
 //   - 结果 HunterResolver 里处理 SKIP 的分支成了死代码
 //
 // 「引擎宣告可用的技能，必须真的可提交」是比任何单条规则更基础的约束。
@@ -772,7 +772,7 @@ func TestRule_R8_HunterMaySkipExplicitly(t *testing.T) {
 	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
 
 	// 前置：引擎确实对外宣告了 SKIP 可用
-	advertised := g.e.GetPhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER].AllowedSkills
+	advertised := g.e.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER].AllowedSkills
 	hasSkip := false
 	for _, sk := range advertised {
 		if sk == pb.SkillType_SKILL_TYPE_SKIP {
@@ -780,17 +780,17 @@ func TestRule_R8_HunterMaySkipExplicitly(t *testing.T) {
 		}
 	}
 	if !hasSkip {
-		t.Fatalf("前置不成立：GetPhaseInfo 未宣告 SKIP 可用，实际 %v", advertised)
+		t.Fatalf("前置不成立：PhaseInfo 未宣告 SKIP 可用，实际 %v", advertised)
 	}
 
 	// 宣告了就必须能提交
 	if err := g.use("h", pb.SkillType_SKILL_TYPE_SKIP, ""); err != nil {
-		t.Fatalf("GetPhaseInfo 宣告 SKIP 可用，SubmitSkillUse 却拒绝: %v", err)
+		t.Fatalf("PhaseInfo 宣告 SKIP 可用，SubmitSkillUse 却拒绝: %v", err)
 	}
 
-	// Engine.GetAllowedSkills 也应与之一致
-	allowed := g.e.GetAllowedSkills("h")
-	t.Logf("Engine.GetAllowedSkills(h) = %v", allowed)
+	// Engine.AllowedSkills 也应与之一致
+	allowed := g.e.AllowedSkills("h")
+	t.Logf("Engine.AllowedSkills(h) = %v", allowed)
 
 	g.end(pb.PhaseType_PHASE_TYPE_DAY)
 	g.assertAlive("w1", true, "猎人显式跳过")
@@ -822,12 +822,12 @@ func TestRule_R8_HunterShootsOnlyOnce(t *testing.T) {
 	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
 	g.vote("v1", "w2", "v2", "v3", "v4")
 
-	if got := g.e.GetCurrentPhase(); got != pb.PhaseType_PHASE_TYPE_VOTE {
+	if got := g.e.Phase(); got != pb.PhaseType_PHASE_TYPE_VOTE {
 		t.Fatalf("投票前阶段异常: %v", got)
 	}
 	g.endAny()
 
-	if got := g.e.GetCurrentPhase(); got == pb.PhaseType_PHASE_TYPE_DAY_HUNTER {
+	if got := g.e.Phase(); got == pb.PhaseType_PHASE_TYPE_DAY_HUNTER {
 		t.Fatal("出局者不是猎人，却再次进入 DAY_HUNTER（HunterTriggered 未在触发后清除）")
 	}
 	g.assertAlive("w2", true, "猎人不应开出第二枪")
@@ -1032,7 +1032,7 @@ func TestRule_R10_CategoryOf(t *testing.T) {
 		pb.Camp_CAMP_EVIL, RoleCategoryWolf); err != nil {
 		t.Fatalf("AddCustomPlayer 失败: %v", err)
 	}
-	hidden, _ := e2.GetPlayerInfo("hidden")
+	hidden, _ := e2.PlayerInfo("hidden")
 	if hidden.Camp != pb.Camp_CAMP_EVIL || hidden.Category != RoleCategoryWolf {
 		t.Errorf("自定义玩家: 期望 EVIL/WOLF，实际 %v/%v", hidden.Camp, hidden.Category)
 	}
@@ -1220,14 +1220,14 @@ func TestConvention_D3_NightPhaseOrder(t *testing.T) {
 		pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 回到下一夜
 	}
 
-	if got := g.e.GetCurrentPhase(); got != want[0] {
+	if got := g.e.Phase(); got != want[0] {
 		t.Fatalf("开局阶段: 期望 %v，实际 %v", want[0], got)
 	}
 	for i := 1; i < len(want); i++ {
 		g.end(want[i])
 	}
 
-	if got := g.e.GetCurrentRound(); got != 2 {
+	if got := g.e.Round(); got != 2 {
 		t.Errorf("走完一整轮后期望 Round=2，实际 %d", got)
 	}
 }
