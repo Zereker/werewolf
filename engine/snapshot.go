@@ -13,7 +13,7 @@ import (
 // 而那恰恰是这个版本号想防的事。现在规则包里有一个 golden 测试
 // （TestSnapshot_ShapeIsPinnedToVersion）把序列化形状钉住，字段增删改名
 // 都会让它变红，红了之后再判断该不该递增。
-const SnapshotVersion = 10
+const SnapshotVersion = 11
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -36,6 +36,9 @@ type Snapshot struct {
 
 	Phase PhaseType `json:"phase"`
 	Round int       `json:"round"`
+
+	// Vars 整局有效、不属于任何玩家的状态。
+	Vars map[string]string `json:"vars,omitempty"`
 
 	Players      []PlayerSnapshot   `json:"players"`
 	RoundContext RoundCtxSnapshot   `json:"round_context"`
@@ -98,6 +101,7 @@ func (e *Engine) Snapshot() *Snapshot {
 		Version:      SnapshotVersion,
 		Phase:        e.state.Phase,
 		Round:        e.state.Round,
+		Vars:         copyVars(e.state.Vars),
 		Players:      e.state.snapshotPlayers(),
 		RoundContext: e.state.snapshotRoundCtx(),
 		PendingUses:  make([]SkillUseSnapshot, 0, len(e.pendingUses)),
@@ -161,6 +165,7 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 		return nil, err
 	}
 
+	engine.state.Vars = copyVars(snap.Vars)
 	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)
 
 	return engine, nil

@@ -209,13 +209,13 @@ func (assassinResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 		hit := p.Role == RoleMerlin
 		return []*engine.Effect{
 			engine.NewEffect(EventAssassinated, u.PlayerID, u.TargetID).WithData("hit", hit),
-			engine.NewSetPlayerVarEffect(ledger(view), varAssassinated, boolVar(hit)),
+			engine.NewSetGameVarEffect(varAssassinated, boolVar(hit)),
 		}
 	}
 	// 没有指认视为刺杀落空
 	return []*engine.Effect{
 		engine.NewEffect(EventAssassinated, "", "").WithData("hit", false),
-		engine.NewSetPlayerVarEffect(ledger(view), varAssassinated, "miss"),
+		engine.NewSetGameVarEffect(varAssassinated, "miss"),
 	}
 }
 

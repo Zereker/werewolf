@@ -8,29 +8,18 @@ import (
 
 // gamestate.go 阿瓦隆的整局进度存在哪。
 //
-// # 这个文件是一处绕法，不是设计
+// 五样东西：现在第几轮任务、成功了几次、失败了几次、连续否决了几次、
+// 队长轮到谁。它们全都**整局有效、且不属于任何玩家**——正好是内核第四种
+// 变量作用域（GameVar）。
 //
-// 阿瓦隆要记五样东西：现在第几轮任务、成功了几次、失败了几次、
-// 连续否决了几次、队长轮到谁。它们全都**整局有效、且不属于任何玩家**。
+// # 这个文件曾经是一处绕法
 //
-// 内核有三种变量作用域，摆成表少一格：
+// 内核此前只有三种作用域，缺「整局有效 + 无主」这一格（SCARS.md 疤 4）。
+// 于是这五个数只能挂到「ID 字典序最小的那名玩家」的 PlayerVar 上当账本：
+// 全局事实记在某个人名下，那个玩家的 PlayerView 里凭空多出五个与他无关的
+// 字段，「谁是账本」还得靠约定维持。
 //
-//	              无主          属于某个玩家
-//	整局有效       （没有）       PlayerVar
-//	本回合有效     RoundVar      PlayerRoundVar
-//
-// 唯一的「无主」作用域是 RoundVar，而它跨回合会被清空（绕回起始阶段
-// 即新回合）。阿瓦隆每提名一次就绕一圈，这五个数一轮都活不过。
-//
-// 于是只能挂到某个玩家身上——本文件挑「ID 字典序最小的那位」当账本。
-// 这么做能走通：PlayerVar 跟着玩家走一整局、进快照、能回放，AllPlayers()
-// 有序所以选谁是确定的。但它显然不对：
-//
-//   - 整局进度是**全局事实**，却记在某个人的私有状态里；
-//   - PlayerView 里那个玩家会莫名其妙多出五个跟他无关的字段；
-//   - 「谁是账本」这件事得靠约定维持，第三方扩展一不小心就会覆盖它。
-//
-// 记在 SCARS.md 第 4 条。真正的解法是内核补上缺的那一格。
+// 内核补上第四格之后，账本整个删掉了——现在是 GameVar，读写各一行。
 const (
 	varMission = "avalon.mission" // 现在第几轮任务，1-5
 	varSuccess = "avalon.success" // 已经成功几次
@@ -50,25 +39,9 @@ const (
 	varApproved = "avalon.approved" // 回合级：这一轮的队伍表决通过了
 )
 
-// ledger 当账本的那名玩家。
-//
-// AllPlayers() 按 ID 排序，因此这个选择是确定的——回放与快照比对
-// 依赖它。阿瓦隆没有出局机制，名单整局不变。
-func ledger(view engine.GameView) string {
-	all := view.AllPlayers()
-	if len(all) == 0 {
-		return ""
-	}
-	return all[0].ID
-}
-
 // gameNum 读一个整局计数，没有则为 0。
 func gameNum(view engine.GameView, key string) int {
-	id := ledger(view)
-	if id == "" {
-		return 0
-	}
-	n, err := strconv.Atoi(view.PlayerVar(id, key))
+	n, err := strconv.Atoi(view.GameVar(key))
 	if err != nil {
 		return 0
 	}
@@ -76,8 +49,8 @@ func gameNum(view engine.GameView, key string) int {
 }
 
 // setGameNum 写一个整局计数。
-func setGameNum(view engine.GameView, key string, n int) *engine.Effect {
-	return engine.NewSetPlayerVarEffect(ledger(view), key, strconv.Itoa(n))
+func setGameNum(_ engine.GameView, key string, n int) *engine.Effect {
+	return engine.NewSetGameVarEffect(key, strconv.Itoa(n))
 }
 
 // mission 当前是第几轮任务，1-5。开局还没写过时算第 1 轮。

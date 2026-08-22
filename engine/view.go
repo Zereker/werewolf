@@ -48,6 +48,15 @@ type GameView interface {
 	// 写入走 NewSetPlayerRoundVarEffect。
 	PlayerRoundVar(playerID, key string) string
 
+	// GameVar 返回整局的一项自定义状态，没有则为空串。
+	//
+	// 四种作用域里的第四种：**整局有效、不属于任何玩家**。比分、计数器、
+	// 轮到谁这类「全局事实」属于这里。跟着某个玩家走一整局的用 PlayerVar，
+	// 本回合有效且无主的用 RoundVar，「本回合标记了某人」用 PlayerRoundVar。
+	//
+	// 写入走 NewSetGameVarEffect。
+	GameVar(key string) string
+
 	// RoundVar 返回本回合的一项自定义状态，没有则为空串。
 	//
 	// 与 PlayerVar 的分工：那个跟着玩家走一整局，这个每回合自动清零，
@@ -116,6 +125,8 @@ func (v stateView) PlayerVar(playerID, key string) string {
 func (v stateView) PlayerRoundVar(playerID, key string) string {
 	return v.s.playerRoundVar(playerID, key)
 }
+
+func (v stateView) GameVar(key string) string { return v.s.gameVar(key) }
 
 func (v stateView) RoundVar(key string) string { return v.s.roundVar(key) }
 

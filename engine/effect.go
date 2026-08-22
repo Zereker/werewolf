@@ -33,6 +33,7 @@ var kernelPrimitives = map[EventType]bool{
 	EventPlayerAdded:       true,
 	EventPhaseChanged:      true,
 	EventGotoPhase:         true,
+	EventSetGameVar:        true,
 }
 
 // isInternalEvent 判断事件是否为内核的状态原语。
@@ -183,6 +184,23 @@ func playerVarOf(e *Effect) (key, value string) {
 	key, _ = e.Data[playerVarKeyKey].(string)
 	value, _ = e.Data[playerVarValueKey].(string)
 	return key, value
+}
+
+// NewSetGameVarEffect 声明「把整局的某项状态改成某值」。
+//
+// 四种作用域里的第四种，也是补上的那一格：**整局有效、不属于任何玩家**。
+// 跟着玩家走一整局的用 NewSetPlayerVarEffect，本回合有效且无主的用
+// NewSetRoundVarEffect，「本回合标记了某人」用 NewSetPlayerRoundVarEffect。
+//
+// 比分、计数器、轮到谁这类「全局事实」属于这一格。此前没有它，规则只能把
+// 这类数挂到某个玩家的私有状态上当账本——全局事实记在个人名下，那个玩家的
+// 视图里还会凭空多出与他无关的字段。
+//
+// 值为空串等同删除，与其余三种一致。
+func NewSetGameVarEffect(key, value string) *Effect {
+	return NewEffect(EventSetGameVar, "", "").
+		WithData(roundVarKeyKey, key).
+		WithData(roundVarValueKey, value)
 }
 
 // NewSetRoundVarEffect 声明「把本回合的某项自定义状态改成某值」。

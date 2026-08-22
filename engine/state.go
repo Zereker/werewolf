@@ -83,6 +83,24 @@ type gameState struct {
 	Round   int                     // 当前回合
 	players map[string]*playerState // 玩家状态（私有，通过方法访问）
 
+	// Vars 整局有效、不属于任何玩家的状态。
+	//
+	// 变量作用域是一张 2x2 的表——时间尺度（整局 / 本回合）乘以有没有主人
+	// （无主 / 属于某个玩家）。此前只有三格：
+	//
+	//	              无主          属于某个玩家
+	//	  整局有效     （缺）        playerState.Vars
+	//	  本回合有效   RoundCtx.Vars playerState.RoundVars
+	//
+	// 缺的那一格不是刻意留白，是漏了：狼人杀整局有效的状态恰好都挂在人身上
+	// （女巫的药、守卫上回合守了谁），所以一直没人撞到。阿瓦隆撞到了——
+	// 「第几轮任务」「成功几次」「连续否决几次」「队长轮到谁」四样全是整局
+	// 有效且不属于任何玩家，只能挂到某个玩家的私有状态上当账本，
+	// 那个玩家的 PlayerView 里于是凭空多出四个与他无关的字段。
+	//
+	// 写走 NewSetGameVarEffect，读走 GameView.GameVar / Engine.GameVar。
+	Vars map[string]string
+
 	// 回合临时上下文（每个回合重新创建）
 	RoundCtx *RoundContext
 }
@@ -272,6 +290,7 @@ func (s *gameState) clone() *gameState {
 	out := newState()
 	out.Phase = s.Phase
 	out.Round = s.Round
+	out.Vars = copyVars(s.Vars)
 	out.RoundCtx = &RoundContext{
 		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
 		Vars:            copyVars(s.RoundCtx.Vars),
@@ -357,6 +376,12 @@ func (s *gameState) applyEffect(effect *Effect) {
 					p.Vars[key] = value
 				}
 			}
+		}
+
+	case EventSetGameVar:
+		// 整局有效、不属于任何玩家。值为空即删除。
+		if key, value := roundVarOf(effect); key != "" {
+			s.setGameVar(key, value)
 		}
 
 	case EventSetRoundVar:
@@ -501,4 +526,24 @@ func (s *gameState) RoundContext() *RoundContext {
 		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
 		Vars:            copyVars(s.RoundCtx.Vars),
 	}
+}
+
+// gameVar 读一项整局有效的状态，没有则为空串。
+func (s *gameState) gameVar(key string) string {
+	if s.Vars == nil {
+		return ""
+	}
+	return s.Vars[key]
+}
+
+// setGameVar 写一项整局有效的状态。空串等同删除——与其余三种作用域同一个口径。
+func (s *gameState) setGameVar(key, value string) {
+	if value == "" {
+		delete(s.Vars, key)
+		return
+	}
+	if s.Vars == nil {
+		s.Vars = map[string]string{}
+	}
+	s.Vars[key] = value
 }

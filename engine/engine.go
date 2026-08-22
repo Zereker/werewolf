@@ -452,6 +452,16 @@ func (e *Engine) IsGameOver() bool {
 	return e.state.Phase == PhaseEnd
 }
 
+// GameVar 读整局的一项自定义状态，没有则为空串。
+//
+// 与 RoundVar 对称：那个每回合清零，这个跟着整局走。规则用它提供自己的
+// 便利读法（阿瓦隆的「第几轮任务」「成功几次」就是）。
+func (e *Engine) GameVar(key string) string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.state.gameVar(key)
+}
+
 // RoundVar 读本回合的一项自定义状态，没有则为空串。
 //
 // 规则用它提供自己的便利读法——狼人杀的「今晚的刀口」就是

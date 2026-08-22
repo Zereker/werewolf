@@ -122,12 +122,16 @@ func TestRoundEqualsMissionNumber(t *testing.T) {
 	}
 }
 
-// TestScar4_GameProgressLivesOnSomeonesPrivateState 整局进度记在某个玩家身上。
+// TestGameProgressLivesInGameVars 整局进度住在整局作用域里，不挂在任何玩家身上。
 //
-// 内核的三种变量作用域里没有「整局有效 + 无主」这一格，阿瓦隆的五个计数器
-// 只能挂到 ID 字典序最小的那名玩家的 PlayerVar 上。后果是那个玩家的私有
-// 状态里凭空多出五个与他无关的字段。
-func TestScar4_GameProgressLivesOnSomeonesPrivateState(t *testing.T) {
+// **这条曾经是疤 4**：内核的变量作用域是一张 2x2 的表，缺「整局有效 + 无主」
+// 这一格。阿瓦隆的五个计数器（第几轮、成功几次、失败几次、连续否决几次、
+// 队长是谁）只能挂到 ID 字典序最小那名玩家的 PlayerVar 上当账本——全局事实
+// 记在某个人名下，那个玩家的视图里凭空多出五个与他无关的字段。
+//
+// 内核补上第四格（GameVar）之后账本整个删掉了。这个测试盯住两件事：
+// 进度确实在整局作用域里，且**没有任何玩家身上沾着它**。
+func TestGameProgressLivesInGameVars(t *testing.T) {
 	e := fivePlayer(t)
 	proposeAndApprove(t, e, "a", "b")
 	for _, id := range []string{"a", "b"} {
@@ -135,17 +139,23 @@ func TestScar4_GameProgressLivesOnSomeonesPrivateState(t *testing.T) {
 	}
 	mustEnd(t, e)
 
-	holder, _ := e.PlayerInfo("a") // AllPlayers 排序后的第一位
-	var leaked []string
-	for k := range holder.Vars {
-		if k != engine.VarCamp {
-			leaked = append(leaked, k)
+	// 一、进度读得到，而且在整局作用域里
+	if got := successes(e.View()); got != 1 {
+		t.Fatalf("成功次数 = %d，期望 1", got)
+	}
+	if e.GameVar(varSuccess) == "" {
+		t.Errorf("成功次数该住在 GameVar 里，%q 是空的", varSuccess)
+	}
+
+	// 二、没有任何玩家身上沾着阿瓦隆的整局计数
+	for _, id := range e.AlivePlayerIDs() {
+		p, _ := e.PlayerInfo(id)
+		for k := range p.Vars {
+			if k != engine.VarCamp {
+				t.Errorf("玩家 %s 身上不该有 %q——那是整局状态，不属于任何人", id, k)
+			}
 		}
 	}
-	if len(leaked) == 0 {
-		t.Skip("内核已经有整局作用域了——这道疤该改成正面断言")
-	}
-	t.Logf("疤 4：玩家 a 的私有状态里多出 %d 个与他无关的字段：%v", len(leaked), leaked)
 }
 
 // ==================== 测试辅助 ====================
