@@ -17,7 +17,7 @@ func TestVoteResolver_Empty(t *testing.T) {
 		t.Fatalf("expected 1 effect (tied), got %d", len(effects))
 	}
 	if effects[0].Type != EventVoteTied {
-		t.Errorf("expected EVENT_TYPE_VOTE_TIED for empty votes, got %v", effects[0].Type)
+		t.Errorf("expected VOTE_TIED for empty votes, got %v", effects[0].Type)
 	}
 }
 
@@ -38,7 +38,7 @@ func TestVoteResolver_Single(t *testing.T) {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
 	if effects[0].Type != EventEliminate {
-		t.Errorf("expected EVENT_TYPE_ELIMINATE, got %v", effects[0].Type)
+		t.Errorf("expected ELIMINATE, got %v", effects[0].Type)
 	}
 	if effects[0].TargetID != "p2" {
 		t.Errorf("expected target=p2, got %s", effects[0].TargetID)
@@ -66,7 +66,7 @@ func TestVoteResolver_Clear(t *testing.T) {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
 	if effects[0].Type != EventEliminate {
-		t.Errorf("expected EVENT_TYPE_ELIMINATE, got %v", effects[0].Type)
+		t.Errorf("expected ELIMINATE, got %v", effects[0].Type)
 	}
 	if effects[0].TargetID != "wolf" {
 		t.Errorf("expected target=wolf (majority), got %s", effects[0].TargetID)
@@ -95,7 +95,7 @@ func TestVoteResolver_Tie(t *testing.T) {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
 	if effects[0].Type != EventVoteTied {
-		t.Errorf("expected EVENT_TYPE_VOTE_TIED for tie, got %v", effects[0].Type)
+		t.Errorf("expected VOTE_TIED for tie, got %v", effects[0].Type)
 	}
 	if effects[0].Data["result"] != "tied" {
 		t.Errorf("expected result=tied, got %v", effects[0].Data["result"])
@@ -123,7 +123,7 @@ func TestVoteResolver_Invalid(t *testing.T) {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
 	if effects[0].Type != EventVoteTied {
-		t.Errorf("expected EVENT_TYPE_VOTE_TIED for invalid votes, got %v", effects[0].Type)
+		t.Errorf("expected VOTE_TIED for invalid votes, got %v", effects[0].Type)
 	}
 }
 
@@ -454,12 +454,12 @@ func TestGuardResolver_Protect(t *testing.T) {
 
 	// 检查 SET_LAST_PROTECTED effect
 	if effects[0].Type != EventSetLastProtected {
-		t.Errorf("expected EVENT_TYPE_SET_LAST_PROTECTED, got %v", effects[0].Type)
+		t.Errorf("expected SET_LAST_PROTECTED, got %v", effects[0].Type)
 	}
 
 	// 检查 PROTECT effect
 	if effects[1].Type != EventProtect {
-		t.Errorf("expected EVENT_TYPE_PROTECT, got %v", effects[1].Type)
+		t.Errorf("expected PROTECT, got %v", effects[1].Type)
 	}
 
 	// 应用所有效果

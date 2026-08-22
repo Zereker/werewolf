@@ -260,7 +260,7 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 
 // TestExtension_CustomWolfCampRoleIsPartOfTheTeam 自定义的狼队角色要真的算进狼队。
 //
-// 狼队的判定此前写死 ROLE_TYPE_WEREWOLF，而狼王、白狼王、狼美人经
+// 狼队的判定此前写死 WEREWOLF，而狼王、白狼王、狼美人经
 // AddCustomPlayer 加进来时 Camp 是 EVIL、Role 不是 WEREWOLF：
 // 他们看不到队友、不被真狼看到、夜里也发不出话——自定义狼队角色实际不可用。
 func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {

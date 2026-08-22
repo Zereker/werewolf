@@ -20,8 +20,8 @@ func TestGameError_Error(t *testing.T) {
 	err2 := &GameError{
 		Code: CodePlayerDead,
 	}
-	if err2.Error() != "ERROR_CODE_PLAYER_DEAD" {
-		t.Errorf("expected 'ERROR_CODE_PLAYER_DEAD', got '%s'", err2.Error())
+	if err2.Error() != "PLAYER_DEAD" {
+		t.Errorf("expected 'PLAYER_DEAD', got '%s'", err2.Error())
 	}
 }
 
@@ -51,13 +51,13 @@ func TestCodeOf(t *testing.T) {
 
 	code := CodeOf(gameErr)
 	if code != CodeGameEnded {
-		t.Errorf("expected ERROR_CODE_GAME_ENDED, got %v", code)
+		t.Errorf("expected GAME_ENDED, got %v", code)
 	}
 
 	// Non-GameError returns UNSPECIFIED
 	code2 := CodeOf(nil)
 	if code2 != CodeUnspecified {
-		t.Errorf("expected ERROR_CODE_UNSPECIFIED, got %v", code2)
+		t.Errorf("expected UNSPECIFIED, got %v", code2)
 	}
 }
 
@@ -65,7 +65,7 @@ func TestWrapError(t *testing.T) {
 	err := WrapError(CodeInvalidPhase, "invalid phase: %s", "START")
 
 	if err.Code != CodeInvalidPhase {
-		t.Errorf("expected ERROR_CODE_INVALID_PHASE, got %v", err.Code)
+		t.Errorf("expected INVALID_PHASE, got %v", err.Code)
 	}
 	if err.Message != "invalid phase: START" {
 		t.Errorf("expected 'invalid phase: START', got '%s'", err.Message)

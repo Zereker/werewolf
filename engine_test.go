@@ -246,7 +246,7 @@ func TestEngine_EndPhase(t *testing.T) {
 
 	// 检查包含 PROTECT effect
 	if findEffect(effects, EventProtect) == nil {
-		t.Error("expected to have EVENT_TYPE_PROTECT effect")
+		t.Error("expected to have PROTECT effect")
 	}
 
 	// Should transition to NIGHT_WOLF

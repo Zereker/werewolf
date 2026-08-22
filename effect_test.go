@@ -8,7 +8,7 @@ func TestNewEffect(t *testing.T) {
 	effect := NewEffect(EventKill, "wolf", "victim")
 
 	if effect.Type != EventKill {
-		t.Errorf("expected Type=EVENT_TYPE_KILL, got %v", effect.Type)
+		t.Errorf("expected Type=KILL, got %v", effect.Type)
 	}
 	if effect.SourceID != "wolf" {
 		t.Errorf("expected SourceID=wolf, got %s", effect.SourceID)
@@ -74,7 +74,7 @@ func TestEffect_ToEvent_Kill(t *testing.T) {
 	event := effect.ToEvent()
 
 	if event.Type != EventKill {
-		t.Errorf("expected EVENT_TYPE_KILL, got %v", event.Type)
+		t.Errorf("expected KILL, got %v", event.Type)
 	}
 	if event.SourceID != "wolf" {
 		t.Errorf("expected SourceId=wolf, got %s", event.SourceID)
@@ -90,7 +90,7 @@ func TestEffect_ToEvent_Poison(t *testing.T) {
 	event := effect.ToEvent()
 
 	if event.Type != EventPoison {
-		t.Errorf("expected EVENT_TYPE_POISON, got %v", event.Type)
+		t.Errorf("expected POISON, got %v", event.Type)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestEffect_ToEvent_Protect(t *testing.T) {
 	event := effect.ToEvent()
 
 	if event.Type != EventProtect {
-		t.Errorf("expected EVENT_TYPE_PROTECT, got %v", event.Type)
+		t.Errorf("expected PROTECT, got %v", event.Type)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestEffect_ToEvent_Save(t *testing.T) {
 	event := effect.ToEvent()
 
 	if event.Type != EventSave {
-		t.Errorf("expected EVENT_TYPE_SAVE, got %v", event.Type)
+		t.Errorf("expected SAVE, got %v", event.Type)
 	}
 }
 
@@ -120,7 +120,7 @@ func TestEffect_ToEvent_Check(t *testing.T) {
 	event := effect.ToEvent()
 
 	if event.Type != EventCheck {
-		t.Errorf("expected EVENT_TYPE_CHECK, got %v", event.Type)
+		t.Errorf("expected CHECK, got %v", event.Type)
 	}
 }
 
@@ -130,7 +130,7 @@ func TestEffect_ToEvent_Eliminate(t *testing.T) {
 	event := effect.ToEvent()
 
 	if event.Type != EventEliminate {
-		t.Errorf("expected EVENT_TYPE_ELIMINATE, got %v", event.Type)
+		t.Errorf("expected ELIMINATE, got %v", event.Type)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestEffect_ToEvent_Unspecified(t *testing.T) {
 	event := effect.ToEvent()
 
 	if event.Type != EventUnspecified {
-		t.Errorf("expected EVENT_TYPE_UNSPECIFIED, got %v", event.Type)
+		t.Errorf("expected UNSPECIFIED, got %v", event.Type)
 	}
 }
 
@@ -181,8 +181,8 @@ func TestEffect_ToEvent_WithData(t *testing.T) {
 	}
 
 	// Camp 应该被转换为字符串 (使用 Stringer 接口)
-	if event.Data["camp"] != "CAMP_GOOD" {
-		t.Errorf("expected camp=CAMP_GOOD, got %s", event.Data["camp"])
+	if event.Data["camp"] != "GOOD" {
+		t.Errorf("expected camp=GOOD, got %s", event.Data["camp"])
 	}
 
 	// bool 应该转换为 "true"

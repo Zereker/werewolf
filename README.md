@@ -117,8 +117,8 @@ func must(err error) {
 
 ```
 女巫看到的刀口: v1
-效果: EVENT_TYPE_KILL -> v1 (canceled=false)
-天亮了，当前阶段=PHASE_TYPE_DAY，v1 存活=false
+效果: KILL -> v1 (canceled=false)
+天亮了，当前阶段=DAY，v1 存活=false
 ```
 
 完整示例见 [example/main.go](example/main.go)。
@@ -158,8 +158,8 @@ err = engine.AddCustomPlayer("p2", werewolf.RoleVillager,
 | 情况 | 错误 |
 |------|------|
 | ID 为空 | `ErrInvalidPlayerID` |
-| ID 重复 | `ERROR_CODE_PLAYER_EXISTS` |
-| 角色是上帝或未指定 | `ERROR_CODE_INVALID_ROLE` |
+| ID 重复 | `PLAYER_EXISTS` |
+| 角色是上帝或未指定 | `INVALID_ROLE` |
 | 游戏已开始 | `ErrGameAlreadyStarted` |
 
 `Start` 同样会校验板子：缺狼返回 `ErrNoWerewolf`，缺好人返回 `ErrNoGoodPlayer`，
@@ -463,7 +463,7 @@ func main() {
 输出：
 
 ```
-恢复后阶段=PHASE_TYPE_NIGHT_WITCH，女巫看到的刀口=v1
+恢复后阶段=NIGHT_WITCH，女巫看到的刀口=v1
 ```
 
 要点：
