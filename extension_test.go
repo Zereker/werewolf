@@ -43,7 +43,7 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 		}
 		// 枪只有一发。子弹是入座时发的（wolfKingSetup），用掉即清空——
 		// 与女巫的药同一条路：状态在 PlayerVar 里，改动经 Effect 表达。
-		if view.PlayerVar(use.PlayerID, varWolfKingGun) == "" {
+		if view.Var(engine.ScopeGame.Of(use.PlayerID), varWolfKingGun) == "" {
 			continue
 		}
 		// SHOOT 是狼王给「发生了什么」起的名字，内核不认得它；
@@ -52,7 +52,7 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 		effects = append(effects,
 			engine.NewEffect(EventShoot, use.PlayerID, use.Target()),
 			engine.NewSetAliveEffect(use.Target(), false),
-			engine.NewSetPlayerVarEffect(use.PlayerID, varWolfKingGun, ""))
+			engine.NewSetVarEffect(engine.ScopeGame.Of(use.PlayerID), varWolfKingGun, ""))
 		break
 	}
 	return effects

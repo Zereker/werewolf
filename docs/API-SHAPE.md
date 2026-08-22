@@ -3,7 +3,8 @@
 这份文档不提改法，只做一件事：**把当前 API 里那些「概念存在、但代码里没有对应物」
 的地方摊开**，供决定要不要动、动哪些。
 
-数据取自 `go doc -all ./engine`：**52 个类型、28 个包级函数、57 个方法。**
+数据取自 `go doc -all ./engine`：**53 个类型、25 个包级函数、59 个方法**
+（收敛作用域之后；此前是 52 / 28 / 57，总数不变）。
 
 判据只有一条：
 
@@ -11,7 +12,7 @@
 
 ---
 
-## 一、变量作用域：一张 2×2 的表，摊成八个平铺的名字
+## 一、变量作用域：一张 2×2 的表，摊成八个平铺的名字 —— 已收敛
 
 这一条最刺眼，因为**证据是我们自己反复写的文档**——`state.go`、`view.go`、
 `SCARS.md`、CHANGELOG 里都画过这张表：
@@ -37,21 +38,35 @@
 「一个概念」= 作用域（时间尺度 × 有没有主人）。
 「代码里的对应物」= 没有。
 
+**已收敛**：作用域现在是 `VarScope` 这个类型，四格由两个值叉乘一个方法
+得出，写走 `NewSetVarEffect(scope, k, v)`，读走 `Var(scope, k)`：
+
+|  | 无主 | 属于某个玩家 |
+|---|---|---|
+| **整局有效** | `ScopeGame` | `ScopeGame.Of(id)` |
+| **本回合有效** | `ScopeRound` | `ScopeRound.Of(id)` |
+
+顺带发现同一个毛病还在另外两处：`Engine` 上只有两格（有主的读不到），
+`Board` 少了「整局·无主」（摆不出带比分的局面）。两处都补齐了。
+
+名字总数没减（描述这张表的从 15 个降到 11 个，内核导出总数仍是 137），
+换到的是**完整性**：四格能枚举，缺一格测试先撞上，不必等下一个规则包。
+
 ---
 
-## 二、效果构造器：九个自由函数，混着两类东西
+## 二、效果构造器：六个自由函数，混着两类东西
 
 ```
 NewEffect                     规则给「发生了什么」起名字
 NewSetAliveEffect             改状态
-NewSetPlayerVarEffect         改状态
-NewSetRoundVarEffect          改状态
-NewSetPlayerRoundVarEffect    改状态
-NewSetGameVarEffect           改状态
+NewSetVarEffect               改状态
 NewAbilityTriggerEffect       下指令：把某人排进某个阶段
 NewGotoPhaseEffect            下指令：下一步去哪
 NewSetActorsEffect            下指令：谁能在某阶段行动
 ```
+
+（四个 Var 构造器收敛成一个之后从九个降到六个，但这一条的毛病没变：
+两类东西仍然平铺在一起。）
 
 两类东西平铺在一起，没有任何类型区分：**改状态的**和**下指令的**。
 
@@ -108,16 +123,16 @@ NewSetActorsEffect            下指令：谁能在某阶段行动
 
 ---
 
-## 五、`Engine` 的二十七个方法
+## 五、`Engine` 的二十六个方法
 
 ```
 AddPlayer AlivePlayerIDs AllowedSkills Apply AudienceOf EffectLog EndPhase
-GameVar IsGameOver MessageReceivers OnEvent OnMessage Phase PhaseInfo
-PhaseReadiness PlayerInfo PlayerView Round RoundContext RoundVar SendMessage
-Snapshot Start SubmitSkillUse Teammates View Winner
+IsGameOver MessageReceivers OnEvent OnMessage Phase PhaseInfo
+PhaseReadiness PlayerInfo PlayerView Round RoundContext SendMessage
+Snapshot Start SubmitSkillUse Teammates Var View Winner
 ```
 
-其中一串是**同一件事的不同粒度**：`Phase()` `Round()` `RoundVar()` `GameVar()`
+其中一串是**同一件事的不同粒度**：`Phase()` `Round()` `Var()`
 `PlayerInfo()` `AlivePlayerIDs()` `RoundContext()` 与 `View()` 问的是同一批问题。
 
 此前的辩护是「`View()` 会 clone 整个状态，问一句『现在第几回合』不该付那个代价」
@@ -130,13 +145,13 @@ Snapshot Start SubmitSkillUse Teammates View Winner
 
 | 概念 | 代码里的对应物 | 摊成几个名字 |
 |---|---|---|
-| 变量作用域（2×2） | **没有** | 8 |
-| 规则对内核说的话（两类） | **没有** | 9 |
+| 变量作用域（2×2） | ~~没有~~ → `VarScope` | ~~8~~ → 已收敛 |
+| 规则对内核说的话（两类） | **没有** | 6 |
 | 一个扩展点 | 部分（接口有，装配没有） | 8 × 2~3 = 20 |
 | 「谁在看这份数据」 | **没有** | 3 |
-| 便宜的状态读法 | **没有** | 7 |
+| 便宜的状态读法 | **没有** | 6 |
 
-**52 个导出类型里，相当一部分是「概念没有对应物」摊出来的。**
+**53 个导出类型里，相当一部分是「概念没有对应物」摊出来的。**
 
 ---
 

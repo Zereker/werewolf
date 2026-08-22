@@ -401,7 +401,7 @@ g.AddPlayer("wk", roleWolfKing)
 |---|---|
 | 新角色的行为 | `WithResolver(phase, resolver)`，可包装内置解析器复用逻辑 |
 | 角色的初始状态 | `WithRoleSetup(role, setup)`，入座时发放，写进该玩家的 `Vars`；阵营与类别也在这里（`CampVars`） |
-| 角色自身的状态 | `NewSetPlayerVarEffect`（跟着玩家一整局）/ `NewSetRoundVarEffect`（每回合清零），读走 `GameView.PlayerVar` / `RoundVar` |
+| 角色自身的状态 | `NewSetVarEffect(scope, k, v)` 写、`GameView.Var(scope, k)` 读，作用域是 `ScopeGame` / `ScopeRound`，加 `.Of(id)` 变成属于某个玩家 |
 | 新的胜利条件 | `WithVictoryChecker(checker)`，包一层 `DefaultVictoryChecker` 就能在内置规则之上再加一条 |
 | 角色专属信息 | `WithRoleInfo(role, provider)`，结果出现在 `PlayerView.RoleInfo` 与 `RolePhaseInfo.RoleInfo` |
 | 一件事该告诉谁 | `WithAudience(provider)`，`AudienceOf` 的判定 |
@@ -755,7 +755,7 @@ CHANGELOG 里对应的小节。四道闸：版本号格式、tag 未占用、CHA
 
 **当前版本：[v1.5.0](CHANGELOG.md)。** 通用内核与狼人杀规则已经分开：引擎的代码
 路径里没有一处认得具体角色、阵营或死法，狼人杀的一整套由 `werewolf.Options` 经公开
-选项装上去，与第三方注册自定义角色走同一批入口。覆盖率 93.9%（内核加两套规则），
+选项装上去，与第三方注册自定义角色走同一批入口。覆盖率 93.8%（内核加两套规则），
 规则逐条对齐维基条目，
 每次测试跑 5000 局随机对局。
 

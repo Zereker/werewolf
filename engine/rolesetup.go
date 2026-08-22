@@ -11,7 +11,7 @@ package engine
 //
 // 与 Resolver、VictoryChecker、RoleInfoProvider 同构：不碰状态，
 // 只返回结论。返回的键值会原样写进该玩家的 Vars，之后经
-// GameView.PlayerVar 读、NewSetPlayerVarEffect 改。
+// GameView.Var(ScopeGame.Of(id), key) 读、NewSetVarEffect 改。
 //
 // 入座发生在开局之前，此时还没有局面可看，因此签名里没有 GameView：
 // 初始状态只能由角色本身决定，不能取决于谁先入座、场上还有谁。

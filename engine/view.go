@@ -35,20 +35,18 @@ type GameView interface {
 	// RoundContext 返回本回合上下文的只读副本
 	RoundContext() RoundContext
 
-	// PlayerVar 返回某个玩家的一项自定义状态，没有则为空串。
+	// Var 返回某个作用域下的一项自定义状态，没有则为空串。
 	//
-	// 第三方角色用它存放自身状态（白痴翻没翻牌、骑士的决斗用没用掉），
-	// 写入走 NewSetPlayerVarEffect，初始值由 RoleSetup 发放。
-	// 规则把角色私有的状态放在这里，内置角色与第三方角色同一条路。
-	PlayerVar(playerID, key string) string
-
-	// PlayerRoundVar 返回某个玩家在本回合的一项标记，没有则为空串。
+	// 作用域是一张 2×2 的表（见 VarScope）：
 	//
-	// 三种作用域里的第三种：跟着玩家走一整局的用 PlayerVar，本回合有效
-	// 且不属于任何人的用 RoundVar，「本回合标记了某人」用这个。
-	// 今晚谁被守了、谁被救了、谁被毒了都是这一类。
-	// 写入走 NewSetPlayerRoundVarEffect。
-	PlayerRoundVar(playerID, key string) string
+	//	Var(ScopeGame, "score")            整局·无主
+	//	Var(ScopeGame.Of(id), "antidote")  整局·某人
+	//	Var(ScopeRound, "kill")            本回合·无主
+	//	Var(ScopeRound.Of(id), "guarded")  本回合·某人
+	//
+	// 规则把自己的状态全放在这里，内置角色与第三方角色同一条路。
+	// 写入走 NewSetVarEffect，玩家的初始状态由 RoleSetup 发放。
+	Var(scope VarScope, key string) string
 
 	// Rand 这一刻的随机流。
 	//
@@ -58,21 +56,6 @@ type GameView interface {
 	// 每次调用返回一条**新的、从头开始**的流——不要把它存起来跨阶段用，
 	// 那会让结果依赖调用次序而不是局面。
 	Rand() *rand.Rand
-
-	// GameVar 返回整局的一项自定义状态，没有则为空串。
-	//
-	// 四种作用域里的第四种：**整局有效、不属于任何玩家**。比分、计数器、
-	// 轮到谁这类「全局事实」属于这里。跟着某个玩家走一整局的用 PlayerVar，
-	// 本回合有效且无主的用 RoundVar，「本回合标记了某人」用 PlayerRoundVar。
-	//
-	// 写入走 NewSetGameVarEffect。
-	GameVar(key string) string
-
-	// RoundVar 返回本回合的一项自定义状态，没有则为空串。
-	//
-	// 与 PlayerVar 的分工：那个跟着玩家走一整局，这个每回合自动清零，
-	// 且不属于任何玩家——狼人杀的「今晚刀口」就是这一类。
-	RoundVar(key string) string
 
 	// Round 返回当前回合数
 	Round() int
@@ -129,21 +112,13 @@ func (v stateView) RoundContext() RoundContext {
 	return *rc
 }
 
-func (v stateView) PlayerVar(playerID, key string) string {
-	return v.s.playerVar(playerID, key)
-}
-
-func (v stateView) PlayerRoundVar(playerID, key string) string {
-	return v.s.playerRoundVar(playerID, key)
+func (v stateView) Var(scope VarScope, key string) string {
+	return v.s.varOf(scope, key)
 }
 
 func (v stateView) Rand() *rand.Rand {
 	return randStream(v.s.Seed, v.s.currentRound(), v.s.currentPhase())
 }
-
-func (v stateView) GameVar(key string) string { return v.s.gameVar(key) }
-
-func (v stateView) RoundVar(key string) string { return v.s.roundVar(key) }
 
 func (v stateView) Round() int { return v.s.currentRound() }
 

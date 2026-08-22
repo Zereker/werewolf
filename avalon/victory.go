@@ -33,7 +33,7 @@ func (victoryChecker) CheckVictory(view engine.GameView) (bool, engine.Camp) {
 	// 必须回「还没结束」——否则引擎会在刺杀阶段之前就把这局判掉。
 	// 刺杀阶段由任务解析器用触发队列排进来，内核会把胜负判定推迟到
 	// 那之后，这里只要如实报「还没完」即可。
-	switch view.GameVar(varAssassinated) {
+	switch view.Var(engine.ScopeGame, varAssassinated) {
 	case "hit":
 		return true, CampEvil // 刺中梅林，坏人反败为胜
 	case "miss":

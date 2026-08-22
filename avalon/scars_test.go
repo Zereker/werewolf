@@ -173,7 +173,7 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 	if got := successes(e.View()); got != 1 {
 		t.Fatalf("成功次数 = %d，期望 1", got)
 	}
-	if e.GameVar(varSuccess) == "" {
+	if e.Var(engine.ScopeGame, varSuccess) == "" {
 		t.Errorf("成功次数该住在 GameVar 里，%q 是空的", varSuccess)
 	}
 

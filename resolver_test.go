@@ -166,8 +166,8 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 	}
 
 	// Night.KillTarget 应该为空
-	if b.RoundVar(RoundVarKillTarget) != "" {
-		t.Errorf("expected empty Night.KillTarget for tie, got %s", b.RoundVar(RoundVarKillTarget))
+	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "" {
+		t.Errorf("expected empty Night.KillTarget for tie, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -191,14 +191,14 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 	if len(effects) != 1 {
 		t.Errorf("expected 1 effect from WolfResolver, got %d", len(effects))
 	}
-	if effects[0].Type != engine.EventSetRoundVar {
-		t.Errorf("expected SET_ROUND_VAR effect, got %v", effects[0].Type)
+	if effects[0].Type != engine.EventSetVar {
+		t.Errorf("expected SET_VAR effect, got %v", effects[0].Type)
 	}
 
 	// 应用 Effect 后刀口才会被设置
 	b = b.Apply(effects)
-	if b.RoundVar(RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget=victim after applying effect, got %s", b.RoundVar(RoundVarKillTarget))
+	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim after applying effect, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -227,8 +227,8 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 
 	// 应用 Effect 后刀口才会被设置
 	b = b.Apply(effects)
-	if b.RoundVar(RoundVarKillTarget) != "v1" {
-		t.Errorf("expected Night.KillTarget=v1 after applying effect, got %s", b.RoundVar(RoundVarKillTarget))
+	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "v1" {
+		t.Errorf("expected Night.KillTarget=v1 after applying effect, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -257,13 +257,13 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (SET_NIGHT_KILL) even when protected, got %d", len(effects))
 	}
-	if effects[0].Type != engine.EventSetRoundVar {
+	if effects[0].Type != engine.EventSetVar {
 		t.Errorf("expected SET_NIGHT_KILL, got %v", effects[0].Type)
 	}
 
 	b = b.Apply(effects)
-	if b.RoundVar(RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget=victim, got %s", b.RoundVar(RoundVarKillTarget))
+	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -293,8 +293,8 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	b = b.Apply(effects)
 
 	// Night.KillTarget 应该被设置
-	if b.RoundVar(RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget=victim, got %s", b.RoundVar(RoundVarKillTarget))
+	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -332,8 +332,8 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 	b = b.Apply(effects)
 
 	// 刀口保留到结算阶段，但目标已被标记为「已救」
-	if b.RoundVar(RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget kept until resolve, got %s", b.RoundVar(RoundVarKillTarget))
+	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget kept until resolve, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
 	}
 	if roundVarOfBoard(b, "victim", PlayerRoundVarSaved) == "" {
 		t.Error("expected victim to be marked as saved")
@@ -360,7 +360,7 @@ func TestWitchResolver_Poison(t *testing.T) {
 	effects := resolver.Resolve(uses, b.View())
 
 	// WitchResolver 只产生 USE_POISON 效果，实际死亡由 NightResolveResolver 处理
-	usePoisonEffects := filterEffects(effects, engine.EventSetPlayerRoundVar)
+	usePoisonEffects := filterVarEffects(effects, PlayerRoundVarPoisoned)
 	if len(usePoisonEffects) != 1 {
 		t.Fatalf("expected 1 USE_POISON effect, got %d", len(usePoisonEffects))
 	}
@@ -398,8 +398,8 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 	}
 
 	// Night.KillTarget 应该保持不变
-	if b.RoundVar(RoundVarKillTarget) != "witch" {
-		t.Errorf("expected Night.KillTarget=witch, got %s", b.RoundVar(RoundVarKillTarget))
+	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "witch" {
+		t.Errorf("expected Night.KillTarget=witch, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -423,11 +423,11 @@ func TestGuardResolver_Protect(t *testing.T) {
 	if got := len(filterEffects(effects, EventProtect)); got != 1 {
 		t.Fatalf("expected one PROTECT, got %d in %v", got, effects)
 	}
-	if got := len(filterEffects(effects, engine.EventSetPlayerRoundVar)); got != 1 {
+	if got := len(filterVarEffects(effects, PlayerRoundVarProtected)); got != 1 {
 		t.Fatalf("expected one round mark, got %d in %v", got, effects)
 	}
-	if got := len(filterEffects(effects, engine.EventSetPlayerVar)); got != 2 {
-		t.Fatalf("expected two guard records, got %d in %v", got, effects)
+	if got := len(filterEffects(effects, engine.EventSetVar)); got != 3 {
+		t.Fatalf("expected three state writes, got %d in %v", got, effects)
 	}
 
 	// 应用所有效果
@@ -546,6 +546,20 @@ func filterEffects(effects []*Effect, eventType EventType) []*Effect {
 	result := make([]*Effect, 0)
 	for _, e := range effects {
 		if e.Type == eventType {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// filterVarEffects 挑出写指定键的那些效果。
+//
+// 四种作用域收进 SET_VAR 一个事件类型之后，按 Type 已经分不出「这一条
+// 写的是哪一格」，要分就走 Effect.SetsVar——这也正是扩展该走的路。
+func filterVarEffects(effects []*Effect, key string) []*Effect {
+	result := make([]*Effect, 0)
+	for _, e := range effects {
+		if _, k, _, ok := e.SetsVar(); ok && k == key {
 			result = append(result, e)
 		}
 	}

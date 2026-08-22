@@ -65,9 +65,9 @@ func TestAudienceOf_KernelPrimitivesAreNeverPublic(t *testing.T) {
 
 	for _, ef := range []*Effect{
 		engine.NewSetAliveEffect("v1", false),
-		engine.NewSetPlayerVarEffect("wi", VarWitchAntidote, ""),
-		engine.NewSetPlayerRoundVarEffect("v1", PlayerRoundVarProtected, VarPresent),
-		engine.NewSetRoundVarEffect(RoundVarKillTarget, "v1"),
+		engine.NewSetVarEffect(engine.ScopeGame.Of("wi"), VarWitchAntidote, ""),
+		engine.NewSetVarEffect(engine.ScopeRound.Of("v1"), PlayerRoundVarProtected, VarPresent),
+		engine.NewSetVarEffect(engine.ScopeRound, RoundVarKillTarget, "v1"),
 		engine.NewAbilityTriggerEffect("h", PhaseNightHunter),
 	} {
 		got, known := e.AudienceOf(ef.ToEvent())

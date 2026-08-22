@@ -15,6 +15,47 @@
 
 ## 未发布
 
+### 变量作用域收敛成一个类型：八个平铺的名字变成一张能枚举的表
+
+**破坏性变更。** `NewSetPlayerVarEffect` / `NewSetRoundVarEffect` /
+`NewSetPlayerRoundVarEffect` / `NewSetGameVarEffect` 四个构造器合成一个
+`NewSetVarEffect(scope, key, value)`；`GameView` 上的 `PlayerVar` /
+`RoundVar` / `PlayerRoundVar` / `GameVar` 四个读法合成一个
+`Var(scope, key)`；`Engine.GameVar` / `Engine.RoundVar` 合成 `Engine.Var`；
+`Board.RoundVar` 变成 `Board.Var`。四个事件类型 `SET_PLAYER_VAR` /
+`SET_ROUND_VAR` / `SET_PLAYER_ROUND_VAR` / `SET_GAME_VAR` 合成一个 `SET_VAR`。
+
+作用域是一张 2×2 的表——时间尺度（整局 / 本回合）乘以有没有主人：
+
+| | 无主 | 属于某个玩家 |
+|---|---|---|
+| **整局有效** | `ScopeGame` | `ScopeGame.Of(id)` |
+| **本回合有效** | `ScopeRound` | `ScopeRound.Of(id)` |
+
+这张表此前**只存在于注释里**——`state.go`、`view.go`、`SCARS.md`、本文件
+都画过它，而代码里是八个互不相干的名字。于是没有任何东西强制它完整：
+少写一格谁也不会发现，事实上就是少了「整局·无主」那一格，直到阿瓦隆撞上
+（见 v1.6.0 那一批的疤 4）。作用域成为一个类型之后，缺一格根本写不出来。
+
+同一个毛病在另外两处也在，一并补齐：
+
+- **`Engine` 上只有两格**（`GameVar` / `RoundVar`），有主的两格读不到，
+  要绕 `PlayerInfo`。现在 `Engine.Var` 四格全通。
+- **`Board` 少了「整局·无主」**（只有 `RoundVars` 和玩家身上那两张表），
+  摆不出一个带比分的局面。现在补上 `Board.Vars`。
+
+**名字总数没有减少**（内核仍是 137 个导出名），减少的是概念摊开的份数：
+描述这张表的名字从 15 个（4 构造器 + 4 视图读法 + 2 引擎读法 + 1 Board 读法
++ 4 事件类型）降到 11 个，同时覆盖从「四处各缺几格」变成处处齐全。
+
+新增 `Effect.SetsVar() (scope, key, value string, ok bool)`，与 `SetsAlive`
+同一个用法。四格共用一个事件类型之后，光看 `Type` 分不出这一条写的是哪一格
+——想拦下或者观察某一类写入的扩展从这里读。
+
+`werewolf` 包的别名层随之加了 `VarScope` / `ScopeGame` / `ScopeRound`：
+读一局的状态要用到它们，按 `alias.go` 自己的收录规则（本包导出 API 用得到
+的才收），它们属于「只 import 本包就够」的那一层。
+
 ### 第二套规则包：阿瓦隆，用它验证内核到底通不通用
 
 在它之前内核只被狼人杀一套规则验证过。那证明得了内核不认得「女巫」这个

@@ -171,7 +171,7 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			// PROTECT 是「发生了什么」的说法，下面两条才真正改状态：
 			// 标记今晚被守的人，并记下本回合的守护供下回合判断连守。
 			effects = append(effects,
-				engine.NewSetPlayerRoundVarEffect(use.Target(), PlayerRoundVarProtected, VarPresent))
+				engine.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarProtected, VarPresent))
 			effects = append(effects, markProtected(view, use.PlayerID, use.Target())...)
 		}
 
@@ -207,7 +207,7 @@ func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	//   - 女巫看到的是「狼刀目标」，她同样不知道守卫的动作
 	// 若在此处因守护而不记录刀口，「同守同救」这一局面根本无法构成。
 	effects = append(effects,
-		engine.NewSetRoundVarEffect(RoundVarKillTarget, result.Winner))
+		engine.NewSetVarEffect(ScopeRound, RoundVarKillTarget, result.Winner))
 
 	return effects
 }
@@ -300,8 +300,8 @@ func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget strin
 		// SAVE 是说法，下面两条是状态：药少一瓶，目标带上「今晚被救」的标记。
 		return []*Effect{
 			save,
-			engine.NewSetPlayerVarEffect(use.PlayerID, VarWitchAntidote, ""),
-			engine.NewSetPlayerRoundVarEffect(use.Target(), PlayerRoundVarSaved, VarPresent),
+			engine.NewSetVarEffect(ScopeGame.Of(use.PlayerID), VarWitchAntidote, ""),
+			engine.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarSaved, VarPresent),
 		}, true
 	}
 
@@ -324,8 +324,8 @@ func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool)
 		// 这里刻意不产出 POISON：中毒要到天亮才公布，此刻发出去
 		// 等于当场告诉全场谁被毒了。
 		return []*Effect{
-			engine.NewSetPlayerVarEffect(use.PlayerID, VarWitchPoison, ""),
-			engine.NewSetPlayerRoundVarEffect(use.Target(), PlayerRoundVarPoisoned, VarPresent),
+			engine.NewSetVarEffect(ScopeGame.Of(use.PlayerID), VarWitchPoison, ""),
+			engine.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarPoisoned, VarPresent),
 		}, true
 	}
 
@@ -419,7 +419,7 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView) []*Effec
 		} else {
 			// 刀口未生效，清除击杀目标
 			effects = append(effects,
-				engine.NewSetRoundVarEffect(RoundVarKillTarget, "").WithData("reason", reason))
+				engine.NewSetVarEffect(ScopeRound, RoundVarKillTarget, "").WithData("reason", reason))
 		}
 	}
 
@@ -511,5 +511,5 @@ func witchHas(view GameView, playerID string, kind potionKind) bool {
 	if kind == potionPoison {
 		key = VarWitchPoison
 	}
-	return view.PlayerVar(playerID, key) != ""
+	return view.Var(ScopeGame.Of(playerID), key) != ""
 }

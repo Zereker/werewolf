@@ -56,19 +56,16 @@ func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 
 	// 名字 -> 取值。常量在同包内，直接按名字对照取值表。
 	byName := map[string]EventType{
-		"EventUnspecified":       EventUnspecified,
-		"EventGameStarted":       EventGameStarted,
-		"EventGameEnded":         EventGameEnded,
-		"EventAbilityTriggered":  EventAbilityTriggered,
-		"EventPlayerAdded":       EventPlayerAdded,
-		"EventPhaseChanged":      EventPhaseChanged,
-		"EventSetPlayerVar":      EventSetPlayerVar,
-		"EventSetRoundVar":       EventSetRoundVar,
-		"EventSetAlive":          EventSetAlive,
-		"EventSetPlayerRoundVar": EventSetPlayerRoundVar,
-		"EventGotoPhase":         EventGotoPhase,
-		"EventSetGameVar":        EventSetGameVar,
-		"EventSetActors":         EventSetActors,
+		"EventUnspecified":      EventUnspecified,
+		"EventGameStarted":      EventGameStarted,
+		"EventGameEnded":        EventGameEnded,
+		"EventAbilityTriggered": EventAbilityTriggered,
+		"EventPlayerAdded":      EventPlayerAdded,
+		"EventPhaseChanged":     EventPhaseChanged,
+		"EventSetAlive":         EventSetAlive,
+		"EventSetVar":           EventSetVar,
+		"EventGotoPhase":        EventGotoPhase,
+		"EventSetActors":        EventSetActors,
 	}
 
 	for _, name := range declared {
@@ -95,12 +92,12 @@ type primitiveSpewer struct{}
 func (primitiveSpewer) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{
 		NewSetAliveEffect("g", false),
-		NewSetPlayerVarEffect("w1", "probe.var", "1"),
-		NewSetRoundVarEffect("probe.round", "1"),
-		NewSetPlayerRoundVarEffect("w1", "probe.mark", "1"),
+		NewSetVarEffect(ScopeGame.Of("w1"), "probe.var", "1"),
+		NewSetVarEffect(ScopeRound, "probe.round", "1"),
+		NewSetVarEffect(ScopeRound.Of("w1"), "probe.mark", "1"),
 		NewAbilityTriggerEffect("w1", phaseNightHunter),
 		NewGotoPhaseEffect(phaseDay),
-		NewSetGameVarEffect("probe.game", "1"),
+		NewSetVarEffect(ScopeGame, "probe.game", "1"),
 		NewSetActorsEffect(phaseDay, "w1"),
 		NewEffect(EventType("PROBE_PUBLIC"), "w1", "g"), // 一条普通的规则事件作对照
 	}

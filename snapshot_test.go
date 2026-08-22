@@ -476,7 +476,7 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 	g.endAny()
 
 	// 再加一项第三方的自定义状态
-	g.e.Apply(engine.NewSetPlayerVarEffect("v3", "custom.flag", "yes"))
+	g.e.Apply(engine.NewSetVarEffect(engine.ScopeGame.Of("v3"), "custom.flag", "yes"))
 
 	snap := g.e.Snapshot()
 	byID := make(map[string]engine.PlayerSnapshot, len(snap.Players))
@@ -516,7 +516,7 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 
 // TestPlayerVar_SurvivesSnapshotAndReplay 第三方角色的状态随快照与效果流一起走。
 //
-// 这是「扩展的状态该住在哪」的答案：住在引擎里，写走 NewSetPlayerVarEffect。
+// 这是「扩展的状态该住在哪」的答案：住在引擎里，写走 NewSetVarEffect。
 // 住在 Resolver 自己的字段里的话，快照带不上、回放也重建不出——
 // 而 Resolver 接口本来就要求它无状态。
 func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
@@ -566,5 +566,5 @@ func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
 type varWritingResolver struct{}
 
 func (varWritingResolver) Resolve([]*SkillUse, GameView) []*Effect {
-	return []*Effect{engine.NewSetPlayerVarEffect("v1", "custom.mark", "set")}
+	return []*Effect{engine.NewSetVarEffect(engine.ScopeGame.Of("v1"), "custom.mark", "set")}
 }

@@ -20,7 +20,14 @@ type Board struct {
 	// Phase 当前阶段。
 	Phase PhaseType
 
-	// RoundVars 本回合的状态，不属于任何玩家。
+	// Vars 整局有效、不属于任何玩家的状态（ScopeGame）。
+	Vars map[string]string
+
+	// RoundVars 本回合有效、不属于任何玩家的状态（ScopeRound）。
+	//
+	// 有主的两格在 PlayerInfo 上（Vars / RoundVars），四格凑齐才摆得出
+	// 任意一个局面——这里此前少了上面那格，理由与内核少那一格一样：
+	// 狼人杀用不到，所以没人发现。
 	RoundVars map[string]string
 
 	// Seed 随机流的种子，供单测用到 GameView.Rand 的解析器。
@@ -57,8 +64,8 @@ func (b Board) Player(id string) (PlayerInfo, bool) {
 	return PlayerInfo{}, false
 }
 
-// RoundVar 读本回合的一项状态。
-func (b Board) RoundVar(key string) string { return b.RoundVars[key] }
+// Var 读某个作用域下的一项状态，四格都能读（见 VarScope）。
+func (b Board) Var(scope VarScope, key string) string { return b.state().varOf(scope, key) }
 
 // state 把局面还原成内部状态。
 func (b Board) state() *gameState {
@@ -70,6 +77,7 @@ func (b Board) state() *gameState {
 	s.Round = round
 	s.Phase = b.Phase
 	s.Seed = b.Seed
+	s.Vars = copyVars(b.Vars)
 	s.RoundCtx = newRoundContext()
 	s.RoundCtx.Vars = copyVars(b.RoundVars)
 	for _, p := range b.Players {
@@ -83,7 +91,10 @@ func (b Board) state() *gameState {
 
 // boardOf 把内部状态导回局面。
 func boardOf(s *gameState) Board {
-	b := Board{Round: s.Round, Phase: s.Phase, RoundVars: copyVars(s.RoundCtx.Vars)}
+	b := Board{
+		Round: s.Round, Phase: s.Phase, Seed: s.Seed,
+		Vars: copyVars(s.Vars), RoundVars: copyVars(s.RoundCtx.Vars),
+	}
 	for _, id := range s.allPlayerIDs() {
 		if info, ok := s.PlayerInfo(id); ok {
 			b.Players = append(b.Players, info)

@@ -43,11 +43,13 @@ CHANGELOG，好让别人能核对而不是只能相信。
 
 状态放哪儿看作用域：
 
-| 作用域 | 用什么 |
-|---|---|
-| 跟着玩家走一整局 | `NewSetPlayerVarEffect`（女巫的药、白痴翻没翻牌） |
-| 本回合有效，不属于任何人 | `NewSetRoundVarEffect`（今晚的刀口） |
-| 本回合标记了某个玩家 | `NewSetPlayerRoundVarEffect`（今晚谁被守了） |
+写一律走 `NewSetVarEffect(scope, key, value)`，读一律走
+`GameView.Var(scope, key)`，四格由作用域挑：
+
+| | 无主 | 属于某个玩家 |
+|---|---|---|
+| **整局有效** | `ScopeGame`（比分、轮到谁） | `ScopeGame.Of(id)`（女巫的药、白痴翻没翻牌） |
+| **本回合有效** | `ScopeRound`（今晚的刀口） | `ScopeRound.Of(id)`（今晚谁被守了） |
 
 ### 加角色不该改引擎
 

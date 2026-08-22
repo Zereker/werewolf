@@ -207,7 +207,7 @@ func TestRoleSetup_InitialStateIsNotHandedToThePlayer(t *testing.T) {
 	// 注册之后才出现，键名由角色自己定
 	e2 := newKnightGame(t, engine.WithRoleInfo(roleKnight, engine.RoleInfoFunc(
 		func(id string, view GameView) map[string]string {
-			if view.PlayerVar(id, varKnightDuel) == "" {
+			if view.Var(engine.ScopeGame.Of(id), varKnightDuel) == "" {
 				return nil
 			}
 			return map[string]string{roleInfoKnightDuelLeft: VarPresent}

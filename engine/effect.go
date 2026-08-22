@@ -25,16 +25,13 @@ type Effect struct {
 // 「第三方取值从 1000 起」那条约定直接打架：扩展定义的每一个事件类型
 // 都被判成内部事件，于是扩展的事件根本发不出去。
 var kernelPrimitives = map[EventType]bool{
-	EventSetAlive:          true,
-	EventSetPlayerVar:      true,
-	EventSetRoundVar:       true,
-	EventSetPlayerRoundVar: true,
-	EventAbilityTriggered:  true,
-	EventPlayerAdded:       true,
-	EventPhaseChanged:      true,
-	EventGotoPhase:         true,
-	EventSetGameVar:        true,
-	EventSetActors:         true,
+	EventSetAlive:         true,
+	EventSetVar:           true,
+	EventAbilityTriggered: true,
+	EventPlayerAdded:      true,
+	EventPhaseChanged:     true,
+	EventGotoPhase:        true,
+	EventSetActors:        true,
 }
 
 // isInternalEvent 判断事件是否为内核的状态原语。
@@ -99,16 +96,14 @@ func (e *Effect) triggerPhase() (PhaseType, bool) {
 	return phase, ok
 }
 
-// 写玩家自定义状态时用到的两个键
+// 写自定义状态时用到的三个键：作用域、键、值。
+//
+// 此前每个作用域一套自己的键名（var_key / round_var_key /
+// player_round_var_key……），六个常量描述的是同一件事。
 const (
-	playerVarKeyKey   = "var_key"
-	playerVarValueKey = "var_value"
-
-	roundVarKeyKey   = "round_var_key"
-	roundVarValueKey = "round_var_value"
-
-	playerRoundVarKeyKey   = "player_round_var_key"
-	playerRoundVarValueKey = "player_round_var_value"
+	varScopeKey = "var_scope"
+	varKeyKey   = "var_key"
+	varValueKey = "var_value"
 
 	aliveKey = "alive"
 )
@@ -146,45 +141,48 @@ func aliveOf(e *Effect) (alive, ok bool) {
 	return alive, ok
 }
 
-// NewSetPlayerRoundVarEffect 声明「把某个玩家本回合的某项状态改成某值」。
+// NewSetVarEffect 声明「把某项自定义状态改成某值」，作用域由 scope 指定。
 //
-// 三种作用域的第三种：PlayerVar 跟着玩家走一整局，RoundVar 每回合清零
-// 且不属于任何人，这个则是「某个玩家在本回合的标记」——今晚谁被守了、
-// 谁被救了、谁被毒了都是这一类，它们此前是 RoundContext 上三张
-// map[string]bool，第三方角色改不了也读不到。
-// 值传空串即删除该项。
-func NewSetPlayerRoundVarEffect(playerID, key, value string) *Effect {
-	return NewEffect(EventSetPlayerRoundVar, "", playerID).
-		WithData(playerRoundVarKeyKey, key).
-		WithData(playerRoundVarValueKey, value)
-}
-
-// playerRoundVarOf 从效果里读出要写的键值。
-func playerRoundVarOf(e *Effect) (key, value string) {
-	key, _ = e.Data[playerRoundVarKeyKey].(string)
-	value, _ = e.Data[playerRoundVarValueKey].(string)
-	return key, value
-}
-
-// NewSetPlayerVarEffect 声明「把某个玩家的某项自定义状态改成某值」。
+// 四种作用域此前是四个构造器，于是没有任何东西强制那张 2×2 的表完整
+// ——少了「整局·无主」那一格很久没人发现。现在作用域是一个参数：
+//
+//	NewSetVarEffect(ScopeGame, "score", "3")              整局·无主
+//	NewSetVarEffect(ScopeGame.Of(id), "antidote", "used") 整局·某人
+//	NewSetVarEffect(ScopeRound, "kill", target)           本回合·无主
+//	NewSetVarEffect(ScopeRound.Of(id), "guarded", "1")    本回合·某人
 //
 // 这是角色存放自身状态的正路。白痴的「翻过牌了」、骑士的「决斗用掉了」、
 // 女巫的两瓶药、守卫的守护记录，全都是同一件事，走的也是同一条路。
+// 走这条路才自动获得整套设施：状态随快照走、效果流能回放、Resolver
+// 因此可以保持无状态——而无状态正是 Resolver 接口要求的。
 //
-// 走这条路的好处是自动获得整套设施：状态随快照走、效果流能回放、
-// Resolver 因此可以保持无状态——而无状态正是 Resolver 接口要求的。
-// 值传空串即删除该项。
-func NewSetPlayerVarEffect(playerID, key, value string) *Effect {
-	return NewEffect(EventSetPlayerVar, "", playerID).
-		WithData(playerVarKeyKey, key).
-		WithData(playerVarValueKey, value)
+// 值传空串即删除该项，四种作用域同一个口径。
+func NewSetVarEffect(scope VarScope, key, value string) *Effect {
+	return NewEffect(EventSetVar, "", scope.owner).
+		WithData(varScopeKey, scope).
+		WithData(varKeyKey, key).
+		WithData(varValueKey, value)
 }
 
-// playerVarOf 从效果里读出要写的键值。
-func playerVarOf(e *Effect) (key, value string) {
-	key, _ = e.Data[playerVarKeyKey].(string)
-	value, _ = e.Data[playerVarValueKey].(string)
-	return key, value
+// SetsVar 这个效果是否在写一项自定义状态，以及写的是哪一格、什么键值。
+//
+// 与 SetsAlive 同一个用法：想拦下或者观察某一类写入的扩展需要它。
+// 四种作用域收进一个事件类型之后，光看 Type 分不出「整局」还是「本回合」、
+// 属不属于某个玩家——要分就从这里读。
+func (e *Effect) SetsVar() (scope VarScope, key, value string, ok bool) {
+	if e == nil || e.Type != EventSetVar {
+		return VarScope{}, "", "", false
+	}
+	scope, key, value = varOf(e)
+	return scope, key, value, key != ""
+}
+
+// varOf 从效果里读出作用域与键值。
+func varOf(e *Effect) (scope VarScope, key, value string) {
+	scope, _ = e.Data[varScopeKey].(VarScope)
+	key, _ = e.Data[varKeyKey].(string)
+	value, _ = e.Data[varValueKey].(string)
+	return scope, key, value
 }
 
 // actorsPhaseKey / actorsListKey 行动者效果里的两个键
@@ -227,42 +225,6 @@ func actorsOf(e *Effect) (PhaseType, []string, bool) {
 		return PhaseUnspecified, nil, false
 	}
 	return p, ids, true
-}
-
-// NewSetGameVarEffect 声明「把整局的某项状态改成某值」。
-//
-// 四种作用域里的第四种，也是补上的那一格：**整局有效、不属于任何玩家**。
-// 跟着玩家走一整局的用 NewSetPlayerVarEffect，本回合有效且无主的用
-// NewSetRoundVarEffect，「本回合标记了某人」用 NewSetPlayerRoundVarEffect。
-//
-// 比分、计数器、轮到谁这类「全局事实」属于这一格。此前没有它，规则只能把
-// 这类数挂到某个玩家的私有状态上当账本——全局事实记在个人名下，那个玩家的
-// 视图里还会凭空多出与他无关的字段。
-//
-// 值为空串等同删除，与其余三种一致。
-func NewSetGameVarEffect(key, value string) *Effect {
-	return NewEffect(EventSetGameVar, "", "").
-		WithData(roundVarKeyKey, key).
-		WithData(roundVarValueKey, value)
-}
-
-// NewSetRoundVarEffect 声明「把本回合的某项自定义状态改成某值」。
-//
-// 与 NewSetPlayerVarEffect 的分工：那个跟着玩家走一整局（白痴翻过牌了），
-// 这个每回合自动清零，且不属于任何玩家（今晚的刀口是谁）。
-// 「某个玩家在本回合的标记」是第三种，用 NewSetPlayerRoundVarEffect。
-// 值传空串即删除该项。
-func NewSetRoundVarEffect(key, value string) *Effect {
-	return NewEffect(EventSetRoundVar, "", "").
-		WithData(roundVarKeyKey, key).
-		WithData(roundVarValueKey, value)
-}
-
-// roundVarOf 从效果里读出要写的键值。
-func roundVarOf(e *Effect) (key, value string) {
-	key, _ = e.Data[roundVarKeyKey].(string)
-	value, _ = e.Data[roundVarValueKey].(string)
-	return key, value
 }
 
 // NewEffect 创建效果

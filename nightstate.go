@@ -46,22 +46,22 @@ const (
 
 // nightKillTarget 今晚的刀口，没有则为空。
 func nightKillTarget(view GameView) string {
-	return view.RoundVar(RoundVarKillTarget)
+	return view.Var(ScopeRound, RoundVarKillTarget)
 }
 
 // isProtected 该玩家今晚是否被守护。
 func isProtected(view GameView, playerID string) bool {
-	return view.PlayerRoundVar(playerID, PlayerRoundVarProtected) != ""
+	return view.Var(ScopeRound.Of(playerID), PlayerRoundVarProtected) != ""
 }
 
 // isSaved 该玩家今晚是否被解药救下。
 func isSaved(view GameView, playerID string) bool {
-	return view.PlayerRoundVar(playerID, PlayerRoundVarSaved) != ""
+	return view.Var(ScopeRound.Of(playerID), PlayerRoundVarSaved) != ""
 }
 
 // isPoisoned 该玩家今晚是否被毒。
 func isPoisoned(view GameView, playerID string) bool {
-	return view.PlayerRoundVar(playerID, PlayerRoundVarPoisoned) != ""
+	return view.Var(ScopeRound.Of(playerID), PlayerRoundVarPoisoned) != ""
 }
 
 // lastProtected 守卫上一回合守护的目标，无则为空。
@@ -73,18 +73,18 @@ func isPoisoned(view GameView, playerID string) bool {
 // 这条判定此前在内核里（gameState.lastProtectedTarget + GameView 上一个
 // 专门的方法），而「守卫不能连守」是狼人杀的规则，不是状态机的事。
 func lastProtected(view GameView, guardID string) string {
-	round, err := strconv.Atoi(view.PlayerVar(guardID, PlayerVarLastProtectedRound))
+	round, err := strconv.Atoi(view.Var(ScopeGame.Of(guardID), PlayerVarLastProtectedRound))
 	if err != nil || round != view.Round()-1 {
 		return ""
 	}
-	return view.PlayerVar(guardID, PlayerVarLastProtectedTarget)
+	return view.Var(ScopeGame.Of(guardID), PlayerVarLastProtectedTarget)
 }
 
 // markProtected 记下「本回合守卫守了谁」，供下回合判断连守。
 func markProtected(view GameView, guardID, targetID string) []*Effect {
 	return []*Effect{
-		engine.NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedTarget, targetID),
-		engine.NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
+		engine.NewSetVarEffect(ScopeGame.Of(guardID), PlayerVarLastProtectedTarget, targetID),
+		engine.NewSetVarEffect(ScopeGame.Of(guardID), PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
 	}
 }
 
@@ -93,7 +93,7 @@ func markProtected(view GameView, guardID, targetID string) []*Effect {
 // 拆包之后它是包级函数而不是 Engine 的方法：Engine 住在内核里，
 // 而「刀口」是狼人杀的概念，本包没有办法给别人的类型加方法。
 //
-// 等价写法：e.RoundVar(werewolf.RoundVarKillTarget)。
+// 等价写法：e.Var(ScopeRound, werewolf.RoundVarKillTarget)。
 func NightKillTarget(e *Engine) string {
-	return e.RoundVar(RoundVarKillTarget)
+	return e.Var(ScopeRound, RoundVarKillTarget)
 }

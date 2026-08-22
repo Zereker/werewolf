@@ -57,17 +57,17 @@ func withNoopResolvers() []EngineOption {
 
 // setRoundVar / markRound 直接铺回合状态，供不经解析器的单元测试用。
 func setRoundVar(s *gameState, key, value string) {
-	s.applyEffect(NewSetRoundVarEffect(key, value))
+	s.applyEffect(NewSetVarEffect(ScopeRound, key, value))
 }
 
 func markRound(s *gameState, playerID, key string) {
-	s.applyEffect(NewSetPlayerRoundVarEffect(playerID, key, VarPresent))
+	s.applyEffect(NewSetVarEffect(ScopeRound.Of(playerID), key, VarPresent))
 }
 
-func roundVarOfState(s *gameState, key string) string { return s.roundVar(key) }
+func roundVarOfState(s *gameState, key string) string { return s.varOf(ScopeRound, key) }
 
 func markedIn(s *gameState, playerID, key string) bool {
-	return s.playerRoundVar(playerID, key) != ""
+	return s.varOf(ScopeRound.Of(playerID), key) != ""
 }
 
 func markedInA(s *gameState, id string) bool { return markedIn(s, id, testMarkA) }

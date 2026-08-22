@@ -49,6 +49,14 @@ const (
 	VarPresent = engine.VarPresent
 )
 
+// 变量作用域的两个取值。读一局的状态要用到它们——`e.Var(ScopeRound, key)`
+// ——所以它们和词汇表一样属于「只 import 本包就够」的那一层。
+// 加 .Of(playerID) 得到属于某个玩家的那两格，四格拼法见 engine.VarScope。
+var (
+	ScopeGame  = engine.ScopeGame
+	ScopeRound = engine.ScopeRound
+)
+
 // ==================== 板子 ====================
 
 type (
@@ -81,6 +89,10 @@ type (
 
 	// GameView 解析器与胜负判定看到的局面。
 	GameView = engine.GameView
+
+	// VarScope 变量作用域，Engine.Var 与 GameView.Var 的第一个参数。
+	// 取值是下面的 ScopeGame / ScopeRound，可加 .Of(playerID)。
+	VarScope = engine.VarScope
 
 	// Effect 状态变更。Replay 吃的就是它的日志。
 	Effect = engine.Effect

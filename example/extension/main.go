@@ -120,7 +120,7 @@ func demoRestore(eng *werewolf.Engine) {
 	fmt.Printf("  白痴翻过牌了吗: %v\n", revealedIn(restored, "idiot"))
 	fmt.Println()
 	fmt.Println("  这一项之所以能跟着回来，是因为它住在引擎里而不是解析器里：")
-	fmt.Println("  写走 NewSetPlayerVarEffect，读走 GameView.PlayerVar。")
+	fmt.Println("  写走 NewSetVarEffect(ScopeGame.Of(id), ...)，读走 GameView.Var。")
 	fmt.Println("  解析器因此是无状态的——那正是 Resolver 接口要求的。")
 }
 

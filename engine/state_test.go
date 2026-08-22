@@ -88,15 +88,15 @@ func TestApplyEffect_KernelPrimitives(t *testing.T) {
 		}
 	})
 
-	t.Run("SET_PLAYER_ROUND_VAR 标记本回合", func(t *testing.T) {
+	t.Run("SET_VAR 标记本回合", func(t *testing.T) {
 		state := newState()
 		mustAddTo(t, state, "p1", roleVillager)
 
-		state.applyEffect(NewSetPlayerRoundVarEffect("p1", testMarkA, VarPresent))
+		state.applyEffect(NewSetVarEffect(ScopeRound.Of("p1"), testMarkA, VarPresent))
 		if !markedInA(state, "p1") {
 			t.Error("标记之后应当读得到")
 		}
-		state.applyEffect(NewSetPlayerRoundVarEffect("p1", testMarkA, ""))
+		state.applyEffect(NewSetVarEffect(ScopeRound.Of("p1"), testMarkA, ""))
 		if markedInA(state, "p1") {
 			t.Error("空值应当等同删除")
 		}
@@ -106,7 +106,7 @@ func TestApplyEffect_KernelPrimitives(t *testing.T) {
 		state := newState()
 		mustAddTo(t, state, "p1", roleVillager)
 
-		state.applyEffect(NewSetPlayerRoundVarEffect("p1", testMarkB, VarPresent))
+		state.applyEffect(NewSetVarEffect(ScopeRound.Of("p1"), testMarkB, VarPresent))
 		setRoundVar(state, testKillTarget, "p1")
 		state.resetRoundState()
 

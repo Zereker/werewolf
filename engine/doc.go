@@ -19,12 +19,13 @@
 // 这条约束由签名保证而非靠约定——状态的每一次改变都经由同一个写入点，
 // 快照、回放、审计这些能力才成立。
 //
-// 状态机认得四条原语：
+// 状态机认得两条原语：
 //
-//	NewSetAliveEffect           改存活
-//	NewSetPlayerVarEffect       写玩家的状态（跟着他走一整局）
-//	NewSetRoundVarEffect        写本回合的状态（不属于任何人）
-//	NewSetPlayerRoundVarEffect  写某个玩家在本回合的标记
+//	NewSetAliveEffect              改存活
+//	NewSetVarEffect(scope, k, v)   写一项自定义状态
+//
+// 作用域是一张 2×2 的表（时间尺度 × 有没有主人），四格由 ScopeGame /
+// ScopeRound 叉乘 .Of(playerID) 得出，见 VarScope。
 //
 // 外加一条 NewAbilityTriggerEffect，把一个死亡触发排进队列。
 //

@@ -119,14 +119,17 @@
 // 的参数：引擎不认识你的角色，也就没有办法替它推导；写在角色身上，
 // 每一处入座都不会填错。
 //
-// 状态一律走 Var，一共三种作用域：跟着玩家走一整局的用 PlayerVar
-// （白痴翻没翻牌、女巫的药），本回合有效且不属于任何人的用 RoundVar
-// （今晚的刀口），「本回合标记了某个玩家」的用 PlayerRoundVar
-// （今晚谁被守了、被救了、被毒了）。读用 GameView 上的同名方法，
-// 写用 NewSetPlayerVarEffect / NewSetRoundVarEffect /
-// NewSetPlayerRoundVarEffect。
+// 状态一律走 Var，作用域是一张 2×2 的表——时间尺度乘以有没有主人：
+//
+//	ScopeGame              整局有效、无主（比分、轮到谁）
+//	ScopeGame.Of(id)       跟着某个玩家走一整局（白痴翻没翻牌、女巫的药）
+//	ScopeRound             本回合有效、无主（今晚的刀口）
+//	ScopeRound.Of(id)      本回合标记了某个玩家（今晚谁被守了、被毒了）
+//
+// 读用 GameView.Var(scope, key) 或 Engine.Var(scope, key)，写用
+// NewSetVarEffect(scope, key, value)。
 // 它们随快照走、回放能重建，因此 Resolver 可以保持无状态——
-// 而无状态正是这个接口的要求。内置女巫的两瓶药就存在 PlayerVar 里
+// 而无状态正是这个接口的要求。内置女巫的两瓶药就存在 ScopeGame.Of(id) 里
 // （VarWitchAntidote / VarWitchPoison），与第三方角色同一条路。
 //
 // 状态的初始值由 RoleSetup 在入座时发放，用 WithRoleSetup 注册。

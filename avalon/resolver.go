@@ -52,7 +52,7 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 	for _, id := range team {
 		effects = append(effects,
 			engine.NewEffect(EventProposed, leader, id),
-			engine.NewSetPlayerRoundVarEffect(id, varOnTeam, engine.VarPresent))
+			engine.NewSetVarEffect(engine.ScopeRound.Of(id), varOnTeam, engine.VarPresent))
 	}
 	// 点名任务阶段的行动者：只有这几个人能投成败。
 	//
@@ -104,7 +104,7 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 	if ok {
 		return append(effects,
 			engine.NewEffect(EventTeamApproved, "", "").WithData("team", len(team)),
-			engine.NewSetRoundVarEffect(varApproved, engine.VarPresent),
+			engine.NewSetVarEffect(engine.ScopeRound, varApproved, engine.VarPresent),
 			setGameNum(view, varRejects, 0),
 			engine.NewGotoPhaseEffect(PhaseMission))
 	}
@@ -210,13 +210,13 @@ func (assassinResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 		hit := p.Role == RoleMerlin
 		return []*engine.Effect{
 			engine.NewEffect(EventAssassinated, u.PlayerID, u.Target()).WithData("hit", hit),
-			engine.NewSetGameVarEffect(varAssassinated, boolVar(hit)),
+			engine.NewSetVarEffect(engine.ScopeGame, varAssassinated, boolVar(hit)),
 		}
 	}
 	// 没有指认视为刺杀落空
 	return []*engine.Effect{
 		engine.NewEffect(EventAssassinated, "", "").WithData("hit", false),
-		engine.NewSetGameVarEffect(varAssassinated, "miss"),
+		engine.NewSetVarEffect(engine.ScopeGame, varAssassinated, "miss"),
 	}
 }
 

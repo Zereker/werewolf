@@ -41,7 +41,7 @@ const (
 
 // gameNum 读一个整局计数，没有则为 0。
 func gameNum(view engine.GameView, key string) int {
-	n, err := strconv.Atoi(view.GameVar(key))
+	n, err := strconv.Atoi(view.Var(engine.ScopeGame, key))
 	if err != nil {
 		return 0
 	}
@@ -50,7 +50,7 @@ func gameNum(view engine.GameView, key string) int {
 
 // setGameNum 写一个整局计数。
 func setGameNum(_ engine.GameView, key string, n int) *engine.Effect {
-	return engine.NewSetGameVarEffect(key, strconv.Itoa(n))
+	return engine.NewSetVarEffect(engine.ScopeGame, key, strconv.Itoa(n))
 }
 
 // mission 当前是第几轮任务，1-5。开局还没写过时算第 1 轮。
@@ -88,7 +88,7 @@ func leaderAt(view engine.GameView, n int) string {
 
 // onTeam 这名玩家这一轮在不在任务队伍里。
 func onTeam(view engine.GameView, playerID string) bool {
-	return view.PlayerRoundVar(playerID, varOnTeam) != ""
+	return view.Var(engine.ScopeRound.Of(playerID), varOnTeam) != ""
 }
 
 // teamIDs 这一轮的任务队伍，按 ID 排序。
@@ -106,7 +106,7 @@ func teamIDs(view engine.GameView) []string {
 }
 
 // approved 这一轮的队伍表决通过了没有。
-func approved(view engine.GameView) bool { return view.RoundVar(varApproved) != "" }
+func approved(view engine.GameView) bool { return view.Var(engine.ScopeRound, varApproved) != "" }
 
 // gameSetup 开局那一刻把局面铺好。
 //
@@ -119,8 +119,8 @@ func approved(view engine.GameView) bool { return view.RoundVar(varApproved) != 
 // ——也就是全场都被告知可以提名，正是这条疤要消灭的东西。
 func gameSetup(view engine.GameView) []*engine.Effect {
 	return []*engine.Effect{
-		engine.NewSetGameVarEffect(varMission, "1"),
-		engine.NewSetGameVarEffect(varLeader, "0"),
+		engine.NewSetVarEffect(engine.ScopeGame, varMission, "1"),
+		engine.NewSetVarEffect(engine.ScopeGame, varLeader, "0"),
 		engine.NewSetActorsEffect(PhasePropose, leaderAt(view, 0)),
 	}
 }

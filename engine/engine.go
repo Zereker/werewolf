@@ -477,24 +477,15 @@ func (e *Engine) IsGameOver() bool {
 	return e.state.Phase == PhaseEnd
 }
 
-// GameVar 读整局的一项自定义状态，没有则为空串。
+// Var 读某个作用域下的一项自定义状态，没有则为空串（见 VarScope）。
 //
-// 与 RoundVar 对称：那个每回合清零，这个跟着整局走。规则用它提供自己的
-// 便利读法（阿瓦隆的「第几轮任务」「成功几次」就是）。
-func (e *Engine) GameVar(key string) string {
+// 规则用它提供自己的便利读法：狼人杀的「今晚刀口」是
+// Var(ScopeRound, ...)，阿瓦隆的「第几轮任务」是 Var(ScopeGame, ...)，
+// 内核只知道有这么一个键。
+func (e *Engine) Var(scope VarScope, key string) string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.state.gameVar(key)
-}
-
-// RoundVar 读本回合的一项自定义状态，没有则为空串。
-//
-// 规则用它提供自己的便利读法——狼人杀的「今晚的刀口」就是
-// werewolf.Engine.NightKillTarget，内核只知道有这么一个键。
-func (e *Engine) RoundVar(key string) string {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.state.roundVar(key)
+	return e.state.varOf(scope, key)
 }
 
 // RoundContext 获取回合上下文的只读副本

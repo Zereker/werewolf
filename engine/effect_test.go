@@ -257,7 +257,7 @@ func TestEventType_KernelPrimitivesAreTheOnlyInternalOnes(t *testing.T) {
 	}{
 		{eventKill, false, "规则给「发生了什么」起的名字"},
 		{eventVoteTied, false, "规则给「发生了什么」起的名字"},
-		{EventSetRoundVar, true, "内核的状态原语"},
+		{EventSetVar, true, "内核的状态原语"},
 		{EventSetAlive, true, "内核的状态原语"},
 		{EventPhaseChanged, true, "内核的记账"},
 		{EventType("IDIOT_REVEALED"), false, "第三方的事件"},

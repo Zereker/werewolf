@@ -41,10 +41,10 @@ func builtinWitchInfo(playerID string, view GameView) map[string]string {
 	}
 
 	info := make(map[string]string, 3)
-	if v := view.PlayerVar(playerID, VarWitchAntidote); v != "" {
+	if v := view.Var(ScopeGame.Of(playerID), VarWitchAntidote); v != "" {
 		info[RoleInfoAntidote] = v
 	}
-	if v := view.PlayerVar(playerID, VarWitchPoison); v != "" {
+	if v := view.Var(ScopeGame.Of(playerID), VarWitchPoison); v != "" {
 		info[RoleInfoPoison] = v
 	}
 

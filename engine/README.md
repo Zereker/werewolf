@@ -136,14 +136,24 @@ SubmitSkillUse  ->  Resolver.Resolve  ->  []*Effect  ->  applyEffect
 `Engine` 的任何方法。返回的效果顺序必须由局面唯一决定（上面的
 `id < out` 就是为此），否则回放与快照比对失去确定性。
 
-## 状态机认得的四条原语
+## 状态机认得的两条原语
 
 | 构造函数 | 改什么 | 读回来 |
 |---|---|---|
 | `NewSetAliveEffect(id, alive)` | 存活 | `GameView.Player(id).Alive` |
-| `NewSetPlayerVarEffect(id, k, v)` | 玩家的状态，跟着他走一整局 | `GameView.PlayerVar(id, k)` |
-| `NewSetRoundVarEffect(k, v)` | 本回合的状态，不属于任何人 | `GameView.RoundVar(k)` |
-| `NewSetPlayerRoundVarEffect(id, k, v)` | 某个玩家在本回合的标记 | `GameView.PlayerRoundVar(id, k)` |
+| `NewSetVarEffect(scope, k, v)` | 一项自定义状态 | `GameView.Var(scope, k)` |
+
+作用域是一张 2×2 的表——时间尺度乘以有没有主人，四格由两个值叉乘
+一个方法得出（见 `VarScope`）：
+
+| | 无主 | 属于某个玩家 |
+|---|---|---|
+| **整局有效** | `ScopeGame` | `ScopeGame.Of(id)` |
+| **本回合有效** | `ScopeRound` | `ScopeRound.Of(id)` |
+
+这张表此前只存在于注释里，代码里是八个平铺的名字（四个构造器加四个读法）
+——于是没有任何东西强制它完整，少了「整局·无主」那一格很久没人发现，
+直到阿瓦隆撞上。现在缺一格根本写不出来。
 
 外加一条 `NewAbilityTriggerEffect(id, phase)`，把一个死亡触发排进队列
 （猎人被刀之后的那一枪就是它）。
@@ -274,7 +284,7 @@ p, _ := after.Player("b1")
 ```
 
 `Seat(id, role, alive, vars...)` 摆一名玩家，`Mark(p, keys...)` 给他打上
-本回合的标记，`Board.RoundVar(k)` 读回合状态。
+本回合的标记，`Board.Var(scope, k)` 读四格里的任意一格。
 
 ## 存档、回放与错误
 

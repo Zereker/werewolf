@@ -12,7 +12,7 @@ func (diceRoller) Resolve(_ []*SkillUse, view GameView) []*Effect {
 	rng := view.Rand()
 	var out []*Effect
 	for _, p := range view.AllPlayers() {
-		out = append(out, NewSetPlayerVarEffect(p.ID, "dice", fmt.Sprint(rng.Intn(6)+1)))
+		out = append(out, NewSetVarEffect(ScopeGame.Of(p.ID), "dice", fmt.Sprint(rng.Intn(6)+1)))
 	}
 	return out
 }

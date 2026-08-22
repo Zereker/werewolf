@@ -31,8 +31,8 @@ const (
 // 引擎里，而不是这个结构体的字段里——住在字段里的话，快照带不上它，
 // 效果流也重建不出它，恢复出来的对局是错的。
 //
-// 引擎给角色的存放处是 PlayerVar：读走 GameView.PlayerVar，
-// 写走 NewSetPlayerVarEffect。女巫的药、守卫的守护记录走的是同一条路，
+// 引擎给角色的存放处是 ScopeGame.Of(id)：读走 GameView.Var，
+// 写走 NewSetVarEffect。女巫的药、守卫的守护记录走的是同一条路，
 // 内置角色在这件事上没有特权。
 type idiotRule struct {
 	inner engine.Resolver
@@ -109,7 +109,7 @@ func (r *idiotRule) Resolve(
 		out = append(out,
 			engine.NewEffect(eventRevealed, ef.TargetID, "").WithData("role", "IDIOT"),
 			// 状态交给引擎保管：随快照走，回放能重建，这个 Resolver 保持无状态
-			engine.NewSetPlayerVarEffect(ef.TargetID, varRevealed, "1"),
+			engine.NewSetVarEffect(engine.ScopeGame.Of(ef.TargetID), varRevealed, "1"),
 		)
 	}
 	return out
@@ -117,7 +117,7 @@ func (r *idiotRule) Resolve(
 
 // revealed 这个白痴翻过牌了吗。
 func revealed(view werewolf.GameView, id string) bool {
-	return view.PlayerVar(id, varRevealed) != ""
+	return view.Var(engine.ScopeGame.Of(id), varRevealed) != ""
 }
 
 // describe 把效果讲成一句话，包括这个扩展自己的事件类型。

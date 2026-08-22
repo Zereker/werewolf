@@ -23,7 +23,7 @@ type RoundContext struct {
 	//
 	// 三种作用域：playerState.Vars 跟着玩家走一整局，这里每回合清零，
 	// playerState.RoundVars 是「某个玩家在本回合的标记」。
-	// 写走 NewSetRoundVarEffect，读走 GameView.RoundVar。
+	// 写走 NewSetVarEffect(ScopeRound, ...)，读走 GameView.Var(ScopeRound, ...)。
 	Vars map[string]string
 }
 
@@ -52,7 +52,7 @@ type playerState struct {
 	// 那正是「加一个角色不该改引擎」要消灭的东西。
 	//
 	// 初始值由 RoleSetup 发放（见 WithRoleSetup），此后走
-	// EventSetPlayerVar 改、GameView.PlayerVar 读，随快照走、回放能重建。
+	// NewSetVarEffect(ScopeGame.Of(id), ...) 改、GameView.Var 读，随快照走、回放能重建。
 	//
 	// 需要跨回合的记录也在这里（狼人杀的「守卫上回合守了谁」就是）：
 	// 判定由规则自己做，内核只管存。
@@ -63,7 +63,7 @@ type playerState struct {
 	// 今晚谁被守了、谁被救了、谁被毒了都是这一类，此前是 RoundContext
 	// 上三张 map[string]bool——第三方角色既改不了也读不到，而「本回合
 	// 标记了某人」是任何一套社会推理规则都会用到的形状。
-	// 写走 NewSetPlayerRoundVarEffect，读走 GameView.PlayerRoundVar。
+	// 写走 NewSetVarEffect(ScopeRound.Of(id), ...)，读走 GameView.Var。
 	RoundVars map[string]string
 }
 
@@ -98,7 +98,7 @@ type gameState struct {
 	// 有效且不属于任何玩家，只能挂到某个玩家的私有状态上当账本，
 	// 那个玩家的 PlayerView 里于是凭空多出四个与他无关的字段。
 	//
-	// 写走 NewSetGameVarEffect，读走 GameView.GameVar / Engine.GameVar。
+	// 写走 NewSetVarEffect(ScopeGame, ...)，读走 GameView.Var / Engine.Var。
 	Vars map[string]string
 
 	// Seed 随机流的种子。开局时由 Config.Seed 定下，此后不变。
@@ -371,36 +371,10 @@ func (s *gameState) applyEffect(effect *Effect) {
 			}
 		}
 
-	case EventSetPlayerRoundVar:
-		// 某个玩家在本回合的标记，每回合清零。值为空即删除。
-		if p, ok := s.players[effect.TargetID]; ok {
-			key, value := playerRoundVarOf(effect)
-			if key != "" {
-				if value == "" {
-					delete(p.RoundVars, key)
-				} else {
-					if p.RoundVars == nil {
-						p.RoundVars = make(map[string]string, 1)
-					}
-					p.RoundVars[key] = value
-				}
-			}
-		}
-
-	case EventSetPlayerVar:
-		// 跟着玩家走一整局的状态。值为空即删除，免得快照里堆一堆空串。
-		if p, ok := s.players[effect.TargetID]; ok {
-			key, value := playerVarOf(effect)
-			if key != "" {
-				if value == "" {
-					delete(p.Vars, key)
-				} else {
-					if p.Vars == nil {
-						p.Vars = make(map[string]string, 1)
-					}
-					p.Vars[key] = value
-				}
-			}
+	case EventSetVar:
+		// 一项自定义状态，作用域在效果里。值为空即删除，免得快照里堆一堆空串。
+		if scope, key, value := varOf(effect); key != "" {
+			s.setVar(scope, key, value)
 		}
 
 	case EventSetActors:
@@ -413,26 +387,6 @@ func (s *gameState) applyEffect(effect *Effect) {
 				}
 			}
 			s.setActors(phase, kept)
-		}
-
-	case EventSetGameVar:
-		// 整局有效、不属于任何玩家。值为空即删除。
-		if key, value := roundVarOf(effect); key != "" {
-			s.setGameVar(key, value)
-		}
-
-	case EventSetRoundVar:
-		// 本回合的状态，不属于任何玩家。值为空即删除。
-		key, value := roundVarOf(effect)
-		if key != "" {
-			if value == "" {
-				delete(s.RoundCtx.Vars, key)
-			} else {
-				if s.RoundCtx.Vars == nil {
-					s.RoundCtx.Vars = make(map[string]string, 1)
-				}
-				s.RoundCtx.Vars[key] = value
-			}
 		}
 
 	case EventAbilityTriggered:
@@ -492,30 +446,53 @@ func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 // 守卫空守一晚就打断了连续性，被判连守而取消的那一次也从来没生效过。
 // 两者都不会写进 LastProtectedRound，因此按回合号一比就都对了。
 
-// roundVar 读本回合的自定义状态，没有则为空串。
-func (s *gameState) roundVar(key string) string {
-	if s.RoundCtx == nil {
-		return ""
+// varsFor 定位某个作用域对应的那张表，以及它是否存在。
+//
+// 四种作用域在这里收口：无主的两格挂在 gameState 与 RoundContext 上，
+// 有主的两格挂在 playerState 上。取不到（玩家不存在、回合上下文为空）
+// 时返回 nil 与一个不可用的写入器。
+func (s *gameState) varsFor(scope VarScope) (read map[string]string, write func(map[string]string)) {
+	if scope.owner == "" {
+		if scope.perRound {
+			if s.RoundCtx == nil {
+				return nil, nil
+			}
+			return s.RoundCtx.Vars, func(m map[string]string) { s.RoundCtx.Vars = m }
+		}
+		return s.Vars, func(m map[string]string) { s.Vars = m }
 	}
-	return s.RoundCtx.Vars[key]
+
+	p, ok := s.players[scope.owner]
+	if !ok {
+		return nil, nil
+	}
+	if scope.perRound {
+		return p.RoundVars, func(m map[string]string) { p.RoundVars = m }
+	}
+	return p.Vars, func(m map[string]string) { p.Vars = m }
 }
 
-// playerRoundVar 读某个玩家在本回合的一项标记，没有则为空串。
-func (s *gameState) playerRoundVar(playerID, key string) string {
-	p, ok := s.players[playerID]
-	if !ok {
-		return ""
-	}
-	return p.RoundVars[key]
+// varOf 读某个作用域下的一项自定义状态，没有则为空串。
+func (s *gameState) varOf(scope VarScope, key string) string {
+	vars, _ := s.varsFor(scope)
+	return vars[key]
 }
 
-// playerVar 读某个玩家的自定义状态，没有则为空串。
-func (s *gameState) playerVar(playerID, key string) string {
-	p, ok := s.players[playerID]
-	if !ok {
-		return ""
+// setVar 写某个作用域下的一项自定义状态。空串等同删除——四种作用域同一个口径。
+func (s *gameState) setVar(scope VarScope, key, value string) {
+	vars, write := s.varsFor(scope)
+	if write == nil {
+		return
 	}
-	return p.Vars[key]
+	if value == "" {
+		delete(vars, key)
+		return
+	}
+	if vars == nil {
+		vars = make(map[string]string, 1)
+		write(vars)
+	}
+	vars[key] = value
 }
 
 // peekTrigger 查看队首的待结算死亡技能
@@ -565,26 +542,6 @@ func (s *gameState) RoundContext() *RoundContext {
 		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
 		Vars:            copyVars(s.RoundCtx.Vars),
 	}
-}
-
-// gameVar 读一项整局有效的状态，没有则为空串。
-func (s *gameState) gameVar(key string) string {
-	if s.Vars == nil {
-		return ""
-	}
-	return s.Vars[key]
-}
-
-// setGameVar 写一项整局有效的状态。空串等同删除——与其余三种作用域同一个口径。
-func (s *gameState) setGameVar(key, value string) {
-	if value == "" {
-		delete(s.Vars, key)
-		return
-	}
-	if s.Vars == nil {
-		s.Vars = map[string]string{}
-	}
-	s.Vars[key] = value
 }
 
 // copyActors 深拷一份行动者表。

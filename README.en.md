@@ -98,7 +98,7 @@ privileges** — they go through exactly the same doors:
 |---|---|
 | A role's behaviour | `WithResolver(phase, resolver)` — wraps built-ins to reuse them |
 | A role's starting state | `WithRoleSetup(role, setup)` — the witch's two potions are one row in this table |
-| A role's own state | `NewSetPlayerVarEffect` / `NewSetRoundVarEffect` / `NewSetPlayerRoundVarEffect` |
+| A role's own state | `NewSetVarEffect(scope, k, v)` / `GameView.Var(scope, k)` — scope is `ScopeGame` or `ScopeRound`, plus `.Of(id)` to make it a player's |
 | A victory condition | `WithVictoryChecker(checker)` — wrap `DefaultVictoryChecker` to add a clause |
 | Role-private information | `WithRoleInfo(role, provider)` — the witch's kill target is one of these |
 | Who hears an event | `WithAudience(provider)` |
@@ -128,7 +128,7 @@ items without touching the engine.
 **Current release: [v1.5.0](CHANGELOG.md).** The generic kernel and the Werewolf
 rules are now separated: no code path in the engine recognises a specific role,
 camp, or cause of death, and the whole rule set is installed through the same
-public options a third party would use. 93.9% coverage across the kernel and both
+public options a third party would use. 93.8% coverage across the kernel and both
 rules packs, every rule traced to the
 Wikipedia article, 5000 randomized games per test run.
 

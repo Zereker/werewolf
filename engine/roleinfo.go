@@ -31,7 +31,7 @@ func (f RoleInfoFunc) RoleInfo(playerID string, view GameView) map[string]string
 //		werewolf.WithResolver(phaseThief, thiefResolver{}),
 //		werewolf.WithRoleInfo(roleThief, werewolf.RoleInfoFunc(
 //			func(id string, view werewolf.GameView) map[string]string {
-//				return map[string]string{"spare_cards": view.RoundVar("thief.spares")}
+//				return map[string]string{"spare_cards": view.Var(werewolf.ScopeRound, "thief.spares")}
 //			})))
 //
 // 同一个角色重复注册以最后一次为准，因此也可以用来换掉内置的那些。
