@@ -14,7 +14,7 @@ type phaseManager struct {
 //
 // 做成表而不是一串赋值：加内置阶段时只需要在这里加一行，
 // 也让「哪些阶段有解析器」一眼可见。
-// 第三方阶段通过 Engine.RegisterResolver 注册，不进这张表。
+// 第三方阶段通过 WithResolver 注册，不进这张表。
 var builtinResolvers = map[pb.PhaseType]func() Resolver{
 	pb.PhaseType_PHASE_TYPE_DAY:           func() Resolver { return NewDayResolver() },
 	pb.PhaseType_PHASE_TYPE_VOTE:          func() Resolver { return NewVoteResolver() },
@@ -66,26 +66,6 @@ func (p *phaseManager) phaseConfig(phase pb.PhaseType) *PhaseConfig {
 // resolver 获取阶段解析器
 func (p *phaseManager) resolver(phase pb.PhaseType) Resolver {
 	return p.resolvers[phase]
-}
-
-// requiredRoles 获取当前阶段需要行动的角色
-func (p *phaseManager) requiredRoles(phase pb.PhaseType) []pb.RoleType {
-	config := p.phaseConfig(phase)
-	if config == nil {
-		return nil
-	}
-
-	roles := make([]pb.RoleType, 0)
-	seen := make(map[pb.RoleType]bool)
-
-	for _, step := range config.Steps {
-		if !seen[step.Role] {
-			roles = append(roles, step.Role)
-			seen[step.Role] = true
-		}
-	}
-
-	return roles
 }
 
 // allowedSkills 获取指定角色在当前阶段允许的技能

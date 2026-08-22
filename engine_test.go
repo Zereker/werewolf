@@ -730,7 +730,6 @@ func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 		for i := 0; i < 200; i++ {
 			_, _ = engine.EndPhase()
 			_ = engine.SendMessage("v1", "hi")
-			engine.SetLogger(NewNopLogger())
 		}
 	}()
 
@@ -740,12 +739,10 @@ func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 // TestEngine_HandlerPanicIsIsolatedAndLogged 单个 handler panic 不影响其他
 // handler，且必须留下错误日志（此前是 `_ = recover()` 静默吞掉）。
 func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
-	g := newRuleGame(t, nil, seats(
+	rec := &recordingLogger{}
+	g := newRuleGameWith(t, nil, []EngineOption{WithLogger(rec)}, seats(
 		wolf("w1"), villagers("v1", "v2", "v3"),
 	)...)
-
-	rec := &recordingLogger{}
-	g.e.SetLogger(rec)
 
 	survivorCalled := false
 	g.e.OnEvent(func(*pb.Event) { panic("boom") })
@@ -771,11 +768,16 @@ func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
 type recordingLogger struct {
 	mu     sync.Mutex
 	errors []string
+	infos  []string
 }
 
 func (l *recordingLogger) Debug(string, ...Field) {}
-func (l *recordingLogger) Info(string, ...Field)  {}
 func (l *recordingLogger) Warn(string, ...Field)  {}
+func (l *recordingLogger) Info(msg string, _ ...Field) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.infos = append(l.infos, msg)
+}
 func (l *recordingLogger) Error(msg string, _ ...Field) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

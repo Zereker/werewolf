@@ -1,6 +1,6 @@
 // phase_info.go 阶段信息：告诉调用方本阶段该让谁行动、能用什么技能。
 //
-// 全部由阶段配置（PhaseConfig.Steps）派生，因此第三方经 RegisterResolver
+// 全部由阶段配置（PhaseConfig.Steps）派生，因此第三方经 WithResolver
 // 加入的自定义角色同样能拿到。
 
 package werewolf

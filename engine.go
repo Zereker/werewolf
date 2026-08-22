@@ -9,9 +9,13 @@ import (
 type Engine struct {
 	mu sync.RWMutex
 
-	config  *GameConfig
-	state   *gameState
-	phase   *phaseManager
+	config *GameConfig
+	state  *gameState
+	phase  *phaseManager
+
+	// logger 与 metrics 在构造时定好，此后不再改变，因此可以在锁外读。
+	// 它们此前有各自的 setter，于是每一处锁外使用都得先在锁内复制一份；
+	// 收进构造选项之后这层防御就没有必要了。
 	logger  Logger
 	metrics Metrics
 
@@ -69,24 +73,6 @@ func MustNewEngine(config *GameConfig, opts ...EngineOption) *Engine {
 	return engine
 }
 
-// SetLogger 设置日志接口
-func (e *Engine) SetLogger(logger Logger) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if logger != nil {
-		e.logger = logger
-	}
-}
-
-// SetMetrics 设置指标收集器
-func (e *Engine) SetMetrics(metrics Metrics) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if metrics != nil {
-		e.metrics = metrics
-	}
-}
-
 // addPlayer 添加玩家。阵营与角色类别由角色推导。
 //
 // 只能在 Start 之前调用。返回错误：游戏已开始、ID 为空、ID 已存在、
@@ -112,73 +98,43 @@ func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, cate
 	return nil
 }
 
-// RegisterResolver 注册或替换某个阶段的解析器。
-//
-// 这是扩展新角色的入口。引擎内置的六个角色只是一套默认板子，
-// 加入狼王、白痴、骑士等角色不应该要求 fork 这个库：
-//
-//	cfg := werewolf.DefaultGameConfig()
-//	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }   // 声明阶段
-//	engine, _ := werewolf.NewEngine(cfg)
-//	engine.RegisterResolver(myPhase, myResolver)          // 注册解析器
-//	engine.AddCustomPlayer("p1", myRole, camp, category)  // 指定阵营与类别
-//
-// 死亡时触发的能力由 Resolver 产出 NewAbilityTriggerEffect 即可，
-// 引擎不需要认识具体角色。
-//
-// 只能在 Start 之前调用。resolver 为 nil 时报错——若想让某阶段
-// 不产生任何效果，注册一个返回空切片的解析器。
-//
-// 从快照或效果流恢复出来的引擎已经不在 START 阶段，这个入口对它们
-// 无效，请在构造时用 WithResolver。
-func (e *Engine) RegisterResolver(phase pb.PhaseType, resolver Resolver) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
-		return ErrGameAlreadyStarted
-	}
-
-	return WithResolver(phase, resolver)(e)
-}
-
 // Start 开始游戏。
 //
 // 开局事件会推给 OnEvent 的订阅者，与其他事件走同一条通道。
 func (e *Engine) Start() error {
-	effect, handlers, logger, err := e.startLocked()
+	effect, handlers, err := e.startLocked()
 	if err != nil {
 		return err
 	}
 
 	// 分发在锁外：回调里可能回调 Engine
-	dispatchEvent(handlers, logger, effect.ToEvent())
+	dispatchEvent(handlers, e.logger, effect.ToEvent())
 	return nil
 }
 
 // startLocked 在锁内完成开局，返回需要在锁外发布的内容。
-func (e *Engine) startLocked() (*Effect, []EventHandler, Logger, error) {
+func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
-		return nil, nil, nil, ErrGameAlreadyStarted
+		return nil, nil, ErrGameAlreadyStarted
 	}
 
 	// 校验板子：缺任一阵营的局面从第一次结算起就已分出胜负，
 	// 与其让它「开局即结束」，不如在这里直接拒绝
 	good, evil := e.state.countCamps()
 	if evil == 0 {
-		return nil, nil, nil, ErrNoWerewolf
+		return nil, nil, ErrNoWerewolf
 	}
 	if good == 0 {
-		return nil, nil, nil, ErrNoGoodPlayer
+		return nil, nil, ErrNoGoodPlayer
 	}
 
 	// 每个阶段都必须有解析器，否则推进到那里时技能会被静默丢弃。
 	// 解析器可以在构造之后注册，故此项校验放在这里而非 NewEngine。
 	if err := e.phase.validateResolvers(); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	start := e.config.startPhase()
@@ -188,7 +144,7 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, Logger, error) {
 	e.effectLog = append(e.effectLog, effect)
 	e.logger.Info("game started", RoundField(1), PhaseField(start))
 
-	return effect, e.snapshotEventHandlersLocked(), e.logger, nil
+	return effect, e.snapshotEventHandlersLocked(), nil
 }
 
 // SubmitSkillUse 提交技能使用
@@ -224,7 +180,6 @@ type phaseOutcome struct {
 	effects  []*Effect      // 本阶段产生的全部效果（含内部效果）
 	events   []*pb.Event    // 需要对外发布的事件
 	handlers []EventHandler // 锁内快照的处理器
-	logger   Logger         // 锁内快照的日志器
 }
 
 // endPhaseInternal 结束阶段：先在锁内推进状态，再在锁外分发事件。
@@ -239,7 +194,7 @@ func (e *Engine) endPhaseInternal() ([]*Effect, error) {
 	}
 
 	for _, event := range out.events {
-		dispatchEvent(out.handlers, out.logger, event)
+		dispatchEvent(out.handlers, e.logger, event)
 	}
 
 	return out.effects, nil
@@ -331,10 +286,9 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 			F("to", nextPhase.String()))
 	}
 
-	// 在锁内快照 handler 与 logger：回调要在锁外执行，
+	// 在锁内快照 handler：回调要在锁外执行，
 	// 而在锁外读取 e.eventHandlers 会与 OnEvent 竞争
 	out.handlers = e.snapshotEventHandlersLocked()
-	out.logger = e.logger
 
 	return out, nil
 }

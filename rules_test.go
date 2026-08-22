@@ -93,7 +93,14 @@ type ruleGame struct {
 // newRuleGame 按座位表创建并开局。cfg 为 nil 时使用默认配置。
 func newRuleGame(t *testing.T, cfg *GameConfig, seats ...seat) *ruleGame {
 	t.Helper()
-	e := MustNewEngine(cfg)
+	return newRuleGameWith(t, cfg, nil, seats...)
+}
+
+// newRuleGameWith 同 newRuleGame，另外带上构造选项。
+// 日志、指标、自定义解析器都只能在构造时给出，故需要这个入口。
+func newRuleGameWith(t *testing.T, cfg *GameConfig, opts []EngineOption, seats ...seat) *ruleGame {
+	t.Helper()
+	e := MustNewEngine(cfg, opts...)
 	for _, st := range seats {
 		if err := e.AddPlayer(st.id, st.role); err != nil {
 			t.Fatalf("AddPlayer(%s, %v) 失败: %v", st.id, st.role, err)

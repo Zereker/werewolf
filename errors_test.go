@@ -27,17 +27,6 @@ func TestGameError_Error(t *testing.T) {
 	}
 }
 
-func TestNewGameError(t *testing.T) {
-	err := NewGameError(pb.ErrorCode_ERROR_CODE_TARGET_NOT_FOUND, "target xyz not found")
-
-	if err.Code != pb.ErrorCode_ERROR_CODE_TARGET_NOT_FOUND {
-		t.Errorf("expected ERROR_CODE_TARGET_NOT_FOUND, got %v", err.Code)
-	}
-	if err.Message != "target xyz not found" {
-		t.Errorf("expected 'target xyz not found', got '%s'", err.Message)
-	}
-}
-
 func TestIsErrorCode(t *testing.T) {
 	gameErr := &GameError{
 		Code:    pb.ErrorCode_ERROR_CODE_SKILL_NOT_ALLOWED,

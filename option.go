@@ -1,10 +1,13 @@
 // option.go 构造选项：把「开局前必须配好」的东西收到构造函数里。
 //
 // 引擎有一批只能在开局前设置的东西：自定义 Resolver、日志、指标。
-// 此前它们各有一个 setter，而 setter 只能在拿到引擎之后调用——
+// 它们此前各有一个 setter，而 setter 只能在拿到引擎之后调用——
 // 对 RestoreEngine / ReplayEngine 这两个「一步就把引擎推到局中」的
-// 入口来说太晚了：恢复出来的引擎已经不在 START 阶段，RegisterResolver
-// 会直接拒绝，自定义角色的技能从此被静默丢弃。
+// 入口来说太晚了：恢复出来的引擎已经不在 START 阶段，注册会直接被拒，
+// 自定义角色的技能从此被静默丢弃。
+//
+// 收进构造选项之后还多了一层好处：这些东西在引擎交给调用方之前就已定死、
+// 此后不再改变，锁外读取它们也就不再需要防御性的复制。
 
 package werewolf
 
@@ -20,8 +23,7 @@ type EngineOption func(*Engine) error
 
 // WithResolver 注册或替换某个阶段的解析器。
 //
-// 这是扩展新角色的入口，等价于开局前调用 Engine.RegisterResolver，
-// 但对 RestoreEngine / ReplayEngine 同样有效：
+// 这是扩展新角色的唯一入口，对 RestoreEngine / ReplayEngine 同样有效：
 //
 //	cfg := werewolf.DefaultGameConfig()
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }
