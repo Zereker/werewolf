@@ -48,6 +48,12 @@ func mustAddTo(t *testing.T, s *gameState, id string, role RoleType) {
 	if err := s.addPlayer(id, role); err != nil {
 		t.Fatalf("addPlayer(%q, %v): %v", id, role, err)
 	}
+	// 初始状态由 RoleSetup 发放，而那张表在 Engine 上——直接拿裸
+	// gameState 驱动解析器的测试得自己补这一步，否则女巫手里没有药。
+	// 这里刻意只发内置的：测第三方角色请走 Engine.AddCustomPlayer。
+	if setup, ok := builtinRoleSetup[role]; ok {
+		s.setPlayerVars(id, setup.Setup(id, role))
+	}
 }
 
 // checkVictory 按引擎当前的判定器算一次胜负。

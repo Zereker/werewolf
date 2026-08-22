@@ -56,8 +56,18 @@ func WithRoleInfo(role RoleType, provider RoleInfoProvider) EngineOption {
 	}
 }
 
-// RoleInfoKillTarget 女巫可见的刀口，在 RoleInfo 里的键名。
-const RoleInfoKillTarget = "kill_target"
+// 女巫专属信息在 RoleInfo 里的键名。
+//
+// RoleInfoAntidote / RoleInfoPoison 是药剂存量的**投射**，存储在
+// Vars 里（VarWitchAntidote / VarWitchPoison）。存储与投射分开是刻意的：
+// 存储只有 Vars 一种，谁都能写；要给玩家看成什么样由角色自己决定。
+// 它们此前是 SelfInfo 上两个具名 bool 字段，等于内置女巫在面向玩家的
+// 视图上比第三方角色多一等公民的待遇。
+const (
+	RoleInfoKillTarget = "kill_target"
+	RoleInfoAntidote   = "antidote"
+	RoleInfoPoison     = "poison"
+)
 
 // builtinRoleInfo 内置角色的专属信息。
 //
@@ -67,20 +77,35 @@ var builtinRoleInfo = map[RoleType]RoleInfoProvider{
 	RoleWitch: RoleInfoFunc(builtinWitchInfo),
 }
 
-// builtinWitchInfo 女巫在解药尚在手时可知刀口。
+// builtinWitchInfo 女巫看得到自己的药剂存量，以及解药尚在手时的刀口。
 //
-// 规则「解藥未使用時可以得知狼人的殺害對象」。已出局的女巫不再是行动者，
-// 天亮公布之前不该拿到今晚的刀口。
+// 刀口按规则「解藥未使用時可以得知狼人的殺害對象」给。已出局的女巫
+// 不再是行动者，天亮公布之前不该拿到今晚的刀口——但药剂存量照给：
+// 那是她自己的东西，死了也不该凭空看不见。
 func builtinWitchInfo(playerID string, view GameView) map[string]string {
 	self, ok := view.Player(playerID)
-	if !ok || !self.Alive || !self.HasAntidote {
+	if !ok {
 		return nil
 	}
-	target := view.RoundContext().KillTarget
-	if target == "" {
+
+	info := make(map[string]string, 3)
+	if v := view.PlayerVar(playerID, VarWitchAntidote); v != "" {
+		info[RoleInfoAntidote] = v
+	}
+	if v := view.PlayerVar(playerID, VarWitchPoison); v != "" {
+		info[RoleInfoPoison] = v
+	}
+
+	if self.Alive && info[RoleInfoAntidote] != "" {
+		if target := view.RoundContext().KillTarget; target != "" {
+			info[RoleInfoKillTarget] = target
+		}
+	}
+
+	if len(info) == 0 {
 		return nil
 	}
-	return map[string]string{RoleInfoKillTarget: target}
+	return info
 }
 
 // roleInfoFor 算出某个玩家的角色专属信息。调用前需持有 e.mu。

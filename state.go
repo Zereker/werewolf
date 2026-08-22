@@ -130,10 +130,6 @@ type PlayerState struct {
 	Category RoleCategory // 角色类别（神职/平民/狼人），用于屠边判定
 	Alive    bool
 
-	// 女巫药剂状态
-	HasAntidote bool // 是否有解药
-	HasPoison   bool // 是否有毒药
-
 	// 守卫连续保护限制。
 	//
 	// 只记「哪一回合守了谁」，不记「最后一次成功守护的目标」——
@@ -142,18 +138,18 @@ type PlayerState struct {
 	LastProtectedTarget string // 最近一次生效守护的目标
 	LastProtectedRound  int    // 那次守护发生在第几回合，0 表示从未守护
 
-	// Vars 第三方角色的自定义状态。
+	// Vars 角色私有的、会影响规则判定的状态。
 	//
-	// 上面那几个字段——女巫的药、守卫的守护记录——本质上是同一件事：
-	// 「某个角色私有的、会影响规则判定的状态」。引擎为内置角色把它们
-	// 写成了字段，为它们各写了一条 applyEffect 分支；而这两处第三方
-	// 都改不了，于是自定义角色只能把状态藏在自己的 Resolver 里，
-	// 也就是只能违反「状态变更一律经由 Effect」这条不变量。
+	// 女巫的两瓶药就存在这里（键见 VarWitchAntidote / VarWitchPoison），
+	// 与第三方角色的状态同一条路。此前它们是上面两个 bool 字段，
+	// 于是第三方的「女巫类」角色改不动自己的药，也没有任何办法给
+	// 自己发初始状态——那正是「加一个角色不该改引擎」要消灭的东西。
 	//
-	// Vars 把那个口子开出来：走 EventSetPlayerVar 写，随快照走，
-	// 回放能重建。内置的那几个字段保留——它们是默认板子，
-	// p.HasAntidote 比 p.Vars["antidote"] 好读得多，而且要出现在
-	// 面向玩家的 SelfInfo 上。
+	// 初始值由 RoleSetup 发放（见 WithRoleSetup），此后走
+	// EventSetPlayerVar 改、GameView.PlayerVar 读，随快照走、回放能重建。
+	//
+	// 上面的守护记录还是字段：它由引擎的回合号参与判定（见
+	// lastProtectedTarget），不是纯粹的角色私有状态。
 	Vars map[string]string
 }
 
@@ -231,14 +227,35 @@ func (s *gameState) addCustomPlayer(id string, role RoleType, camp Camp, categor
 		Alive:    true,
 	}
 
-	// 女巫初始有解药和毒药各一瓶
-	if role == RoleWitch {
-		player.HasAntidote = true
-		player.HasPoison = true
-	}
-
 	s.players[id] = player
 	return nil
+}
+
+// setPlayerVars 批量写入一名玩家的自定义状态，供入座时发放初始状态。
+//
+// 空值按删除处理，与 EventSetPlayerVar 的写入点保持一致——否则
+// 「发一个开局就用掉解药的女巫」写出来的空串会留在快照里。
+func (s *gameState) setPlayerVars(id string, vars map[string]string) {
+	if len(vars) == 0 {
+		return
+	}
+	p, ok := s.players[id]
+	if !ok {
+		return
+	}
+	for k, v := range vars {
+		if k == "" {
+			continue
+		}
+		if v == "" {
+			delete(p.Vars, k)
+			continue
+		}
+		if p.Vars == nil {
+			p.Vars = make(map[string]string, len(vars))
+		}
+		p.Vars[k] = v
+	}
 }
 
 // countCamps 统计各阵营存活人数（包内使用）
@@ -280,22 +297,28 @@ func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 // 含 Protected 这类只有上帝该知道的信息，不可整体转发给玩家——
 // 要发给玩家的内容用 Engine.PlayerView。
 type PlayerInfo struct {
-	ID          string       `json:"id"`
-	Role        RoleType     `json:"role"`
-	Camp        Camp         `json:"camp"`
-	Category    RoleCategory `json:"category"`
-	Alive       bool         `json:"alive"`
-	Protected   bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
-	HasAntidote bool         `json:"has_antidote"`
-	HasPoison   bool         `json:"has_poison"`
+	ID        string       `json:"id"`
+	Role      RoleType     `json:"role"`
+	Camp      Camp         `json:"camp"`
+	Category  RoleCategory `json:"category"`
+	Alive     bool         `json:"alive"`
+	Protected bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
 
-	// Vars 第三方角色的自定义状态。
+	// Vars 角色私有的状态，女巫的药也在其中（键见 VarWitchAntidote）。
 	//
 	// 刻意只出现在这里（上帝视角），不出现在面向玩家的 SelfInfo 上：
-	// 扩展往里放什么由扩展决定，默认把它交给玩家等于让每个扩展
-	// 自己去想「这一项能不能给他看」——那正是这个库要替调用方
-	// 收掉的那类判断。要给玩家看的，由扩展自己推。
+	// 往里放什么由角色决定，默认把它交给玩家等于让每个角色自己去想
+	// 「这一项能不能给他看」——那正是这个库要替调用方收掉的那类判断。
+	// 要给玩家看的，由角色经 RoleInfoProvider 显式投射。
 	Vars map[string]string `json:"vars,omitempty"`
+}
+
+// Var 返回该玩家的一项自定义状态，没有则为空串。
+//
+// 只是省掉 nil map 的判断——PlayerInfo 是副本，直接读 Vars 也一样。
+// 女巫是否还有解药就是 p.Var(VarWitchAntidote) != ""。
+func (p PlayerInfo) Var(key string) string {
+	return p.Vars[key]
 }
 
 // PlayerInfo 获取玩家信息的只读副本
@@ -306,15 +329,13 @@ func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	}
 
 	return PlayerInfo{
-		ID:          p.ID,
-		Role:        p.Role,
-		Camp:        p.Camp,
-		Category:    p.Category,
-		Alive:       p.Alive,
-		Protected:   s.RoundCtx.IsProtected(id), // 从 RoundContext 获取
-		HasAntidote: p.HasAntidote,
-		HasPoison:   p.HasPoison,
-		Vars:        copyVars(p.Vars),
+		ID:        p.ID,
+		Role:      p.Role,
+		Camp:      p.Camp,
+		Category:  p.Category,
+		Alive:     p.Alive,
+		Protected: s.RoundCtx.IsProtected(id), // 从 RoundContext 获取
+		Vars:      copyVars(p.Vars),
 	}, true
 }
 
@@ -407,16 +428,19 @@ func (s *gameState) applyEffect(effect *Effect) {
 			guard.LastProtectedTarget = effect.TargetID
 			guard.LastProtectedRound = s.Round
 		}
-	// 药剂与守护记录不按角色设限：这里是状态的写入点，谁有资格用药
-	// 是规则问题，由 Resolver 判定（内置的 WitchResolver 会查 Role）。
-	// 在这里再写死一遍角色，等于第三方的「女巫类」角色改不动自己的状态。
+	// 药剂不按角色设限：这里是状态的写入点，谁有资格用药是规则问题，
+	// 由 Resolver 判定（内置的 WitchResolver 会查 Role）。在这里再写死
+	// 一遍角色，等于第三方的「女巫类」角色改不动自己的状态。
+	//
+	// 消耗写的是 Vars，与 EventSetPlayerVar 同一份存储——留着这两个
+	// 事件类型是因为效果流需要「用了药」这个词，不是因为药有特殊待遇。
 	case EventUseAntidote:
 		if witch, ok := s.players[effect.SourceID]; ok {
-			witch.HasAntidote = false
+			delete(witch.Vars, VarWitchAntidote)
 		}
 	case EventUsePoison:
 		if witch, ok := s.players[effect.SourceID]; ok {
-			witch.HasPoison = false
+			delete(witch.Vars, VarWitchPoison)
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
 	case EventSetPlayerVar:

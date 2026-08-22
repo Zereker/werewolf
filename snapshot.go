@@ -8,7 +8,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 6
+const SnapshotVersion = 7
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -41,14 +41,13 @@ type PlayerSnapshot struct {
 	Category RoleCategory `json:"category"`
 	Alive    bool         `json:"alive"`
 
-	HasAntidote bool `json:"has_antidote"`
-	HasPoison   bool `json:"has_poison"`
-
 	LastProtectedTarget string `json:"last_protected_target,omitempty"`
 	LastProtectedRound  int    `json:"last_protected_round,omitempty"`
 
-	// Vars 第三方角色的自定义状态。存这一项是这个机制成立的前提：
-	// 带不上它，扩展的状态就只能藏在 Resolver 里，那正是要解决的问题。
+	// Vars 角色私有的状态。女巫的药也在其中（键见 VarWitchAntidote）——
+	// 它们此前是这里两个具名 bool 字段，v7 起并入 Vars，与第三方角色
+	// 同一条路。存这一项是整个机制成立的前提：带不上它，角色的状态
+	// 就只能藏在 Resolver 里，那正是要解决的问题。
 	Vars map[string]string `json:"vars,omitempty"`
 }
 
@@ -236,8 +235,6 @@ func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 			Camp:                p.Camp,
 			Category:            p.Category,
 			Alive:               p.Alive,
-			HasAntidote:         p.HasAntidote,
-			HasPoison:           p.HasPoison,
 			LastProtectedTarget: p.LastProtectedTarget,
 			LastProtectedRound:  p.LastProtectedRound,
 			Vars:                copyVars(p.Vars),
@@ -265,8 +262,8 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 
 // restorePlayer 按快照写入一名玩家。
 //
-// 不走 AddPlayer：恢复时要原样还原快照里的存活状态与药剂，
-// 而 AddPlayer 会按「新玩家」的规则重新初始化。
+// 不走 AddPlayer：恢复时要原样还原快照里的存活状态与 Vars，
+// 而 AddPlayer 会经 RoleSetup 重新发一遍初始状态——用掉的药会回来。
 func (s *gameState) restorePlayer(p PlayerSnapshot) {
 	s.players[p.ID] = &PlayerState{
 		ID:                  p.ID,
@@ -274,8 +271,6 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 		Camp:                p.Camp,
 		Category:            p.Category,
 		Alive:               p.Alive,
-		HasAntidote:         p.HasAntidote,
-		HasPoison:           p.HasPoison,
 		LastProtectedTarget: p.LastProtectedTarget,
 		LastProtectedRound:  p.LastProtectedRound,
 		Vars:                copyVars(p.Vars),

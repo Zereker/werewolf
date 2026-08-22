@@ -41,6 +41,7 @@ package werewolf
 // 当前该表为空——R1–R11 全部通过。新发现偏差时在此登记，修复后删除。
 
 import (
+	"maps"
 	"os"
 	"testing"
 )
@@ -86,6 +87,15 @@ func villagers(ids ...string) []seat {
 type ruleGame struct {
 	t *testing.T
 	e *Engine
+}
+
+// sameVars 比较两份自定义状态是否完全一致。
+//
+// 女巫的药 v2 起并入 Vars，因此「状态有没有带上」这件事不再是逐字段比，
+// 而是整张表比——漏掉一个键就是漏掉一条规则，与漏掉 LastProtectedRound
+// 那次是同一类错误。
+func sameVars(a, b map[string]string) bool {
+	return maps.Equal(a, b)
 }
 
 // newRuleGame 按座位表创建并开局。cfg 为 nil 时使用默认配置。
@@ -315,7 +325,7 @@ func TestRule_R2_WitchSeesKillOnlyWhileAntidoteHeld(t *testing.T) {
 	g.end(PhaseNightResolve)
 	g.end(PhaseDay)
 
-	if g.info("wi").HasAntidote {
+	if g.info("wi").Var(VarWitchAntidote) != "" {
 		t.Fatal("第一夜救人后解药应当已消耗")
 	}
 	g.assertAlive("v1", true, "第一夜被救")
@@ -378,10 +388,10 @@ func TestRule_R3_WitchCannotUseBothPotionsInOneNight(t *testing.T) {
 
 			after := g.info("wi")
 			potionsUsed := 0
-			if !after.HasAntidote {
+			if after.Var(VarWitchAntidote) == "" {
 				potionsUsed++
 			}
-			if !after.HasPoison {
+			if after.Var(VarWitchPoison) == "" {
 				potionsUsed++
 			}
 			if potionsUsed > 1 {
@@ -704,7 +714,7 @@ func TestRule_R7_GuardPlusAntidoteKillsTarget(t *testing.T) {
 	g.endAny()
 
 	g.assertAlive("v1", false, "同守同救")
-	if g.info("wi").HasAntidote {
+	if g.info("wi").Var(VarWitchAntidote) != "" {
 		t.Error("同守同救时解药仍应被消耗")
 	}
 }

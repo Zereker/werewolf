@@ -15,7 +15,16 @@ const (
 	roleWolfKing  = RoleType(1000)
 	skillWolfClaw = SkillType(1000)
 	phaseWolfKing = PhaseType(1000)
+
+	// 狼王的枪：开局一发，打出去就没了。存在 PlayerVar 里、由
+	// RoleSetup 发放，走的是与女巫的药完全相同的两条路。
+	varWolfKingGun = "wolfking.gun"
 )
+
+// wolfKingSetup 狼王开局带一发子弹。第三方实现，只依赖导出 API。
+func wolfKingSetup(playerID string, role RoleType) map[string]string {
+	return map[string]string{varWolfKingGun: VarPresent}
+}
 
 // wolfKingResolver 狼王的开枪结算。第三方实现，只依赖导出的 GameView。
 type wolfKingResolver struct{}
@@ -23,11 +32,18 @@ type wolfKingResolver struct{}
 func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 	for _, use := range uses {
-		if use.Skill == skillWolfClaw && use.TargetID != "" {
-			effects = append(effects,
-				NewEffect(EventShoot, use.PlayerID, use.TargetID))
-			break // 一枪
+		if use.Skill != skillWolfClaw || use.TargetID == "" {
+			continue
 		}
+		// 枪只有一发。子弹是入座时发的（wolfKingSetup），用掉即清空——
+		// 与女巫的药同一条路：状态在 PlayerVar 里，改动经 Effect 表达。
+		if view.PlayerVar(use.PlayerID, varWolfKingGun) == "" {
+			continue
+		}
+		effects = append(effects,
+			NewEffect(EventShoot, use.PlayerID, use.TargetID),
+			NewSetPlayerVarEffect(use.PlayerID, varWolfKingGun, ""))
+		break
 	}
 	return effects
 }
@@ -70,6 +86,7 @@ func newWolfKingGame(t *testing.T) *Engine {
 
 	// 2. 构造时注册狼王阶段的解析器，并装饰投票解析器
 	engine, err := NewEngine(cfg,
+		WithRoleSetup(roleWolfKing, RoleSetupFunc(wolfKingSetup)),
 		WithResolver(phaseWolfKing, &wolfKingResolver{}),
 		WithResolver(PhaseVote,
 			&voteWithWolfKing{inner: NewVoteResolver()}))

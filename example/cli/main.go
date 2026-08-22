@@ -259,14 +259,13 @@ func (t *table) playerView(args []string) {
 	}
 
 	fmt.Printf("  你是 %s，%s，%s\n", v.Self.ID, shortRole(v.Self.Role), aliveWord(v.Self.Alive))
-	if v.Self.Role == werewolf.RoleWitch {
-		fmt.Printf("  解药 %s，毒药 %s\n", haveWord(v.Self.HasAntidote), haveWord(v.Self.HasPoison))
-	}
 	if len(v.Teammates) > 0 {
 		fmt.Printf("  你的狼队友: %v\n", v.Teammates)
 	}
-	if t := v.RoleInfo[werewolf.RoleInfoKillTarget]; t != "" {
-		fmt.Printf("  今晚被刀的是: %s\n", t)
+	// 角色专属信息统一由 RoleInfo 来，主持台不需要知道谁是女巫——
+	// 认识的键给个中文说法，不认识的（扩展角色自己定的）原样打出来。
+	for _, line := range roleInfoLines(v.RoleInfo) {
+		fmt.Printf("  %s\n", line)
 	}
 	if len(v.AllowedSkills) == 0 {
 		fmt.Println("  现在还轮不到你")

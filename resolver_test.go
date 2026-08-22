@@ -368,7 +368,7 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 
 	// 解药应该被消耗
 	witch, _ := state.getPlayer("witch")
-	if witch.HasAntidote {
+	if witch.Vars[VarWitchAntidote] != "" {
 		t.Errorf("expected witch to have used antidote")
 	}
 }

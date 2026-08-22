@@ -26,6 +26,10 @@ type Engine struct {
 	// 读取路径也是同一条——内置角色在这件事上没有特权。
 	roleInfo map[RoleType]RoleInfoProvider
 
+	// roleSetup 各角色的初始状态。同上：女巫开局两瓶药与第三方角色
+	// 开局带什么，走的是同一张表、同一条写入路径。
+	roleSetup map[RoleType]RoleSetup
+
 	// 当前阶段收集的技能使用
 	pendingUses []*SkillUse
 
@@ -60,6 +64,7 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 		metrics:         NewNopMetrics(),
 		victory:         DefaultVictoryChecker{Mode: config.VictoryMode},
 		roleInfo:        make(map[RoleType]RoleInfoProvider, len(builtinRoleInfo)),
+		roleSetup:       make(map[RoleType]RoleSetup, len(builtinRoleSetup)),
 		pendingUses:     make([]*SkillUse, 0),
 		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
@@ -67,6 +72,9 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 	}
 	for role, p := range builtinRoleInfo {
 		e.roleInfo[role] = p
+	}
+	for role, su := range builtinRoleSetup {
+		e.roleSetup[role] = su
 	}
 	if err := e.applyOptions(opts); err != nil {
 		return nil, err
@@ -103,10 +111,29 @@ func (e *Engine) AddCustomPlayer(id string, role RoleType, camp Camp, category R
 		return ErrGameAlreadyStarted
 	}
 
+	vars := e.setupFor(id, role)
+	if err := e.seatPlayer(id, role, camp, category, vars); err != nil {
+		return err
+	}
+	e.effectLog = append(e.effectLog, newPlayerAddedEffect(id, role, camp, category, vars))
+	return nil
+}
+
+// seatPlayer 让一名玩家带着给定的初始状态入座。调用前需持有 e.mu。
+//
+// 正常入座与回放入座共用这一条路径，区别只在 vars 从哪儿来：
+// 正常入座问 RoleSetup，回放读效果流里记着的那一份。
+//
+// 初始状态记进效果流、而不是在回放时重新问一遍 RoleSetup，是刻意的：
+// 「女巫带着两瓶药入座」本来就是发生过的事，效果流记的就是这个。
+// 重新问的话，回放方少传一个 WithRoleSetup，重建出来的角色就悄悄
+// 空着手——解析器漏传有 validateResolvers 拦，这里拦不住，因为
+// 「这个角色没有初始状态」与「你忘了传」在签名上无法区分。
+func (e *Engine) seatPlayer(id string, role RoleType, camp Camp, category RoleCategory, vars map[string]string) error {
 	if err := e.state.addCustomPlayer(id, role, camp, category); err != nil {
 		return err
 	}
-	e.effectLog = append(e.effectLog, newPlayerAddedEffect(id, role, camp, category))
+	e.state.setPlayerVars(id, vars)
 	return nil
 }
 

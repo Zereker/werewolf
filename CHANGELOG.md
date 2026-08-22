@@ -9,6 +9,62 @@
 > 公开的 tag 只有 `v1.0.0` 与 `v1.2.0`。`v1.0.0` 到 `v1.2.0` 之间的全部改动
 > 都归入 `v1.2.0` 一节——对使用者而言，中间没有可取用的版本。
 
+## 未发布（v2 开发中）
+
+v2 的方向是把内核与狼人杀规则拆开（见下面「路线」一节）。这一节记录
+朝那个方向走出的每一步；`go.mod` 的 `/v2` 后缀会在真正发版前一次性改掉。
+
+### 第五个扩展点：角色的初始状态
+
+**破坏性变更**：`PlayerState` / `PlayerInfo` / `PlayerSnapshot` / `SelfInfo`
+上的 `HasAntidote` 与 `HasPoison` 四处具名字段全部删除，女巫的药并入 `Vars`；
+**快照版本 6 → 7**，不兼容旧存档。
+
+v1.4.0 的说明里写着「引擎里已经没有第三方做不到、内置角色能做的事了」，
+这句话当时就不准确。引擎里还剩最后一处因具体角色而分叉的逻辑：
+
+```go
+// state.go，addCustomPlayer 内
+if role == RoleWitch {
+    player.HasAntidote = true
+    player.HasPoison = true
+}
+```
+
+它的代价不是这三行本身，而是第三方角色**没有任何办法**给自己发初始状态——
+骑士开局带一次决斗、摄梦人开局带两条命，都得改引擎才能表达。
+
+- **新增 `WithRoleSetup(role, setup)`**，与 `WithResolver`、`WithVictoryChecker`、
+  `WithRoleInfo` 同构。入座时问一次，返回的键值写进该玩家的 `Vars`。
+  签名里刻意没有 `GameView`：入座发生在开局之前，初始状态只能由角色本身决定，
+  不能取决于谁先入座、场上还有谁。需要看局面的初始化（丘比特连情侣、盗贼选底牌）
+  是一个阶段，用 `Resolver` 做。
+- **女巫的两瓶药走同一张表**（`builtinRoleSetup`），并从 `PlayerState` 的两个
+  bool 字段搬进 `Vars`（键为 `VarWitchAntidote` / `VarWitchPoison`）。
+  注册一个空的 setup，她就真的空手上桌、解药也用不出来——引擎里再没有
+  第二条给内置角色发状态的暗道，测试里也确实是这么验的。
+- **药剂存量改由 `RoleInfo` 投射**（`RoleInfoAntidote` / `RoleInfoPoison`），
+  `SelfInfo` 上那两个具名字段删除。存储与投射从此是两件事：存储只有 `Vars`
+  一种、谁都能写；给玩家看成什么样由角色的 `RoleInfoProvider` 决定。
+  这与上一版把 `KillTarget` 改成 `RoleInfo` 是同一个动作，只是当时只做了投射，
+  没做存储。
+- **初始状态记进效果流**的入座那一条上，而不是回放时重新问一遍 `RoleSetup`。
+  「女巫带着两瓶药入座」本来就是发生过的事，效果流记的就是这个。反过来做的话，
+  回放方少传一个 `WithRoleSetup`，重建出来的角色就悄悄空着手——解析器漏传有
+  `validateResolvers` 拦得住，这里拦不住，因为「这个角色本来就没有初始状态」
+  与「你忘了传」在签名上无法区分。
+- **新增 `PlayerInfo.Var(key)`**，省掉 nil map 判断。
+- **随机对局覆盖到了这条路**：`extension_test.go` 的狼王现在开局带一发子弹
+  （`varWolfKingGun`，经 `WithRoleSetup` 发放，开枪时用 `NewSetPlayerVarEffect`
+  清掉），5000 局里 1484 局带着它跑。加这一发子弹时，`newWolfKingGame` 忘了
+  注册 setup，狼王当场开不出枪——初始状态是真的参与规则判定，不是视图上
+  多显示一行。
+- `example/cli` 里主持台不再认识女巫：`if v.Self.Role == RoleWitch` 换成
+  遍历 `RoleInfo`，认识的键给个中文说法，扩展角色自己定的键原样打出来。
+
+变异验证：去掉入座时的状态发放，6 条新测试里 6 条报错；去掉效果流里的
+初始状态记录，`TestRoleSetup_SurvivesReplayWithoutTheOption` 单独报错。
+
 ## v1.4.0 — 2026-08-22
 
 这一版把扩展性补齐：加一个角色，不需要改引擎里任何一行。四个扩展点
@@ -78,6 +134,11 @@ v2 要做的是把它们分开：内核不认识任何角色、技能、阶段�
 **这会改模块路径**：Go 的模块规则要求 v2 及以上带 `/v2` 后缀，
 即 `github.com/Zereker/werewolf/v2`。发版 workflow 里有一道闸专门拦这个，
 不改 `go.mod` 就发不出去。
+
+第一步已经走了：角色的初始状态（见「未发布」一节）。挑它开头是因为它是
+整个拆分的最小完整实例——一个内置角色的状态从引擎字段变成规则包写进内核
+变量、再经通用投射出去。先把这一刀切干净，「类型化的外投放哪儿」这个问题
+就在动包结构之前有了答案，比先搬文件再发现投射没地方放便宜得多。
 
 ## v1.3.0 — 2026-08-22
 

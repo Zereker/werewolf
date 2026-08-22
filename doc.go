@@ -60,12 +60,17 @@
 // 每回合清零的用 RoundVar（今晚谁被标记了）。读用 GameView.PlayerVar /
 // RoundVar，写用 NewSetPlayerVarEffect / NewSetRoundVarEffect。
 // 它们随快照走、回放能重建，因此 Resolver 可以保持无状态——
-// 而无状态正是这个接口的要求。内置角色的药剂、守护记录、刀口、被守被救
-// 都是同一件事，只是它们在 PlayerState / RoundContext 上有专门的字段。
+// 而无状态正是这个接口的要求。内置女巫的两瓶药就存在 PlayerVar 里
+// （VarWitchAntidote / VarWitchPoison），与第三方角色同一条路。
 //
-// 角色额外让玩家看到什么（女巫的刀口、盗贼的底牌）由 RoleInfoProvider
-// 回答，用 WithRoleInfo 注册，结果出现在 PlayerView.RoleInfo 与
-// RolePhaseInfo.RoleInfo。内置女巫走的就是这条路，没有特权。
+// 状态的初始值由 RoleSetup 在入座时发放，用 WithRoleSetup 注册。
+// 女巫开局的两瓶药走的就是这条路，注册一个空的 setup 她就空手上桌——
+// 引擎里再没有第二条给内置角色发状态的暗道。
+//
+// 角色额外让玩家看到什么（女巫的刀口与药剂存量、盗贼的底牌）由
+// RoleInfoProvider 回答，用 WithRoleInfo 注册，结果出现在 PlayerView.RoleInfo
+// 与 RolePhaseInfo.RoleInfo。存储（Vars）与投射（RoleInfo）分开是刻意的：
+// 存储只有一种，谁都能写；给玩家看成什么样由角色自己决定。
 //
 // 胜负条件由 VictoryChecker 决定，可用 WithVictoryChecker 换掉。
 // 第三方阵营（丘比特的情侣）有自己的胜利条件，判定写死在引擎里的话

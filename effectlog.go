@@ -8,14 +8,21 @@ const (
 	campKey     = "camp"
 	categoryKey = "category"
 	phaseKey    = "phase"
+	varsKey     = "vars"
 )
 
-// newPlayerAddedEffect 记录一名玩家入座
-func newPlayerAddedEffect(id string, role RoleType, camp Camp, category RoleCategory) *Effect {
-	return NewEffect(EventPlayerAdded, "", id).
+// newPlayerAddedEffect 记录一名玩家入座，连同该角色的初始状态。
+//
+// 记下 vars 而不是在回放时重新问一遍 RoleSetup，理由见 Engine.seatPlayer。
+func newPlayerAddedEffect(id string, role RoleType, camp Camp, category RoleCategory, vars map[string]string) *Effect {
+	effect := NewEffect(EventPlayerAdded, "", id).
 		WithData(roleKey, role).
 		WithData(campKey, camp).
 		WithData(categoryKey, category)
+	if len(vars) > 0 {
+		effect = effect.WithData(varsKey, copyVars(vars))
+	}
+	return effect
 }
 
 // newPhaseChangedEffect 记录一次阶段流转
@@ -61,6 +68,7 @@ func (e *Engine) EffectLog() []*Effect {
 // 需要那部分请用 Snapshot。
 //
 // 自定义角色的解析器必须经 opts 传入，理由同 RestoreEngine。
+// 初始状态不用：它记在效果流里的入座那一条上（见 Engine.seatPlayer）。
 func ReplayEngine(config *GameConfig, log []*Effect, opts ...EngineOption) (*Engine, error) {
 	engine, err := NewEngine(config, opts...)
 	if err != nil {
@@ -96,7 +104,10 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		role, _ := effect.Data[roleKey].(RoleType)
 		camp, _ := effect.Data[campKey].(Camp)
 		category, _ := effect.Data[categoryKey].(RoleCategory)
-		if err := e.state.addCustomPlayer(effect.TargetID, role, camp, category); err != nil {
+		// 入座要连初始状态一起发。少了这一步，回放出来的女巫手里
+		// 没有药，而分叉要到她第一次用药时才暴露。
+		vars, _ := effect.Data[varsKey].(map[string]string)
+		if err := e.seatPlayer(effect.TargetID, role, camp, category, vars); err != nil {
 			return err
 		}
 

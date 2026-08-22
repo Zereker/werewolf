@@ -176,7 +176,7 @@ func TestPlayerView_DeadWitchCannotSeeKillTarget(t *testing.T) {
 	if v.Self.Alive {
 		t.Fatal("前置条件：女巫此时应已出局")
 	}
-	if !v.Self.HasAntidote {
+	if v.RoleInfo[RoleInfoAntidote] == "" {
 		t.Fatal("前置条件：女巫的解药未使用")
 	}
 	if v.RoleInfo[RoleInfoKillTarget] != "" {

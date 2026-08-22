@@ -40,9 +40,10 @@ type PlayerView struct {
 	// RoleInfo 角色专属信息：这个角色额外让他看到的东西。
 	//
 	// 由角色自己的 RoleInfoProvider 回答（见 WithRoleInfo），引擎不认识
-	// 任何具体角色。内置女巫的刀口在这里的键是 RoleInfoKillTarget——
-	// 它此前是 PlayerView 上一个具名字段，等于内置角色比第三方角色多
-	// 一等公民的待遇，而加一个角色不该要求改引擎。
+	// 任何具体角色。内置女巫的刀口与药剂存量都在这里（键见
+	// RoleInfoKillTarget / RoleInfoAntidote / RoleInfoPoison）——它们此前
+	// 是 PlayerView 与 SelfInfo 上的具名字段，等于内置角色比第三方角色
+	// 多一等公民的待遇，而加一个角色不该要求改引擎。
 	RoleInfo map[string]string `json:"role_info,omitempty"`
 }
 
@@ -58,10 +59,6 @@ type SelfInfo struct {
 	Camp     Camp         `json:"camp"`
 	Category RoleCategory `json:"category"`
 	Alive    bool         `json:"alive"`
-
-	// HasAntidote / HasPoison 女巫的药剂存量，非女巫恒为 false
-	HasAntidote bool `json:"has_antidote"`
-	HasPoison   bool `json:"has_poison"`
 }
 
 // PublicPlayerInfo 一名玩家对外公开的信息
@@ -97,13 +94,11 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		Round:    e.state.Round,
 		Phase:    e.state.Phase,
 		Self: SelfInfo{
-			ID:          self.ID,
-			Role:        self.Role,
-			Camp:        self.Camp,
-			Category:    self.Category,
-			Alive:       self.Alive,
-			HasAntidote: self.HasAntidote,
-			HasPoison:   self.HasPoison,
+			ID:       self.ID,
+			Role:     self.Role,
+			Camp:     self.Camp,
+			Category: self.Category,
+			Alive:    self.Alive,
 		},
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
 	}

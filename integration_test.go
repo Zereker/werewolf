@@ -316,13 +316,13 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 
 		// 先提交的解药生效
 		g.assertAlive("victim", true, "解药先提交，victim 应当被救")
-		if witch.HasAntidote {
+		if witch.Var(VarWitchAntidote) != "" {
 			t.Error("解药应当已被消耗")
 		}
 
 		// 后提交的毒药被拒
 		g.assertAlive("wolf", true, "同夜第二瓶药应当无效，wolf 不应被毒死")
-		if !witch.HasPoison {
+		if witch.Var(VarWitchPoison) == "" {
 			t.Error("毒药未生效，不应被消耗")
 		}
 		if g.e.IsGameOver() {
@@ -336,7 +336,7 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 
 		g.assertAlive("victim", true, "expected victim to be saved")
 		g.assertAlive("wolf", false, "expected wolf to be poisoned")
-		if witch.HasAntidote || witch.HasPoison {
+		if witch.Var(VarWitchAntidote) != "" || witch.Var(VarWitchPoison) != "" {
 			t.Error("两瓶药都应当被消耗")
 		}
 		if !g.e.IsGameOver() {

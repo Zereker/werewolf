@@ -129,10 +129,10 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 
 	t.Run("女巫药剂", func(t *testing.T) {
 		wi, _ := restored.PlayerInfo("wi")
-		if wi.HasAntidote {
+		if wi.Var(VarWitchAntidote) != "" {
 			t.Error("第一夜用掉的解药不应恢复回来")
 		}
-		if !wi.HasPoison {
+		if wi.Var(VarWitchPoison) == "" {
 			t.Error("未使用的毒药应当保留")
 		}
 	})
@@ -490,15 +490,14 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 			t.Errorf("%s 的身份没带全: %+v", id, got)
 		case got.Alive != want.Alive:
 			t.Errorf("%s 的存活状态没带上", id)
-		case got.HasAntidote != want.HasAntidote, got.HasPoison != want.HasPoison:
-			t.Errorf("%s 的药剂没带上", id)
+		case !sameVars(got.Vars, want.Vars):
+			t.Errorf("%s 的自定义状态没带上（女巫的药也在这里）: 快照 %v，实际 %v",
+				id, got.Vars, want.Vars)
 		case got.LastProtectedTarget != want.LastProtectedTarget:
 			t.Errorf("%s 的守护目标没带上", id)
 		case got.LastProtectedRound != want.LastProtectedRound:
 			t.Errorf("%s 的守护回合没带上: 快照 %d，实际 %d",
 				id, got.LastProtectedRound, want.LastProtectedRound)
-		case len(got.Vars) != len(want.Vars):
-			t.Errorf("%s 的自定义状态没带上: 快照 %v，实际 %v", id, got.Vars, want.Vars)
 		}
 	}
 	g.e.mu.RUnlock()

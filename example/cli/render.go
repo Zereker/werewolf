@@ -247,11 +247,43 @@ func aliveWord(alive bool) string {
 	return "已出局"
 }
 
-func haveWord(has bool) string {
-	if has {
-		return "还在"
+// roleInfoKeyLabels 认识的 RoleInfo 键的中文说法。
+//
+// 引擎不认识任何具体角色，这份对照表是**主持台**的事，不是库的事：
+// 扩展角色自己定的键不在表里，会原样打出来，不会被吞掉。
+var roleInfoKeyLabels = map[string]string{
+	werewolf.RoleInfoAntidote:   "解药",
+	werewolf.RoleInfoPoison:     "毒药",
+	werewolf.RoleInfoKillTarget: "今晚被刀的是",
+}
+
+// roleInfoLines 把角色专属信息渲染成若干行，键序稳定。
+func roleInfoLines(info map[string]string) []string {
+	if len(info) == 0 {
+		return nil
 	}
-	return "已用"
+
+	keys := make([]string, 0, len(info))
+	for k := range info {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	lines := make([]string, 0, len(keys))
+	for _, k := range keys {
+		label, ok := roleInfoKeyLabels[k]
+		if !ok {
+			label = k
+		}
+		// 存量这类布尔状态只在「有」的时候出现在 RoleInfo 里，
+		// 值本身（"1"）没有信息量，打标签就够了。
+		if info[k] == werewolf.VarPresent {
+			lines = append(lines, label)
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", label, info[k]))
+	}
+	return lines
 }
 
 func revealed(r werewolf.RoleType) string {

@@ -267,11 +267,12 @@ type Effect struct {
 ```go
 v := engine.PlayerView("p1")
 
-v.Self            // 自己的身份、阵营、（女巫的）药剂
+v.Self            // 自己的身份、阵营、存活状态
 v.Players         // 全场公开信息；身份只对自己与狼队友可见
 v.AllowedSkills   // 本阶段自己能提交的技能，为空即「还没轮到我」
 v.Teammates       // 狼人可见：队友
-v.RoleInfo        // 角色专属信息，如女巫的刀口 v.RoleInfo[RoleInfoKillTarget]
+v.RoleInfo        // 角色专属信息：女巫的刀口 v.RoleInfo[RoleInfoKillTarget]、
+                  // 药剂存量 v.RoleInfo[RoleInfoAntidote]，扩展角色的键由自己定
 ```
 
 配套的 `AudienceOf` 回答「发生的事该告诉谁」：
@@ -358,18 +359,29 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
-扩展能改动的三处，都由构造选项给出：
+扩展能改动的五处，都由构造选项给出：
 
 | 想加什么 | 用什么 |
 |---|---|
 | 新角色的行为 | `WithResolver(phase, resolver)`，可包装内置解析器复用逻辑 |
+| 角色的初始状态 | `WithRoleSetup(role, setup)`，入座时发放，写进该玩家的 `Vars` |
 | 角色自身的状态 | `NewSetPlayerVarEffect`（跟着玩家一整局）/ `NewSetRoundVarEffect`（每回合清零），读走 `GameView.PlayerVar` / `RoundVar` |
 | 新的胜利条件 | `WithVictoryChecker(checker)`，包一层 `DefaultVictoryChecker` 就能在内置规则之上再加一条 |
 | 角色专属信息 | `WithRoleInfo(role, provider)`，结果出现在 `PlayerView.RoleInfo` 与 `RolePhaseInfo.RoleInfo` |
 
-内置角色在这四件事上**没有特权**：女巫的刀口走的就是 `WithRoleInfo`（键名
-`RoleInfoKillTarget`），可以被换掉；队友按**阵营**给，`AddCustomPlayer` 加进来的
-狼王一样拿得到。加一个角色不需要改引擎里任何一行。
+内置角色在这五件事上**没有特权**，女巫是现成的样本：
+
+- 开局两瓶药由 `builtinRoleSetup` 发，与 `WithRoleSetup` 同一张表——注册一个
+  空的 setup，她就真的空手上桌；
+- 药存在 `Vars` 里（`VarWitchAntidote` / `VarWitchPoison`），与第三方角色同一份存储；
+- 刀口与药剂存量经 `WithRoleInfo` 投射给玩家，可以被换掉；
+- 队友按**阵营**给，`AddCustomPlayer` 加进来的狼王一样拿得到。
+
+加一个角色不需要改引擎里任何一行。
+
+**存储与投射是分开的**：状态只有 `Vars` 一种存法，谁都能写；要给玩家看成
+什么样由角色的 `RoleInfoProvider` 决定。默认不给——往 `Vars` 里放什么由角色
+决定，自动交给玩家等于让每个角色自己去想「这一项能不能给他看」。
 
 状态一定要走 Var 而不是存在 Resolver 的字段里：`Resolver` 接口要求
 「只能通过返回 Effect 表达状态变更」，存在字段里的东西快照带不上、回放

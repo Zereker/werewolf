@@ -137,6 +137,7 @@ func withWolfKing(cfg *GameConfig) []EngineOption {
 		NextPhase: cfg.startPhase(),
 	}
 	return []EngineOption{
+		WithRoleSetup(roleWolfKing, RoleSetupFunc(wolfKingSetup)),
 		WithResolver(phaseWolfKing, &wolfKingResolver{}),
 		WithResolver(PhaseVote, &voteWithWolfKing{inner: NewVoteResolver()}),
 		WithResolver(PhaseNightResolve, &nightResolveWithWolfKing{inner: NewNightResolveResolver()}),
@@ -347,7 +348,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 			}
 			// 刀口只有活着且解药在手的女巫能看到
 			if v.RoleInfo[RoleInfoKillTarget] != "" {
-				if !self.Alive || self.Role != RoleWitch || !self.HasAntidote {
+				if !self.Alive || self.Role != RoleWitch || self.Var(VarWitchAntidote) == "" {
 					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.RoleInfo[RoleInfoKillTarget])
 				}
 			}
@@ -392,7 +393,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		for _, id := range ids {
 			a, _ := e.PlayerInfo(id)
 			b, _ := replayed.PlayerInfo(id)
-			if a.Alive != b.Alive || a.HasAntidote != b.HasAntidote || a.HasPoison != b.HasPoison {
+			if a.Alive != b.Alive || !sameVars(a.Vars, b.Vars) {
 				t.Fatalf("seed=%d step=%d 回放的 %s 状态不同: %+v vs %+v", seed, step, id, a, b)
 			}
 		}

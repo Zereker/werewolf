@@ -496,14 +496,16 @@ const (
 )
 
 // witchHas 该女巫是否还持有指定的药。
-// 非女巫一律返回 false。
+// 非女巫一律返回 false——「谁有资格用药」是规则，由这里判定，
+// 而不是由状态的写入点判定。
 func witchHas(view GameView, playerID string, kind potionKind) bool {
 	p, ok := view.Player(playerID)
 	if !ok || p.Role != RoleWitch {
 		return false
 	}
-	if kind == potionAntidote {
-		return p.HasAntidote
+	key := VarWitchAntidote
+	if kind == potionPoison {
+		key = VarWitchPoison
 	}
-	return p.HasPoison
+	return view.PlayerVar(playerID, key) != ""
 }
