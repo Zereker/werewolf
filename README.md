@@ -390,6 +390,29 @@ $ go run ./example/cli
 `AudienceOf`。`run` 让它自己随机跑完一局，`save` / `load` 演示服务重启。
 也可以照脚本跑：`go run ./example/cli < example/cli/testdata/demo.txt`。
 
+## TCP 服务端
+
+`example/netserver` 是一个 TCP 长连接的服务端，也是这个库的第二个真实使用者。
+命令行主持台验证的是「一个人主持一局」，有一整类东西它碰不到——事件推送、
+每条连接一份视图、多局并发、断线重连、超时真的触发——都由它来压。
+
+协议是 TCP + 一行一条 JSON，`nc` 就能玩：
+
+```console
+$ go run ./example/netserver &
+$ nc localhost 9000
+{"type":"join","player":"p1"}
+<- {"type":"phase","phase":"NIGHT_GUARD","round":1,"deadline_ms":...}
+<- {"type":"view","view":{...}}          // 只有 p1 有权知道的那一份
+{"type":"act","skill":"protect","target":"p5"}
+{"type":"say","text":"我是好人"}
+<- {"type":"event","event":{...}}        // 只推给 AudienceOf 划出来的人
+```
+
+房间用单 goroutine 串行化对引擎的访问（actor），而不是加锁：引擎的回调是在
+`EndPhase` 内部、释放引擎锁之后触发的，房间若自己也加锁就会撞上
+「持房间锁 → EndPhase → 回调 → 想再拿房间锁」的自锁。
+
 ## 效果流与回放
 
 ```go
@@ -543,7 +566,8 @@ werewolf/
 ├── rules_test.go      # 以维基百科规则为基准的一致性测试
 ├── extension_test.go  # 第三方扩展契约（以狼王为例）
 ├── example/        # 可运行示例
-│   └── cli/        # 命令行主持台（真实使用者）
+│   ├── cli/        # 命令行主持台（真实使用者）
+│   └── netserver/  # TCP 服务端（推送、并发、断线重连）
 └── docs/
     └── ARCHITECTURE.md
 ```
