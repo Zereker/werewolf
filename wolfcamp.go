@@ -18,12 +18,32 @@ const (
 	CampEvil Camp = "EVIL" // 狼人
 )
 
-// 狼人杀的三种角色类别。类型在内核（不透明标签），取值在这里。
+// RoleCategory 角色在阵营之内的细分。
+//
+// 屠边判定需要区分「神职」与「平民」，而阵营只有好人/狼人两值，
+// 表达不了这个维度，故单列一个类别。
+//
+// 它整个属于狼人杀：内核只认「这名玩家站哪一边」（engine.VarCamp），
+// 不认得神职与平民。
+type RoleCategory string
+
+// String 实现 fmt.Stringer。
+func (c RoleCategory) String() string {
+	if c == RoleCategoryUnknown {
+		return "UNKNOWN"
+	}
+	return string(c)
+}
+
+// VarCategory 角色类别在玩家 Vars 里的键名。规则包自己定的，内核不认。
+const VarCategory = "category"
+
+// 狼人杀的三种角色类别。
 const (
-	RoleCategoryUnknown               = RoleCategoryUnspecified // 没有登记类别的角色
-	RoleCategoryWolf     RoleCategory = "WOLF"                  // 狼人阵营
-	RoleCategoryGod      RoleCategory = "GOD"                   // 神职：预言家、女巫、猎人、守卫
-	RoleCategoryVillager RoleCategory = "VILLAGER"              // 平民
+	RoleCategoryUnknown  RoleCategory = ""         // 没有登记类别的角色
+	RoleCategoryWolf     RoleCategory = "WOLF"     // 狼人阵营
+	RoleCategoryGod      RoleCategory = "GOD"      // 神职：预言家、女巫、猎人、守卫
+	RoleCategoryVillager RoleCategory = "VILLAGER" // 平民
 )
 
 // campOf 这名玩家属于哪一边，没有登记则为 CampUnspecified。

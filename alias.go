@@ -19,13 +19,12 @@ import "github.com/Zereker/werewolf/engine"
 // 类型在内核，取值在本包（见 vocab.go）——内核不知道有「女巫」这个角色。
 
 type (
-	PhaseType    = engine.PhaseType
-	RoleType     = engine.RoleType
-	SkillType    = engine.SkillType
-	EventType    = engine.EventType
-	Camp         = engine.Camp
-	RoleCategory = engine.RoleCategory
-	ErrorCode    = engine.ErrorCode
+	PhaseType = engine.PhaseType
+	RoleType  = engine.RoleType
+	SkillType = engine.SkillType
+	EventType = engine.EventType
+	Camp      = engine.Camp
+	ErrorCode = engine.ErrorCode
 )
 
 // 内核自己拥有的取值：生命周期阶段、主持人、通用动作。
@@ -53,12 +52,10 @@ const (
 	EventSetAlive          = engine.EventSetAlive
 	EventSetPlayerRoundVar = engine.EventSetPlayerRoundVar
 
-	CampUnspecified         = engine.CampUnspecified
-	RoleCategoryUnspecified = engine.RoleCategoryUnspecified
+	CampUnspecified = engine.CampUnspecified
 
-	VarCamp     = engine.VarCamp
-	VarCategory = engine.VarCategory
-	VarPresent  = engine.VarPresent
+	VarCamp    = engine.VarCamp
+	VarPresent = engine.VarPresent
 )
 
 // DefaultPhaseTimeout 未给出 PhaseConfig.Timeout 时的兜底建议值。
@@ -88,7 +85,10 @@ var (
 // ==================== 局面与配置 ====================
 
 type (
-	GameConfig  = engine.GameConfig
+	// GameConfig 阶段机的配置。内核里它叫 Config——那边不需要「Game」
+	// 这个前缀来区分，这边留着是因为狼人杀还有一个 Rules。
+	GameConfig = engine.Config
+
 	PhaseConfig = engine.PhaseConfig
 	PhaseStep   = engine.PhaseStep
 	SkillUse    = engine.SkillUse

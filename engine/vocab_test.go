@@ -63,14 +63,14 @@ const (
 
 // testConfig 一副够用的阶段图：守卫 -> 狼 -> 女巫 -> 预言家 -> 结算 -> 白天 -> 投票 -> 回到守卫。
 //
-// 内核的测试需要一个合法的 GameConfig，但内核自己没有默认板子——
+// 内核的测试需要一个合法的 Config，但内核自己没有默认板子——
 // 「有哪些阶段」是规则的事。这里手摆一副，与狼人杀那副长得像，
 // 但它只属于这些测试。
-func testConfig() *GameConfig {
+func testConfig() *Config {
 	step := func(role RoleType, skill SkillType) []PhaseStep {
 		return []PhaseStep{{Role: role, Skill: skill, Required: true}}
 	}
-	return &GameConfig{
+	return &Config{
 		StartPhase: phaseNightGuard,
 		Phases: map[PhaseType]*PhaseConfig{
 			phaseNightGuard:   {Type: phaseNightGuard, Steps: step(roleGuard, skillProtect), NextPhase: phaseNightWolf},

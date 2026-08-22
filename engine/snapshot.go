@@ -16,7 +16,7 @@ const SnapshotVersion = 10
 // 而快照是写进存储的格式，字段名必须稳定。两者之间的转换集中在本文件，
 // 增减字段时这里会显式报错，不会悄悄丢数据。
 //
-// 快照**不包含** GameConfig、Logger、Metrics 与回调：
+// 快照**不包含** Config、Logger、Metrics 与回调：
 // 这些由调用方在恢复时提供，规则配置本身也应由调用方掌握版本。
 //
 // 枚举以**名字**序列化（"NIGHT_GUARD" 而不是 21）。存档是要给人看、
@@ -121,7 +121,7 @@ func (e *Engine) Snapshot() *Snapshot {
 //
 // 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中、
 // 有阶段缺少解析器。
-func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*Engine, error) {
+func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engine, error) {
 	if snap == nil {
 		return nil, ErrNilSnapshot
 	}

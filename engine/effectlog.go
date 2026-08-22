@@ -68,7 +68,7 @@ func (e *Engine) EffectLog() []*Effect {
 //
 // 自定义角色的解析器必须经 opts 传入，理由同 RestoreEngine。
 // 初始状态不用：它记在效果流里的入座那一条上（见 Engine.seatPlayer）。
-func ReplayEngine(config *GameConfig, log []*Effect, opts ...EngineOption) (*Engine, error) {
+func ReplayEngine(config *Config, log []*Effect, opts ...EngineOption) (*Engine, error) {
 	engine, err := NewEngine(config, opts...)
 	if err != nil {
 		return nil, err

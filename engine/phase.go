@@ -4,7 +4,7 @@ import ()
 
 // phaseManager 阶段管理器
 type phaseManager struct {
-	config    *GameConfig
+	config    *Config
 	resolvers map[PhaseType]Resolver
 }
 
@@ -12,7 +12,7 @@ type phaseManager struct {
 //
 // 不装任何默认解析器：内核不知道哪个阶段该由谁结算。狼人杀的那一批
 // 由 werewolf.Options 作为构造选项传进来。
-func newPhaseManager(config *GameConfig) *phaseManager {
+func newPhaseManager(config *Config) *phaseManager {
 	return &phaseManager{
 		config:    config,
 		resolvers: make(map[PhaseType]Resolver, 8),

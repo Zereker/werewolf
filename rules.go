@@ -43,8 +43,10 @@ func DefaultRules() Rules {
 
 // Validate 校验规则开关。
 func (r Rules) Validate() error {
-	if r.VictoryMode < VictoryModeSideWipe || r.VictoryMode > VictoryModeTownWipe {
-		return WrapError(CodeInvalidConfig, "unknown victory mode %d", int(r.VictoryMode))
+	switch r.VictoryMode {
+	case VictoryModeSideWipe, VictoryModeTownWipe:
+	default:
+		return WrapError(CodeInvalidConfig, "unknown victory mode %q", string(r.VictoryMode))
 	}
 	return nil
 }

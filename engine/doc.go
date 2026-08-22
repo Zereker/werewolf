@@ -46,7 +46,7 @@
 //
 // # 写一个规则包
 //
-//	cfg := &engine.GameConfig{StartPhase: myFirstPhase, Phases: ...}
+//	cfg := &engine.Config{StartPhase: myFirstPhase, Phases: ...}
 //	e, err := engine.NewEngine(cfg,
 //		engine.WithResolver(myPhase, myResolver),   // 这个阶段怎么结算
 //		engine.WithRoleSetup(myRole, mySetup),      // 这个角色带着什么入座

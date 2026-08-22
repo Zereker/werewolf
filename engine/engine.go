@@ -7,7 +7,7 @@ import (
 type Engine struct {
 	mu sync.RWMutex
 
-	config *GameConfig
+	config *Config
 	state  *gameState
 	phase  *phaseManager
 
@@ -61,10 +61,10 @@ type Engine struct {
 // 没有受众划分。规则全部经 opts 传入——狼人杀的那一整套见 werewolf.New，
 // 它自己也只是这么组装的，没有走任何后门。
 //
-// config 是必需的：内核没有默认板子可给。配置会先经 GameConfig.Validate
+// config 是必需的：内核没有默认板子可给。配置会先经 Config.Validate
 // 校验——阶段流转图是使用者可替换的数据，悬空的 NextPhase 会让游戏推进到
 // 一半静默结束，这类问题必须在构造时暴露。
-func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
+func NewEngine(config *Config, opts ...EngineOption) (*Engine, error) {
 	if config == nil {
 		return nil, WrapError(CodeInvalidConfig, "config must not be nil")
 	}
@@ -95,7 +95,7 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 // MustNewEngine 同 NewEngine，配置不合法时 panic。
 //
 // 适用于配置是编译期常量的场合（示例、测试、写死默认配置的服务启动路径）。
-func MustNewEngine(config *GameConfig, opts ...EngineOption) *Engine {
+func MustNewEngine(config *Config, opts ...EngineOption) *Engine {
 	engine, err := NewEngine(config, opts...)
 	if err != nil {
 		panic("werewolf: invalid game config: " + err.Error())
@@ -511,7 +511,7 @@ func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*Event) {
 // 配置里若没有那个阶段（比如板子有猎人却删掉了猎人阶段），
 // 引擎会流转到一个没有配置、没有解析器的阶段，玩家提交什么都不允许，
 // 下一次推进直接进 END——游戏在第一夜无声收场，连 GAME_ENDED 都没有。
-// GameConfig.Validate 看不见这条边，只能在这里拦。
+// Config.Validate 看不见这条边，只能在这里拦。
 //
 // 调用前需持有 e.mu。
 func (e *Engine) vetTrigger(effect *Effect) {

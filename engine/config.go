@@ -17,11 +17,14 @@ const (
 	DefaultPhaseTimeout = 30 * time.Second
 )
 
-// GameConfig 阶段机的配置：从哪儿开始、阶段怎么流转、建议多久。
+// Config 阶段机的配置：从哪儿开始、阶段怎么流转、建议多久。
 //
-// 规则开关（女巫能否自救之类）此前也在这里，现在住在 Rules 上——
-// 内核不该认得「女巫」这个概念，更不该认得她能不能自救。
-type GameConfig struct {
+// 只有阶段机需要的三样东西。规则开关（狼人杀的「女巫能否自救」之类）
+// 不在这里——内核不该认得那些概念，它们住在规则包自己的结构体上。
+//
+// 名字曾经是 GameConfig。改掉是因为它名不副实：它配的是阶段机，
+// 不是「一局游戏」。
+type Config struct {
 	// 起始阶段。Start 之后进入的第一个阶段，为空时默认 NIGHT_GUARD。
 	StartPhase PhaseType
 
@@ -30,7 +33,7 @@ type GameConfig struct {
 
 	// DefaultTimeout 未给出 PhaseConfig.Timeout 时的建议超时。
 	// 建议值，引擎不据此计时，详见超时常量的说明；
-	// 用 GameConfig.PhaseTimeout(phase) 取某个阶段的最终建议值。
+	// 用 Config.PhaseTimeout(phase) 取某个阶段的最终建议值。
 	DefaultTimeout time.Duration
 }
 
@@ -39,7 +42,7 @@ type GameConfig struct {
 // 阶段自己没配就用 DefaultTimeout，DefaultTimeout 也没配就用
 // DefaultPhaseTimeout。这两个字段此前只写不读——调用方要拿引擎实际
 // 在用的建议值，只能自己再造一份配置比对。
-func (c *GameConfig) PhaseTimeout(phase PhaseType) time.Duration {
+func (c *Config) PhaseTimeout(phase PhaseType) time.Duration {
 	if pc := c.Phases[phase]; pc != nil && pc.Timeout > 0 {
 		return pc.Timeout
 	}
@@ -122,7 +125,7 @@ type SkillUse struct {
 //   - 死亡技能的动态流转（Resolver 产出 NewAbilityTriggerEffect 指向的
 //     阶段）是运行期才知道的边，由引擎在入队前检查——目标阶段不在配置里
 //     的触发会被就地否决并记 Error 日志，而不是把游戏带进一个空阶段。
-func (c *GameConfig) Validate() error {
+func (c *Config) Validate() error {
 	if c == nil {
 		return WrapError(CodeInvalidConfig, "config must not be nil")
 	}
@@ -228,6 +231,6 @@ func validateSteps(phaseType PhaseType, steps []PhaseStep) error {
 //
 // 一定有值：Validate 强制配置给出它。此前留空会退回 NIGHT_GUARD——
 // 那是狼人杀的第一个阶段，内核没有资格替任何规则挑一个默认值。
-func (c *GameConfig) startPhase() PhaseType {
+func (c *Config) startPhase() PhaseType {
 	return c.StartPhase
 }

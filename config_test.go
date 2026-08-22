@@ -244,21 +244,34 @@ func TestValidate_RejectsMissingNextPhase(t *testing.T) {
 	}
 }
 
-// TestValidate_RejectsUnknownVictoryMode 越界的胜负判定方式不该被 default 分支吞掉。
+// TestValidate_RejectsUnknownVictoryMode 不认识的胜负判定方式不该被 default 分支吞掉。
 //
-// 校验从 GameConfig.Validate 搬到了 Rules.Validate，跟着 VictoryMode 一起走。
+// VictoryMode 改成字符串之后多守住一件事：**零值也要被拒**。它此前是
+// int + iota，零值恰好是屠边——「没填」与「选了屠边」在结构体里长得
+// 一模一样，填错了也发现不了。
 func TestValidate_RejectsUnknownVictoryMode(t *testing.T) {
-	rules := DefaultRules()
-	rules.VictoryMode = VictoryMode(99)
+	for name, mode := range map[string]VictoryMode{
+		"不认识的取值": VictoryMode("不存在的判定方式"),
+		"零值":     VictoryMode(""),
+	} {
+		t.Run(name, func(t *testing.T) {
+			rules := DefaultRules()
+			rules.VictoryMode = mode
 
-	if err := rules.Validate(); err == nil {
-		t.Fatal("越界的 VictoryMode 应当被拒")
+			if err := rules.Validate(); err == nil {
+				t.Fatal("应当被拒")
+			}
+			if _, err := New(rules); err == nil {
+				t.Fatal("应当让组装失败")
+			}
+		})
 	}
-	if _, err := New(rules); err == nil {
-		t.Fatal("越界的 VictoryMode 应当让组装失败")
+
+	if got := VictoryMode("").String(); got != "UNSPECIFIED" {
+		t.Errorf("零值的 String(): 期望 UNSPECIFIED，实际 %s", got)
 	}
-	if got := VictoryMode(99).String(); got != "UNKNOWN" {
-		t.Errorf("String(): 期望 UNKNOWN，实际 %s", got)
+	if got := VictoryModeTownWipe.String(); got != "TOWN_WIPE" {
+		t.Errorf("String(): 期望 TOWN_WIPE，实际 %s", got)
 	}
 }
 

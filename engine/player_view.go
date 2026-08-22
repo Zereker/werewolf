@@ -62,13 +62,15 @@ type SelfInfo struct {
 	Role  RoleType `json:"role"`
 	Alive bool     `json:"alive"`
 
-	// Camp / Category 这名玩家站哪一边、是什么类别。
+	// Camp 这名玩家站哪一边。
 	//
-	// 两个**不透明**标签，取自 Vars 里的标准键（VarCamp / VarCategory）。
-	// 内核只负责搬运：它不知道 "EVIL" 是什么意思，也不知道这名玩家
-	// 该不该知道自己的阵营——那由规则在发放初始状态时决定。
-	Camp     Camp         `json:"camp,omitempty"`
-	Category RoleCategory `json:"category,omitempty"`
+	// 一个**不透明**标签，取自 Vars 里的标准键 VarCamp。内核只负责搬运：
+	// 它不知道 "EVIL" 是什么意思，也不知道这名玩家该不该知道自己的阵营——
+	// 那由规则在发放初始状态时决定。
+	//
+	// 阵营之内的细分（狼人杀的神职/平民）不在这里：那是规则自己的键，
+	// 从 Vars 读。
+	Camp Camp `json:"camp,omitempty"`
 }
 
 // PublicPlayerInfo 一名玩家对外公开的信息
@@ -104,11 +106,10 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		Round:    e.state.Round,
 		Phase:    e.state.Phase,
 		Self: SelfInfo{
-			ID:       self.ID,
-			Role:     self.Role,
-			Camp:     Camp(self.Var(VarCamp)),
-			Category: RoleCategory(self.Var(VarCategory)),
-			Alive:    self.Alive,
+			ID:    self.ID,
+			Role:  self.Role,
+			Camp:  Camp(self.Var(VarCamp)),
+			Alive: self.Alive,
 		},
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
 	}

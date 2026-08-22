@@ -31,28 +31,27 @@ const (
 const hunterShootGroup = "hunter-shoot"
 
 // VictoryMode 胜负判定方式
-type VictoryMode int
+// 底层是字符串，与其余枚举一致。此前是 int + iota——那意味着零值恰好是
+// 屠边，而「没填」与「选了屠边」在结构体里长得一模一样。现在零值是空串，
+// Validate 会把它拦下来。
+type VictoryMode string
 
 const (
 	// VictoryModeSideWipe 屠边（默认）：狼人需淘汰「所有平民」或「所有神职」之一。
 	// 依据维基「狼人殺」条目：「狼人陣營需要淘汰所有平民或神職人員以獲取勝利」。
-	VictoryModeSideWipe VictoryMode = iota
+	VictoryModeSideWipe VictoryMode = "SIDE_WIPE"
 
 	// VictoryModeTownWipe 屠城：好人存活数 <= 狼人存活数即狼人胜利。
 	// 不区分神职与平民，适合无神职或角色板子简单的场合。
-	VictoryModeTownWipe
+	VictoryModeTownWipe VictoryMode = "TOWN_WIPE"
 )
 
-// String 实现 fmt.Stringer，让日志与错误信息里出现的是名字而不是 0/1。
+// String 实现 fmt.Stringer。
 func (m VictoryMode) String() string {
-	switch m {
-	case VictoryModeSideWipe:
-		return "SIDE_WIPE"
-	case VictoryModeTownWipe:
-		return "TOWN_WIPE"
-	default:
-		return "UNKNOWN"
+	if m == "" {
+		return "UNSPECIFIED"
 	}
+	return string(m)
 }
 
 // DefaultGameConfig 默认游戏配置

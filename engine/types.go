@@ -20,7 +20,7 @@ type PhaseType string
 
 // 三个由内核自己拥有的阶段：它们是状态机的生命周期，不是某套规则的环节。
 //
-// 规则的阶段环从 GameConfig.StartPhase 开始、以 PhaseEnd 收尾；PhaseStart
+// 规则的阶段环从 Config.StartPhase 开始、以 PhaseEnd 收尾；PhaseStart
 // 是「还没开局」这个状态本身，AddPlayer 只在它里面被允许。
 const (
 	PhaseUnspecified PhaseType = ""
@@ -97,29 +97,12 @@ func (v Camp) String() string {
 	return string(v)
 }
 
-// RoleCategory 角色在阵营之内的细分标签。
+// VarCamp 阵营在玩家 Vars 里的标准键名。
 //
-// 与 Camp 一样是**不透明**的：狼人杀用它区分神职与平民（屠边判定需要），
-// 别的规则可以拿它表达别的东西，内核只负责存与透出，从不解释。
-type RoleCategory string
-
-// RoleCategoryUnspecified 未指定。
-const RoleCategoryUnspecified RoleCategory = ""
-
-// String 实现 fmt.Stringer。
-func (c RoleCategory) String() string {
-	if c == RoleCategoryUnspecified {
-		return "UNSPECIFIED"
-	}
-	return string(c)
-}
-
-// 阵营与类别在玩家 Vars 里的标准键名。
-//
-// 内核认这两个键：它们的值会填进 PlayerInfo 与 SelfInfo 上的同名字段，
+// 内核认这一个键：它的值会填进 PlayerInfo 与 SelfInfo 上的 Camp 字段，
 // 让「这名玩家站哪一边」不必每个使用者自己去 Vars 里翻。值由规则发放
 // （见 RoleSetup），内核不检查也不解释。
-const (
-	VarCamp     = "camp"
-	VarCategory = "category"
-)
+//
+// 只有这一个。「神职/平民」这种阵营之内的细分是狼人杀为了屠边判定才需要的，
+// 内核不认得——规则包自己定一个键即可（见 werewolf.VarCategory）。
+const VarCamp = "camp"

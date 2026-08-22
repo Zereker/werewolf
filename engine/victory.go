@@ -19,7 +19,7 @@ type VictoryChecker interface {
 
 // WithVictoryChecker 换掉内置的胜负判定。
 //
-// 换掉之后 GameConfig.VictoryMode 就不再起作用了——那个字段只喂给
+// 换掉之后 Config.VictoryMode 就不再起作用了——那个字段只喂给
 // 内置判定。想在内置规则之上再加一条（比如「情侣双双存活即情侣胜」），
 // 把 DefaultVictoryChecker 包起来，先问自己的条件再问它。
 func WithVictoryChecker(checker VictoryChecker) EngineOption {
