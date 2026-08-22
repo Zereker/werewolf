@@ -305,14 +305,25 @@ for _, effect := range effects {
 
 ```go
 r := engine.PhaseReadiness()
-if !r.Ready {
-    fmt.Println("还差:", r.Pending)   // 谁、什么角色、什么技能
+
+for _, p := range r.Pending {
+    fmt.Println("必须等:", p.PlayerID, p.Skill)   // 不动就不能推进
 }
+for _, p := range r.Optional {
+    fmt.Println("可以催:", p.PlayerID, p.Skill)   // 不动也合法
+}
+
 engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用方决定
 ```
 
-由 `PhaseStep.Required` / `Multiple` 声明：狼人商刀与投票要求全员参与，
-其余步骤可选。没有合格行动者的必需步骤（守卫已出局）视为自动满足。
+**`Ready` 不表示「所有人都动过了」**：默认配置里只有狼人商刀与投票是
+`Required`，守卫、女巫、预言家、猎人都可以不动。所以「还差谁**必须**动」
+看 `Pending`，「本阶段谁**可以**动」看 `Optional`——只看前者来驱动游戏，
+那几个角色一整局都不会被叫到。
+
+由 `PhaseStep.Required` / `Multiple` / `Group` 声明。没有合格行动者的
+必需步骤（守卫已出局）视为自动满足；互斥备选组（猎人的开枪与不开枪）
+提交任一即算完成，只报一条。
 
 ## 扩展新角色
 

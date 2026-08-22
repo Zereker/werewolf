@@ -220,18 +220,23 @@ func (t *table) godView() {
 	}
 }
 
-// who 还差谁行动。引擎不替主持人决定何时推进，但它知道谁还没动。
+// who 还差谁行动。
+//
+// 引擎把「必须动」和「可以动」分成两份：Pending 是超时就该推进的依据，
+// Optional 是该催一催的依据。主持人两份都要看——只看前者的话，
+// 默认配置下守卫、女巫、预言家、猎人一整局都不会被叫到。
 func (t *table) who() {
 	r := t.engine.PhaseReadiness()
-	if r.Ready {
-		// 就绪判定只看 Required 的步骤，而默认配置里只有狼刀与投票是必需的
-		// ——守卫、女巫、预言家、猎人都可以不动。所以这里的「就绪」是
-		// 「没有硬性缺口」，不是「所有人都动过了」。
-		fmt.Println("  没有硬性缺口（可选技能不计入就绪判定）")
-	} else {
-		for _, p := range r.Pending {
-			fmt.Printf("  还差 %s(%s) 的 %s\n", p.PlayerID, shortRole(p.Role), shortSkill(p.Skill))
-		}
+
+	for _, p := range r.Pending {
+		fmt.Printf("  必须等: %s(%s) 的 %s\n", p.PlayerID, shortRole(p.Role), shortSkill(p.Skill))
+	}
+	for _, p := range r.Optional {
+		fmt.Printf("  可以催: %s(%s) 的 %s（不动也合法）\n",
+			p.PlayerID, shortRole(p.Role), shortSkill(p.Skill))
+	}
+	if r.Ready && len(r.Optional) == 0 {
+		fmt.Println("  该动的都动过了")
 	}
 	if len(r.Acted) > 0 {
 		fmt.Printf("  已提交: %v\n", r.Acted)
@@ -330,7 +335,7 @@ func (t *table) end() {
 	}
 	if r := t.engine.PhaseReadiness(); !r.Ready {
 		// 引擎不会因为没就绪而拒绝推进，是否等下去是主持人的判断
-		fmt.Printf("  （还差 %d 项没提交，按主持人意愿强行推进）\n", len(r.Pending))
+		fmt.Printf("  （还差 %d 项必需行动，按主持人意愿强行推进）\n", len(r.Pending))
 	}
 
 	from := t.engine.Phase()
@@ -383,10 +388,9 @@ func (t *table) reveal() {
 
 // auto 替所有该行动的人随便动一下，然后结束本阶段。
 //
-// 驱动的依据是 PhaseInfo 而不是 PhaseReadiness：后者只报 Required 的
-// 步骤，而默认配置里只有狼刀和投票是必需的——照着它走，守卫、女巫、
-// 预言家一整局都不会行动。PhaseReadiness 回答的是「还差谁必须动」，
-// 「本阶段谁可以动」得问 PhaseInfo。
+// 驱动的依据是 PhaseInfo：它给的是本阶段每个角色的完整可用技能表，
+// 而 PhaseReadiness 给的是「还欠哪一次行动」——想让每个人都动一动，
+// 前者才是问对了问题。
 func (t *table) auto() {
 	if t.engine.IsGameOver() {
 		warn("游戏已经结束了")

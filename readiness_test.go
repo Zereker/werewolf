@@ -252,3 +252,77 @@ func TestPhaseReadiness_TriggerActorMatchesRole(t *testing.T) {
 		t.Errorf("本阶段不该有预言家的行动者，实际 %v", ri.PlayerIDs)
 	}
 }
+
+// TestPhaseReadiness_OptionalActions 可选技能不影响就绪，但要报出来。
+//
+// 默认配置里只有狼刀与投票是 Required，守卫、女巫、预言家、猎人全都
+// 可以不动。只看 Pending 来驱动游戏的话，这几个角色一整局都不会被叫到
+// ——example/cli 最初就踩了这个坑。「还差谁必须动」和「本阶段谁可以动」
+// 是两个问题，得分别有答案。
+func TestPhaseReadiness_OptionalActions(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), guard("g"), witch("wi"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	// 守卫阶段：守护是可选的，所以「就绪」但并非「没人可动」
+	r := g.e.PhaseReadiness()
+	if !r.Ready {
+		t.Errorf("守护是可选技能，不该让阶段不就绪，实际还差 %v", r.Pending)
+	}
+	if len(r.Pending) != 0 {
+		t.Errorf("Pending 只装必需行动，实际 %v", r.Pending)
+	}
+	if len(r.Optional) != 1 || r.Optional[0].PlayerID != "g" ||
+		r.Optional[0].Skill != SkillProtect {
+		t.Fatalf("Optional 应当报出守卫还没守，实际 %v", r.Optional)
+	}
+
+	// 守卫动过之后，Optional 也就空了
+	g.mustUse("g", SkillProtect, "s")
+	if got := g.e.PhaseReadiness().Optional; len(got) != 0 {
+		t.Errorf("守卫已行动，Optional 应当为空，实际 %v", got)
+	}
+
+	// 狼人阶段：刀是必需的，两只狼都得投
+	g.end(PhaseNightWolf)
+	r = g.e.PhaseReadiness()
+	if r.Ready {
+		t.Error("狼刀是必需行动，未提交时不该就绪")
+	}
+	if len(r.Pending) != 2 {
+		t.Errorf("两只狼都该出现在 Pending 里，实际 %v", r.Pending)
+	}
+	if len(r.Optional) != 0 {
+		t.Errorf("本阶段没有可选技能，实际 %v", r.Optional)
+	}
+}
+
+// TestPhaseReadiness_OptionalGroupCountsOnce 互斥备选组在 Optional 里也只报一条。
+func TestPhaseReadiness_OptionalGroupCountsOnce(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
+
+	r := g.e.PhaseReadiness()
+	if !r.Ready {
+		t.Errorf("开枪是可选的，不该让阶段不就绪，实际 %v", r.Pending)
+	}
+	if len(r.Optional) != 1 || r.Optional[0].PlayerID != "h" {
+		t.Fatalf("开枪/不开枪是一组，只该报一条，实际 %v", r.Optional)
+	}
+
+	// 明确表示不开枪之后，这一组就完成了
+	g.mustUse("h", SkillSkip, "")
+	if got := g.e.PhaseReadiness().Optional; len(got) != 0 {
+		t.Errorf("猎人已表态，Optional 应当为空，实际 %v", got)
+	}
+}
