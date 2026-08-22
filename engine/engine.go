@@ -299,7 +299,15 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	// 5. 流转。END 也走 nextPhase，不直接赋值 Phase——
 	//    状态的每一次改动都经同一条路径，别处才不会漏掉伴随的逻辑
-	e.state.nextPhase(nextPhase, e.config.startPhase())
+	//
+	//    回合边界与胜负判定守同一条：**还有待结算的触发时不能落下**。
+	//    理由不同但都硬：胜负是因为死亡技能可能翻盘；回合边界是因为
+	//    待结算队列本身就住在回合上下文里，清掉回合状态等于把队列抹掉,
+	//    被投出去的猎人那一枪会凭空消失。
+	//    整局结束不算新回合：END 之后没有下一回合，多推一次会让回放对不上
+	//    （回放那条路上 GAME_ENDED 走的是 nextPhase(PhaseEnd, false)）。
+	e.state.nextPhase(nextPhase,
+		!endNow && e.config.endsRound(currentPhase) && !e.state.hasPendingTrigger())
 
 	if endNow {
 		// 结束事件与其他事件走同一条构造路径：Effect -> ToEvent，

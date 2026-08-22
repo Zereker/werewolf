@@ -297,6 +297,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 				PhaseVote: {
 					Type:      PhaseVote,
 					NextPhase: PhaseDay,
+					EndsRound: true,
 				},
 			},
 		}

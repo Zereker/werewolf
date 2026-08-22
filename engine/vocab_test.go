@@ -80,8 +80,8 @@ func testConfig() *Config {
 			phaseNightResolve: {Type: phaseNightResolve, NextPhase: phaseDay},
 			phaseNightHunter:  {Type: phaseNightHunter, Steps: []PhaseStep{{Role: roleHunter, Skill: skillShoot, Group: "shoot"}, {Role: roleHunter, Skill: SkillSkip, Group: "shoot"}}, NextPhase: phaseDay},
 			phaseDay:          {Type: phaseDay, NextPhase: phaseVote},
-			phaseVote:         {Type: phaseVote, Steps: []PhaseStep{{Role: RoleUnspecified, Skill: skillVote, Required: true, Multiple: true}}, NextPhase: phaseNightGuard},
-			phaseDayHunter:    {Type: phaseDayHunter, Steps: []PhaseStep{{Role: roleHunter, Skill: skillShoot, Group: "shoot"}, {Role: roleHunter, Skill: SkillSkip, Group: "shoot"}}, NextPhase: phaseNightGuard},
+			phaseVote:         {Type: phaseVote, Steps: []PhaseStep{{Role: RoleUnspecified, Skill: skillVote, Required: true, Multiple: true}}, NextPhase: phaseNightGuard, EndsRound: true},
+			phaseDayHunter:    {Type: phaseDayHunter, Steps: []PhaseStep{{Role: roleHunter, Skill: skillShoot, Group: "shoot"}, {Role: roleHunter, Skill: SkillSkip, Group: "shoot"}}, NextPhase: phaseNightGuard, EndsRound: true},
 		},
 	}
 }

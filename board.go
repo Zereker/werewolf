@@ -103,6 +103,17 @@ func StandardVotePhase() *PhaseConfig {
 		},
 		Timeout:   VotePhaseTimeout,
 		NextPhase: PhaseNightGuard, // 进入下一夜
+
+		// 投票结算完，这一回合（这一昼夜）到此为止。
+		//
+		// 此前这件事是内核猜出来的——「绕回 StartPhase 就算新回合」，
+		// 而狼人杀的 StartPhase 恰好是 NIGHT_GUARD，猜对了。别的规则
+		// 就不一定：阿瓦隆每提名一次绕一圈，那个猜测会把「回合」变成
+		// 提名计数器。现在由板子自己说。
+		//
+		// 被投出去的是猎人时，投票之后还有一个 DAY_HUNTER 要结算——
+		// 内核会等待结算队列排空再落回合边界，因此这里声明它是安全的。
+		EndsRound: true,
 	}
 }
 
@@ -118,6 +129,11 @@ func DayHunterPhase() *PhaseConfig {
 		},
 		Timeout:   HunterPhaseTimeout,
 		NextPhase: PhaseNightGuard, // 猎人行动后进入下一夜
+
+		// 白天猎人阶段是投票之后的延长赛，它结算完同样是这一回合的终点。
+		// 夜间猎人阶段（NightHunterPhase）不声明：那是在天亮之前触发的，
+		// 后面还有一整个白天。
+		EndsRound: true,
 	}
 }
 

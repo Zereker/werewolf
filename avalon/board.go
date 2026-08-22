@@ -117,6 +117,15 @@ func DefaultConfig() *engine.Config {
 				},
 				Timeout:   MissionTimeout,
 				NextPhase: PhasePropose,
+
+				// 任务结算完是新的一回合。
+				//
+				// 这是「回合边界交给规则」之后立刻兑现的好处：阿瓦隆的
+				// Round 从此等于**第几轮任务**，与它自己说的话对得上。
+				// 此前内核猜「绕回起始阶段就算新回合」，而这里每提名一次
+				// 就绕一圈，于是 Round 成了提名计数器，跟「第几轮任务」
+				// 最多差五倍，还被 PlayerView.Round 原样发给玩家。
+				EndsRound: true,
 			},
 			PhaseAssassin: {
 				Type: PhaseAssassin,

@@ -57,7 +57,23 @@ type PhaseConfig struct {
 	Type      PhaseType     // 阶段类型
 	Steps     []PhaseStep   // 步骤列表
 	Timeout   time.Duration // 超时时间（建议值，引擎不据此计时）
-	NextPhase PhaseType     // 下一阶段（声明式配置）
+	NextPhase PhaseType     // 下一阶段（默认出口，可被 GOTO_PHASE 效果改写）
+
+	// EndsRound 结算完这个阶段之后是新的一回合：回合数加一，
+	// 回合级的状态（RoundVar 与 PlayerRoundVar）全部清空。
+	//
+	// 这件事此前由内核自己猜：「绕回 StartPhase 就算新回合」。狼人杀里
+	// 那个猜测恰好成立（夜→昼→夜），别的规则里就不一定——阿瓦隆每提名
+	// 一次就绕一圈，于是引擎的「回合」成了提名计数器，与那套规则自己说的
+	// 「第几轮任务」最多差五倍，还被 PlayerView.Round 原样发给玩家。
+	//
+	// 一局游戏的「一回合」是什么，只有规则知道。内核不再猜，改成读这个字段：
+	// 声明在哪个阶段上，就是「这个阶段结算完，这一回合结束」。
+	//
+	// Validate 会检查至少有一个阶段声明了它——一个都没有的话回合数永远
+	// 停在 1、回合状态永不重置，那是个必然出错的配置，应当在建局时就被
+	// 拒绝，而不是跑到半局才让人发现。
+	EndsRound bool
 }
 
 // PhaseStep 阶段步骤。步骤的先后由切片顺序决定。
@@ -138,6 +154,11 @@ func (c *Config) Validate() error {
 	if c.StartPhase == PhaseUnspecified {
 		return WrapError(CodeInvalidConfig,
 			"config must declare StartPhase: the kernel has no default")
+	}
+	if !c.hasRoundBoundary() {
+		return WrapError(CodeInvalidConfig,
+			"no phase declares EndsRound: the round would never advance and "+
+				"round-scoped state would never reset")
 	}
 	if _, ok := c.Phases[c.StartPhase]; !ok {
 		return WrapError(CodeInvalidPhase,
@@ -233,4 +254,31 @@ func validateSteps(phaseType PhaseType, steps []PhaseStep) error {
 // 那是狼人杀的第一个阶段，内核没有资格替任何规则挑一个默认值。
 func (c *Config) startPhase() PhaseType {
 	return c.StartPhase
+}
+
+// endsRound 结算完这个阶段之后是不是新的一回合。
+//
+// 认不得的阶段一律为否：回合边界宁可不推进，也不能凭空多推一次——
+// 多推一次会把本回合的标记全部清空，规则会看到一个从未发生过的
+// 「新回合」。
+func (c *Config) endsRound(phase PhaseType) bool {
+	pc := c.Phases[phase]
+	return pc != nil && pc.EndsRound
+}
+
+// hasRoundBoundary 配置里有没有阶段声明自己是回合的终点。
+//
+// 一个都没有的话，回合数永远停在 1、回合级状态永不重置——狼人杀里这意味着
+// 女巫用掉的那瓶解药会一夜又一夜地把同一个人救回来，一次性道具变成永久道具。
+// 这类配置必然出错，应当在建局时就被拒绝，而不是跑到半局才让人发现。
+//
+// 这道检查是把回合边界交给规则之后**换来的**：内核自己猜的时候没法检查
+// 「猜得对不对」，规则声明出来之后反而查得动。
+func (c *Config) hasRoundBoundary() bool {
+	for _, pc := range c.Phases {
+		if pc != nil && pc.EndsRound {
+			return true
+		}
+	}
+	return false
 }

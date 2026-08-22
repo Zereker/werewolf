@@ -407,13 +407,16 @@ func (s *gameState) startAt(phase PhaseType) {
 
 // nextPhase 切换到下一阶段。
 //
-// roundStart 是本局的起始阶段：绕回它即是新的一回合，此时回合数加一、
-// 回合上下文重置。回合边界此前写死成 NIGHT_GUARD，而起始阶段和阶段环
-// 都是可配置的——环里不含守卫阶段时，回合数永远停在 1，回合上下文也
-// 永远不重置，上一夜的「被救」「被守」「被毒」记录会一直累积下去。
-func (s *gameState) nextPhase(phase, roundStart PhaseType) {
+// endsRound 由**刚结算完的那个阶段**声明（PhaseConfig.EndsRound）：
+// 它为真即这一回合到此为止，回合数加一、回合级状态全部清空。
+//
+// 这件事此前是内核猜的——「绕回起始阶段就算新回合」。那个猜测对狼人杀
+// 成立（夜→昼→夜），对别的规则不成立：阿瓦隆每提名一次就绕一圈，
+// 于是「回合」成了提名计数器。一局游戏的「一回合」是什么只有规则知道，
+// 内核不再替它决定。
+func (s *gameState) nextPhase(phase PhaseType, endsRound bool) {
 	s.Phase = phase
-	if phase == roundStart {
+	if endsRound {
 		s.Round++
 		s.resetRoundStateUnlocked()
 	}
