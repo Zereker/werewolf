@@ -44,7 +44,7 @@ func TestFuzz_Invariants(t *testing.T) {
 			}
 		}()
 	}
-	for _, k := range []string{"结束", "屠边", "屠城", "有守卫阶段", "无守卫阶段"} {
+	for _, k := range []string{"结束", "屠边", "屠城", "有守卫阶段", "无守卫阶段", "含自定义角色", "只用内置角色"} {
 		t.Logf("  %-12s %d", k, stats[k])
 	}
 	if n := stats["400 步未结束"]; n > 0 {
@@ -52,7 +52,7 @@ func TestFuzz_Invariants(t *testing.T) {
 	}
 	// 随机化一旦退化（比如某个分支永远走不到），这个测试会安静地
 	// 变成只跑默认配置——那正是它要修的毛病，所以显式挡一道
-	for _, k := range []string{"屠边", "屠城", "有守卫阶段", "无守卫阶段"} {
+	for _, k := range []string{"屠边", "屠城", "有守卫阶段", "无守卫阶段", "含自定义角色", "只用内置角色"} {
 		if stats[k] == 0 {
 			t.Errorf("随机化没有覆盖到「%s」，搜索空间退化了", k)
 		}
@@ -120,12 +120,56 @@ func randomBoard(rng *rand.Rand, withGuard bool) []RoleType {
 	return roles
 }
 
-// playRandom 跑一局，返回若干个用于统计的标签。
+// withWolfKing 往配置里塞一个第三方角色：狼王，出局时可以带走一个人。
+//
+// 复用 extension_test.go 里那套狼王——随机对局跑的就是扩展契约本身的
+// 那份可执行说明，而不是另造一个只在这里成立的假扩展。
+//
+// 随机对局此前只走内置配置的组合，扩展那扇门一次都没进过——而三条 P0
+// 里那条「恢复出来的引擎注册不了自定义解析器」恰恰在门后，覆盖它的
+// 一直只有 extension_test.go 里手写的一条路径。
+//
+// 返回配置需要的构造选项：解析器只能在构造时给出，恢复与回放同理。
+func withWolfKing(cfg *GameConfig) []EngineOption {
+	cfg.Phases[phaseWolfKing] = &PhaseConfig{
+		Type:      phaseWolfKing,
+		Steps:     []PhaseStep{{Role: roleWolfKing, Skill: skillWolfClaw}},
+		NextPhase: cfg.startPhase(),
+	}
+	return []EngineOption{
+		WithResolver(phaseWolfKing, &wolfKingResolver{}),
+		WithResolver(PhaseVote, &voteWithWolfKing{inner: NewVoteResolver()}),
+		WithResolver(PhaseNightResolve, &nightResolveWithWolfKing{inner: NewNightResolveResolver()}),
+	}
+}
+
+// nightResolveWithWolfKing 夜里被刀的狼王同样可以用爪子。
+//
+// 与 voteWithWolfKing 同构，只是接的是另一条死亡通道——第三方要覆盖
+// 所有死法，就得每条通道各包一层。
+type nightResolveWithWolfKing struct{ inner Resolver }
+
+func (r *nightResolveWithWolfKing) Resolve(uses []*SkillUse, view GameView, cfg *GameConfig) []*Effect {
+	effects := r.inner.Resolve(uses, view, cfg)
+	for _, ef := range effects[:len(effects):len(effects)] {
+		if ef.Canceled || ef.TargetID == "" {
+			continue
+		}
+		if ef.Type != EventKill && ef.Type != EventPoison {
+			continue
+		}
+		if p, ok := view.Player(ef.TargetID); ok && p.Role == roleWolfKing {
+			effects = append(effects, NewAbilityTriggerEffect(ef.TargetID, phaseWolfKing))
+		}
+	}
+	return effects
+}
+
 func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 	cfg := randomConfig(rng)
 	_, hasGuardPhase := cfg.Phases[PhaseNightGuard]
 
-	tags := []string{"有守卫阶段", "屠边"}
+	tags := []string{"有守卫阶段", "屠边", "只用内置角色"}
 	if !hasGuardPhase {
 		tags[0] = "无守卫阶段"
 	}
@@ -133,18 +177,35 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		tags[1] = "屠城"
 	}
 
-	e := MustNewEngine(cfg)
+	// 三成的局面带一个第三方角色进来
+	var opts []EngineOption
+	withCustom := rng.Intn(10) < 3
+	if withCustom {
+		tags[2] = "含自定义角色"
+		opts = withWolfKing(cfg)
+	}
+
+	e := MustNewEngine(cfg, opts...)
 	roles := randomBoard(rng, hasGuardPhase)
+	if withCustom {
+		roles = append(roles, roleWolfKing)
+		rng.Shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
+	}
 
 	ids := make([]string, 0, len(roles))
 	identity := map[string][2]int32{}
 	for i, r := range roles {
 		id := fmt.Sprintf("p%02d", i)
-		if err := e.AddPlayer(id, r); err != nil {
-			t.Fatalf("seed=%d AddPlayer: %v", seed, err)
+		// 狼王的阵营与类别推导不出来，得显式给出
+		camp, category := CampOf(r), CategoryOf(r)
+		if r == roleWolfKing {
+			camp, category = CampEvil, RoleCategoryWolf
+		}
+		if err := e.AddCustomPlayer(id, r, camp, category); err != nil {
+			t.Fatalf("seed=%d AddCustomPlayer: %v", seed, err)
 		}
 		ids = append(ids, id)
-		identity[id] = [2]int32{int32(r), int32(CampOf(r))}
+		identity[id] = [2]int32{int32(r), int32(camp)}
 	}
 	if err := e.Start(); err != nil {
 		t.Fatalf("seed=%d Start: %v", seed, err)
@@ -195,7 +256,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		raw, _ := json.Marshal(snap)
 		var round Snapshot
 		_ = json.Unmarshal(raw, &round)
-		clone, errR := RestoreEngine(cfg, &round)
+		clone, errR := RestoreEngine(cfg, &round, opts...)
 		if errR != nil {
 			t.Fatalf("seed=%d step=%d Restore: %v", seed, step, errR)
 		}
@@ -309,7 +370,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		}
 
 		// 不变量 D：效果流回放必须与原引擎同步
-		replayed, err := ReplayEngine(cfg, e.EffectLog())
+		replayed, err := ReplayEngine(cfg, e.EffectLog(), opts...)
 		if err != nil {
 			t.Fatalf("seed=%d step=%d Replay: %v", seed, step, err)
 		}
