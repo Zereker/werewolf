@@ -126,8 +126,10 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
   上。键名由规则自己定，内核只管存——女巫的药剂、守卫上回合守了谁、
   阿瓦隆的比分走的都是这一条路。写走 `NewSetVarEffect(scope, k, v)`，
   读走 `GameView.Var(scope, k)`；对外只给只读副本
-- `RoundContext`：回合内的无主状态（刀口）与待结算的触发队列，
-  每进入新的一回合重建
+- `RoundContext`：回合内的无主状态（刀口）与待结算的触发队列。队列只管三件事
+  ——把阶段引到触发要去的地方、在排空之前拦住胜负判定与回合边界、按队首一条
+  一条来；「谁能行动」不由它回答，进入阶段时它写一份行动者名单，之后走与
+  `NewSetActorsEffect` 完全相同的那一条路。整个 RoundContext 每进入新的一回合重建
 - `RoleCategory`：神职 / 平民 / 狼人，屠边判定需要这个维度，
   而 `Camp` 只有好人/狼人两值，表达不了。它住在**规则包**
   （`wolfcamp.go`），不在内核——「神职」是狼人杀的概念

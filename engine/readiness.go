@@ -77,11 +77,8 @@ func (e *Engine) PhaseReadiness() PhaseReadiness {
 		return out
 	}
 
-	trigger, hasTrigger := e.state.peekTrigger()
-	triggerActive := hasTrigger && trigger.Phase == e.state.Phase
-
 	for _, req := range requirementsOf(phaseConfig.Steps) {
-		actors := e.actorsForStep(req.role, triggerActive, trigger)
+		actors := e.actorsForStep(req.role)
 		if len(actors) == 0 {
 			// 无人能承担该步骤，视为自动满足
 			continue
@@ -180,18 +177,16 @@ func requirementsOf(steps []PhaseStep) []requirement {
 // PhaseReadiness 三处都从这里取。三个问题一个来源，才不会出现
 // 「内核收下了他的提交，却告诉别人他不该行动」这种自相矛盾。
 //
-// 三层，优先级从高到低：
+// 两层，优先级从高到低：
 //
-//	待结算的触发    队列必须排空，胜负判定与回合边界都等着它
-//	规则指定的名单  NewSetActorsEffect，运行时才选得出来的那些
+//	点到名的人      NewSetActorsEffect，或者死亡触发在进入阶段时写下的那一份
 //	PhaseStep.Role  默认：按角色算，角色是入座时定死的
-func (e *Engine) actorsForStep(role RoleType, triggerActive bool, trigger PendingTrigger) []string {
-	if triggerActive {
-		// 死亡技能阶段只有触发者能行动，但他只承担与自己角色相符的步骤。
-		// 无视 role 一律返回触发者，会让复用了多角色阶段配置的自定义
-		// 死亡技能阶段声称「触发者要替所有角色行动」。
-		return e.triggerActorFor(role, trigger)
-	}
+//
+// 此前是三层，最上面还有一层「待结算的触发」。那一层与点名回答的是同一个
+// 问题，实现也几乎逐字相同——一个概念两份实现，两处都要记得对齐。现在
+// 触发队列不再回答「谁能行动」，它在进入阶段时产出一份名单
+// （见 gameState.namePendingTriggerActor），之后一切照点名走。
+func (e *Engine) actorsForStep(role RoleType) []string {
 	if ids, ok := e.state.actorsFor(e.state.Phase); ok {
 		return e.namedActorsFor(role, ids)
 	}
@@ -226,16 +221,4 @@ func (e *Engine) namedActorsFor(role RoleType, ids []string) []string {
 		out = append(out, id)
 	}
 	return sortedStrings(out)
-}
-
-// triggerActorFor 触发者是否承担该角色的步骤。调用前需持有 e.mu。
-func (e *Engine) triggerActorFor(role RoleType, trigger PendingTrigger) []string {
-	if role == RoleUnspecified {
-		return []string{trigger.PlayerID}
-	}
-	p, ok := e.state.getPlayer(trigger.PlayerID)
-	if !ok || p.Role != role {
-		return nil
-	}
-	return []string{trigger.PlayerID}
 }

@@ -111,28 +111,21 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 		return ErrPlayerNotFound
 	}
 
-	// 死亡技能阶段：技能的持有者即便已经出局也可以行动，
-	// 但仅限「本次触发的那名玩家」——否则任何已出局的同角色玩家
-	// 都能在该阶段再用一次技能。
-	// 谁可以行动，三层，与 actorsForStep 逐条对齐——两处不一致就会出现
+	// 谁可以行动，两层，与 actorsForStep 逐条对齐——两处不一致就会出现
 	// 「内核收下了他的提交，却告诉别人他不该行动」这种自相矛盾。
 	//
-	//	待结算的触发   只有触发者，即便已出局（猎人被刀之后开枪）
-	//	规则点名       名单里的人，存活与否由规则负责
-	//	默认           活着的人
+	//	规则点名   名单里的人，存活与否由规则负责
+	//	默认       活着的人
+	//
+	// 死亡技能阶段走的是第一层：进入那个阶段时，触发者已经被写进名单
+	//（见 gameState.namePendingTriggerActor）。此前它是单独的第一层，
+	// 与点名回答同一个问题、实现也几乎逐字相同——一个概念两份实现。
 	//
 	// 存活因此是**默认**的行动资格，不是法律。此前只有触发那条路能越过它
 	// ——同一个内核允许自己的机制让死人行动、不允许规则的机制这么做，
 	// 是内核在替规则判断「死了还能不能动」。挡掉的是真实存在的玩法：
 	// 血染钟楼的死人保留一张幽灵票，狼人杀有遗言阶段。
-	named, hasNamed := state.actorsFor(state.Phase)
-	switch {
-	case hasPendingTriggerFor(state):
-		// 触发阶段只有触发者能行动——否则任何已出局的同角色玩家
-		// 都能在该阶段再用一次技能
-		if !isTriggerActor(state, use.PlayerID) {
-			return ErrSkillNotAllowed
-		}
+	switch named, hasNamed := state.actorsFor(state.Phase); {
 	case hasNamed:
 		if !contains(named, use.PlayerID) {
 			return ErrSkillNotAllowed
@@ -169,16 +162,4 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 	}
 
 	return nil
-}
-
-// hasPendingTriggerFor 当前阶段是不是某条待结算触发要去的阶段。
-func hasPendingTriggerFor(state *gameState) bool {
-	t, ok := state.peekTrigger()
-	return ok && t.Phase == state.Phase
-}
-
-// isTriggerActor 这名玩家是不是当前阶段那条待结算触发的持有者。
-func isTriggerActor(state *gameState, playerID string) bool {
-	t, ok := state.peekTrigger()
-	return ok && t.Phase == state.Phase && t.PlayerID == playerID
 }

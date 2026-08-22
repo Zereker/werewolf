@@ -89,10 +89,6 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 	info.Steps = make([]PhaseStep, len(phaseConfig.Steps))
 	copy(info.Steps, phaseConfig.Steps)
 
-	// 本阶段若在结算某个死亡技能，则只有触发者能行动
-	trigger, hasTrigger := e.state.peekTrigger()
-	triggerActive := hasTrigger && trigger.Phase == e.state.Phase
-
 	seen := make(map[RoleType]bool)
 	for _, step := range phaseConfig.Steps {
 		// 上帝是系统角色，不是需要行动的玩家
@@ -102,7 +98,7 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 		seen[step.Role] = true
 
 		info.ActiveRoles = append(info.ActiveRoles, step.Role)
-		info.RoleInfos[step.Role] = e.buildRolePhaseInfo(step.Role, triggerActive, trigger)
+		info.RoleInfos[step.Role] = e.buildRolePhaseInfo(step.Role)
 	}
 
 	return info
@@ -117,14 +113,14 @@ func (e *Engine) allowedSkillsFor(role RoleType) []SkillType {
 
 // buildRolePhaseInfo 组装某个角色在当前阶段的信息。
 // 调用前需持有 e.mu。
-func (e *Engine) buildRolePhaseInfo(role RoleType, triggerActive bool, trigger PendingTrigger) *RolePhaseInfo {
+func (e *Engine) buildRolePhaseInfo(role RoleType) *RolePhaseInfo {
 	ri := &RolePhaseInfo{
 		AllowedSkills: e.allowedSkillsFor(role),
 	}
 
 	// 与 PhaseReadiness 共用同一份「谁该行动」的判定：两处各写一遍的时候，
 	// 这里漏了排序，同一个局面每次调用给出的名单顺序都不一样。
-	ri.PlayerIDs = e.actorsForStep(role, triggerActive, trigger)
+	ri.PlayerIDs = e.actorsForStep(role)
 
 	for _, id := range ri.PlayerIDs {
 		// 队友由 TeammateProvider 回答，与 PlayerView 走同一条路。

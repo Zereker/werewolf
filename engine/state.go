@@ -431,6 +431,32 @@ func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 	if clearVars {
 		s.resetRoundStateUnlocked()
 	}
+	s.namePendingTriggerActor()
+}
+
+// namePendingTriggerActor 若刚进入的正是队首触发要去的阶段，把触发者写成
+// 这个阶段的行动者名单。
+//
+// 这是「触发队列」与「规则点名」的接缝。此前它们是两套并行的机制：
+// actorsForStep 与 validateSkillUse 各有一个三层判断，第一层问触发队列、
+// 第二层问点名、第三层按角色算。而两条路回答的是同一个问题，实现也几乎
+// 逐字相同（triggerActorFor 与 namedActorsFor 都是「点到的人里，谁承担
+// 这个角色的步骤」）——一个概念，两份实现，两处都要记得对齐。
+//
+// 现在队列不再回答「谁能行动」，它只**产出**一份名单，之后一切照点名走。
+// 层数从三降到二，triggerActorFor 与 isTriggerActor 一起删掉。
+//
+// 写在这里而不是 ABILITY_TRIGGERED 的写入点：队列里可以有多条指向同一个
+// 阶段的触发（两名猎人同一夜出局），在写入点各写一次会互相覆盖，只剩最后
+// 一个人开得了枪。进入阶段时按**队首**取，才是队列本来的语义。
+//
+// 正常推进与效果流回放共用这一条路径（两者都经 nextPhase），因此不会分叉。
+func (s *gameState) namePendingTriggerActor() {
+	t, ok := s.peekTrigger()
+	if !ok || t.Phase != s.Phase {
+		return
+	}
+	s.setActors(s.Phase, []string{t.PlayerID})
 }
 
 // lastProtectedTarget 该守卫在**上一回合**守护的目标，无则为空。

@@ -161,17 +161,12 @@ func (e *Engine) publicPlayers(revealed map[string]bool) []PublicPlayerInfo {
 // 「为空表示还没轮到我」在语义上与 nil 等价，但序列化出去一个是 []
 // 一个是 null，同一个字段两种形状，调用方要分别处理。
 // 调用前需持有 e.mu。
-// 三层判定与 SubmitSkillUse 的校验**逐条对齐**——顺序不同就会出现
+// 两层判定与 SubmitSkillUse 的校验**逐条对齐**——顺序不同就会出现
 // 「内核收下了他的提交，却告诉他不能行动」这种自相矛盾。
 func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []SkillType {
-	// 死亡技能阶段只有触发者能行动
-	if t, ok := e.state.peekTrigger(); ok && t.Phase == e.state.Phase {
-		if t.PlayerID != playerID {
-			return []SkillType{}
-		}
-		return e.allowedSkillsFor(info.Role)
-	}
 	// 规则点名了这个阶段的行动者时，不在名单里的人什么都不能做；
+	// 死亡技能阶段的触发者也走这一条——进入阶段时他已经被写进名单
+	// （见 gameState.namePendingTriggerActor）。
 	// 在名单里的人，存活与否由规则负责，内核不再二次否决。
 	if ids, ok := e.state.actorsFor(e.state.Phase); ok {
 		if !contains(ids, playerID) {

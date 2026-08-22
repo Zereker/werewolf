@@ -33,6 +33,17 @@ go test -run TestScar -v ./avalon/
 	规则点名的名单  NewSetActorsEffect
 	PhaseStep.Role  默认：按角色算
 
+**后来降成两层。** 最上面那层与点名回答的是同一个问题，实现也几乎逐字相同
+（`triggerActorFor` 与 `namedActorsFor` 都是「点到的人里，谁承担这个角色的
+步骤」）——一个概念两份实现，两处都要记得对齐。现在触发队列不再回答
+「谁能行动」，它在**进入阶段时**按队首写一份名单，之后一切照点名走：
+
+	规则点名的名单  NewSetActorsEffect，或触发在进入阶段时写下的那一份
+	PhaseStep.Role  默认：按角色算
+
+队列剩下的三件事没有别的机制能替代：把阶段引到触发要去的地方、在排空之前
+拦住胜负判定与回合边界、按队首一条一条来。
+
 **内核自己在 `SubmitSkillUse` 就拦**，不是收下来再让规则事后丢掉——这一条抄的是
 boardgame.io（`master.ts` 里 `if (!isPlayerActive(...)) return`），理由见
 [docs/PRIOR-ART.md](../docs/PRIOR-ART.md)。阿瓦隆的解析器因此删掉了两处过滤，
@@ -240,6 +251,8 @@ boardgame.io（`master.ts` 里 `if (!isPlayerActive(...)) return`），理由见
 	待结算的触发   只有触发者，即便已出局
 	规则点名       名单里的人，存活与否由规则负责
 	默认           活着的人
+
+（这三层后来降成两层，见疤 1：触发者现在也走「规则点名」那一层。）
 
 发言那条同理：`SendMessage` 此前直接拒掉出局玩家，`SpeechProvider` 无从否决；
 现在装了 provider 就由它说了算，没装才退回「死人不说话」。

@@ -15,6 +15,41 @@
 
 ## 未发布
 
+### 「谁能在这个阶段行动」从三层降到两层，触发队列不再自己回答
+
+死亡触发（`NewAbilityTriggerEffect`）与规则点名（`NewSetActorsEffect`）此前是
+两套并行的机制：`actorsForStep`、`validateSkillUse`、`allowedSkillsForPlayer`
+三处各有一个三层判断，第一层问触发队列、第二层问点名、第三层按角色算。
+
+而两条路回答的是同一个问题，实现也**几乎逐字相同**——`triggerActorFor` 与
+`namedActorsFor` 都是「点到的人里，谁承担这个角色的步骤」。一个概念两份实现，
+三处都要记得对齐。
+
+现在触发队列不再回答「谁能行动」：进入它要去的那个阶段时，内核按**队首**把
+触发者写成该阶段的行动者名单（`gameState.namePendingTriggerActor`），之后
+一切照点名走。两层：
+
+	规则点到名的人   NewSetActorsEffect，或触发在进入阶段时写下的那一份
+	PhaseStep.Role   默认：按角色算的活人
+
+`triggerActorFor`、`hasPendingTriggerFor`、`isTriggerActor` 三个函数删掉，
+`actorsForStep` 与 `buildRolePhaseInfo` 的签名各少两个参数。
+
+**队列本身留着**，它还有三件事没有别的机制能替代：把阶段引到触发要去的地方、
+在排空之前拦住胜负判定与回合边界（死亡技能可能翻盘）、按队首一条一条来。
+`GOTO_PHASE` 只能改写一次流转，替不了队列。
+
+名单写在**进入阶段时**而不是写在 `ABILITY_TRIGGERED` 的写入点：队列里可以有
+多条指向同一个阶段的触发（两名猎人同一夜出局），在写入点各写一次会互相覆盖，
+只剩后一个人开得了枪。`TestPendingTriggers_QueuedForTheSamePhaseEachGetTheirTurn`
+钉住这一条，改成写在写入点会立刻变红。
+
+**顺带修掉一个此前一直漏着的回放分叉。** 正常推进时行动者名单用过就作废
+（`consumeActors`），而效果流回放这条路上**没有做这一步**——回放出来的引擎
+会带着上一个阶段的名单，从下一步起与原引擎分叉。此前没暴露是因为狼人杀不用
+`SET_ACTORS`、于是没有效果流走到过这里；触发者现在也走这条路，两个既有的
+回放测试立刻就红了。
+
 ### 删掉两个没有使用者的公开 API：`Rand` 与 `Metrics`
 
 **破坏性变更。** 冻结之前清账：一个没有使用者的公开 API 是负债。
