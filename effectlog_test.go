@@ -181,8 +181,8 @@ func TestReplayEngine_Rejects(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if e.Phase() != PhaseStart {
-			t.Errorf("期望 START，实际 %v", e.Phase())
+		if e.Status().Phase != PhaseStart {
+			t.Errorf("期望 START，实际 %v", e.Status().Phase)
 		}
 	})
 }
@@ -229,8 +229,8 @@ func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
 	if _, err := replayed.EndPhase(); err != nil {
 		t.Fatalf("回放引擎推进失败: %v", err)
 	}
-	if g.e.Phase() != replayed.Phase() {
-		t.Errorf("推进一步后分叉: 原引擎 %v，回放 %v", g.e.Phase(), replayed.Phase())
+	if g.e.Status().Phase != replayed.Status().Phase {
+		t.Errorf("推进一步后分叉: 原引擎 %v，回放 %v", g.e.Status().Phase, replayed.Status().Phase)
 	}
 }
 
@@ -272,8 +272,8 @@ func TestApply_StaysReplayableAndRestorable(t *testing.T) {
 	if p, ok := replayed.PlayerInfo("v3"); !ok || p.Alive {
 		t.Errorf("回放后 v3 存活=%v（应为 false）——Apply 的效果没被回放还原", p.Alive)
 	}
-	if replayed.Phase() != g.e.Phase() {
-		t.Errorf("回放后阶段=%v，原局=%v", replayed.Phase(), g.e.Phase())
+	if replayed.Status().Phase != g.e.Status().Phase {
+		t.Errorf("回放后阶段=%v，原局=%v", replayed.Status().Phase, g.e.Status().Phase)
 	}
 
 	// 二、存档

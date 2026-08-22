@@ -219,19 +219,19 @@ func (r *room) advance() {
 }
 
 func (r *room) armDeadline() {
-	if r.eng.IsGameOver() {
+	if r.eng.Status().Over {
 		r.over = true
 		r.deadline = time.Time{}
 		return
 	}
-	r.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(r.eng.Phase()))
+	r.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(r.eng.Status().Phase))
 }
 
 func (r *room) phaseMsg() serverMsg {
 	m := serverMsg{
 		Type:  "phase",
-		Phase: r.eng.Phase().String(),
-		Round: r.eng.Round(),
+		Phase: r.eng.Status().Phase.String(),
+		Round: r.eng.Status().Round,
 	}
 	if !r.deadline.IsZero() {
 		m.Deadline = r.deadline.UnixMilli()

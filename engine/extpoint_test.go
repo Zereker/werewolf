@@ -103,10 +103,10 @@ func TestVictoryFunc_IsCalled(t *testing.T) {
 	if called == 0 {
 		t.Fatal("VictoryFunc 装上了却没被问到")
 	}
-	if !e.IsGameOver() {
+	if !e.Status().Over {
 		t.Error("VictoryFunc 说结束了，引擎却没结束")
 	}
-	if got := e.Winner(); got != Camp("PROBE") {
+	if got := e.Status().Winner; got != Camp("PROBE") {
 		t.Errorf("胜者应当原样报出去，得到 %v", got)
 	}
 }

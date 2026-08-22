@@ -95,7 +95,7 @@ func newTable(seed int64) *table {
 
 // armTimer 按引擎给出的建议超时定一个本阶段的截止时间。
 func (t *table) armTimer() {
-	t.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(t.eng.Phase()))
+	t.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(t.eng.Status().Phase))
 }
 
 // ==================== 主循环 ====================
@@ -126,7 +126,8 @@ func (t *table) repl(in *os.File) {
 }
 
 func (t *table) prompt() string {
-	return fmt.Sprintf("[第%d回合 %s] > ", t.eng.Round(), shortPhase(t.eng.Phase()))
+	st := t.eng.Status()
+	return fmt.Sprintf("[第%d回合 %s] > ", st.Round, shortPhase(st.Phase))
 }
 
 func (t *table) dispatch(line string) (quit bool) {
@@ -172,9 +173,10 @@ func (t *table) dispatch(line string) (quit bool) {
 
 func (t *table) status() {
 	e := t.eng
-	fmt.Printf("  回合 %d，阶段 %s\n", e.Round(), shortPhase(e.Phase()))
+	st := e.Status()
+	fmt.Printf("  回合 %d，阶段 %s\n", st.Round, shortPhase(st.Phase))
 
-	if e.IsGameOver() {
+	if e.Status().Over {
 		fmt.Println("  游戏已结束")
 		return
 	}
@@ -339,7 +341,7 @@ func (t *table) say(args []string) {
 }
 
 func (t *table) end() {
-	if t.eng.IsGameOver() {
+	if t.eng.Status().Over {
 		warn("游戏已经结束了")
 		return
 	}
@@ -348,18 +350,18 @@ func (t *table) end() {
 		fmt.Printf("  （还差 %d 项必需行动，按主持人意愿强行推进）\n", len(r.Pending))
 	}
 
-	from := t.eng.Phase()
+	from := t.eng.Status().Phase
 	effects, err := t.eng.EndPhase()
 	if err != nil {
 		warn("推进失败: %s", reason(err))
 		return
 	}
 
-	fmt.Printf("  %s 结束 -> %s\n", shortPhase(from), shortPhase(t.eng.Phase()))
+	fmt.Printf("  %s 结束 -> %s\n", shortPhase(from), shortPhase(t.eng.Status().Phase))
 	t.deliver(effects)
 	t.armTimer()
 
-	if t.eng.IsGameOver() {
+	if t.eng.Status().Over {
 		t.reveal()
 	}
 }
@@ -403,7 +405,7 @@ func (t *table) reveal() {
 // 而 PhaseReadiness 给的是「还欠哪一次行动」——想让每个人都动一动，
 // 前者才是问对了问题。
 func (t *table) auto() {
-	if t.eng.IsGameOver() {
+	if t.eng.Status().Over {
 		warn("游戏已经结束了")
 		return
 	}
@@ -439,10 +441,10 @@ func (t *table) run(args []string) {
 			limit = v
 		}
 	}
-	for i := 0; i < limit && !t.eng.IsGameOver(); i++ {
+	for i := 0; i < limit && !t.eng.Status().Over; i++ {
 		t.auto()
 	}
-	if !t.eng.IsGameOver() {
+	if !t.eng.Status().Over {
 		warn("跑了 %d 个阶段还没结束，停下来了", limit)
 	}
 }
@@ -493,7 +495,8 @@ func (t *table) load(args []string) {
 	}
 	t.eng = eng
 	t.armTimer()
-	fmt.Printf("  已从 %s 恢复：第%d回合 %s\n", args[0], eng.Round(), shortPhase(eng.Phase()))
+	st := eng.Status()
+	fmt.Printf("  已从 %s 恢复：第%d回合 %s\n", args[0], st.Round, shortPhase(st.Phase))
 }
 
 func fatal(format string, args ...any) {

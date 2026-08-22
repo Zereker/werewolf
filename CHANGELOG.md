@@ -15,6 +15,42 @@
 
 ## 未发布
 
+### `Engine` 的四个摘要读法合成 `Status()`，理由不是名字多，是会撕裂
+
+**破坏性变更。** `Engine.Phase()` / `Round()` / `IsGameOver()` / `Winner()`
+四个方法去掉，换成一个 `Engine.Status()`：
+
+```go
+type Status struct {
+	Phase  PhaseType
+	Round  int
+	Over   bool
+	Winner Camp
+}
+
+st := e.Status()
+fmt.Printf("第%d回合 %s\n", st.Round, st.Phase)
+```
+
+四个方法**各取一次读锁**。宿主要渲染「第 3 回合的白天」得连问两次，中间
+另一个 goroutine 结算掉一个阶段的话，读到的是一组**从来不曾同时成立**的值
+——`example/cli` 的提示符就是这么写的（`t.eng.Round(), shortPhase(t.eng.Phase())`），
+一直是错的，只是单线程跑起来看不出来。四项在同一个读锁里取出之后这件事没有了。
+
+`Status` 的四项都是标量，不分配内存——「便宜」这条理由（不必像 `View()` 那样
+克隆整个局面）因此仍然成立，只是不再摊成四个名字。
+
+`TestStatus_IsAtomic` 一边不停推进阶段、一边四个 goroutine 并发读，断言读到的
+组合永远合法：结束了就必须停在 `PhaseEnd`，没结束就不能已经有赢家。把 `Status`
+改回四次分别取锁会变红。
+
+**没动的三个**：`Var(scope, key)` / `PlayerInfo(id)` / `AlivePlayerIDs()` 带参数
+或者要分配，不是「摘要字段」，塞进一个结构体只会让每次读都付不必要的代价。
+`GameView` 上的 `Phase()` / `Round()` 也照旧——视图本身就是一份一致的快照，
+不存在撕裂。
+
+`Engine` 的方法从 27 个降到 23 个。
+
 ### 事件分类从注释变成值，`GOTO_PHASE` 的错分因此有东西管了
 
 `kernelPrimitives`（`map[EventType]bool`）换成 `kernelEvents`

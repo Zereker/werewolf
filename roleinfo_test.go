@@ -69,7 +69,7 @@ func TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo(t *testing.T) {
 	if err := e.Start(); err != nil {
 		t.Fatal(err)
 	}
-	for e.Phase() != PhaseNightWolf {
+	for e.Status().Phase != PhaseNightWolf {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatal(err)
 		}

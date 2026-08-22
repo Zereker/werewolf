@@ -159,11 +159,11 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	})
 
 	t.Run("阶段与回合", func(t *testing.T) {
-		if restored.Phase() != PhaseNightGuard {
-			t.Errorf("阶段: 期望 NIGHT_GUARD，实际 %v", restored.Phase())
+		if restored.Status().Phase != PhaseNightGuard {
+			t.Errorf("阶段: 期望 NIGHT_GUARD，实际 %v", restored.Status().Phase)
 		}
-		if restored.Round() != 2 {
-			t.Errorf("回合: 期望 2，实际 %d", restored.Round())
+		if restored.Status().Round != 2 {
+			t.Errorf("回合: 期望 2，实际 %d", restored.Status().Round)
 		}
 	})
 
@@ -323,7 +323,7 @@ func TestSnapshot_EndedGame(t *testing.T) {
 	if _, err := g.e.EndPhase(); err != nil {
 		t.Fatal(err)
 	}
-	if !g.e.IsGameOver() {
+	if !g.e.Status().Over {
 		t.Fatal("狼人全灭，游戏应当结束")
 	}
 
@@ -331,7 +331,7 @@ func TestSnapshot_EndedGame(t *testing.T) {
 	if err != nil {
 		t.Fatalf("恢复已结束的对局失败: %v", err)
 	}
-	if !restored.IsGameOver() {
+	if !restored.Status().Over {
 		t.Error("恢复后应当仍是已结束状态")
 	}
 	if _, err := restored.EndPhase(); err != engine.ErrGameEnded {
@@ -370,7 +370,7 @@ func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 	}
 
 	// 推到自定义阶段再存档
-	for eng.Phase() != customPhase {
+	for eng.Status().Phase != customPhase {
 		if _, err := eng.EndPhase(); err != nil {
 			t.Fatalf("推进失败: %v", err)
 		}
@@ -534,7 +534,7 @@ func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
 	g := newRuleGameWith(t, cfg, opts,
 		seats(wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"))...)
 
-	for g.e.Phase() != customPhase {
+	for g.e.Status().Phase != customPhase {
 		g.endAny()
 	}
 	g.endAny()

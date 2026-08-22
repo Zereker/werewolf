@@ -39,7 +39,7 @@ func TestGotoPhase_TriggerQueueWins(t *testing.T) {
 	if _, err := e.EndPhase(); err != nil {
 		t.Fatalf("EndPhase: %v", err)
 	}
-	if got := e.Phase(); got != phaseNightHunter {
+	if got := e.Status().Phase; got != phaseNightHunter {
 		t.Fatalf("阶段 = %v，期望 %v——触发队列必须排在 GOTO 前面",
 			got, phaseNightHunter)
 	}
@@ -48,7 +48,7 @@ func TestGotoPhase_TriggerQueueWins(t *testing.T) {
 	if _, err := e.EndPhase(); err != nil {
 		t.Fatalf("EndPhase: %v", err)
 	}
-	if got, want := e.Phase(), testConfig().Phases[phaseNightHunter].NextPhase; got != want {
+	if got, want := e.Status().Phase, testConfig().Phases[phaseNightHunter].NextPhase; got != want {
 		t.Errorf("阶段 = %v，期望 %v——上一阶段的 GOTO 不该跨阶段生效", got, want)
 	}
 }
@@ -79,7 +79,7 @@ func TestGotoPhase_UnknownTargetFallsBack(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 
-	if got, want := e.Phase(), testConfig().Phases[phaseNightGuard].NextPhase; got != want {
+	if got, want := e.Status().Phase, testConfig().Phases[phaseNightGuard].NextPhase; got != want {
 		t.Errorf("阶段 = %v，期望退回默认出口 %v", got, want)
 	}
 	if !rec.sawError {
@@ -102,7 +102,7 @@ func TestGotoPhase_CanceledIsIgnored(t *testing.T) {
 	if _, err := e.EndPhase(); err != nil {
 		t.Fatalf("EndPhase: %v", err)
 	}
-	if got, want := e.Phase(), testConfig().Phases[phaseNightGuard].NextPhase; got != want {
+	if got, want := e.Status().Phase, testConfig().Phases[phaseNightGuard].NextPhase; got != want {
 		t.Errorf("阶段 = %v，期望 %v——被否决的 GOTO 不该生效", got, want)
 	}
 }

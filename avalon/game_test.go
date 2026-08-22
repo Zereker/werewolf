@@ -28,7 +28,7 @@ func fivePlayer(t *testing.T) *engine.Engine {
 func TestFirstMission(t *testing.T) {
 	e := fivePlayer(t)
 
-	if got := e.Phase(); got != PhasePropose {
+	if got := e.Status().Phase; got != PhasePropose {
 		t.Fatalf("开局阶段 = %v，期望 PROPOSE", got)
 	}
 	if n := MissionSize(5, 1); n != 2 {
@@ -46,7 +46,7 @@ func TestFirstMission(t *testing.T) {
 	if _, err := e.EndPhase(); err != nil {
 		t.Fatalf("EndPhase(PROPOSE): %v", err)
 	}
-	if got := e.Phase(); got != PhaseTeamVote {
+	if got := e.Status().Phase; got != PhaseTeamVote {
 		t.Fatalf("阶段 = %v，期望 TEAM_VOTE", got)
 	}
 
@@ -59,7 +59,7 @@ func TestFirstMission(t *testing.T) {
 	if _, err := e.EndPhase(); err != nil {
 		t.Fatalf("EndPhase(TEAM_VOTE): %v", err)
 	}
-	if got := e.Phase(); got != PhaseMission {
+	if got := e.Status().Phase; got != PhaseMission {
 		t.Fatalf("阶段 = %v，期望 MISSION", got)
 	}
 
@@ -83,7 +83,7 @@ func TestFirstMission(t *testing.T) {
 	if !succeeded {
 		t.Fatalf("第一轮任务该成功，效果里没有 MISSION_SUCCEEDED：%v", typesOf(effects))
 	}
-	if e.IsGameOver() {
+	if e.Status().Over {
 		t.Fatal("才赢一轮就结束了")
 	}
 }
@@ -198,23 +198,23 @@ func TestFullGame_GoodWinsThreeThenSurvivesAssassination(t *testing.T) {
 	runMission(t, e, 0, "a", "b", "c")
 	last := runMission(t, e, 0, "a", "b")
 
-	t.Logf("三轮成功之后：阶段=%v 结束=%v 效果=%v", e.Phase(), e.IsGameOver(), typesOf(last))
+	t.Logf("三轮成功之后：阶段=%v 结束=%v 效果=%v", e.Status().Phase, e.Status().Over, typesOf(last))
 
-	if e.IsGameOver() {
+	if e.Status().Over {
 		t.Fatal("刺杀还没进行，这局不该结束——胜负判定必须推迟到刺杀之后")
 	}
-	if e.Phase() != PhaseAssassin {
-		t.Fatalf("阶段 = %v，期望被触发队列带到 ASSASSIN", e.Phase())
+	if e.Status().Phase != PhaseAssassin {
+		t.Fatalf("阶段 = %v，期望被触发队列带到 ASSASSIN", e.Status().Phase)
 	}
 
 	// 刺客指错人（指了派西维尔，梅林是 a）
 	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"b"}})
 	mustEnd(t, e)
 
-	if !e.IsGameOver() {
+	if !e.Status().Over {
 		t.Fatal("刺杀结束之后这局该结束了")
 	}
-	if got := e.Winner(); got != CampGood {
+	if got := e.Status().Winner; got != CampGood {
 		t.Errorf("赢家 = %v，期望 GOOD（刺客指错了）", got)
 	}
 }
@@ -227,16 +227,16 @@ func TestFullGame_AssassinFindsMerlin(t *testing.T) {
 	runMission(t, e, 0, "a", "b", "c")
 	runMission(t, e, 0, "a", "b")
 
-	if e.Phase() != PhaseAssassin {
-		t.Fatalf("阶段 = %v，期望 ASSASSIN", e.Phase())
+	if e.Status().Phase != PhaseAssassin {
+		t.Fatalf("阶段 = %v，期望 ASSASSIN", e.Status().Phase)
 	}
 	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"a"}})
 	mustEnd(t, e)
 
-	if !e.IsGameOver() {
+	if !e.Status().Over {
 		t.Fatal("刺杀之后该结束")
 	}
-	if got := e.Winner(); got != CampEvil {
+	if got := e.Status().Winner; got != CampEvil {
 		t.Errorf("赢家 = %v，期望 EVIL（刺中梅林反败为胜）", got)
 	}
 }
@@ -249,10 +249,10 @@ func TestFullGame_EvilWinsThreeMissions(t *testing.T) {
 	runMission(t, e, 1, "d", "e", "a")
 	runMission(t, e, 1, "d", "e")
 
-	if !e.IsGameOver() {
+	if !e.Status().Over {
 		t.Fatal("三轮失败之后该结束")
 	}
-	if got := e.Winner(); got != CampEvil {
+	if got := e.Status().Winner; got != CampEvil {
 		t.Errorf("赢家 = %v，期望 EVIL", got)
 	}
 }
@@ -270,19 +270,19 @@ func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
 		}
 		mustEnd(t, e)
 		if i < HammerRejections {
-			if e.IsGameOver() {
+			if e.Status().Over {
 				t.Fatalf("才否决 %d 次就结束了，应当到 %d 次", i, HammerRejections)
 			}
-			if got := e.Phase(); got != PhasePropose {
+			if got := e.Status().Phase; got != PhasePropose {
 				t.Fatalf("被否决之后该直接回 PROPOSE，实际 %v", got)
 			}
 		}
 	}
 
-	if !e.IsGameOver() {
+	if !e.Status().Over {
 		t.Fatalf("连续 %d 次否决之后该结束", HammerRejections)
 	}
-	if got := e.Winner(); got != CampEvil {
+	if got := e.Status().Winner; got != CampEvil {
 		t.Errorf("赢家 = %v，期望 EVIL", got)
 	}
 }

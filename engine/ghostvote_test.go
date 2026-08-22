@@ -47,13 +47,13 @@ func TestNamedActorsMayBeDead(t *testing.T) {
 	}
 
 	// 走到投票阶段
-	for i := 0; i < 20 && e.Phase() != phaseVote; i++ {
+	for i := 0; i < 20 && e.Status().Phase != phaseVote; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
 		}
 	}
-	if e.Phase() != phaseVote {
-		t.Fatalf("没走到投票阶段，停在 %v", e.Phase())
+	if e.Status().Phase != phaseVote {
+		t.Fatalf("没走到投票阶段，停在 %v", e.Status().Phase)
 	}
 
 	// 出局的 w1 被点名了，他能投票

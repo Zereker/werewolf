@@ -114,7 +114,8 @@ func main() {
 	for _, ef := range effects {
 		fmt.Println(ef.Type, ef.TargetID) // OUT b1 / SET_ALIVE b1 / GAME_ENDED
 	}
-	fmt.Println("结束:", e.IsGameOver(), "赢家:", e.Winner()) // true RED
+	st := e.Status()
+	fmt.Println("结束:", st.Over, "赢家:", st.Winner) // true RED
 }
 ```
 

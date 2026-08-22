@@ -278,9 +278,9 @@ func mustEnd(t *testing.T, e *Engine) []*Effect {
 // endTo 一路推进到目标阶段。防死循环：最多走一整圈。
 func endTo(t *testing.T, e *Engine, want PhaseType) {
 	t.Helper()
-	for i := 0; e.Phase() != want; i++ {
+	for i := 0; e.Status().Phase != want; i++ {
 		if i > 32 {
-			t.Fatalf("推进到 %v 超过一圈仍未到达，当前 %v", want, e.Phase())
+			t.Fatalf("推进到 %v 超过一圈仍未到达，当前 %v", want, e.Status().Phase)
 		}
 		mustEnd(t, e)
 	}

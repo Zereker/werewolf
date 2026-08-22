@@ -44,8 +44,8 @@ func TestSetActors_IsConsumedAfterThePhaseResolves(t *testing.T) {
 	if _, err := e.EndPhase(); err != nil { // NIGHT_GUARD -> NIGHT_WOLF
 		t.Fatalf("EndPhase: %v", err)
 	}
-	if e.Phase() != phaseNightWolf {
-		t.Fatalf("阶段 = %v，期望 %v", e.Phase(), phaseNightWolf)
+	if e.Status().Phase != phaseNightWolf {
+		t.Fatalf("阶段 = %v，期望 %v", e.Status().Phase, phaseNightWolf)
 	}
 	if got := e.AllowedSkills("w2"); len(got) != 0 {
 		t.Fatalf("w2 不在点名名单里，AllowedSkills 却给出 %v", got)
@@ -53,7 +53,7 @@ func TestSetActors_IsConsumedAfterThePhaseResolves(t *testing.T) {
 
 	// 绕一整圈回到狼人阶段。这一次没有人点名，应当退回按角色算——
 	// 两只狼都能行动。沿用上一轮那份名单的话 w2 会被继续挡在外面。
-	for i := 0; i < 20 && e.Phase() != phaseNightWolf; i++ {
+	for i := 0; i < 20 && e.Status().Phase != phaseNightWolf; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
 		}
@@ -62,12 +62,12 @@ func TestSetActors_IsConsumedAfterThePhaseResolves(t *testing.T) {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
 		}
-		if e.Phase() == phaseNightWolf {
+		if e.Status().Phase == phaseNightWolf {
 			break
 		}
 	}
-	if e.Phase() != phaseNightWolf {
-		t.Fatalf("没能绕回狼人阶段，停在 %v", e.Phase())
+	if e.Status().Phase != phaseNightWolf {
+		t.Fatalf("没能绕回狼人阶段，停在 %v", e.Status().Phase)
 	}
 	if got := e.AllowedSkills("w2"); len(got) == 0 {
 		t.Error("这一轮没有人点名，w2 该按角色算能行动——上一轮的名单被沿用了")

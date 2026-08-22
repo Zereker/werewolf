@@ -218,7 +218,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 ## 命名约定
 
 只读方法**不加 `Get` 前缀**——这是 Go 的通行风格（Effective Go）：
-`e.Phase()` 而不是 `e.GetCurrentPhase()`，`e.PlayerInfo(id)` 而不是
+`e.Status().Phase` 而不是 `e.GetCurrentPhase()`，`e.PlayerInfo(id)` 而不是
 `e.GetPlayerInfo(id)`。方法名与返回类型同名是可以的，标准库里
 `time.Time.Location()` 返回 `*Location` 就是这个形状。
 

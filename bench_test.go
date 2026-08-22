@@ -32,7 +32,7 @@ func benchEngine(b *testing.B, until PhaseType) *Engine {
 	if err := e.Start(); err != nil {
 		b.Fatal(err)
 	}
-	for e.Phase() != until {
+	for e.Status().Phase != until {
 		if _, err := e.EndPhase(); err != nil {
 			b.Fatal(err)
 		}
@@ -59,7 +59,7 @@ func BenchmarkFullGame(b *testing.B) {
 			b.Fatal(err)
 		}
 		alive := e.AlivePlayerIDs()
-		for steps := 0; steps < 400 && !e.IsGameOver(); steps++ {
+		for steps := 0; steps < 400 && !e.Status().Over; steps++ {
 			for _, p := range e.PhaseReadiness().Pending {
 				_ = e.SubmitSkillUse(&SkillUse{
 					PlayerID: p.PlayerID, Skill: p.Skill, Targets: []string{alive[0]},

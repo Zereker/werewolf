@@ -114,7 +114,7 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for e.Phase() != PhaseNightWitch {
+	for e.Status().Phase != PhaseNightWitch {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatal(err)
 		}

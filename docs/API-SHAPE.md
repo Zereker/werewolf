@@ -151,21 +151,32 @@ kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有
 
 ---
 
-## 五、`Engine` 的二十六个方法
+## 五、`Engine` 的方法 —— 摘要那一组已收敛
 
-```
-AddPlayer AlivePlayerIDs AllowedSkills Apply AudienceOf EffectLog EndPhase
-IsGameOver MessageReceivers OnEvent OnMessage Phase PhaseInfo
-PhaseReadiness PlayerInfo PlayerView Round RoundContext SendMessage
-Snapshot Start SubmitSkillUse Teammates Var View Winner
-```
-
-其中一串是**同一件事的不同粒度**：`Phase()` `Round()` `Var()`
+原来是 27 个，其中一串是**同一件事的不同粒度**：`Phase()` `Round()` `Var()`
 `PlayerInfo()` `AlivePlayerIDs()` `RoundContext()` 与 `View()` 问的是同一批问题。
 
 此前的辩护是「`View()` 会 clone 整个状态，问一句『现在第几回合』不该付那个代价」
-——性能分层，不是重复。这个辩护仍然成立，但它解释的是**为什么有两条路**，
+——性能分层，不是重复。这个辩护成立，但它解释的是**为什么有两条路**，
 没解释**为什么那条便宜的路要摊成七个方法**。
+
+**已收敛的那一组，理由不是名字多，是会撕裂。** `Phase()` / `Round()` /
+`IsGameOver()` / `Winner()` 各取一次读锁：宿主要渲染「第 3 回合的白天」得连问
+两次，中间另一个 goroutine 结算掉一个阶段的话，读到的是一组**从来不曾同时
+成立**的值。四个合成一个 `Status()`，四项标量在同一个读锁里取出，不分配内存。
+
+```
+Status{ Phase, Round, Over, Winner }
+```
+
+`TestStatus_IsAtomic` 一边推进阶段一边并发读，断言组合永远合法（结束了就必须
+停在 `PhaseEnd`，没结束就不能已经有赢家）。改回四次分别取锁会变红。
+
+**剩下三个没动**：`Var(scope, key)` / `PlayerInfo(id)` / `AlivePlayerIDs()`
+带参数或者要分配，不是「摘要字段」，把它们塞进一个结构体只会让每次读都付
+不必要的代价。`View()` 那条路照旧。
+
+现在是 23 个方法。
 
 ---
 
@@ -177,7 +188,7 @@ Snapshot Start SubmitSkillUse Teammates Var View Winner
 | 规则对内核说的话（三类） | `eventKind`（未导出） | 6（构造器未收敛） |
 | 一个扩展点 | 部分（接口有，装配没有） | 8 × 3 = 24（已齐整，未收敛） |
 | 「谁在看这份数据」 | **没有** | 3 |
-| 便宜的状态读法 | **没有** | 6 |
+| 便宜的状态读法（摘要那组） | `Status` | ~~4~~ → 已收敛 |
 
 **53 个导出类型里，相当一部分是「概念没有对应物」摊出来的。**
 

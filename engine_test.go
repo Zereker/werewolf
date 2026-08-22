@@ -22,13 +22,13 @@ import (
 func TestNew_Defaults(t *testing.T) {
 	eng := MustNew(DefaultRules())
 
-	if got := eng.Phase(); got != PhaseStart {
+	if got := eng.Status().Phase; got != PhaseStart {
 		t.Errorf("刚造出来应当处于 START，实际 %v", got)
 	}
-	if got := eng.Round(); got != 0 {
+	if got := eng.Status().Round; got != 0 {
 		t.Errorf("还没开局，回合应为 0，实际 %d", got)
 	}
-	if eng.IsGameOver() {
+	if eng.Status().Over {
 		t.Error("还没开局，不该已经结束")
 	}
 	if got := eng.AlivePlayerIDs(); len(got) != 0 {
@@ -50,7 +50,7 @@ func TestNewWith_CustomConfig(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	if got := eng.Phase(); got != PhaseNightWolf {
+	if got := eng.Status().Phase; got != PhaseNightWolf {
 		t.Errorf("起始阶段应当是配置里那个，实际 %v", got)
 	}
 }
@@ -75,11 +75,11 @@ func TestEngine_Start(t *testing.T) {
 	// newRuleGame 内部即断言 Start() 必须成功（失败则 Fatal）
 	g := newRuleGame(t, nil, wolf("w1"), villager("v1"))
 
-	if g.e.Phase() != PhaseNightGuard {
-		t.Errorf("expected Phase=NIGHT_GUARD, got %v", g.e.Phase())
+	if g.e.Status().Phase != PhaseNightGuard {
+		t.Errorf("expected Phase=NIGHT_GUARD, got %v", g.e.Status().Phase)
 	}
-	if g.e.Round() != 1 {
-		t.Errorf("expected Round=1, got %d", g.e.Round())
+	if g.e.Status().Round != 1 {
+		t.Errorf("expected Round=1, got %d", g.e.Status().Round)
 	}
 }
 
@@ -280,8 +280,8 @@ func TestEngine_EndPhase(t *testing.T) {
 	}
 
 	// Should transition to NIGHT_WOLF
-	if eng.Phase() != PhaseNightWolf {
-		t.Errorf("expected Phase=NIGHT_WOLF, got %v", eng.Phase())
+	if eng.Status().Phase != PhaseNightWolf {
+		t.Errorf("expected Phase=NIGHT_WOLF, got %v", eng.Status().Phase)
 	}
 
 	// Pending uses should be cleared
@@ -306,11 +306,11 @@ func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
 	g.endAny() // NIGHT_RESOLVE -> 击杀在此结算
 
 	// v1 出局后平民全灭，狼人按屠边获胜
-	if !g.e.IsGameOver() {
+	if !g.e.Status().Over {
 		t.Error("expected game to be over")
 	}
-	if g.e.Phase() != PhaseEnd {
-		t.Errorf("expected Phase=END, got %v", g.e.Phase())
+	if g.e.Status().Phase != PhaseEnd {
+		t.Errorf("expected Phase=END, got %v", g.e.Status().Phase)
 	}
 }
 
@@ -335,7 +335,7 @@ func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
 	g.endAny()
 
 	// After voting wolf out, evil(0), good wins
-	if !g.e.IsGameOver() {
+	if !g.e.Status().Over {
 		t.Error("expected game to be over")
 	}
 }
@@ -356,16 +356,16 @@ func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 func TestEngine_GetCurrentPhase(t *testing.T) {
 	eng := MustNew(DefaultRules())
 
-	if eng.Phase() != PhaseStart {
-		t.Errorf("expected Phase=START, got %v", eng.Phase())
+	if eng.Status().Phase != PhaseStart {
+		t.Errorf("expected Phase=START, got %v", eng.Status().Phase)
 	}
 
 	mustAdd(t, eng, "w1", RoleWerewolf)
 	mustAdd(t, eng, "v1", RoleVillager)
 	mustStart(t, eng)
 
-	if eng.Phase() != PhaseNightGuard {
-		t.Errorf("expected Phase=NIGHT_GUARD after start, got %v", eng.Phase())
+	if eng.Status().Phase != PhaseNightGuard {
+		t.Errorf("expected Phase=NIGHT_GUARD after start, got %v", eng.Status().Phase)
 	}
 }
 
@@ -373,16 +373,16 @@ func TestEngine_GetCurrentPhase(t *testing.T) {
 func TestEngine_GetCurrentRound(t *testing.T) {
 	eng := MustNew(DefaultRules())
 
-	if eng.Round() != 0 {
-		t.Errorf("expected Round=0, got %d", eng.Round())
+	if eng.Status().Round != 0 {
+		t.Errorf("expected Round=0, got %d", eng.Status().Round)
 	}
 
 	mustAdd(t, eng, "w1", RoleWerewolf)
 	mustAdd(t, eng, "v1", RoleVillager)
 	mustStart(t, eng)
 
-	if eng.Round() != 1 {
-		t.Errorf("expected Round=1 after start, got %d", eng.Round())
+	if eng.Status().Round != 1 {
+		t.Errorf("expected Round=1 after start, got %d", eng.Status().Round)
 	}
 }
 
@@ -427,13 +427,13 @@ func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
 func TestEngine_IsGameOver(t *testing.T) {
 	eng := MustNew(DefaultRules())
 
-	if eng.IsGameOver() {
+	if eng.Status().Over {
 		t.Error("expected IsGameOver=false initially")
 	}
 
 	endTheGame(t, eng)
 
-	if !eng.IsGameOver() {
+	if !eng.Status().Over {
 		t.Error("expected IsGameOver=true when Phase=END")
 	}
 }
@@ -499,11 +499,9 @@ func TestEngine_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = eng.Phase()
-			eng.Phase()
-			eng.Round()
+			_ = eng.Status()
 			eng.AllowedSkills("guard")
-			eng.IsGameOver()
+			eng.View()
 		}()
 	}
 
@@ -539,10 +537,10 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	)...)
 
 	// Night 1 - GUARD phase
-	if g.e.Phase() != PhaseNightGuard {
-		t.Errorf("expected NIGHT_GUARD phase, got %v", g.e.Phase())
+	if g.e.Status().Phase != PhaseNightGuard {
+		t.Errorf("expected NIGHT_GUARD phase, got %v", g.e.Status().Phase)
 	}
-	if g.e.Round() != 1 {
+	if g.e.Status().Round != 1 {
 		t.Error("expected Round 1")
 	}
 
@@ -589,7 +587,7 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	g.assertAlive("wolf", false, "expected wolf to be eliminated")
 
 	// Game over (no wolves left)
-	if !g.e.IsGameOver() {
+	if !g.e.Status().Over {
 		t.Error("game should be over")
 	}
 }
@@ -835,7 +833,7 @@ func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 	if _, err := eng.EndPhase(); !errors.Is(err, engine.ErrGameNotStarted) {
 		t.Fatalf("未开局推进阶段应返回 engine.ErrGameNotStarted，实际 %v", err)
 	}
-	if got := eng.Phase(); got != PhaseStart {
+	if got := eng.Status().Phase; got != PhaseStart {
 		t.Errorf("阶段不应变化，实际 %v", got)
 	}
 
@@ -928,7 +926,7 @@ func TestEngine_ResolverReturningNilEffect(t *testing.T) {
 			t.Error("nil 效果不该出现在返回值与效果流里")
 		}
 	}
-	if got := eng.Phase(); got != PhaseNightWolf {
+	if got := eng.Status().Phase; got != PhaseNightWolf {
 		t.Errorf("阶段应当照常流转，实际 %v", got)
 	}
 }
@@ -972,7 +970,7 @@ func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	g.end(PhaseNightWolf)
 	g.assertAlive("v1", true, "第一夜被解药救回")
 
-	if got := g.e.Round(); got != 2 {
+	if got := g.e.Status().Round; got != 2 {
 		t.Errorf("绕回起始阶段应当进入第 2 回合，实际 %d", got)
 	}
 	if got := g.info("v1").RoundVars; len(got) != 0 {
@@ -1023,7 +1021,7 @@ func TestEngine_EndPhase_ReturnsGameEnded(t *testing.T) {
 // 字段了，而这么写本来也更实在：走的是真的结束路径，不是伪造的状态。
 func endTheGame(t *testing.T, e *Engine) {
 	t.Helper()
-	if e.Phase() == PhaseStart {
+	if e.Status().Phase == PhaseStart {
 		for id, role := range map[string]RoleType{
 			"w1": RoleWerewolf, "s": RoleSeer,
 			"v1": RoleVillager, "v2": RoleVillager,
@@ -1036,12 +1034,12 @@ func endTheGame(t *testing.T, e *Engine) {
 	}
 	// 狼人出局，好人立即获胜
 	e.Apply(engine.NewSetAliveEffect("w1", false))
-	for i := 0; i < 30 && !e.IsGameOver(); i++ {
+	for i := 0; i < 30 && !e.Status().Over; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
 		}
 	}
-	if !e.IsGameOver() {
+	if !e.Status().Over {
 		t.Fatal("推不到结束")
 	}
 }

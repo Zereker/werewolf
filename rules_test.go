@@ -173,12 +173,12 @@ func (g *ruleGame) mustUse(playerID string, skill SkillType, targetID string) {
 // end 结束当前子阶段并断言流转到 expect。
 func (g *ruleGame) end(expect PhaseType) []*Effect {
 	g.t.Helper()
-	from := g.e.Phase()
+	from := g.e.Status().Phase
 	effects, err := g.e.EndPhase()
 	if err != nil {
 		g.t.Fatalf("EndPhase() 于 %v 失败: %v", from, err)
 	}
-	if got := g.e.Phase(); got != expect {
+	if got := g.e.Status().Phase; got != expect {
 		g.t.Fatalf("阶段流转错误: %v 结束后期望 %v，实际 %v", from, expect, got)
 	}
 	return effects
@@ -993,12 +993,12 @@ func TestRule_R8_HunterShootsOnlyOnce(t *testing.T) {
 	g.end(PhaseVote)
 	g.vote("v1", "w2", "v2", "v3", "v4")
 
-	if got := g.e.Phase(); got != PhaseVote {
+	if got := g.e.Status().Phase; got != PhaseVote {
 		t.Fatalf("投票前阶段异常: %v", got)
 	}
 	g.endAny()
 
-	if got := g.e.Phase(); got == PhaseDayHunter {
+	if got := g.e.Status().Phase; got == PhaseDayHunter {
 		t.Fatal("出局者不是猎人，却再次进入 DAY_HUNTER（HunterTriggered 未在触发后清除）")
 	}
 	g.assertAlive("w2", true, "猎人不应开出第二枪")
@@ -1278,14 +1278,14 @@ func TestRule_R10_HunterShotCanFlipVictory(t *testing.T) {
 
 	// 猎人是唯一神职，此刻「屠神」已成立，但必须先让他开枪
 	g.end(PhaseNightHunter)
-	if g.e.IsGameOver() {
+	if g.e.Status().Over {
 		t.Fatal("猎人尚未开枪，游戏不应结束")
 	}
 
 	g.mustUse("h", SkillShoot, "w1")
 	g.endAny()
 
-	if !g.e.IsGameOver() {
+	if !g.e.Status().Over {
 		t.Fatal("最后一只狼被带走，游戏应当结束")
 	}
 	over, winner := checkVictory(g.e)
@@ -1443,14 +1443,14 @@ func TestConvention_D3_NightPhaseOrder(t *testing.T) {
 		PhaseNightGuard, // 回到下一夜
 	}
 
-	if got := g.e.Phase(); got != want[0] {
+	if got := g.e.Status().Phase; got != want[0] {
 		t.Fatalf("开局阶段: 期望 %v，实际 %v", want[0], got)
 	}
 	for i := 1; i < len(want); i++ {
 		g.end(want[i])
 	}
 
-	if got := g.e.Round(); got != 2 {
+	if got := g.e.Status().Round; got != 2 {
 		t.Errorf("走完一整轮后期望 Round=2，实际 %d", got)
 	}
 }

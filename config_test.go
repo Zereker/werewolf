@@ -228,7 +228,7 @@ func TestStartPhase_Configurable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := eng.Phase(); got != PhaseDay {
+	if got := eng.Status().Phase; got != PhaseDay {
 		t.Errorf("期望从 DAY 开局，实际 %v", got)
 	}
 }

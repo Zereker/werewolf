@@ -156,7 +156,7 @@ func TestServer_EventsGoOnlyToTheirAudience(t *testing.T) {
 	other := seatOf(t, srv, werewolf.RoleVillager)
 
 	// 推到预言家阶段
-	for srv.room.eng.Phase() != werewolf.PhaseNightSeer {
+	for srv.room.eng.Status().Phase != werewolf.PhaseNightSeer {
 		srv.room.cmds <- command{kind: "view", player: seer} // 借道排队，确保串行
 		advance(t, srv)
 	}
@@ -184,7 +184,7 @@ func TestServer_ChatIsRoutedByPhase(t *testing.T) {
 		clients[id].awaitView()
 	}
 
-	for srv.room.eng.Phase() != werewolf.PhaseNightWolf {
+	for srv.room.eng.Status().Phase != werewolf.PhaseNightWolf {
 		advance(t, srv)
 	}
 
@@ -282,9 +282,9 @@ func TestServer_ConcurrentClients(t *testing.T) {
 // advance 让房间推进一个阶段，并等它真的走完。
 func advance(t *testing.T, srv *server) {
 	t.Helper()
-	before := srv.room.eng.Phase()
+	before := srv.room.eng.Status().Phase
 	srv.room.do(command{kind: "advance"})
-	if got := srv.room.eng.Phase(); got == before {
+	if got := srv.room.eng.Status().Phase; got == before {
 		t.Fatalf("阶段没有推进，仍在 %v", before)
 	}
 }

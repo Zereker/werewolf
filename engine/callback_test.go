@@ -44,8 +44,8 @@ func TestCallbacks_MayCallBackIntoTheEngine(t *testing.T) {
 		e.OnEvent(func(ev *Event) {
 			events++
 			_, _ = e.AudienceOf(ev)
-			_ = e.Phase()
-			_ = e.Round()
+			_ = e.Status().Phase
+			_ = e.Status().Round
 			_ = e.PlayerView("w1")
 			_, _ = e.PlayerInfo("w1")
 			_ = e.PhaseReadiness()

@@ -132,7 +132,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	eng := newWolfKingGame(t)
 
 	// 走完第一夜（狼人空刀）
-	for eng.Phase() != PhaseDay {
+	for eng.Status().Phase != PhaseDay {
 		if _, err := eng.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +154,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	}
 
 	// 引擎应当自动流转到自定义的狼王阶段
-	if got := eng.Phase(); got != phaseWolfKing {
+	if got := eng.Status().Phase; got != phaseWolfKing {
 		t.Fatalf("期望进入狼王阶段，实际 %v", got)
 	}
 
@@ -178,7 +178,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	if alive := mustInfo(t, eng, "s").Alive; alive {
 		t.Error("狼王开枪带走的预言家应当出局")
 	}
-	if got := eng.Phase(); got != PhaseNightGuard {
+	if got := eng.Status().Phase; got != PhaseNightGuard {
 		t.Errorf("狼王阶段结束后应进入下一夜，实际 %v", got)
 	}
 }
@@ -237,7 +237,7 @@ func mustInfo(t *testing.T, e *Engine, id string) engine.PlayerInfo {
 func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	eng := newWolfKingGame(t)
 
-	for eng.Phase() != PhaseDay {
+	for eng.Status().Phase != PhaseDay {
 		if _, err := eng.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -255,8 +255,8 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	if _, err := eng.EndPhase(); err != nil {
 		t.Fatal(err)
 	}
-	if eng.Phase() != phaseWolfKing {
-		t.Fatalf("期望进入狼王阶段，实际 %v", eng.Phase())
+	if eng.Status().Phase != phaseWolfKing {
+		t.Fatalf("期望进入狼王阶段，实际 %v", eng.Status().Phase)
 	}
 
 	info := eng.PhaseInfo()
@@ -332,7 +332,7 @@ func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	}
 
 	// 夜里能和狼队互通
-	for eng.Phase() != PhaseNightWolf {
+	for eng.Status().Phase != PhaseNightWolf {
 		if _, err := eng.EndPhase(); err != nil {
 			t.Fatalf("推进失败: %v", err)
 		}

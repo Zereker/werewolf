@@ -116,7 +116,7 @@ func TestWithTeammates_Replaceable(t *testing.T) {
 		t.Errorf("WolfTeammates 应与 engine.PlayerView 一致，实际 %v", got)
 	}
 	e2 := newBoundaryGame(t, oneWay)
-	for e2.Phase() != PhaseNightWolf {
+	for e2.Status().Phase != PhaseNightWolf {
 		if _, err := e2.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +137,7 @@ func TestWithTeammates_Replaceable(t *testing.T) {
 func TestWithSpeech_Replaceable(t *testing.T) {
 	t.Run("默认夜里只有狼队交流", func(t *testing.T) {
 		e := newBoundaryGame(t)
-		for e.Phase() != PhaseNightWolf {
+		for e.Status().Phase != PhaseNightWolf {
 			if _, err := e.EndPhase(); err != nil {
 				t.Fatal(err)
 			}
@@ -159,7 +159,7 @@ func TestWithSpeech_Replaceable(t *testing.T) {
 				}
 				return out
 			})))
-		for e.Phase() != PhaseNightWolf {
+		for e.Status().Phase != PhaseNightWolf {
 			if _, err := e.EndPhase(); err != nil {
 				t.Fatal(err)
 			}
@@ -241,7 +241,7 @@ func TestBareEngine_KnowsNothing(t *testing.T) {
 				t.Fatalf("EndPhase: %v", err)
 			}
 		}
-		if bare.IsGameOver() {
+		if bare.Status().Over {
 			t.Error("内核不知道什么叫赢，这局不该结束")
 		}
 	})
@@ -320,12 +320,12 @@ func TestWerewolfOptions_GoThroughThePublicDoor(t *testing.T) {
 	// 好人全死光 -> 狼人胜
 	e.Apply(engine.NewSetAliveEffect("wi", false), engine.NewSetAliveEffect("s", false),
 		engine.NewSetAliveEffect("v1", false), engine.NewSetAliveEffect("v2", false))
-	for i := 0; i < 30 && !e.IsGameOver(); i++ {
+	for i := 0; i < 30 && !e.Status().Over; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
 		}
 	}
-	if !e.IsGameOver() {
+	if !e.Status().Over {
 		t.Error("好人全灭，装上规则之后应当判出胜负")
 	}
 }

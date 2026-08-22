@@ -325,7 +325,7 @@ func TestCustomEventReachesOnEvent(t *testing.T) {
 	var seen []EventType
 	e.OnEvent(func(ev *Event) { seen = append(seen, ev.Type) })
 
-	for i := 0; e.Phase() != customPhase && i < 20; i++ {
+	for i := 0; e.Status().Phase != customPhase && i < 20; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
 		}

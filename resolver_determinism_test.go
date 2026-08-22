@@ -184,7 +184,7 @@ func TestFullGame_EffectLogIsReproducible(t *testing.T) {
 		g.mustUse("s", SkillCheck, "w1")
 		g.end(PhaseNightResolve)
 		g.endAny() // 夜晚结算：死亡在这里产生
-		for i := 0; i < 6 && !g.e.IsGameOver(); i++ {
+		for i := 0; i < 6 && !g.e.Status().Over; i++ {
 			for _, id := range g.e.AlivePlayerIDs() {
 				for _, sk := range g.e.AllowedSkills(id) {
 					target := ""

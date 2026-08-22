@@ -37,11 +37,11 @@ func TestFullGame_WolvesWin(t *testing.T) {
 	g.endAny() // kill applied
 
 	// v1 出局后 good(2) <= evil(2)，狼人获胜
-	if !g.e.IsGameOver() {
+	if !g.e.Status().Over {
 		t.Error("expected game to be over (wolves win)")
 	}
 
-	if got := g.e.Winner(); got != CampEvil {
+	if got := g.e.Status().Winner; got != CampEvil {
 		t.Errorf("expected EVIL wins, got %v", got)
 	}
 }
@@ -70,7 +70,7 @@ func TestFullGame_GoodWins(t *testing.T) {
 	g.endAny()
 
 	// Wolf eliminated, evil(0), good wins
-	if !g.e.IsGameOver() {
+	if !g.e.Status().Over {
 		t.Error("expected game to be over (good wins)")
 	}
 
@@ -151,24 +151,24 @@ func TestScenario_MultipleRounds(t *testing.T) {
 		wolf("wolf"), villagers("v1", "v2", "v3", "v4"),
 	)...)
 
-	if g.e.Round() != 1 {
-		t.Errorf("expected Round 1, got %d", g.e.Round())
+	if g.e.Status().Round != 1 {
+		t.Errorf("expected Round 1, got %d", g.e.Status().Round)
 	}
 
 	// Night 1 (all phases) -> Day 1 -> Vote 1 -> Night 2
 	g.walkNight()
 	g.toNextNight()
 
-	if g.e.Round() != 2 {
-		t.Errorf("expected Round 2, got %d", g.e.Round())
+	if g.e.Status().Round != 2 {
+		t.Errorf("expected Round 2, got %d", g.e.Status().Round)
 	}
 
 	// Night 2 (all phases) -> Day 2 -> Vote 2 -> Night 3
 	g.walkNight()
 	g.toNextNight()
 
-	if g.e.Round() != 3 {
-		t.Errorf("expected Round 3, got %d", g.e.Round())
+	if g.e.Status().Round != 3 {
+		t.Errorf("expected Round 3, got %d", g.e.Status().Round)
 	}
 }
 
@@ -323,7 +323,7 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 		if witch.Var(VarWitchPoison) == "" {
 			t.Error("毒药未生效，不应被消耗")
 		}
-		if g.e.IsGameOver() {
+		if g.e.Status().Over {
 			t.Error("狼人存活，游戏不应结束")
 		}
 	})
@@ -337,7 +337,7 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 		if witch.Var(VarWitchAntidote) != "" || witch.Var(VarWitchPoison) != "" {
 			t.Error("两瓶药都应当被消耗")
 		}
-		if !g.e.IsGameOver() {
+		if !g.e.Status().Over {
 			t.Error("expected game over (good wins after wolf poisoned)")
 		}
 	})
@@ -382,8 +382,8 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	)...)
 
 	// 阶段1：守卫阶段
-	if g.e.Phase() != PhaseNightGuard {
-		t.Errorf("expected NIGHT_GUARD, got %v", g.e.Phase())
+	if g.e.Status().Phase != PhaseNightGuard {
+		t.Errorf("expected NIGHT_GUARD, got %v", g.e.Status().Phase)
 	}
 
 	g.mustUse("guard", SkillProtect, "seer")
@@ -502,8 +502,8 @@ func TestSubStepMode_MultipleRounds(t *testing.T) {
 		villagers("v1", "v2", "v3"),
 	)...)
 
-	if g.e.Round() != 1 {
-		t.Errorf("expected Round 1, got %d", g.e.Round())
+	if g.e.Status().Round != 1 {
+		t.Errorf("expected Round 1, got %d", g.e.Status().Round)
 	}
 
 	// 第一轮夜晚：空过，walkNight 逐步断言到 DAY
@@ -512,8 +512,8 @@ func TestSubStepMode_MultipleRounds(t *testing.T) {
 	// 白天 -> 投票 -> 第二轮夜晚，toNextNight 逐步断言 VOTE 与 NIGHT_GUARD
 	g.toNextNight()
 
-	if g.e.Round() != 2 {
-		t.Errorf("expected Round 2, got %d", g.e.Round())
+	if g.e.Status().Round != 2 {
+		t.Errorf("expected Round 2, got %d", g.e.Status().Round)
 	}
 }
 

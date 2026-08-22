@@ -372,14 +372,43 @@ func (e *Engine) EndPhase() ([]*Effect, error) {
 	return e.endPhaseInternal()
 }
 
-// Winner 这局的赢家。还没分出胜负时为 CampUnspecified。
+// Status 一眼能看完的局面：走到哪了、结束没有、谁赢了。
 //
-// 谁赢是结束那一刻由 VictoryChecker 定下的，此后不再变——之后换掉判定器
-// 也不会改写已经结束的这一局。
-func (e *Engine) Winner() Camp {
+// 此前这是 Phase / Round / IsGameOver / Winner 四个方法。它们各自取一次
+// 读锁，于是**四个答案彼此可以对不上**：宿主要渲染「第 3 回合的白天」
+// 得连问两次，中间另一个 goroutine 结算掉一个阶段的话，读到的会是一组
+// 从来不曾同时成立的值。合成一次读取之后这件事没有了。
+//
+// 四项都是标量，不分配内存——「便宜」这条理由（不必像 View 那样克隆整个
+// 局面）因此仍然成立，只是不再摊成四个名字。要玩家名单用 AlivePlayerIDs，
+// 要一份能反复查询的完整局面用 View。
+//
+// Winner 是结束那一刻由 VictoryChecker 定下的，此后不再变——之后换掉
+// 判定器也不会改写已经结束的这一局。
+type Status struct {
+	// Phase 当前阶段。
+	Phase PhaseType
+
+	// Round 当前回合，从 1 起。
+	Round int
+
+	// Over 这一局是否已经结束。
+	Over bool
+
+	// Winner 赢家。还没分出胜负时为 CampUnspecified。
+	Winner Camp
+}
+
+// Status 读一次局面摘要。四项在同一个读锁里取出，因此彼此一致。
+func (e *Engine) Status() Status {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.winner
+	return Status{
+		Phase:  e.state.Phase,
+		Round:  e.state.Round,
+		Over:   e.state.Phase == PhaseEnd,
+		Winner: e.winner,
+	}
 }
 
 // View 返回当前局面的只读视图。
@@ -429,20 +458,6 @@ func (e *Engine) PlayerInfo(playerID string) (PlayerInfo, bool) {
 	return e.state.PlayerInfo(playerID)
 }
 
-// Phase 获取当前阶段
-func (e *Engine) Phase() PhaseType {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.state.Phase
-}
-
-// Round 获取当前回合
-func (e *Engine) Round() int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.state.Round
-}
-
 // AllowedSkills 该玩家此刻能提交的技能，为空即「还没轮到他」。
 //
 // 与 PlayerView(id).AllowedSkills 走同一条路径，也与 SubmitSkillUse
@@ -468,13 +483,6 @@ func (e *Engine) AlivePlayerIDs() []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return sortedStrings(e.state.getAlivePlayerIDs())
-}
-
-// IsGameOver 游戏是否结束
-func (e *Engine) IsGameOver() bool {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.state.Phase == PhaseEnd
 }
 
 // Var 读某个作用域下的一项自定义状态，没有则为空串（见 VarScope）。

@@ -91,7 +91,7 @@ func TestRejectedProposalGoesStraightBackToPropose(t *testing.T) {
 	}
 	mustEnd(t, e)
 
-	if got := e.Phase(); got != PhasePropose {
+	if got := e.Status().Phase; got != PhasePropose {
 		t.Fatalf("阶段 = %v，期望直接回到 PROPOSE（不再空转任务阶段）", got)
 	}
 }
@@ -107,7 +107,7 @@ func TestApprovedProposalGoesToMission(t *testing.T) {
 	}
 	mustEnd(t, e)
 
-	if got := e.Phase(); got != PhaseMission {
+	if got := e.Status().Phase; got != PhaseMission {
 		t.Fatalf("阶段 = %v，期望 MISSION", got)
 	}
 }
@@ -136,7 +136,7 @@ func TestRoundEqualsMissionNumber(t *testing.T) {
 		}
 		mustEnd(t, e)
 	}
-	if got, want := e.Round(), 1; got != want {
+	if got, want := e.Status().Round, 1; got != want {
 		t.Errorf("否决两次之后 Round = %d，期望仍是 %d——一个任务都没打", got, want)
 	}
 
@@ -144,11 +144,11 @@ func TestRoundEqualsMissionNumber(t *testing.T) {
 	runMission(t, e, 0, "a", "b")
 	runMission(t, e, 0, "a", "b", "c")
 
-	if got, want := e.Round(), missionOf(e); got != want {
+	if got, want := e.Status().Round, missionOf(e); got != want {
 		t.Errorf("Round = %d，阿瓦隆的第几轮 = %d，两者该相等", got, want)
 	}
-	if v := e.PlayerView("a"); v.Round != e.Round() {
-		t.Errorf("PlayerView.Round = %d，引擎 = %d", v.Round, e.Round())
+	if v := e.PlayerView("a"); v.Round != e.Status().Round {
+		t.Errorf("PlayerView.Round = %d，引擎 = %d", v.Round, e.Status().Round)
 	}
 }
 
@@ -205,7 +205,7 @@ func mustEnd(t *testing.T, e *engine.Engine) []*engine.Effect {
 	t.Helper()
 	effects, err := e.EndPhase()
 	if err != nil {
-		t.Fatalf("EndPhase(%v): %v", e.Phase(), err)
+		t.Fatalf("EndPhase(%v): %v", e.Status().Phase, err)
 	}
 	return effects
 }

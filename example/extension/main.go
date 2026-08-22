@@ -116,7 +116,8 @@ func demoRestore(eng *werewolf.Engine) {
 		return
 	}
 
-	fmt.Printf("  局面: 第%d回合 %v\n", restored.Round(), restored.Phase())
+	st := restored.Status()
+	fmt.Printf("  局面: 第%d回合 %v\n", st.Round, st.Phase)
 	fmt.Printf("  白痴翻过牌了吗: %v\n", revealedIn(restored, "idiot"))
 	fmt.Println()
 	fmt.Println("  这一项之所以能跟着回来，是因为它住在引擎里而不是解析器里：")
@@ -133,7 +134,7 @@ func revealedIn(eng *werewolf.Engine, id string) bool {
 // ==================== 小工具 ====================
 
 func toVote(eng *werewolf.Engine) {
-	for eng.Phase() != werewolf.PhaseVote && !eng.IsGameOver() {
+	for st := eng.Status(); st.Phase != werewolf.PhaseVote && !st.Over; st = eng.Status() {
 		if _, err := eng.EndPhase(); err != nil {
 			log.Fatal(err)
 		}

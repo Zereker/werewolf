@@ -81,8 +81,8 @@ func basicGameSetup() {
 	}
 
 	// 6. 查询当前状态
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
-	fmt.Printf("  当前回合: %d\n", eng.Round())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
+	fmt.Printf("  当前回合: %d\n", eng.Status().Round)
 
 	// 7. 获取阶段信息
 	phaseInfo := eng.PhaseInfo()
@@ -107,7 +107,7 @@ func godNarratorDemo() {
 	begin(eng)
 
 	fmt.Println("\n  === 第一夜开始 ===")
-	fmt.Printf("  回合: %d\n", eng.Round())
+	fmt.Printf("  回合: %d\n", eng.Status().Round)
 
 	// 上帝根据阶段信息生成公告
 	announcePhase := func() {
@@ -284,7 +284,7 @@ func fullGameFlow() {
 	fmt.Println("\n  --- 第一夜 ---")
 
 	// 守卫阶段 (NIGHT_GUARD)
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
 
 	// 守卫保护村民
 	err := eng.SubmitSkillUse(&werewolf.SkillUse{
@@ -302,7 +302,7 @@ func fullGameFlow() {
 	step(eng)
 
 	// 狼人阶段 (NIGHT_WOLF)
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
 
 	// 狼人获取队友信息
 	teammates := eng.Teammates("wolf1")
@@ -324,7 +324,7 @@ func fullGameFlow() {
 	step(eng)
 
 	// 女巫阶段 (NIGHT_WITCH)
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
 
 	// 女巫查看谁被杀
 	killTarget := werewolf.NightKillTarget(eng)
@@ -341,7 +341,7 @@ func fullGameFlow() {
 	step(eng)
 
 	// 预言家阶段 (NIGHT_SEER)
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
 
 	// 预言家查验 wolf1
 	act(eng, &werewolf.SkillUse{
@@ -354,12 +354,12 @@ func fullGameFlow() {
 	step(eng)
 
 	// 夜晚结算阶段 (NIGHT_RESOLVE)
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
 	step(eng)
 
 	// ==================== 白天 ====================
 	fmt.Println("\n  --- 白天 ---")
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
 
 	// 白天发言走消息通道，由引擎按阶段路由给该听到的人
 	if err := eng.SendMessage("seer", "我是预言家，wolf1 是狼人！"); err != nil {
@@ -371,7 +371,7 @@ func fullGameFlow() {
 
 	// ==================== 投票 ====================
 	fmt.Println("\n  --- 投票 ---")
-	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Status().Phase)
 
 	// 所有好人投票 wolf1
 	act(eng, &werewolf.SkillUse{
@@ -415,11 +415,10 @@ func fullGameFlow() {
 	fmt.Printf("  wolf1 存活状态: %v\n", wolf1Info.Alive)
 
 	// 检查游戏是否结束
-	if eng.IsGameOver() {
+	if st := eng.Status(); st.Over {
 		fmt.Println("  游戏已结束！")
 	} else {
-		fmt.Printf("  游戏继续，当前阶段: %s, 回合: %d\n",
-			eng.Phase(), eng.Round())
+		fmt.Printf("  游戏继续，当前阶段: %s, 回合: %d\n", st.Phase, st.Round)
 	}
 }
 
@@ -449,7 +448,7 @@ func messagingDemo() {
 	// 进入狼人阶段
 	step(eng) // 跳过守卫阶段
 
-	fmt.Printf("\n  当前阶段: %s (狼人交流阶段)\n", eng.Phase())
+	fmt.Printf("\n  当前阶段: %s (狼人交流阶段)\n", eng.Status().Phase)
 
 	// 狼人之间交流（只有狼人能收到）
 	err := eng.SendMessage("wolf1", "杀 villager1 吧")
@@ -478,7 +477,7 @@ func messagingDemo() {
 	step(eng) // 预言家阶段结束
 	step(eng) // 夜晚结算结束
 
-	fmt.Printf("\n  当前阶段: %s (白天发言阶段)\n", eng.Phase())
+	fmt.Printf("\n  当前阶段: %s (白天发言阶段)\n", eng.Status().Phase)
 
 	// 白天所有存活玩家都能收到消息
 	err = eng.SendMessage("wolf2", "我是好人")

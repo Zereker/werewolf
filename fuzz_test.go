@@ -256,10 +256,10 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 	}
 
 	dead := map[string]bool{}
-	lastRound := e.Round()
-	lastPhase := e.Phase()
+	lastRound := e.Status().Round
+	lastPhase := e.Status().Phase
 	for step := 0; step < 400; step++ {
-		if e.IsGameOver() {
+		if e.Status().Over {
 			return append(tags, "结束")
 		}
 
@@ -312,9 +312,9 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		if _, err := clone.EndPhase(); err != nil {
 			t.Fatalf("seed=%d step=%d clone EndPhase: %v", seed, step, err)
 		}
-		if e.Phase() != clone.Phase() || e.Round() != clone.Round() {
+		if e.Status().Phase != clone.Status().Phase || e.Status().Round != clone.Status().Round {
 			t.Fatalf("seed=%d step=%d 快照分叉: 原=%v/%d 副本=%v/%d",
-				seed, step, e.Phase(), e.Round(), clone.Phase(), clone.Round())
+				seed, step, e.Status().Phase, e.Status().Round, clone.Status().Phase, clone.Status().Round)
 		}
 
 		// 光比阶段与回合不够：快照漏掉一个字段，两边照样能同步地
@@ -335,13 +335,13 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		// EndsRound），于是能断言更强的东西：**回合数不该在别的地方偷偷跳**。
 		//
 		// 光看回合数还不够——它不动本身不刺眼，真正的后果由下面的 I 抓。
-		if e.Round() < lastRound {
-			t.Fatalf("seed=%d step=%d 回合数倒退: %d -> %d", seed, step, lastRound, e.Round())
+		if e.Status().Round < lastRound {
+			t.Fatalf("seed=%d step=%d 回合数倒退: %d -> %d", seed, step, lastRound, e.Status().Round)
 		}
-		if e.Round() > lastRound {
+		if e.Status().Round > lastRound {
 			if pc := cfg.Phases[lastPhase]; pc == nil || !pc.EndsRound {
 				t.Fatalf("seed=%d step=%d 回合数从 %d 跳到 %d，但刚结算完的 %v 没有声明 EndsRound",
-					seed, step, lastRound, e.Round(), lastPhase)
+					seed, step, lastRound, e.Status().Round, lastPhase)
 			}
 		}
 
@@ -350,19 +350,19 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		// 被守、被救、被毒、刀口都是「本回合有效」的记录。不清的话
 		// 女巫用掉的那瓶解药会一夜又一夜地把同一个人救回来——
 		// 一次性道具变成了永久道具，规则当场失效。
-		if e.Round() > lastRound {
+		if e.Status().Round > lastRound {
 			if rc := e.RoundContext(); rc != nil && len(rc.Vars) > 0 {
 				t.Fatalf("seed=%d step=%d 进入第 %d 回合，上一回合的记录还在: %v",
-					seed, step, e.Round(), rc.Vars)
+					seed, step, e.Status().Round, rc.Vars)
 			}
 			for _, id := range ids {
 				if p, ok := e.PlayerInfo(id); ok && len(p.RoundVars) > 0 {
 					t.Fatalf("seed=%d step=%d 进入第 %d 回合，%s 身上的标记还在: %v",
-						seed, step, e.Round(), id, p.RoundVars)
+						seed, step, e.Status().Round, id, p.RoundVars)
 				}
 			}
 		}
-		lastRound, lastPhase = e.Round(), e.Phase()
+		lastRound, lastPhase = e.Status().Round, e.Status().Phase
 
 		// 不变量 C：死人不复活；身份不变
 		for _, id := range ids {
@@ -433,9 +433,9 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		if err != nil {
 			t.Fatalf("seed=%d step=%d Replay: %v", seed, step, err)
 		}
-		if replayed.Phase() != e.Phase() || replayed.Round() != e.Round() {
+		if replayed.Status().Phase != e.Status().Phase || replayed.Status().Round != e.Status().Round {
 			t.Fatalf("seed=%d step=%d 回放分叉: 原=%v/%d 回放=%v/%d",
-				seed, step, e.Phase(), e.Round(), replayed.Phase(), replayed.Round())
+				seed, step, e.Status().Phase, e.Status().Round, replayed.Status().Phase, replayed.Status().Round)
 		}
 		for _, id := range ids {
 			a, _ := e.PlayerInfo(id)
