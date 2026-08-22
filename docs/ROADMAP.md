@@ -220,8 +220,8 @@
 
 | 今天 | 问题 | 建议 |
 |---|---|---|
-| `NewAbilityTriggerEffect` / `PendingTrigger` | 文档还在说「死亡技能」，概念早已泛化成「某人欠一次在某个阶段的行动」 | 更名为「待结算的欠账 / 绕道」一类中性说法 |
-| `RoleGod` | 概念是「这一步没有玩家承担」，不是「主持人」这个身份 | 保留取值，重写文档；或更名为 `RoleSystem` |
+| ~~`NewAbilityTriggerEffect` / `PendingTrigger`~~ | ~~文档还在说「死亡技能」~~ | **已改名** `NewDetourEffect` / `Detour` |
+| ~~`RoleGod`~~ | ~~名字暗示「主持人」这个身份~~ | **已改名** `RoleSystem`；「上帝」归规则包 |
 | `EventAbilityTriggered` | 同上 | 跟着改 |
 
 ### 3.2 文档
@@ -237,22 +237,20 @@
 | `PRIOR-ART.md` | 与对照实现的比较 | 保持 |
 | `avalon/SCARS.md` + 第三套的 | 每套规则包撞到了什么 | 保持，是最有价值的一份 |
 
-### 3.3 API 文档的执法机制
+### 3.3 API 文档的执法机制 —— **已完成**
 
-[API.md](API.md) 附录 A 是导出面的冻结基线。**没有任何东西钉住它**，
-于是它一定会与代码漂移——这与本项目其他「规矩只写在注释里」的伤口同类。
+`TestAPI_SurfaceIsPinned` 用 `go/ast` 解析包内全部非测试源码，收集导出名，
+与 `engine/testdata/api.golden` 比对。改了导出面就必须同时更新基线与
+`API.md`，**不能悄悄发生**。「悄悄新增」与「悄悄删除」两个方向都验证过会变红。
 
-补一个 golden API 测试：解析 `go doc -all ./engine` 的导出名，与一份
-`testdata/api.golden` 比对，不一致就变红。新增或删除导出名时必须同时更新
-基线与 `API.md`，**不能悄悄发生**。
-
-同时处理 [API.md §14](API.md) 那七条已知不一致（大小写、命名、文档漂移）。
+[API.md §14](API.md) 那七条不一致同时清完（大小写、`PlayerInfo.Var` 删除、
+绕道改名、`RoleGod` → `RoleSystem`、两处文档漂移）。
 
 ### 3.4 完成判据
 
-- [ ] 文档里没有与代码不符的说法（逐条核对）
-- [ ] golden API 测试就位，`API.md` 附录 A 与它一致
-- [ ] `API.md §14` 七条全部处理或明确标记「不改，理由是」
+- [x] golden API 测试就位，`API.md` 附录 A 与它一致
+- [x] `API.md §14` 七条全部处理
+- [ ] 其余文档里没有与代码不符的说法（逐条核对）
 - [ ] **没有一条规矩只写在注释里**——每条都能指出守着它的测试
 - [ ] 六份文档各自定位清楚，交叉引用不循环
 

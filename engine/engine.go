@@ -296,15 +296,15 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	e.pendingUses = nil
 
 	// 4. 计算下一阶段。
-	//    死亡技能可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
-	//    因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
+	//    绕道可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
+	//    因此只要绕道队列还没排空，就推迟胜负判定，先让它走完。
 	// 本阶段的行动者指定用掉了：不清的话下一次进同一个阶段会沿用上一轮的名单
 	e.state.consumeActors(currentPhase)
 
 	nextPhase := e.calculateNextPhase(currentPhase, out.effects)
 
 	gameOver, winner := e.victory.CheckVictory(newStateView(e.state))
-	endNow := gameOver && !e.state.hasPendingTrigger()
+	endNow := gameOver && !e.state.hasPendingDetour()
 	if endNow {
 		nextPhase = PhaseEnd
 	}
@@ -312,8 +312,8 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	// 5. 流转。END 也走 nextPhase，不直接赋值 Phase——
 	//    状态的每一次改动都经同一条路径，别处才不会漏掉伴随的逻辑
 	//
-	//    回合边界与胜负判定守同一条：**还有待结算的触发时不能落下**。
-	//    理由不同但都硬：胜负是因为死亡技能可能翻盘；回合边界是因为
+	//    回合边界与胜负判定守同一条：**还有待结算的绕道时不能落下**。
+	//    理由不同但都硬：胜负是因为绕道可能翻盘；回合边界是因为
 	//    待结算队列本身就住在回合上下文里，清掉回合状态等于把队列抹掉,
 	//    被投出去的猎人那一枪会凭空消失。
 	//    整局结束不算新回合：END 之后没有下一回合，多推一次会让回放对不上
@@ -324,7 +324,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	//    而回合数要跟着第几轮任务走，两者不重合。
 	//    计数看**刚结束的**阶段，清空看**要进入的**阶段——前者说「我结束了
 	//    就是一回合」，后者说「我开始时是干净的」。
-	settled := !endNow && !e.state.hasPendingTrigger()
+	settled := !endNow && !e.state.hasPendingDetour()
 	e.state.nextPhase(nextPhase,
 		settled && e.config.endsRound(currentPhase),
 		settled && e.config.clearsRoundVars(nextPhase))
@@ -444,8 +444,10 @@ func (e *Engine) Apply(effects ...*Effect) []*Effect {
 	return kept
 }
 
-// PlayerInfo 获取玩家信息的只读副本（推荐使用）
-// 返回 PlayerInfo 结构体副本，避免外部修改内部状态
+// PlayerInfo 读一名玩家的**上帝视角**信息，不存在时第二个返回值为 false。
+//
+// 返回的是副本，含 Vars 与 RoundVars——那是给宿主与规则看的，
+// **不是**给玩家看的。要发给玩家的那一份用 PlayerView。
 func (e *Engine) PlayerInfo(playerID string) (PlayerInfo, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -516,13 +518,13 @@ func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*Event) {
 	for _, effect := range effects {
 		// 第三方 Resolver 返回的切片里可能混进 nil，就地剔除而不是让整局崩掉。
 		// 这道判断得在最前面：applyEffect 内部那道 nil 保护够不着下面的
-		// vetTrigger 与日志字段。
+		// vetDetour 与日志字段。
 		if effect == nil {
 			continue
 		}
 		kept = append(kept, effect)
 
-		e.vetTrigger(effect)
+		e.vetDetour(effect)
 		e.state.applyEffect(effect)
 
 		e.logger.Debug("effect applied",
@@ -539,21 +541,21 @@ func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*Event) {
 	return kept, events
 }
 
-// vetTrigger 否决指向未配置阶段的死亡技能触发。
+// vetDetour 否决指向未配置阶段的绕道。
 //
-// 死亡技能的流转是运行期才成形的一条边：Resolver 产出
-// NewAbilityTriggerEffect 指定去哪个阶段，calculateNextPhase 无条件照办。
+// 绕道的流转是运行期才成形的一条边：Resolver 产出
+// NewDetourEffect 指定去哪个阶段，calculateNextPhase 无条件照办。
 // 配置里若没有那个阶段（比如板子有猎人却删掉了猎人阶段），
 // 引擎会流转到一个没有配置、没有解析器的阶段，玩家提交什么都不允许，
 // 下一次推进直接进 END——游戏在第一夜无声收场，连 GAME_ENDED 都没有。
 // Config.Validate 看不见这条边，只能在这里拦。
 //
 // 调用前需持有 e.mu。
-func (e *Engine) vetTrigger(effect *Effect) {
-	if effect.Canceled || effect.Type != EventAbilityTriggered {
+func (e *Engine) vetDetour(effect *Effect) {
+	if effect.Canceled || effect.Type != EventDetour {
 		return
 	}
-	phase, ok := effect.triggerPhase()
+	phase, ok := effect.detourPhase()
 	if !ok {
 		effect.Cancel("ability trigger carries no target phase")
 		e.logger.Error("ability trigger carries no target phase",
@@ -567,17 +569,17 @@ func (e *Engine) vetTrigger(effect *Effect) {
 	}
 }
 
-// calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。
+// calculateNextPhase 计算下一阶段，处理绕道带来的动态流转。
 // 调用前需持有 e.mu。
 func (e *Engine) calculateNextPhase(currentPhase PhaseType, effects []*Effect) PhaseType {
 	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队
-	e.state.consumeTriggerFor(currentPhase)
+	e.state.consumeDetourFor(currentPhase)
 
-	// 还有待结算的死亡技能，先去处理（可能有多个，逐个来）。
+	// 还有待结算的绕道，先去处理（可能有多个，逐个来）。
 	//
 	// 它排在 GOTO_PHASE 前面：队列必须排空——胜负判定与回合边界都等着它，
-	// 中途跳走会把还没结算的死亡技能丢掉。
-	if t, ok := e.state.peekTrigger(); ok {
+	// 中途跳走会把还没结算的那笔欠账丢掉。
+	if t, ok := e.state.peekDetour(); ok {
 		return t.Phase
 	}
 

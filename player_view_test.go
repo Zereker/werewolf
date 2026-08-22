@@ -202,7 +202,7 @@ func TestPlayerView_SelfDoesNotLeakProtection(t *testing.T) {
 	g.end(PhaseNightWolf)
 
 	// 前置：守护确实生效了（上帝视角看得到）
-	if g.info("v1").RoundVar(PlayerRoundVarProtected) == "" {
+	if g.info("v1").RoundVars[PlayerRoundVarProtected] == "" {
 		t.Fatal("前置条件：v1 应处于被守护状态")
 	}
 
@@ -236,7 +236,7 @@ func TestAudienceOf(t *testing.T) {
 		{"解药只给女巫", engine.NewEffect(EventSave, "wi", "v1"), []string{"wi"}, 1},
 		{"内部效果不给任何人", engine.NewSetAliveEffect("v1", false), nil, 0},
 		{"消耗解药不给任何人", engine.NewSetVarEffect(engine.ScopeGame.Of("wi"), VarWitchAntidote, ""), nil, 0},
-		{"触发效果不给任何人", engine.NewAbilityTriggerEffect("h", PhaseNightHunter), nil, 0},
+		{"触发效果不给任何人", engine.NewDetourEffect("h", PhaseNightHunter), nil, 0},
 		{"被否决的用毒只给女巫本人", canceledEffect(
 			engine.NewEffect(EventPoison, "wi", "v1")), []string{"wi"}, 1},
 		{"被否决的守护只给守卫本人", canceledEffect(

@@ -50,12 +50,12 @@ const (
 
 // campOf 这名玩家属于哪一边，没有登记则为 CampUnspecified。
 func campOf(p engine.PlayerInfo) Camp {
-	return Camp(p.Var(VarCamp))
+	return Camp(p.Vars[VarCamp])
 }
 
 // categoryOf 这名玩家是什么类别，没有登记则为 RoleCategoryUnknown。
 func categoryOf(p engine.PlayerInfo) RoleCategory {
-	return RoleCategory(p.Var(VarCategory))
+	return RoleCategory(p.Vars[VarCategory])
 }
 
 // campVars 把阵营与类别装成一份初始状态，供 RoleSetup 返回。

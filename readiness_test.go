@@ -134,7 +134,7 @@ func TestPhaseReadiness_MultipleFalse(t *testing.T) {
 	}
 }
 
-// TestPhaseReadiness_TriggerPhase 死亡技能阶段只等触发者一人。
+// TestPhaseReadiness_TriggerPhase 绕道要去的阶段只等触发者一人。
 func TestPhaseReadiness_TriggerPhase(t *testing.T) {
 	cfg := DefaultGameConfig()
 	hunterPhase := cfg.Phases[PhaseNightHunter]
@@ -228,7 +228,7 @@ func TestPhaseReadiness_MutuallyExclusiveGroup(t *testing.T) {
 	}
 }
 
-// TestPhaseReadiness_TriggerActorMatchesRole 死亡技能阶段的触发者只承担自己角色的步骤。
+// TestPhaseReadiness_TriggerActorMatchesRole 绕道要去的阶段的触发者只承担自己角色的步骤。
 func TestPhaseReadiness_TriggerActorMatchesRole(t *testing.T) {
 	g := newRuleGame(t, nil, seats(
 		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),

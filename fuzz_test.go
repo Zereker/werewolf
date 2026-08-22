@@ -188,7 +188,7 @@ func (r *nightResolveWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*E
 			continue
 		}
 		if p, ok := view.Player(ef.TargetID); ok && p.Role == roleWolfKing {
-			effects = append(effects, engine.NewAbilityTriggerEffect(ef.TargetID, phaseWolfKing))
+			effects = append(effects, engine.NewDetourEffect(ef.TargetID, phaseWolfKing))
 		}
 	}
 	return effects
@@ -395,7 +395,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 			}
 			// 刀口只有活着且解药在手的女巫能看到
 			if v.RoleInfo[RoleInfoKillTarget] != "" {
-				if !self.Alive || self.Role != RoleWitch || self.Var(VarWitchAntidote) == "" {
+				if !self.Alive || self.Role != RoleWitch || self.Vars[VarWitchAntidote] == "" {
 					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.RoleInfo[RoleInfoKillTarget])
 				}
 			}

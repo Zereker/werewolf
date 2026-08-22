@@ -115,7 +115,7 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		Self: SelfInfo{
 			ID:    self.ID,
 			Role:  self.Role,
-			Camp:  Camp(self.Var(VarCamp)),
+			Camp:  Camp(self.Vars[VarCamp]),
 			Alive: self.Alive,
 		},
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
@@ -165,8 +165,8 @@ func (e *Engine) publicPlayers(revealed map[string]bool) []PublicPlayerInfo {
 // 「内核收下了他的提交，却告诉他不能行动」这种自相矛盾。
 func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []SkillType {
 	// 规则点名了这个阶段的行动者时，不在名单里的人什么都不能做；
-	// 死亡技能阶段的触发者也走这一条——进入阶段时他已经被写进名单
-	// （见 gameState.namePendingTriggerActor）。
+	// 绕道要去的那个人也走这一条——进入阶段时他已经被写进名单
+	// （见 gameState.nameDetourActor）。
 	// 在名单里的人，存活与否由规则负责，内核不再二次否决。
 	if ids, ok := e.state.actorsFor(e.state.Phase); ok {
 		if !contains(ids, playerID) {

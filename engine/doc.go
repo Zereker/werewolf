@@ -7,7 +7,7 @@
 // 一套具体的规则（角色、技能、死法、胜负、信息边界）由规则包提供，
 // 全部经公开的构造选项装上来。github.com/Zereker/werewolf 是第一个
 // 这样的规则包，它没有走任何后门，这件事可以查：本包的非测试源码里，
-// RoleType 的取值一共两个（RoleUnspecified、RoleGod），PhaseType 三个、
+// RoleType 的取值一共两个（RoleUnspecified、RoleSystem），PhaseType 三个、
 // SkillType 三个，全在 types.go 里。「女巫」「狼人」一个都没有。
 //
 // # 状态机认得的全部东西
@@ -27,7 +27,7 @@
 // 作用域是一张 2×2 的表（时间尺度 × 有没有主人），四格由 ScopeGame /
 // ScopeRound 叉乘 .Of(playerID) 得出，见 VarScope。
 //
-// 外加一条 NewAbilityTriggerEffect，把一个死亡触发排进队列。
+// 外加一条 NewDetourEffect，排一笔欠账：为了某个人，绕一趟某个阶段。
 //
 // 「狼刀」「放逐」「开枪」这些是规则给「发生了什么」起的名字，
 // 状态机不认得——一个 KILL 效果单独发出去，谁都不会死。规则要让人出局，
@@ -80,7 +80,7 @@
 // 对不对？**「状态改了没有」能判断，归内核；「现在是不是新回合」判断不了，
 // 归规则。
 //
-// 出口的优先级：待结算的触发队列 > GOTO_PHASE > NextPhase。触发排最前是
+// 出口的优先级：待结算的绕道队列 > GOTO_PHASE > NextPhase。触发排最前是
 // 因为队列必须排空——胜负判定与回合边界都等着它。
 //
 // 交出决定权换回了可检查性：内核自己猜回合边界的时候没法检查猜得对不对，

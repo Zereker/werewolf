@@ -47,13 +47,13 @@ const (
 	EventGameEnded   EventType = "GAME_ENDED"
 
 	// —— 状态原语，永不外发 ——
-	EventAbilityTriggered EventType = "ABILITY_TRIGGERED" // 死亡技能触发，待进入对应阶段结算
-	EventPlayerAdded      EventType = "PLAYER_ADDED"      // 玩家入座（用于效果流回放）
-	EventPhaseChanged     EventType = "PHASE_CHANGED"     // 阶段流转（用于效果流回放）
-	EventSetAlive         EventType = "SET_ALIVE"         // 改玩家的存活状态
-	EventSetVar           EventType = "SET_VAR"           // 写一项自定义状态，作用域在效果里
-	EventGotoPhase        EventType = "GOTO_PHASE"        // 规则指定下一阶段，改写 NextPhase
-	EventSetActors        EventType = "SET_ACTORS"        // 指定哪些玩家可以在某个阶段行动
+	EventDetour       EventType = "DETOUR"        // 为某个人绕道去某个阶段，待结算
+	EventPlayerAdded  EventType = "PLAYER_ADDED"  // 玩家入座（用于效果流回放）
+	EventPhaseChanged EventType = "PHASE_CHANGED" // 阶段流转（用于效果流回放）
+	EventSetAlive     EventType = "SET_ALIVE"     // 改玩家的存活状态
+	EventSetVar       EventType = "SET_VAR"       // 写一项自定义状态，作用域在效果里
+	EventGotoPhase    EventType = "GOTO_PHASE"    // 规则指定下一阶段，改写 NextPhase
+	EventSetActors    EventType = "SET_ACTORS"    // 指定哪些玩家可以在某个阶段行动
 )
 
 // String 实现 fmt.Stringer。

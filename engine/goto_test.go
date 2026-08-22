@@ -10,14 +10,14 @@ type gotoAndTrigger struct {
 
 func (r gotoAndTrigger) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{
-		NewAbilityTriggerEffect("w1", r.trigger),
+		NewDetourEffect("w1", r.trigger),
 		NewGotoPhaseEffect(r.goto_),
 	}
 }
 
-// TestGotoPhase_TriggerQueueWins 待结算的触发排在改写出口前面。
+// TestGotoPhase_TriggerQueueWins 待结算的绕道排在改写出口前面。
 //
-// 这条优先级不是随便定的：触发队列必须排空，胜负判定与回合边界都等着它
+// 这条优先级不是随便定的：绕道队列必须排空，胜负判定与回合边界都等着它
 // （见 advancePhase 与 nextPhase）。中途被 GOTO 跳走的话，还没结算的死亡
 // 技能会凭空消失——被投出去的猎人那一枪没了，而规则那边完全看不出来。
 //
@@ -40,7 +40,7 @@ func TestGotoPhase_TriggerQueueWins(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 	if got := e.Status().Phase; got != phaseNightHunter {
-		t.Fatalf("阶段 = %v，期望 %v——触发队列必须排在 GOTO 前面",
+		t.Fatalf("阶段 = %v，期望 %v——绕道队列必须排在 GOTO 前面",
 			got, phaseNightHunter)
 	}
 

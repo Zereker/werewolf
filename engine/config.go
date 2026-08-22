@@ -183,7 +183,7 @@ func (u *SkillUse) Target() string {
 //
 // 这里只校验配置的形状。两类问题校验不到，各有归处：
 //   - 「每个阶段是否都有 Resolver」依赖运行期注册，由 Engine.Start 校验；
-//   - 死亡技能的动态流转（Resolver 产出 NewAbilityTriggerEffect 指向的
+//   - 绕道带来的动态流转（Resolver 产出 NewDetourEffect 指向的
 //     阶段）是运行期才知道的边，由引擎在入队前检查——目标阶段不在配置里
 //     的触发会被就地否决并记 Error 日志，而不是把游戏带进一个空阶段。
 func (c *Config) Validate() error {

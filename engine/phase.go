@@ -117,8 +117,8 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 	//	规则点名   名单里的人，存活与否由规则负责
 	//	默认       活着的人
 	//
-	// 死亡技能阶段走的是第一层：进入那个阶段时，触发者已经被写进名单
-	//（见 gameState.namePendingTriggerActor）。此前它是单独的第一层，
+	// 绕道要去的阶段走的是第一层：进入那个阶段时，那个人已经被写进名单
+	//（见 gameState.nameDetourActor）。此前它是单独的第一层，
 	// 与点名回答同一个问题、实现也几乎逐字相同——一个概念两份实现。
 	//
 	// 存活因此是**默认**的行动资格，不是法律。此前只有触发那条路能越过它

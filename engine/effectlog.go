@@ -128,7 +128,7 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		// （calculateNextPhase）做同样的事。少了这一步，回放出来的引擎
 		// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉
 		// 回合边界由**刚离开的**那个阶段声明，先取下来再流转。
-		// 与正常推进同一条规矩：还有待结算的触发时不能落下，
+		// 与正常推进同一条规矩：还有待结算的绕道时不能落下，
 		// 否则会把住在回合上下文里的待结算队列一起抹掉。
 		endsRound := e.config.endsRound(e.state.Phase)
 		// 行动者名单也是一次性的，与正常推进（endPhaseInternal 里的
@@ -136,8 +136,8 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		// 上一个阶段的名单，从下一步起与原引擎分叉——这条此前一直漏着，
 		// 只是狼人杀不用 SET_ACTORS、于是没有效果流走到过这里。
 		e.state.consumeActors(e.state.Phase)
-		e.state.consumeTriggerFor(e.state.Phase)
-		settled := !e.state.hasPendingTrigger()
+		e.state.consumeDetourFor(e.state.Phase)
+		settled := !e.state.hasPendingDetour()
 		e.state.nextPhase(phase, endsRound && settled,
 			settled && e.config.clearsRoundVars(phase))
 

@@ -97,7 +97,7 @@ function IsPlayerActive(_G, ctx, playerID): boolean {
 后果是内核对没资格行动的玩家说谎（`AllowedSkills` 说他能动、`PhaseReadiness`
 等着他）。
 
-**顺带一个发现**：我们的 `NewAbilityTriggerEffect(playerID, phase)` 语义是
+**顺带一个发现**：我们的 `NewDetourEffect(playerID, phase)` 语义是
 「这一个人、去哪个阶段行动」——**它本来就是「谁在阶段 X 能行动」的单人特例**。
 补这条能力不是加新机制，是把已有机制从一个人推广到一组人，
 `validateSkillUse` 里那个特判大概率能一起删掉。

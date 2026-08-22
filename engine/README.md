@@ -13,7 +13,7 @@ go get github.com/Zereker/werewolf/engine
 角色、技能、死法、胜负、信息边界，全部由规则包经公开选项装上来。
 [`github.com/Zereker/werewolf`](../README.md) 是第一个这样的规则包，
 它没有走任何后门，这件事可以查：本包的非测试源码里，`RoleType` 的取值
-一共两个（`RoleUnspecified`、`RoleGod`），`PhaseType` 三个、`SkillType`
+一共两个（`RoleUnspecified`、`RoleSystem`），`PhaseType` 三个、`SkillType`
 三个，全在 [`types.go`](types.go) 里。「女巫」「狼人」「NIGHT_WITCH」
 一个都没有——它们在规则包的 `vocab.go` 里。
 
@@ -156,7 +156,7 @@ SubmitSkillUse  ->  Resolver.Resolve  ->  []*Effect  ->  applyEffect
 ——于是没有任何东西强制它完整，少了「整局·无主」那一格很久没人发现，
 直到阿瓦隆撞上。现在缺一格根本写不出来。
 
-外加一条 `NewAbilityTriggerEffect(id, phase)`，把一个死亡触发排进队列
+外加一条 `NewDetourEffect(id, phase)`，排一笔欠账
 （猎人被刀之后的那一枪就是它）。
 
 变量的值是字符串，**空串在写入点等同删除**，因此「有 / 没有」这类状态
@@ -235,7 +235,7 @@ if approved {
 }
 ```
 
-出口的优先级：**待结算的触发队列 > `GOTO_PHASE` > `NextPhase`**。触发排最前
+出口的优先级：**待结算的绕道队列 > `GOTO_PHASE` > `NextPhase`**。触发排最前
 是因为队列必须排空——胜负判定与回合边界都等着它，中途跳走会把还没结算的
 死亡技能丢掉。目标阶段不在配置里时记一条错误日志并退回默认出口。
 
@@ -252,7 +252,7 @@ if approved {
 `actorsForStep` 这一个取数点——四个问题一个来源，才不会出现「内核收下了
 他的提交，却告诉别人他不该行动」。
 
-死亡触发（`NewAbilityTriggerEffect`）此前是这里的**第三层**，与点名回答同一个
+绕道（`NewDetourEffect`）此前是这里的**第三层**，与点名回答同一个
 问题、实现也几乎逐字相同。现在它不再回答「谁能行动」：进入它要去的那个阶段时，
 内核按队首把触发者写成该阶段的名单，之后一切照点名走。写在进入阶段而不是
 写在效果的写入点，是因为队列里可以有多条指向同一个阶段的触发（两名猎人同一夜

@@ -185,11 +185,11 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 
 	// 好人凑满三次成功：把刺杀排进队列。
 	//
-	// 用的是内核那套「谁、去哪个阶段」的触发队列——它原本是为出局技能
+	// 用的是内核那套「谁、去哪个阶段」的绕道队列——它原本是为出局技能
 	// 做的，语义却正好是这里要的，还顺带把胜负判定推迟到刺杀结算之后。
 	if !failed && successes(view)+1 >= 3 {
 		if ids := idsWithRole(view, RoleAssassin); len(ids) > 0 {
-			effects = append(effects, engine.NewAbilityTriggerEffect(ids[0], PhaseAssassin))
+			effects = append(effects, engine.NewDetourEffect(ids[0], PhaseAssassin))
 		}
 	}
 	return effects

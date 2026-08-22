@@ -70,7 +70,7 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 		EventSave,
 		EventCheck,
 		EventEliminate,
-		engine.EventAbilityTriggered,
+		engine.EventDetour,
 		EventShoot,
 		engine.EventPhaseChanged,
 	}
@@ -216,8 +216,8 @@ func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
 		t.Fatalf("engine.ReplayEngine 失败: %v", err)
 	}
 
-	origin := g.e.RoundContext().PendingTriggers
-	copyOf := replayed.RoundContext().PendingTriggers
+	origin := g.e.RoundContext().Detours
+	copyOf := replayed.RoundContext().Detours
 	if len(origin) != len(copyOf) {
 		t.Fatalf("待结算队列不一致: 原引擎 %v，回放 %v", origin, copyOf)
 	}

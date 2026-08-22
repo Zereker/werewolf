@@ -462,7 +462,7 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 					engine.NewSetAliveEffect(use.Target(), false))
 				// 枪口下的另一名猎人同样可以回枪：规则排除的只有
 				// 殉情与毒杀，被枪打死属于「其他方式」。
-				// 死亡触发的入队分散在狼刀、投票、开枪三条通道上，
+				// 绕道的入队分散在狼刀、投票、开枪三条通道上，
 				// 少一条这类连锁就断在那里。
 				effects = append(effects, hunterTrigger(view, use.Target(), use.Phase)...)
 			}
@@ -488,7 +488,7 @@ func hunterTrigger(view GameView, playerID string, phase PhaseType) []*Effect {
 	if !ok || target.Role != RoleHunter {
 		return nil
 	}
-	return []*Effect{engine.NewAbilityTriggerEffect(playerID, phase)}
+	return []*Effect{engine.NewDetourEffect(playerID, phase)}
 }
 
 // potionKind 女巫的两种药

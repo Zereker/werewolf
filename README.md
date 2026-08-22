@@ -440,7 +440,7 @@ g.AddPlayer("wk", roleWolfKing)
 而那个约定自己咬到过自己——第三方的取值从 1000 起，却全都落进「内部」段，
 于是扩展的事件根本发不出去。
 
-死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
+出局时触发的能力由 Resolver 产出 `NewDetourEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
 
 可运行的例子：[example/extension](example/extension) 加了一个**白痴**（被投票放逐时

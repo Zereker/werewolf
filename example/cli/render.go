@@ -158,9 +158,9 @@ func describe(ef *werewolf.Effect) string {
 		// 这几条是内核的状态原语，与角色无关：谁死了、谁身上多了个标记。
 		// 「记下今晚的刀口」「消耗解药」这类说法此前也是事件类型，
 		// 现在它们只是原语里的一个键名，读法见 varLabel。
-		engine.EventSetAlive:         "存活状态变更",
-		engine.EventSetVar:           "改状态",
-		engine.EventAbilityTriggered: "死亡技能待结算",
+		engine.EventSetAlive: "存活状态变更",
+		engine.EventSetVar:   "改状态",
+		engine.EventDetour:   "待结算的绕道",
 	}[ef.Type]
 	if verb == "" {
 		verb = ef.Type.String()

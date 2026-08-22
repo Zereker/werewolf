@@ -98,36 +98,36 @@ func TestSetActors_EmptyListIsNotTheSameAsUnset(t *testing.T) {
 	}
 }
 
-// triggerTwice 第一次结算时把两名玩家一起排进同一个阶段。
-type triggerTwice struct {
+// detourTwice 第一次结算时把两名玩家一起排进同一个阶段。
+type detourTwice struct {
 	phase PhaseType
 	a, b  string
 	done  *bool
 }
 
-func (r triggerTwice) Resolve([]*SkillUse, GameView) []*Effect {
+func (r detourTwice) Resolve([]*SkillUse, GameView) []*Effect {
 	if *r.done {
 		return nil
 	}
 	*r.done = true
 	return []*Effect{
-		NewAbilityTriggerEffect(r.a, r.phase),
-		NewAbilityTriggerEffect(r.b, r.phase),
+		NewDetourEffect(r.a, r.phase),
+		NewDetourEffect(r.b, r.phase),
 	}
 }
 
 // TestPendingTriggers_QueuedForTheSamePhaseEachGetTheirTurn
 // 同一夜排进同一个阶段的两条触发，必须一人一次，不能只剩最后一个。
 //
-// 触发队列现在不再自己回答「谁能行动」，它在**进入阶段时**按队首写一份
-// 行动者名单（gameState.namePendingTriggerActor）。写在进入阶段而不是写在
+// 绕道队列现在不再自己回答「谁能行动」，它在**进入阶段时**按队首写一份
+// 行动者名单（gameState.nameDetourActor）。写在进入阶段而不是写在
 // ABILITY_TRIGGERED 的写入点，理由就是这个测试：两名猎人同一夜出局时队列
 // 里有两条指向同一个阶段的触发，在写入点各写一次会互相覆盖，只剩后一个人
 // 开得了枪，前一个人的那一枪凭空消失。
 func TestPendingTriggers_QueuedForTheSamePhaseEachGetTheirTurn(t *testing.T) {
 	done := false
 	opts := append(withNoopResolvers(),
-		WithResolver(phaseNightResolve, triggerTwice{
+		WithResolver(phaseNightResolve, detourTwice{
 			phase: phaseNightHunter, a: "h1", b: "h2", done: &done,
 		}))
 	e := newTestEngine(t, opts...)
@@ -206,7 +206,7 @@ func assertOnlyActor(t *testing.T, e *Engine, want, when string) {
 //
 // 正常推进时这条越不过去：队列非空时 calculateNextPhase 永远把下一站定成
 // 队首那个阶段，所以走不到「带着待结算触发进了别的阶段」。但这一条正是
-// namePendingTriggerActor 成立的前提，前提写在代码里就该有测试钉住——
+// nameDetourActor 成立的前提，前提写在代码里就该有测试钉住——
 // 否则日后有人改了流转顺序（比如让 GOTO_PHASE 越过队列），触发者会在
 // 一个毫不相干的阶段被点名，而所有集成测试照样是绿的。
 //
@@ -215,7 +215,7 @@ func TestNamePendingTriggerActor_OnlyNamesItsOwnPhase(t *testing.T) {
 	s := newState()
 	mustAddTo(t, s, "h1", roleHunter)
 	s.startAt(phaseNight)
-	s.applyEffect(NewAbilityTriggerEffect("h1", phaseNightHunter))
+	s.applyEffect(NewDetourEffect("h1", phaseNightHunter))
 
 	// 进一个与触发无关的阶段：不该点任何人
 	s.nextPhase(phaseDay, false, false)

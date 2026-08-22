@@ -56,16 +56,16 @@ func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 
 	// 名字 -> 取值。常量在同包内，直接按名字对照取值表。
 	byName := map[string]EventType{
-		"EventUnspecified":      EventUnspecified,
-		"EventGameStarted":      EventGameStarted,
-		"EventGameEnded":        EventGameEnded,
-		"EventAbilityTriggered": EventAbilityTriggered,
-		"EventPlayerAdded":      EventPlayerAdded,
-		"EventPhaseChanged":     EventPhaseChanged,
-		"EventSetAlive":         EventSetAlive,
-		"EventSetVar":           EventSetVar,
-		"EventGotoPhase":        EventGotoPhase,
-		"EventSetActors":        EventSetActors,
+		"EventUnspecified":  EventUnspecified,
+		"EventGameStarted":  EventGameStarted,
+		"EventGameEnded":    EventGameEnded,
+		"EventDetour":       EventDetour,
+		"EventPlayerAdded":  EventPlayerAdded,
+		"EventPhaseChanged": EventPhaseChanged,
+		"EventSetAlive":     EventSetAlive,
+		"EventSetVar":       EventSetVar,
+		"EventGotoPhase":    EventGotoPhase,
+		"EventSetActors":    EventSetActors,
 	}
 
 	for _, name := range declared {
@@ -95,7 +95,7 @@ func (primitiveSpewer) Resolve([]*SkillUse, GameView) []*Effect {
 		NewSetVarEffect(ScopeGame.Of("w1"), "probe.var", "1"),
 		NewSetVarEffect(ScopeRound, "probe.round", "1"),
 		NewSetVarEffect(ScopeRound.Of("w1"), "probe.mark", "1"),
-		NewAbilityTriggerEffect("w1", phaseNightHunter),
+		NewDetourEffect("w1", phaseNightHunter),
 		NewGotoPhaseEffect(phaseDay),
 		NewSetVarEffect(ScopeGame, "probe.game", "1"),
 		NewSetActorsEffect(phaseDay, "w1"),

@@ -13,7 +13,7 @@ import (
 // 而那恰恰是这个版本号想防的事。现在规则包里有一个 golden 测试
 // （TestSnapshot_ShapeIsPinnedToVersion）把序列化形状钉住，字段增删改名
 // 都会让它变红，红了之后再判断该不该递增。
-const SnapshotVersion = 11
+const SnapshotVersion = 12
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -70,14 +70,14 @@ type PlayerSnapshot struct {
 
 // RoundCtxSnapshot 回合上下文的快照
 type RoundCtxSnapshot struct {
-	PendingTriggers []PendingTriggerSnapshot `json:"pending_triggers,omitempty"`
+	Detours []DetourSnapshot `json:"detours,omitempty"`
 
 	// Vars 第三方角色的回合级自定义状态
 	Vars map[string]string `json:"vars,omitempty"`
 }
 
-// PendingTriggerSnapshot 一个待结算的死亡技能
-type PendingTriggerSnapshot struct {
+// DetourSnapshot 一个待结算的绕道
+type DetourSnapshot struct {
 	PlayerID string    `json:"player_id"`
 	Phase    PhaseType `json:"phase"`
 }
@@ -202,7 +202,7 @@ func (e *Engine) restorePlayers(players []PlayerSnapshot) error {
 		if p.ID == "" {
 			return ErrInvalidPlayerID
 		}
-		if p.Role == RoleUnspecified || p.Role == RoleGod {
+		if p.Role == RoleUnspecified || p.Role == RoleSystem {
 			return WrapError(CodeInvalidRole,
 				"role %v cannot be assigned to a player", p.Role)
 		}
@@ -268,8 +268,8 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 	}
 
 	return RoundCtxSnapshot{
-		PendingTriggers: snapshotTriggers(s.RoundCtx.PendingTriggers),
-		Vars:            copyVars(s.RoundCtx.Vars),
+		Detours: snapshotTriggers(s.RoundCtx.Detours),
+		Vars:    copyVars(s.RoundCtx.Vars),
 	}
 }
 
@@ -305,8 +305,8 @@ func (s *gameState) restoreProgress(phase PhaseType, round int, rc RoundCtxSnaps
 	s.Phase = phase
 	s.Round = round
 	s.RoundCtx = &RoundContext{
-		PendingTriggers: restoreTriggers(rc.PendingTriggers),
-		Vars:            copyVars(rc.Vars),
+		Detours: restoreTriggers(rc.Detours),
+		Vars:    copyVars(rc.Vars),
 	}
 }
 
@@ -324,29 +324,29 @@ func sortPlayerSnapshots(ps []PlayerSnapshot) {
 }
 
 // snapshotTriggers 导出待结算队列
-func snapshotTriggers(ts []PendingTrigger) []PendingTriggerSnapshot {
+func snapshotTriggers(ts []Detour) []DetourSnapshot {
 	if len(ts) == 0 {
 		return nil
 	}
-	out := make([]PendingTriggerSnapshot, 0, len(ts))
+	out := make([]DetourSnapshot, 0, len(ts))
 	for _, t := range ts {
 		// 刻意逐字段写而不是做类型转换：两个类型当前恰好同形，
-		// 但快照是存储格式、PendingTrigger 是内部结构，不应绑定在一起。
+		// 但快照是存储格式、Detour 是内部结构，不应绑定在一起。
 		//nolint:staticcheck // S1016: 见上
-		out = append(out, PendingTriggerSnapshot{PlayerID: t.PlayerID, Phase: t.Phase})
+		out = append(out, DetourSnapshot{PlayerID: t.PlayerID, Phase: t.Phase})
 	}
 	return out
 }
 
 // restoreTriggers 还原待结算队列（顺序即结算顺序，不排序）
-func restoreTriggers(ts []PendingTriggerSnapshot) []PendingTrigger {
+func restoreTriggers(ts []DetourSnapshot) []Detour {
 	if len(ts) == 0 {
 		return nil
 	}
-	out := make([]PendingTrigger, 0, len(ts))
+	out := make([]Detour, 0, len(ts))
 	for _, t := range ts {
 		//nolint:staticcheck // S1016: 同 snapshotTriggers，刻意不做类型转换
-		out = append(out, PendingTrigger{PlayerID: t.PlayerID, Phase: t.Phase})
+		out = append(out, Detour{PlayerID: t.PlayerID, Phase: t.Phase})
 	}
 	return out
 }

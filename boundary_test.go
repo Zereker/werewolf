@@ -68,7 +68,7 @@ func TestAudienceOf_KernelPrimitivesAreNeverPublic(t *testing.T) {
 		engine.NewSetVarEffect(engine.ScopeGame.Of("wi"), VarWitchAntidote, ""),
 		engine.NewSetVarEffect(engine.ScopeRound.Of("v1"), PlayerRoundVarProtected, VarPresent),
 		engine.NewSetVarEffect(engine.ScopeRound, RoundVarKillTarget, "v1"),
-		engine.NewAbilityTriggerEffect("h", PhaseNightHunter),
+		engine.NewDetourEffect("h", PhaseNightHunter),
 	} {
 		got, known := e.AudienceOf(ef.ToEvent())
 		if !known {
@@ -307,7 +307,7 @@ func TestWerewolfOptions_GoThroughThePublicDoor(t *testing.T) {
 		t.Fatalf("装上规则之后应当能开局: %v", err)
 	}
 
-	if p, _ := e.PlayerInfo("wi"); p.Var(VarWitchAntidote) == "" {
+	if p, _ := e.PlayerInfo("wi"); p.Vars[VarWitchAntidote] == "" {
 		t.Error("女巫应当带着解药入座")
 	}
 	if got := e.Teammates("w1"); len(got) != 1 || got[0] != "w2" {

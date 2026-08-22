@@ -69,14 +69,14 @@ func TestRoleSetup_CustomRoleGetsInitialState(t *testing.T) {
 	if !ok {
 		t.Fatal("骑士不在场上")
 	}
-	if got := kn.Var(varKnightDuel); got != VarPresent {
+	if got := kn.Vars[varKnightDuel]; got != VarPresent {
 		t.Fatalf("骑士开局应带着决斗，实际 %q", got)
 	}
 
 	// 别的角色不该被波及
 	for _, id := range []string{"w1", "se", "v1"} {
 		p, _ := e.PlayerInfo(id)
-		if p.Var(varKnightDuel) != "" {
+		if p.Vars[varKnightDuel] != "" {
 			t.Errorf("%s 不是骑士，不该带着决斗", id)
 		}
 	}
@@ -90,7 +90,7 @@ func TestRoleSetup_BuiltinWitchWalksTheSamePath(t *testing.T) {
 	t.Run("默认两瓶药", func(t *testing.T) {
 		e := newKnightGame(t)
 		wi, _ := e.PlayerInfo("wi")
-		if wi.Var(VarWitchAntidote) != VarPresent || wi.Var(VarWitchPoison) != VarPresent {
+		if wi.Vars[VarWitchAntidote] != VarPresent || wi.Vars[VarWitchPoison] != VarPresent {
 			t.Fatalf("女巫开局应有两瓶药，实际 %v", wi.Vars)
 		}
 	})
@@ -102,7 +102,7 @@ func TestRoleSetup_BuiltinWitchWalksTheSamePath(t *testing.T) {
 			sideSetup(CampGood, RoleCategoryGod)))
 
 		wi, _ := e.PlayerInfo("wi")
-		if wi.Var(VarWitchAntidote) != "" || wi.Var(VarWitchPoison) != "" {
+		if wi.Vars[VarWitchAntidote] != "" || wi.Vars[VarWitchPoison] != "" {
 			t.Fatalf("换掉初始状态后女巫不该有药，实际 %v", wi.Vars)
 		}
 
@@ -169,7 +169,7 @@ func TestRoleSetup_SurvivesSnapshot(t *testing.T) {
 	mustEnd(t, e)
 
 	before, _ := e.PlayerInfo("wi")
-	if before.Var(VarWitchAntidote) != "" {
+	if before.Vars[VarWitchAntidote] != "" {
 		t.Fatalf("前置条件：解药应已用掉，实际 %v", before.Vars)
 	}
 
@@ -183,7 +183,7 @@ func TestRoleSetup_SurvivesSnapshot(t *testing.T) {
 		t.Fatalf("恢复后女巫的状态不同: 期望 %v，实际 %v", before.Vars, after.Vars)
 	}
 	kn, _ := restored.PlayerInfo("kn")
-	if kn.Var(varKnightDuel) != VarPresent {
+	if kn.Vars[varKnightDuel] != VarPresent {
 		t.Errorf("恢复后骑士的决斗没带上: %v", kn.Vars)
 	}
 }

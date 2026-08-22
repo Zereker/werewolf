@@ -60,7 +60,7 @@
 NewEffect                     规则给「发生了什么」起名字
 NewSetAliveEffect             改状态
 NewSetVarEffect               改状态
-NewAbilityTriggerEffect       下指令：把某人排进某个阶段
+NewDetourEffect       下指令：把某人排进某个阶段
 NewGotoPhaseEffect            下指令：下一步去哪
 NewSetActorsEffect            下指令：谁能在某阶段行动
 ```
@@ -79,7 +79,7 @@ NewSetActorsEffect            下指令：谁能在某阶段行动
 `kernelEvents`（`map[EventType]eventKind`），三类：
 
 ```
-kindStateWrite   SET_ALIVE / SET_VAR / SET_ACTORS / ABILITY_TRIGGERED
+kindStateWrite   SET_ALIVE / SET_VAR / SET_ACTORS / DETOUR
 kindControl      GOTO_PHASE           —— 不改状态，只影响下一步去哪
 kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有意义
 ```
@@ -140,7 +140,7 @@ kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有
 | `playerState`（未导出） | `PlayerInfo` / `PublicPlayerInfo` / `SelfInfo` | `PlayerSnapshot` |
 | `RoundContext` | `RoundContext` | `RoundCtxSnapshot` |
 | `SkillUse` | `SkillUse` | `SkillUseSnapshot` |
-| `PendingTrigger` | `PendingTrigger` | `PendingTriggerSnapshot` |
+| `Detour` | `Detour` | `DetourSnapshot` |
 
 四个 `*Snapshot` 影子类型的存在是**刻意的**（快照是写进存储的格式，字段名必须稳定，
 不能随内部重构漂移——这一条写在 `snapshot.go` 里，我仍然认为是对的）。

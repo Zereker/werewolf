@@ -24,7 +24,7 @@ func (p *PhaseInfo) NeedsGodAnnouncement() bool {
 	if len(p.Steps) == 0 {
 		return false
 	}
-	return p.Steps[0].Role == RoleGod &&
+	return p.Steps[0].Role == RoleSystem &&
 		p.Steps[0].Skill == SkillAnnounce
 }
 
@@ -92,7 +92,7 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 	seen := make(map[RoleType]bool)
 	for _, step := range phaseConfig.Steps {
 		// 上帝是系统角色，不是需要行动的玩家
-		if step.Role == RoleGod || seen[step.Role] {
+		if step.Role == RoleSystem || seen[step.Role] {
 			continue
 		}
 		seen[step.Role] = true

@@ -31,9 +31,16 @@ func (e *Engine) OnMessage(handler MessageHandler) {
 	e.messageHandlers = append(e.messageHandlers, handler)
 }
 
-// SendMessage 发送消息
-// 根据当前阶段自动路由到正确的接收者
-// 返回错误：玩家不存在、玩家已死亡、当前阶段不允许发言
+// SendMessage 发一条玩家发言，按当前阶段路由给该听到的人。
+//
+// 可听范围由 SpeechProvider 回答（见 WithSpeech）。**没装 provider 时**
+// 内核退回默认：出局的玩家不能发言、这一阶段没人能听到就拒绝。
+// 装了 provider 就由它说了算——「死人能不能说话」是规则的判断，
+// 不是内核的法律（血染钟楼的死人有幽灵票，狼人杀有遗言阶段）。
+//
+// 返回错误：玩家不存在（ErrPlayerNotFound）、
+// 默认规则下出局玩家发言（ErrPlayerDead）、
+// 当前阶段没有任何接收者（ErrMessageNotAllowed）。
 func (e *Engine) SendMessage(senderID, content string) error {
 	msg, receiverIDs, handlers, err := e.prepareMessage(senderID, content)
 	if err != nil {

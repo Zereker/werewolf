@@ -130,10 +130,10 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 
 	t.Run("女巫药剂", func(t *testing.T) {
 		wi, _ := restored.PlayerInfo("wi")
-		if wi.Var(VarWitchAntidote) != "" {
+		if wi.Vars[VarWitchAntidote] != "" {
 			t.Error("第一夜用掉的解药不应恢复回来")
 		}
-		if wi.Var(VarWitchPoison) == "" {
+		if wi.Vars[VarWitchPoison] == "" {
 			t.Error("未使用的毒药应当保留")
 		}
 	})
@@ -144,7 +144,7 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 		if !ok {
 			t.Fatal("守卫丢失")
 		}
-		if got := p.Var(PlayerVarLastProtectedTarget); got != "v2" {
+		if got := p.Vars[PlayerVarLastProtectedTarget]; got != "v2" {
 			t.Errorf("守卫上回合目标: 期望 v2，实际 %q", got)
 		}
 	})

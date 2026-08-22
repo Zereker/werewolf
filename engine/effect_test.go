@@ -375,9 +375,9 @@ func TestEventKind_StateWritesActuallyWriteState(t *testing.T) {
 			func() *Effect { return NewSetActorsEffect(phaseDay, "p1") },
 			func(s *gameState) bool { ids, ok := s.actorsFor(phaseDay); return ok && len(ids) == 1 },
 		},
-		EventAbilityTriggered: {
-			func() *Effect { return NewAbilityTriggerEffect("p1", phaseDay) },
-			func(s *gameState) bool { return s.hasPendingTrigger() },
+		EventDetour: {
+			func() *Effect { return NewDetourEffect("p1", phaseDay) },
+			func(s *gameState) bool { return s.hasPendingDetour() },
 		},
 	}
 
@@ -468,5 +468,5 @@ func sameState(a, b *gameState) bool {
 		return a.RoundCtx == b.RoundCtx
 	}
 	return len(a.RoundCtx.Vars) == len(b.RoundCtx.Vars) &&
-		len(a.RoundCtx.PendingTriggers) == len(b.RoundCtx.PendingTriggers)
+		len(a.RoundCtx.Detours) == len(b.RoundCtx.Detours)
 }

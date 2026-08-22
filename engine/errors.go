@@ -23,7 +23,7 @@ const (
 	CodeInvalidPhase       ErrorCode = "INVALID_PHASE"        // 无效阶段
 	CodeMessageNotAllowed  ErrorCode = "MESSAGE_NOT_ALLOWED"  // 当前阶段不允许发言
 	CodePlayerExists       ErrorCode = "PLAYER_EXISTS"        // 玩家ID已存在
-	CodeInvalidPlayerId    ErrorCode = "INVALID_PLAYER_ID"    // 玩家ID非法
+	CodeInvalidPlayerID    ErrorCode = "INVALID_PLAYER_ID"    // 玩家ID非法
 	CodeInvalidRole        ErrorCode = "INVALID_ROLE"         // 该角色不能作为玩家身份
 	CodeGameAlreadyStarted ErrorCode = "GAME_ALREADY_STARTED" // 游戏已开始
 	CodeInvalidBoard       ErrorCode = "INVALID_BOARD"        // 板子配置不合法
@@ -78,7 +78,7 @@ var (
 
 	// 玩家与开局校验
 	ErrPlayerExists        = &GameError{Code: CodePlayerExists, Message: "player already exists"}
-	ErrInvalidPlayerID     = &GameError{Code: CodeInvalidPlayerId, Message: "player id must not be empty"}
+	ErrInvalidPlayerID     = &GameError{Code: CodeInvalidPlayerID, Message: "player id must not be empty"}
 	ErrInvalidRole         = &GameError{Code: CodeInvalidRole, Message: "role cannot be assigned to a player"}
 	ErrGameAlreadyStarted  = &GameError{Code: CodeGameAlreadyStarted, Message: "game already started"}
 	ErrInvalidBoard        = &GameError{Code: CodeInvalidBoard, Message: "invalid board"}
@@ -138,7 +138,7 @@ var sentinelByCode = map[ErrorCode]error{
 	CodeInvalidPhase:       ErrInvalidPhase,
 	CodeMessageNotAllowed:  ErrMessageNotAllowed,
 	CodePlayerExists:       ErrPlayerExists,
-	CodeInvalidPlayerId:    ErrInvalidPlayerID,
+	CodeInvalidPlayerID:    ErrInvalidPlayerID,
 	CodeInvalidRole:        ErrInvalidRole,
 	CodeGameAlreadyStarted: ErrGameAlreadyStarted,
 	CodeInvalidBoard:       ErrInvalidBoard,

@@ -204,7 +204,7 @@ func TestFullGame_GoodWinsThreeThenSurvivesAssassination(t *testing.T) {
 		t.Fatal("刺杀还没进行，这局不该结束——胜负判定必须推迟到刺杀之后")
 	}
 	if e.Status().Phase != PhaseAssassin {
-		t.Fatalf("阶段 = %v，期望被触发队列带到 ASSASSIN", e.Status().Phase)
+		t.Fatalf("阶段 = %v，期望被绕道队列带到 ASSASSIN", e.Status().Phase)
 	}
 
 	// 刺客指错人（指了派西维尔，梅林是 a）

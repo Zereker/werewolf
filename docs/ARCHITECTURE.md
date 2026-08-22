@@ -126,7 +126,7 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
   上。键名由规则自己定，内核只管存——女巫的药剂、守卫上回合守了谁、
   阿瓦隆的比分走的都是这一条路。写走 `NewSetVarEffect(scope, k, v)`，
   读走 `GameView.Var(scope, k)`；对外只给只读副本
-- `RoundContext`：回合内的无主状态（刀口）与待结算的触发队列。队列只管三件事
+- `RoundContext`：回合内的无主状态（刀口）与待结算的绕道队列。队列只管三件事
   ——把阶段引到触发要去的地方、在排空之前拦住胜负判定与回合边界、按队首一条
   一条来；「谁能行动」不由它回答，进入阶段时它写一份行动者名单，之后走与
   `NewSetActorsEffect` 完全相同的那一条路。整个 RoundContext 每进入新的一回合重建
@@ -275,7 +275,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 扩展点全部住在内核包 `github.com/Zereker/werewolf/engine`——扩展规则
 本来就是在动内核的接线，调用点上出现 `engine.` 这个前缀是刻意的。
 
-死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect`，
+出局时触发的能力由 Resolver 产出 `NewDetourEffect`，
 引擎会把它排入待结算队列、自动流转过去，并把胜负判定推迟到结算之后。
 
 `extension_test.go` 用「狼王」把这条路径完整走通，全程只用导出 API。

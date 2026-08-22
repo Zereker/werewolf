@@ -6,7 +6,7 @@
 > 设计意图见 [DESIGN.md](DESIGN.md)，实施次序见 [ROADMAP.md](ROADMAP.md)。
 > 这里只说**契约**：有什么、怎么用、变不变。
 >
-> 当前规模：**55 个类型、24 个包级函数、58 个方法、62 个常量与变量。**
+> 当前规模：**55 个类型、24 个包级函数、56 个方法、62 个常量与变量。**
 > 附录 A 是完整清单，用于冻结后的比对。
 
 ---
@@ -68,7 +68,7 @@ type Camp      string   // 一个「边」：GOOD / EVIL / …
 |---|---|
 | `PhaseUnspecified` `PhaseStart` `PhaseEnd` | 状态机的生命周期。`AddPlayer` 只在 `START` 里允许 |
 | `RoleUnspecified` | 在 `PhaseStep` 上表示「所有角色」 |
-| `RoleGod` + `SkillAnnounce` | 「这一步没有玩家承担」——就绪判定不数它 |
+| `RoleSystem` + `SkillAnnounce` | 「这一步没有玩家承担」，一个标记而不是身份。就绪判定不数它。想要一个叫「上帝」的角色，在规则包里起名（`werewolf.RoleGod` 就是） |
 | `SkillUnspecified` `SkillSkip` | `SKIP` 是唯一不需要目标的动作 |
 | `CampUnspecified` | 还没分出胜负，或这名玩家不属于任何一边 |
 | `VarCamp = "camp"` | 标准键：值会填进 `PlayerInfo.Camp` / `SelfInfo.Camp` |
@@ -340,7 +340,7 @@ func (e *Effect) ToEvent() *Event
 | `NewSetAliveEffect(id, alive)` | 改状态 | ✅ |
 | `NewSetVarEffect(scope, k, v)` | 改状态 | ✅ |
 | `NewSetActorsEffect(phase, ids...)` | 改状态（写行动者名单） | ✅ |
-| `NewAbilityTriggerEffect(id, phase)` | 下指令（排进绕道队列） | ✅ |
+| `NewDetourEffect(id, phase)` | 下指令（排一笔绕道的欠账） | ✅ |
 | `NewGotoPhaseEffect(phase)` | 下指令（改写下一阶段） | ✅ 但不改任何状态 |
 
 **「狼刀」不会让人死。** 一条 `KILL` 单独发出去，状态机不认得。规则要让人
@@ -411,8 +411,6 @@ type PlayerInfo struct {           // 上帝 / 规则
 	Vars      map[string]string
 	RoundVars map[string]string
 }
-func (p PlayerInfo) Var(key string) string
-func (p PlayerInfo) RoundVar(key string) string
 
 type SelfInfo struct {             // 他自己
 	ID    string
@@ -510,7 +508,7 @@ type Snapshot struct { /* 版本、阶段、回合、整局变量、行动者、
 type PlayerSnapshot struct{ ... }
 type RoundCtxSnapshot struct{ ... }
 type SkillUseSnapshot struct{ ... }
-type PendingTriggerSnapshot struct{ ... }
+type DetourSnapshot struct{ ... }
 ```
 
 **五个 `*Snapshot` 影子类型的存在是刻意的**：快照是写进存储的格式，字段名
@@ -592,7 +590,7 @@ b = b.Apply(resolver.Resolve(uses, b.View()))
 |---|---|
 | `PlayerInfo.Alive` / `.Role` 从存储字段变成**派生字段** | 读法不变；写法从 `SET_ALIVE` 并入 `SET_VAR` |
 | `SnapshotVersion` 提升，快照格式变更 | 旧存档读不了（当前零使用者） |
-| 绕道队列相关的名字（`NewAbilityTriggerEffect` / `PendingTrigger`） | 改名，语义不变 |
+| ~~绕道队列相关的名字~~ | **已完成**（§14 第 3 条） |
 
 ### 没有承诺的
 
@@ -602,99 +600,127 @@ b = b.Apply(resolver.Resolve(uses, b.View()))
 
 ---
 
-## 14. 冻结前必须定的（**已知的不一致，待拍板**）
+## 14. 冻结前的清账（**七条，已全部处理**）
 
-这几条现在就在 API 里，冻结之后改代价更大。
+写这份文档时逐条过 API 才发现的七处不一致。全部已清。
 
-| # | 问题 | 建议 |
+| # | 问题 | 做法 |
 |---|---|---|
-| 1 | `CodeInvalidPlayerId` 与 `ErrInvalidPlayerID` **大小写不一致**（`Id` / `ID`） | 统一成 `ID`，Go 惯例 |
-| 2 | `PlayerInfo.Var(key)` / `.RoundVar(key)` **不吃 `VarScope`**，与其他所有读法不一致 | 归到 §6.3 那张表里，或明确说明「主人已定，只剩时间尺度」 |
-| 3 | `PendingTrigger` / `NewAbilityTriggerEffect` 的文档还在说「死亡技能」 | 概念已泛化成「某人欠一次在某个阶段的行动」，改名 |
-| 4 | `RoleGod` 的名字暗示「主持人」，概念其实是「这一步没有玩家承担」 | 保留取值、重写文档，或更名 `RoleSystem` |
-| 5 | `Engine.SendMessage` 的文档说「玩家已死亡」会报错 | 装了 `SpeechProvider` 就不一定，文档漂移 |
-| 6 | `Engine.PlayerInfo` 的注释还写着「（推荐使用）」 | 相对谁？删掉 |
-| 7 | 没有任何东西**钉住**这份导出清单 | 加一个 golden API 测试：附录 A 变了就变红 |
+| 1 | `CodeInvalidPlayerId` 与 `ErrInvalidPlayerID` 大小写不一致 | 统一为 `CodeInvalidPlayerID` |
+| 2 | `PlayerInfo.Var(key)` / `.RoundVar(key)` 不吃 `VarScope`，与其他读法不一致 | **两个方法删掉**。`Vars` / `RoundVars` 是导出字段，读 nil map 在 Go 里本来就安全，这两个方法是零价值的糖——它们唯一的作用是让 `Var` 在两个类型上意思不同 |
+| 3 | `Detour` / `NewDetourEffect` 的文档还在说「死亡技能」 | 改名 `Detour` / `NewDetourEffect`，事件值 `DETOUR` → `DETOUR`，快照字段 `pending_triggers` → `detours`，`SnapshotVersion` 11 → 12 |
+| 4 | `RoleGod` 的名字暗示「主持人」这个身份 | 内核改名 `RoleSystem`（值 `"GOD"` → `"SYSTEM"`）。「上帝」是狼人杀给这个标记起的名字，定在规则包（`werewolf.RoleGod`） |
+| 5 | `Engine.SendMessage` 的文档说「玩家已死亡」会报错 | 改写：那是**没装 `SpeechProvider` 时的默认**，装了就由 provider 说了算 |
+| 6 | `Engine.PlayerInfo` 的注释写着「（推荐使用）」 | 改写成它实际的语义：上帝视角，含 `Vars`，**不是**给玩家看的 |
+| 7 | 没有任何东西钉住这份导出清单 | **`TestAPI_SurfaceIsPinned`**：`go/ast` 解析包内全部非测试源码，收集导出名，与 `engine/testdata/api.golden` 比对 |
 
-第 7 条是**执法机制**。没有它，这份文档会和代码漂移——与这个项目其他
-「规矩只写在注释里」的伤口是同一类问题。
+### 第 7 条是执法机制
+
+没有它，这份文档一定会和代码漂移——与这个项目其他「规矩只写在注释里」的
+伤口是同一类问题。
+
+它不判断 API 好不好，只保证**变更不会悄悄发生**：
+
+```
+$ go test ./engine
+--- FAIL: TestAPI_SurfaceIsPinned
+    内核的导出面变了。
+    新增：[func SneakyExport]
+    删除：[]
+
+    这不是错误，是提醒：导出面是 docs/API.md 声称冻结的东西。
+    确认这次变更是有意的，然后一起做两件事——
+      1. go test ./engine -run TestAPI_SurfaceIsPinned -update-api-golden
+      2. 更新 docs/API.md（正文与附录 A）
+```
+
+「悄悄新增」与「悄悄删除」两个方向都验证过会变红。
 
 ---
 
 ## 附录 A：完整导出名清单
 
-**冻结基线。** 这份清单变了，就是 API 变了。
+**冻结基线。** 由 `TestAPI_SurfaceIsPinned` 与 `engine/testdata/api.golden`
+守着——这份清单变了，测试就变红。
+
+合计 **55 类型 / 24 包级函数 / 56 方法 /
+62 常量与变量**。
 
 ### 类型（55）
 
 ```
-AudienceFunc  AudienceProvider  Board  Camp  Config  Effect  Engine
-EngineOption  ErrorCode  Event  EventHandler  EventType  Field  GameError
-GameSetup  GameSetupFunc  GameView  Logger  Message  MessageHandler
-PendingAction  PendingTrigger  PendingTriggerSnapshot  PhaseConfig
-PhaseInfo  PhaseReadiness  PhaseStep  PhaseType  PlayerInfo  PlayerSnapshot
-PlayerView  PublicPlayerInfo  Resolver  ResolverFunc  RoleInfoFunc
-RoleInfoProvider  RolePhaseInfo  RoleSetup  RoleSetupFunc  RoleType
-RoundContext  RoundCtxSnapshot  SelfInfo  SkillType  SkillUse
-SkillUseSnapshot  Snapshot  SpeechFunc  SpeechProvider  Status  TeammateFunc
-TeammateProvider  VarScope  VictoryChecker  VictoryFunc
+AudienceFunc  AudienceProvider  Board  Camp  Config  Detour
+DetourSnapshot  Effect  Engine  EngineOption  ErrorCode  Event
+EventHandler  EventType  Field  GameError  GameSetup  GameSetupFunc
+GameView  Logger  Message  MessageHandler  PendingAction  PhaseConfig
+PhaseInfo  PhaseReadiness  PhaseStep  PhaseType  PlayerInfo
+PlayerSnapshot  PlayerView  PublicPlayerInfo  Resolver  ResolverFunc
+RoleInfoFunc  RoleInfoProvider  RolePhaseInfo  RoleSetup  RoleSetupFunc
+RoleType  RoundContext  RoundCtxSnapshot  SelfInfo  SkillType  SkillUse
+SkillUseSnapshot  Snapshot  SpeechFunc  SpeechProvider  Status
+TeammateFunc  TeammateProvider  VarScope  VictoryChecker  VictoryFunc
 ```
 
 ### 包级函数（24）
 
 ```
-建局    NewEngine  MustNewEngine  RestoreEngine  ReplayEngine
-效果    NewEffect  NewSetAliveEffect  NewSetVarEffect  NewSetActorsEffect
-        NewAbilityTriggerEffect  NewGotoPhaseEffect
-扩展点  WithResolver  WithVictoryChecker  WithRoleSetup  WithGameSetup
-        WithAudience  WithTeammates  WithSpeech  WithRoleInfo  WithLogger
-错误    WrapError  HasCode  CodeOf
-测试    Seat  Mark
+CodeOf  HasCode  Mark  MustNewEngine  NewDetourEffect  NewEffect
+NewEngine  NewGotoPhaseEffect  NewSetActorsEffect  NewSetAliveEffect
+NewSetVarEffect  ReplayEngine  RestoreEngine  Seat  WithAudience
+WithGameSetup  WithLogger  WithResolver  WithRoleInfo  WithRoleSetup
+WithSpeech  WithTeammates  WithVictoryChecker  WrapError
 ```
 
-### 方法（58）
+### 方法（56，按接收者）
 
 ```
-Engine(23)   AddPlayer  AlivePlayerIDs  AllowedSkills  Apply  AudienceOf
-             EffectLog  EndPhase  MessageReceivers  OnEvent  OnMessage
-             PhaseInfo  PhaseReadiness  PlayerInfo  PlayerView  RoundContext
-             SendMessage  Snapshot  Start  Status  SubmitSkillUse  Teammates
-             Var  View
-Effect(5)    Cancel  SetsAlive  SetsVar  ToEvent  WithData
-Board(4)     Apply  Player  Var  View
-PhaseInfo(3) GodAnnouncementStep  NeedsGodAnnouncement  PlayerActionSteps
-Config(2)    PhaseTimeout  Validate
+Engine(23)  AddPlayer  AlivePlayerIDs  AllowedSkills  Apply  AudienceOf  EffectLog  EndPhase  MessageReceivers  OnEvent  OnMessage  PhaseInfo  PhaseReadiness  PlayerInfo  PlayerView  RoundContext  SendMessage  Snapshot  Start  Status  SubmitSkillUse  Teammates  Var  View
+Effect(5)  Cancel  SetsAlive  SetsVar  ToEvent  WithData
+Board(4)  Apply  Player  Var  View
+PhaseInfo(3)  GodAnnouncementStep  NeedsGodAnnouncement  PlayerActionSteps
+Config(2)  PhaseTimeout  Validate
+GameError(2)  Error  Unwrap
 VarScope(2)  Of  String
-PlayerInfo(2) RoundVar  Var
-GameError(2) Error  Unwrap
+AudienceFunc(1)  Audience
+Camp(1)  String
+ErrorCode(1)  String
+EventType(1)  String
+GameSetupFunc(1)  Setup
+PhaseType(1)  String
+ResolverFunc(1)  Resolve
+RoleInfoFunc(1)  RoleInfo
+RoleSetupFunc(1)  Setup
+RoleType(1)  String
+SkillType(1)  String
 SkillUse(1)  Target
-String(5)    Camp  ErrorCode  EventType  PhaseType  RoleType
-适配器(8)     AudienceFunc.Audience  GameSetupFunc.Setup  ResolverFunc.Resolve
-             RoleInfoFunc.RoleInfo  RoleSetupFunc.Setup  SpeechFunc.Receivers
-             TeammateFunc.Teammates  VictoryFunc.CheckVictory
+SpeechFunc(1)  Receivers
+TeammateFunc(1)  Teammates
+VictoryFunc(1)  CheckVictory
 ```
 
-### 常量与变量（62）
+### 常量（41）
 
 ```
-词汇表(11)  PhaseUnspecified  PhaseStart  PhaseEnd  RoleUnspecified  RoleGod
-            SkillUnspecified  SkillSkip  SkillAnnounce  CampUnspecified
-            VarCamp  VarPresent
-事件(9)     EventUnspecified  EventGameStarted  EventGameEnded  EventSetAlive
-            EventSetVar  EventSetActors  EventAbilityTriggered  EventGotoPhase
-            EventPlayerAdded  EventPhaseChanged
-作用域(2)   ScopeGame  ScopeRound
-错误码(18)  CodeUnspecified  CodePlayerNotFound  CodePlayerDead
-            CodeTargetNotFound  CodeTargetDead  CodeSkillNotAllowed
-            CodeGameNotStarted  CodeGameEnded  CodeInvalidPhase
-            CodeMessageNotAllowed  CodePlayerExists  CodeInvalidPlayerId
-            CodeInvalidRole  CodeGameAlreadyStarted  CodeInvalidBoard
-            CodeInvalidSnapshot  CodeInvalidConfig  CodeInvalidEffectLog
-哨兵(20)    ErrPlayerNotFound  ErrPlayerDead  ErrTargetNotFound  ErrTargetDead
-            ErrSkillNotAllowed  ErrGameNotStarted  ErrGameEnded
-            ErrInvalidPhase  ErrMessageNotAllowed  ErrPlayerExists
-            ErrInvalidPlayerID  ErrInvalidRole  ErrGameAlreadyStarted
-            ErrInvalidBoard  ErrBoardAlreadyDecided  ErrInvalidSnapshot
-            ErrNilSnapshot  ErrInvalidEffectLog  ErrInvalidConfig
-其他(2)     SnapshotVersion  DefaultPhaseTimeout
+CampUnspecified  CodeGameAlreadyStarted  CodeGameEnded
+CodeGameNotStarted  CodeInvalidBoard  CodeInvalidConfig
+CodeInvalidEffectLog  CodeInvalidPhase  CodeInvalidPlayerID
+CodeInvalidRole  CodeInvalidSnapshot  CodeMessageNotAllowed
+CodePlayerDead  CodePlayerExists  CodePlayerNotFound  CodeSkillNotAllowed
+CodeTargetDead  CodeTargetNotFound  CodeUnspecified  DefaultPhaseTimeout
+EventDetour  EventGameEnded  EventGameStarted  EventGotoPhase
+EventPhaseChanged  EventPlayerAdded  EventSetActors  EventSetAlive
+EventSetVar  EventUnspecified  PhaseEnd  PhaseStart  PhaseUnspecified
+RoleSystem  RoleUnspecified  SkillAnnounce  SkillSkip  SkillUnspecified
+SnapshotVersion  VarCamp  VarPresent
+```
+
+### 变量（21）
+
+```
+ErrBoardAlreadyDecided  ErrGameAlreadyStarted  ErrGameEnded
+ErrGameNotStarted  ErrInvalidBoard  ErrInvalidConfig  ErrInvalidEffectLog
+ErrInvalidPhase  ErrInvalidPlayerID  ErrInvalidRole  ErrInvalidSnapshot
+ErrMessageNotAllowed  ErrNilSnapshot  ErrPlayerDead  ErrPlayerExists
+ErrPlayerNotFound  ErrSkillNotAllowed  ErrTargetDead  ErrTargetNotFound
+ScopeGame  ScopeRound
 ```

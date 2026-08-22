@@ -49,8 +49,9 @@ const (
 	SkillShoot    SkillType = "SHOOT"    // 猎人开枪
 )
 
-// RoleGod、SkillSkip、SkillAnnounce 由内核拥有（主持人不是玩家、弃权是
-// 通用动作），同样经别名再导出，见 alias.go。
+// RoleGod（上帝）、SkillSkip、SkillAnnounce 见 alias.go：
+// 前者是狼人杀给内核那个「这一步没有玩家承担」的标记起的名字，
+// 后两个由内核拥有。
 
 // 狼人杀的事件类型：规则给「发生了什么」起的名字。
 //

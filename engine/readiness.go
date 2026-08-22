@@ -148,7 +148,7 @@ func requirementsOf(steps []PhaseStep) []requirement {
 	byGroup := make(map[string]int, len(steps)) // 组名 -> out 中的下标
 
 	for _, step := range steps {
-		if step.Role == RoleGod {
+		if step.Role == RoleSystem {
 			continue
 		}
 		if i, ok := byGroup[step.Group]; ok && step.Group != "" {
@@ -179,13 +179,13 @@ func requirementsOf(steps []PhaseStep) []requirement {
 //
 // 两层，优先级从高到低：
 //
-//	点到名的人      NewSetActorsEffect，或者死亡触发在进入阶段时写下的那一份
+//	点到名的人      NewSetActorsEffect，或者绕道在进入阶段时写下的那一份
 //	PhaseStep.Role  默认：按角色算，角色是入座时定死的
 //
-// 此前是三层，最上面还有一层「待结算的触发」。那一层与点名回答的是同一个
+// 此前是三层，最上面还有一层「待结算的绕道」。那一层与点名回答的是同一个
 // 问题，实现也几乎逐字相同——一个概念两份实现，两处都要记得对齐。现在
-// 触发队列不再回答「谁能行动」，它在进入阶段时产出一份名单
-// （见 gameState.namePendingTriggerActor），之后一切照点名走。
+// 绕道队列不再回答「谁能行动」，它在进入阶段时产出一份名单
+// （见 gameState.nameDetourActor），之后一切照点名走。
 func (e *Engine) actorsForStep(role RoleType) []string {
 	if ids, ok := e.state.actorsFor(e.state.Phase); ok {
 		return e.namedActorsFor(role, ids)
@@ -203,7 +203,7 @@ func (e *Engine) actorsForStep(role RoleType) []string {
 // 点到的人都算。
 //
 // **不按存活过滤**：规则点名谁，谁就能行动。此前这里会把已出局的人剔掉，
-// 而那是内核在替规则做判断——同一个内核，却允许**自己的**触发队列让死人
+// 而那是内核在替规则做判断——同一个内核，却允许**自己的**绕道队列让死人
 // 行动（猎人被刀之后开枪），不允许**规则的**点名这么做，自相矛盾。
 //
 // 挡掉的是真实存在的玩法：血染钟楼的死人保留一张「幽灵票」，狼人杀的

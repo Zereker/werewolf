@@ -43,9 +43,16 @@ const (
 	// RoleUnspecified 未指定。在 PhaseStep 上它表示「所有角色」。
 	RoleUnspecified RoleType = ""
 
-	// RoleGod 主持人。它不是一个玩家身份——入座会被拒，就绪判定不数它。
-	// 声明了它的阶段步骤是「该念一段公告了」，不是「等某个人行动」。
-	RoleGod RoleType = "GOD"
+	// RoleSystem 「这一步没有玩家承担」。
+	//
+	// 它不是一个身份，是一个**标记**：声明了它的阶段步骤是一次广播
+	//（该念一段公告了），不是「等某个人行动」。入座会被拒，就绪判定不数它。
+	//
+	// 此前它叫 RoleGod，值是 "GOD"。那个名字暗示「主持人」这个身份——
+	// 而主持人是狼人杀的概念，阿瓦隆根本没有人主持，血染钟楼叫说书人。
+	// 内核认得的不是「谁在主持」，是「这一步不等人」。想要一个叫「上帝」
+	// 的角色，在规则包里给它起名（werewolf.RoleGod 就是这么定的）。
+	RoleSystem RoleType = "SYSTEM"
 )
 
 // String 实现 fmt.Stringer。
@@ -67,7 +74,7 @@ const (
 	// 不需要目标的技能——内核据此跳过目标校验。
 	SkillSkip SkillType = "SKIP"
 
-	// SkillAnnounce 主持人的公告，与 RoleGod 配对。
+	// SkillAnnounce 一次广播，与 RoleSystem 配对。内容由调用方决定。
 	SkillAnnounce SkillType = "ANNOUNCE"
 )
 

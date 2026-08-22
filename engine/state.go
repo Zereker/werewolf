@@ -8,12 +8,12 @@ import (
 // 用于管理回合内各阶段之间共享的临时状态
 // 本回合内有效的状态，跨回合自动清零。
 type RoundContext struct {
-	// PendingTriggers 待结算的死亡技能，先进先出。
+	// Detours 待结算的绕道，先进先出。
 	//
-	// 此前这里是两个「某个具体角色专属」的字段，
-	// 每加一个死亡触发角色就要再加两个字段、
-	// 并在引擎的阶段流转里多一个分支。改成队列后引擎不认识任何具体角色。
-	PendingTriggers []PendingTrigger
+	// 此前这里是两个「某个具体角色专属」的字段，每加一个会在死亡时开枪的
+	// 角色就要再加两个字段、并在引擎的阶段流转里多一个分支。改成队列后
+	// 引擎不认识任何具体角色。
+	Detours []Detour
 
 	// Vars 本回合的自定义状态，每回合自动清空，不属于任何玩家。
 	//
@@ -27,10 +27,24 @@ type RoundContext struct {
 	Vars map[string]string
 }
 
-// PendingTrigger 一个待结算的死亡技能
-type PendingTrigger struct {
-	PlayerID string    // 触发者
-	Phase    PhaseType // 该去哪个阶段结算
+// Detour 一次待结算的绕道：**为了某个人，去一趟某个阶段**。
+//
+// 它此前叫 PendingTrigger，文档说的是「一个待结算的死亡技能」。那是狼人杀
+// 的说法——猎人被刀之后开枪。而内核认得的从来不是「死亡」也不是「技能」，
+// 只是「谁、去哪个阶段」：什么触发了它、他到了那儿要干什么，全是规则的事。
+//
+// 它管三件事，后两件没有别的机制能替代：
+//
+//  1. 把阶段引到欠账的地方        —— GOTO_PHASE 也能做
+//  2. 排空之前拦住胜负判定与回合边界 —— 绕道可能翻盘（那一枪带走最后一只狼）
+//  3. 按队首一条一条来             —— 两个人同一夜欠账，各走各的
+//
+// 它**不**回答「谁能行动」：进入欠账的阶段时它写一份行动者名单
+// （见 gameState.nameDetourActor），之后走与 NewSetActorsEffect 完全相同的
+// 那条路。
+type Detour struct {
+	PlayerID string    // 为谁绕这一趟
+	Phase    PhaseType // 绕到哪个阶段
 }
 
 // newRoundContext 创建新的回合上下文
@@ -105,7 +119,7 @@ type gameState struct {
 	//
 	// 内核判定行动者此前只有一条路：拿 PhaseStep.Role 去比对玩家的角色。
 	// 而角色是入座时定死的——任何运行时才选出来的行动者集合都表达不了。
-	// 这个抽象已经被逃逸三次：狼人杀的猎人开枪（内核为它开了触发队列这个
+	// 这个抽象已经被逃逸三次：狼人杀的猎人开枪（内核为它开了绕道队列这个
 	// 单人特例）、阿瓦隆的队长提名、阿瓦隆的任务队伍。后两处只能让所有人
 	// 都提交、再由解析器丢掉不该算的，代价是 AllowedSkills 对没资格的玩家
 	// 说谎、PhaseReadiness 等一群不可能行动的人。
@@ -143,7 +157,7 @@ func (s *gameState) addPlayer(id string, role RoleType) error {
 		return ErrInvalidPlayerID
 	}
 	// 上帝是系统角色，不是玩家身份
-	if role == RoleUnspecified || role == RoleGod {
+	if role == RoleUnspecified || role == RoleSystem {
 		return WrapError(CodeInvalidRole,
 			"role %v cannot be assigned to a player", role)
 	}
@@ -232,19 +246,6 @@ type PlayerInfo struct {
 	Vars map[string]string `json:"vars,omitempty"`
 }
 
-// Var 返回该玩家的一项自定义状态，没有则为空串。
-//
-// 只是省掉 nil map 的判断——PlayerInfo 是副本，直接读 Vars 也一样。
-// 「这名玩家还有没有某件东西」就是 p.Var(key) != ""。
-func (p PlayerInfo) Var(key string) string {
-	return p.Vars[key]
-}
-
-// RoundVar 返回该玩家在本回合的一项标记，没有则为空串。
-func (p PlayerInfo) RoundVar(key string) string {
-	return p.RoundVars[key]
-}
-
 // PlayerInfo 获取玩家信息的只读副本
 func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	p, ok := s.players[id]
@@ -310,8 +311,8 @@ func (s *gameState) clone() *gameState {
 	out.Vars = copyVars(s.Vars)
 	out.Actors = copyActors(s.Actors)
 	out.RoundCtx = &RoundContext{
-		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
-		Vars:            copyVars(s.RoundCtx.Vars),
+		Detours: append([]Detour(nil), s.RoundCtx.Detours...),
+		Vars:    copyVars(s.RoundCtx.Vars),
 	}
 	for id, p := range s.players {
 		out.players[id] = &playerState{
@@ -382,11 +383,11 @@ func (s *gameState) applyEffect(effect *Effect) {
 			s.setActors(phase, kept)
 		}
 
-	case EventAbilityTriggered:
-		// 死亡技能入队，等待流转到对应阶段结算
-		if phase, ok := effect.triggerPhase(); ok && effect.SourceID != "" {
-			s.RoundCtx.PendingTriggers = append(s.RoundCtx.PendingTriggers,
-				PendingTrigger{PlayerID: effect.SourceID, Phase: phase})
+	case EventDetour:
+		// 绕道入队，等待流转到对应阶段结算
+		if phase, ok := effect.detourPhase(); ok && effect.SourceID != "" {
+			s.RoundCtx.Detours = append(s.RoundCtx.Detours,
+				Detour{PlayerID: effect.SourceID, Phase: phase})
 		}
 	}
 }
@@ -431,14 +432,14 @@ func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 	if clearVars {
 		s.resetRoundStateUnlocked()
 	}
-	s.namePendingTriggerActor()
+	s.nameDetourActor()
 }
 
-// namePendingTriggerActor 若刚进入的正是队首触发要去的阶段，把触发者写成
+// nameDetourActor 若刚进入的正是队首那笔欠账要去的阶段，把欠账的人写成
 // 这个阶段的行动者名单。
 //
-// 这是「触发队列」与「规则点名」的接缝。此前它们是两套并行的机制：
-// actorsForStep 与 validateSkillUse 各有一个三层判断，第一层问触发队列、
+// 这是「绕道队列」与「规则点名」的接缝。此前它们是两套并行的机制：
+// actorsForStep 与 validateSkillUse 各有一个三层判断，第一层问绕道队列、
 // 第二层问点名、第三层按角色算。而两条路回答的是同一个问题，实现也几乎
 // 逐字相同（triggerActorFor 与 namedActorsFor 都是「点到的人里，谁承担
 // 这个角色的步骤」）——一个概念，两份实现，两处都要记得对齐。
@@ -451,8 +452,8 @@ func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 // 一个人开得了枪。进入阶段时按**队首**取，才是队列本来的语义。
 //
 // 正常推进与效果流回放共用这一条路径（两者都经 nextPhase），因此不会分叉。
-func (s *gameState) namePendingTriggerActor() {
-	t, ok := s.peekTrigger()
+func (s *gameState) nameDetourActor() {
+	t, ok := s.peekDetour()
 	if !ok || t.Phase != s.Phase {
 		return
 	}
@@ -514,23 +515,23 @@ func (s *gameState) setVar(scope VarScope, key, value string) {
 	vars[key] = value
 }
 
-// peekTrigger 查看队首的待结算死亡技能
-func (s *gameState) peekTrigger() (PendingTrigger, bool) {
-	if s.RoundCtx == nil || len(s.RoundCtx.PendingTriggers) == 0 {
-		return PendingTrigger{}, false
+// peekDetour 查看队首那笔待结算的绕道
+func (s *gameState) peekDetour() (Detour, bool) {
+	if s.RoundCtx == nil || len(s.RoundCtx.Detours) == 0 {
+		return Detour{}, false
 	}
-	return s.RoundCtx.PendingTriggers[0], true
+	return s.RoundCtx.Detours[0], true
 }
 
-// popTrigger 弹出队首的待结算死亡技能
-func (s *gameState) popTrigger() {
-	if s.RoundCtx == nil || len(s.RoundCtx.PendingTriggers) == 0 {
+// popDetour 弹出队首那笔待结算的绕道
+func (s *gameState) popDetour() {
+	if s.RoundCtx == nil || len(s.RoundCtx.Detours) == 0 {
 		return
 	}
-	s.RoundCtx.PendingTriggers = s.RoundCtx.PendingTriggers[1:]
+	s.RoundCtx.Detours = s.RoundCtx.Detours[1:]
 }
 
-// consumeTriggerFor 若队首的待结算技能正是 phase，则出队。
+// consumeDetourFor 若队首的待结算技能正是 phase，则出队。
 //
 // 待结算队列是「一次性」的：由死亡结算入队，进入对应阶段后必须出队。
 // 不出队的话它会在整个回合内持续非空，同一个玩家会被反复拉回来再用一次技能。
@@ -538,15 +539,15 @@ func (s *gameState) popTrigger() {
 // 正常推进（calculateNextPhase）与效果流回放（replayEffect 处理
 // PHASE_CHANGED）都要做这一步，且必须做得一模一样，否则回放出来的引擎
 // 会带着一条本该消费掉的触发，从下一步起与原引擎分叉。
-func (s *gameState) consumeTriggerFor(phase PhaseType) {
-	if t, ok := s.peekTrigger(); ok && t.Phase == phase {
-		s.popTrigger()
+func (s *gameState) consumeDetourFor(phase PhaseType) {
+	if t, ok := s.peekDetour(); ok && t.Phase == phase {
+		s.popDetour()
 	}
 }
 
-// hasPendingTrigger 是否还有未结算的死亡技能
-func (s *gameState) hasPendingTrigger() bool {
-	_, ok := s.peekTrigger()
+// hasPendingDetour 是否还有没结算完的绕道
+func (s *gameState) hasPendingDetour() bool {
+	_, ok := s.peekDetour()
 	return ok
 }
 
@@ -558,8 +559,8 @@ func (s *gameState) RoundContext() *RoundContext {
 
 	// 返回副本以避免外部修改
 	return &RoundContext{
-		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
-		Vars:            copyVars(s.RoundCtx.Vars),
+		Detours: append([]Detour(nil), s.RoundCtx.Detours...),
+		Vars:    copyVars(s.RoundCtx.Vars),
 	}
 }
 

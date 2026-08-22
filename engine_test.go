@@ -867,7 +867,7 @@ func TestEngine_Start_DispatchesGameStarted(t *testing.T) {
 
 // TestEngine_AllowedSkills_MatchesPlayerView 三个入口对「谁能行动」必须同口径。
 //
-// 死亡技能阶段只有触发者能行动。AllowedSkills 此前按角色作答，
+// 绕道要去的阶段只有触发者能行动。AllowedSkills 此前按角色作答，
 // 会告诉同为猎人的另一名玩家「你可以开枪」，而 PlayerView 与
 // SubmitSkillUse 都不认这个答案。
 func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {

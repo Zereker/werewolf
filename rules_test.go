@@ -347,7 +347,7 @@ func TestRule_R2_WitchSeesKillOnlyWhileAntidoteHeld(t *testing.T) {
 	g.end(PhaseNightResolve)
 	g.end(PhaseDay)
 
-	if g.info("wi").Var(VarWitchAntidote) != "" {
+	if g.info("wi").Vars[VarWitchAntidote] != "" {
 		t.Fatal("第一夜救人后解药应当已消耗")
 	}
 	g.assertAlive("v1", true, "第一夜被救")
@@ -410,10 +410,10 @@ func TestRule_R3_WitchCannotUseBothPotionsInOneNight(t *testing.T) {
 
 			after := g.info("wi")
 			potionsUsed := 0
-			if after.Var(VarWitchAntidote) == "" {
+			if after.Vars[VarWitchAntidote] == "" {
 				potionsUsed++
 			}
-			if after.Var(VarWitchPoison) == "" {
+			if after.Vars[VarWitchPoison] == "" {
 				potionsUsed++
 			}
 			if potionsUsed > 1 {
@@ -736,7 +736,7 @@ func TestRule_R7_GuardPlusAntidoteKillsTarget(t *testing.T) {
 	g.endAny()
 
 	g.assertAlive("v1", false, "同守同救")
-	if g.info("wi").Var(VarWitchAntidote) != "" {
+	if g.info("wi").Vars[VarWitchAntidote] != "" {
 		t.Error("同守同救时解药仍应被消耗")
 	}
 }

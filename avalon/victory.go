@@ -31,7 +31,7 @@ func (victoryChecker) CheckVictory(view engine.GameView) (bool, engine.Camp) {
 	//
 	// 场上没有刺客时（最小板子）直接判好人赢；有刺客而还没动手时
 	// 必须回「还没结束」——否则引擎会在刺杀阶段之前就把这局判掉。
-	// 刺杀阶段由任务解析器用触发队列排进来，内核会把胜负判定推迟到
+	// 刺杀阶段由任务解析器用绕道队列排进来，内核会把胜负判定推迟到
 	// 那之后，这里只要如实报「还没完」即可。
 	switch view.Var(engine.ScopeGame, varAssassinated) {
 	case "hit":

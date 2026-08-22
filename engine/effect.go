@@ -50,10 +50,10 @@ const (
 // 打架：扩展定义的每一个事件类型都被判成内部事件，于是扩展的事件
 // 根本发不出去。
 var kernelEvents = map[EventType]eventKind{
-	EventSetAlive:         kindStateWrite,
-	EventSetVar:           kindStateWrite,
-	EventSetActors:        kindStateWrite,
-	EventAbilityTriggered: kindStateWrite,
+	EventSetAlive:  kindStateWrite,
+	EventSetVar:    kindStateWrite,
+	EventSetActors: kindStateWrite,
+	EventDetour:    kindStateWrite,
 
 	EventGotoPhase: kindControl,
 
@@ -69,16 +69,20 @@ func isInternalEvent(t EventType) bool {
 	return kernelEvents[t] != kindRuleEvent
 }
 
-// triggerPhaseKey 触发效果中记录「该去哪个阶段结算」的键
-const triggerPhaseKey = "trigger_phase"
+// detourPhaseKey 绕道效果里记录「去哪个阶段」的键
+const detourPhaseKey = "detour_phase"
 
-// NewAbilityTriggerEffect 声明「某玩家的死亡技能待结算」。
+// NewDetourEffect 声明「为了这个人，绕一趟那个阶段」（见 Detour）。
 //
-// 死亡触发是一整类能力（出局时开枪、自爆、翻牌），
-// 引擎不认识其中任何一个具体角色，只认识「谁、去哪个阶段」。
-func NewAbilityTriggerEffect(playerID string, phase PhaseType) *Effect {
-	return NewEffect(EventAbilityTriggered, playerID, "").
-		WithData(triggerPhaseKey, phase)
+// 狼人杀用它做「猎人被刀之后开枪」，但内核认得的既不是「死亡」也不是
+// 「技能」，只是「谁、去哪个阶段」——什么触发了它、他到了那儿要干什么，
+// 全是规则的事。出局时开枪、自爆、翻牌、任何「等一下，还有人要动」都走这条。
+//
+// 与 NewGotoPhaseEffect 的分工：那个是**一次性改写下一站**，这个是
+// **排一笔欠账**——队列排空之前，胜负判定与回合边界都得等着。
+func NewDetourEffect(playerID string, phase PhaseType) *Effect {
+	return NewEffect(EventDetour, playerID, "").
+		WithData(detourPhaseKey, phase)
 }
 
 // gotoPhaseKey 改写下一阶段的效果里记录目标阶段的键
@@ -87,15 +91,15 @@ const gotoPhaseKey = "goto_phase"
 // NewGotoPhaseEffect 声明「这个阶段结算完之后去指定的阶段」。
 //
 // 它改写 PhaseConfig.NextPhase 那个默认出口。阶段流转此前是一张纯静态的图，
-// 唯一的动态跳转是死亡触发队列——于是所有条件分支都得从那个后门走，
+// 唯一的动态跳转是绕道队列——于是所有条件分支都得从那个后门走，
 // 而那个后门的语义是「某人的技能待结算」，根本不是「往哪走」。
 //
 // 阿瓦隆的「表决通过就去任务、否则回提名」是这类分支最朴素的样子：
 // 结果由本阶段的结算算出来，静态图表达不了。
 //
-// 优先级：待结算的触发队列 > 本效果 > PhaseConfig.NextPhase。触发排在最前
+// 优先级：待结算的绕道队列 > 本效果 > PhaseConfig.NextPhase。绕道排在最前
 // 是因为队列必须排空——胜负判定与回合边界都等着它，中途跳走会把还没结算的
-// 死亡技能丢掉。
+// 那一笔欠账丢掉。
 //
 // 目标阶段不在配置里时，内核记一条错误日志并退回 NextPhase：一条效果写错了
 // 不该让整局崩掉，但也不能安静地跳去一个没人预期的地方。
@@ -116,9 +120,9 @@ func (e *Effect) gotoPhase() (PhaseType, bool) {
 	return p, true
 }
 
-// triggerPhase 从触发效果中读出目标阶段
-func (e *Effect) triggerPhase() (PhaseType, bool) {
-	v, ok := e.Data[triggerPhaseKey]
+// detourPhase 从触发效果中读出目标阶段
+func (e *Effect) detourPhase() (PhaseType, bool) {
+	v, ok := e.Data[detourPhaseKey]
 	if !ok {
 		return PhaseUnspecified, false
 	}
@@ -228,7 +232,7 @@ const (
 // 上一个阶段投票选出来的，队长是按座位轮转的。没有这条效果，规则只能让所有人
 // 都提交、再自己丢掉不该算的，而内核会对没资格的玩家说「你可以行动」。
 //
-// 优先级：待结算的触发队列 > 本效果 > PhaseStep.Role。与 NewGotoPhaseEffect
+// 优先级：待结算的绕道队列 > 本效果 > PhaseStep.Role。与 NewGotoPhaseEffect
 // 是同一个分层——默认值加运行时改写。
 //
 // 名单在**更早的阶段**算出来是常态，所以要指定阶段而不是只作用于当前阶段。

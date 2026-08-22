@@ -121,7 +121,7 @@ func markSeat(b board, id string, keys ...string) board {
 // roundVarOfBoard 读某名玩家本回合的一项标记。
 func roundVarOfBoard(b board, id, key string) string {
 	if p, ok := b.Player(id); ok {
-		return p.RoundVar(key)
+		return p.RoundVars[key]
 	}
 	return ""
 }
@@ -129,7 +129,7 @@ func roundVarOfBoard(b board, id, key string) string {
 // protectedInEngine 这名玩家今晚被守了吗（从引擎读）。
 func protectedInEngine(e *Engine, id string) bool {
 	p, ok := e.PlayerInfo(id)
-	return ok && p.RoundVar(PlayerRoundVarProtected) != ""
+	return ok && p.RoundVars[PlayerRoundVarProtected] != ""
 }
 
 // mustSeat 取出一名玩家，不存在即终止。

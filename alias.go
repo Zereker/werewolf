@@ -32,13 +32,20 @@ type (
 )
 
 // 词汇表里内核自己拥有的那几个取值：开局前与结束后这两个生命周期阶段、
-// 主持人、以及任何板子都要有的两个通用动作。它们与 vocab.go 里狼人杀的
-// 取值同属一张表，拆开放会让人以为拼一副板子要 import 两个包。
+// 以及任何板子都要有的两个通用动作。它们与 vocab.go 里狼人杀的取值同属
+// 一张表，拆开放会让人以为拼一副板子要 import 两个包。
+//
+// RoleGod 是个例外：它不是内核的取值，是狼人杀给内核那个标记起的名字。
 const (
 	PhaseStart = engine.PhaseStart
 	PhaseEnd   = engine.PhaseEnd
 
-	RoleGod = engine.RoleGod
+	// RoleGod 上帝，也就是主持人。
+	//
+	// 内核认得的是 RoleSystem——「这一步没有玩家承担」，一个标记而不是
+	// 一个身份。它不认得「主持人」：阿瓦隆根本没有人主持，血染钟楼叫
+	// 说书人。「上帝」是狼人杀给那个标记起的名字，所以定在本包。
+	RoleGod = engine.RoleSystem
 
 	SkillSkip     = engine.SkillSkip
 	SkillAnnounce = engine.SkillAnnounce

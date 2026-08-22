@@ -138,7 +138,7 @@ func TestWrapError_MatchesSentinel(t *testing.T) {
 	if !errors.Is(err, ErrPlayerExists) {
 		t.Errorf("重复加玩家应当命中 ErrPlayerExists，实际 %v", err)
 	}
-	if err := engine.AddPlayer("x", RoleGod); !errors.Is(err, ErrInvalidRole) {
+	if err := engine.AddPlayer("x", RoleSystem); !errors.Is(err, ErrInvalidRole) {
 		t.Errorf("非法角色应当命中 ErrInvalidRole，实际 %v", err)
 	}
 

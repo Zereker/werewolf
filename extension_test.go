@@ -72,7 +72,7 @@ func (r *voteWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			continue
 		}
 		if p, ok := view.Player(ef.TargetID); ok && p.Role == roleWolfKing {
-			effects = append(effects, engine.NewAbilityTriggerEffect(ef.TargetID, phaseWolfKing))
+			effects = append(effects, engine.NewDetourEffect(ef.TargetID, phaseWolfKing))
 		}
 	}
 	return effects
@@ -372,14 +372,14 @@ func TestExtension_TriggerToUnconfiguredPhaseIsRejected(t *testing.T) {
 
 	// 猎人死了，触发指向已被删掉的阶段：应当照常进白天，且触发被否决
 	effects := g.end(PhaseDay)
-	trigger := findEffect(effects, engine.EventAbilityTriggered)
+	trigger := findEffect(effects, engine.EventDetour)
 	if trigger == nil {
 		t.Fatal("期望产生 ABILITY_TRIGGERED 效果（即便被否决）")
 	}
 	if !trigger.Canceled {
 		t.Error("目标阶段不在配置里，触发应当被否决")
 	}
-	if got := g.e.RoundContext().PendingTriggers; len(got) != 0 {
+	if got := g.e.RoundContext().Detours; len(got) != 0 {
 		t.Errorf("被否决的触发不该入队，实际 %v", got)
 	}
 	g.assertAlive("h", false, "猎人被刀")
