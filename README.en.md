@@ -125,28 +125,24 @@ items without touching the engine.
 
 ## Status
 
-**Current release: [v1.4.0](CHANGELOG.md).** Stable and complete as a Werewolf
-engine — 94.8% coverage, every rule traced to the Wikipedia article, 5000
-randomized games per test run.
+**Current release: [v1.5.0](CHANGELOG.md).** The generic kernel and the Werewolf
+rules are now separated: no code path in the engine recognises a specific role,
+camp, or cause of death, and the whole rule set is installed through the same
+public options a third party would use. 94.5% coverage, every rule traced to the
+Wikipedia article, 5000 randomized games per test run.
 
-**v2 is in progress.** The direction is to split the generic kernel from the
-Werewolf rules, so that Werewolf becomes the *first* rules pack rather than the
-only one.
+**v1.5.0 is the API freeze point.** It carries a large set of breaking changes
+(listed in the changelog); from here on the public API is a commitment.
 
-To be precise about how far that has got: no code path in the engine recognises
-a specific role, camp, or cause of death, and the wiring now runs the right way
-— `NewEngine` builds a state machine that knows nothing (no resolvers, no
-victory condition, no information boundary), and `werewolf.Options` installs the
-whole rule set through the same public options a third party would use.
+**The import path will not change.** Go requires a `/vN` suffix on modules at
+major version 2 and above, which would change every user's import path. Paying
+the breakage once and staying on the v1 line is the better trade for a library
+with no known importers yet.
 
-What is left is the physical split into two packages, so that "the rules only
-use public API" is enforced by the compiler rather than by discipline.
-
-**v2.0.0 will be the last breaking release** — after it, the public API is a
-commitment. See [CHANGELOG.md](CHANGELOG.md) for the roadmap and the full list
-of breaking changes so far.
-
-Until v2.0.0 ships, pin a tag.
+What is left is the physical split into two packages — `werewolf` and
+`werewolf/engine` — so that "the rules only use public API" is enforced by the
+compiler rather than by discipline. That is a sub-package, which also needs no
+`/vN` suffix.
 
 ## Testing
 
