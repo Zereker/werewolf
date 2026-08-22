@@ -551,6 +551,20 @@ func (s *gameState) popTrigger() {
 	s.RoundCtx.PendingTriggers = s.RoundCtx.PendingTriggers[1:]
 }
 
+// consumeTriggerFor 若队首的待结算技能正是 phase，则出队。
+//
+// 待结算队列是「一次性」的：由死亡结算入队，进入对应阶段后必须出队。
+// 不出队的话它会在整个回合内持续非空，同一个玩家会被反复拉回来再用一次技能。
+//
+// 正常推进（calculateNextPhase）与效果流回放（replayEffect 处理
+// PHASE_CHANGED）都要做这一步，且必须做得一模一样，否则回放出来的引擎
+// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉。
+func (s *gameState) consumeTriggerFor(phase pb.PhaseType) {
+	if t, ok := s.peekTrigger(); ok && t.Phase == phase {
+		s.popTrigger()
+	}
+}
+
 // hasPendingTrigger 是否还有未结算的死亡技能
 func (s *gameState) hasPendingTrigger() bool {
 	_, ok := s.peekTrigger()

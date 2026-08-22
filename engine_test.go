@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"errors"
 	"sync"
 	"testing"
 
@@ -789,4 +790,88 @@ func (l *recordingLogger) hasError(msg string) bool {
 		}
 	}
 	return false
+}
+
+// TestEngine_EndPhase_BeforeStart 未开局时不能推进阶段。
+//
+// EndPhase 此前只拒绝 END 阶段，从 START 推进会直接把游戏开起来，
+// 绕过 Start 的板子校验与解析器校验；而 Start 此后永远返回
+// 「已开始」，那些校验再也跑不到。
+func TestEngine_EndPhase_BeforeStart(t *testing.T) {
+	engine := MustNewEngine(nil)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+
+	if _, err := engine.EndPhase(); !errors.Is(err, ErrGameNotStarted) {
+		t.Fatalf("未开局推进阶段应返回 ErrGameNotStarted，实际 %v", err)
+	}
+	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_START {
+		t.Errorf("阶段不应变化，实际 %v", got)
+	}
+
+	// 非法板子（全好人）同样推不动，Start 的校验因此仍然有效
+	bad := MustNewEngine(nil)
+	mustAdd(t, bad, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	if _, err := bad.EndPhase(); !errors.Is(err, ErrGameNotStarted) {
+		t.Fatalf("期望 ErrGameNotStarted，实际 %v", err)
+	}
+	if err := bad.Start(); !errors.Is(err, ErrNoWerewolf) {
+		t.Fatalf("板子校验应当仍然生效，实际 %v", err)
+	}
+}
+
+// TestEngine_Start_DispatchesGameStarted 开局事件要推给 OnEvent 的订阅者。
+func TestEngine_Start_DispatchesGameStarted(t *testing.T) {
+	engine := MustNewEngine(nil)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+
+	var seen []pb.EventType
+	engine.OnEvent(func(ev *pb.Event) { seen = append(seen, ev.Type) })
+
+	if err := engine.Start(); err != nil {
+		t.Fatalf("Start 失败: %v", err)
+	}
+	if len(seen) != 1 || seen[0] != pb.EventType_EVENT_TYPE_GAME_STARTED {
+		t.Errorf("期望收到 GAME_STARTED，实际 %v", seen)
+	}
+}
+
+// TestEngine_AllowedSkills_MatchesPlayerView 三个入口对「谁能行动」必须同口径。
+//
+// 死亡技能阶段只有触发者能行动。AllowedSkills 此前按角色作答，
+// 会告诉同为猎人的另一名玩家「你可以开枪」，而 PlayerView 与
+// SubmitSkillUse 都不认这个答案。
+func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), hunter("h1"), hunter("h2"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	// 刀死 h1，进入他的开枪阶段
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+
+	for _, id := range []string{"h1", "h2", "s", "w1"} {
+		allowed := g.e.AllowedSkills(id)
+		fromView := g.e.PlayerView(id).AllowedSkills
+		if len(allowed) != len(fromView) {
+			t.Errorf("%s: AllowedSkills=%v 与 PlayerView=%v 不一致", id, allowed, fromView)
+		}
+	}
+
+	if got := g.e.AllowedSkills("h2"); len(got) != 0 {
+		t.Errorf("触发者是 h1，h2 不该有可用技能，实际 %v", got)
+	}
+	// 而 SubmitSkillUse 也确实会拒掉 h2
+	if err := g.use("h2", pb.SkillType_SKILL_TYPE_SHOOT, "w1"); err == nil {
+		t.Error("h2 不是触发者，开枪应当被拒")
+	}
+	if got := g.e.AllowedSkills("h1"); len(got) == 0 {
+		t.Error("触发者 h1 应当可以开枪")
+	}
 }

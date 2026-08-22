@@ -258,7 +258,9 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 
 1. 用超出内置枚举的取值定义角色、技能、阶段（建议从 1000 起）
 2. 在 `GameConfig.Phases` 里声明该阶段
-3. `Engine.RegisterResolver` 注册解析器
+3. 构造时用 `werewolf.WithResolver(phase, resolver)` 注册解析器
+   （`NewEngine` / `RestoreEngine` / `ReplayEngine` 都接受；
+   开局前也可以用 `Engine.RegisterResolver`）
 4. `Engine.AddCustomPlayer` 显式给出阵营与角色类别
 
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect`，

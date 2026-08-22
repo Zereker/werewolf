@@ -330,10 +330,14 @@ cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
     NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
 }
 
-engine, _ := werewolf.NewEngine(cfg)
-engine.RegisterResolver(phaseWolfKing, &wolfKingResolver{})
+engine, _ := werewolf.NewEngine(cfg,
+    werewolf.WithResolver(phaseWolfKing, &wolfKingResolver{}))
 engine.AddCustomPlayer("wk", roleWolfKing, pb.Camp_CAMP_EVIL, werewolf.RoleCategoryWolf)
 ```
+
+`WithResolver` 是构造选项，`NewEngine` / `RestoreEngine` / `ReplayEngine`
+三个入口都接受它。从存档续上一局用了自定义角色的游戏时必须用它——
+恢复出来的引擎已经在局中，`Engine.RegisterResolver` 只在开局前有效。
 
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。

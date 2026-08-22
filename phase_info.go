@@ -57,9 +57,14 @@ type RolePhaseInfo struct {
 	KillTarget    string              // 被杀目标（女巫可见）
 }
 
-// Engine 游戏引擎（轻量状态机）
-
-// 内置阶段的 switch，自定义阶段拿不到任何信息。
+// PhaseInfo 获取当前阶段信息（上帝视角）。
+//
+// 返回的内容包含狼队名单、女巫可见的刀口等敏感信息，供调用方作为主持人
+// 组织本阶段的流程与公告使用，**不可以整体转发给玩家**。
+// 要拿到可以直接发给某个玩家的内容，用 PlayerView。
+//
+// 各角色的信息由阶段配置（PhaseConfig.Steps）派生，因此第三方通过
+// WithResolver 加入的自定义角色同样能拿到。
 func (e *Engine) PhaseInfo() *PhaseInfo {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -141,9 +146,3 @@ func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigge
 
 	return ri
 }
-
-// calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。
-//
-// 待结算队列是「一次性」的：由死亡结算入队，进入对应阶段后必须出队。
-// 不出队的话它会在整个回合内持续非空，同一个玩家会被反复拉回来
-// 再用一次技能。

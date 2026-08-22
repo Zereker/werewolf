@@ -25,10 +25,6 @@ type Message struct {
 // receiverIDs: 接收者列表
 type MessageHandler func(msg *Message, receiverIDs []string)
 
-// PhaseInfo 阶段信息（纯状态，不含消息内容）
-
-// ==================== 消息系统 ====================
-
 // OnMessage 注册消息处理器
 // 当玩家发送消息时，处理器会收到消息和接收者列表
 func (e *Engine) OnMessage(handler MessageHandler) {

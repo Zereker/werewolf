@@ -111,8 +111,12 @@ func (e *Engine) Snapshot() *Snapshot {
 // config 为 nil 时使用默认配置。**恢复时必须提供与保存时一致的规则配置**——
 // 快照只记录局面，不记录规则；用不同的配置恢复会得到一局规则被中途换掉的游戏。
 //
-// 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中。
-func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
+// 自定义角色的解析器必须经 opts 传入：恢复出来的引擎已经不在 START
+// 阶段，RegisterResolver 对它无效，漏掉就会让该阶段的技能被静默丢弃。
+//
+// 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中、
+// 有阶段缺少解析器。
+func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*Engine, error) {
 	if snap == nil {
 		return nil, ErrNilSnapshot
 	}
@@ -121,8 +125,14 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 			"unsupported snapshot version %d (expected %d)", snap.Version, SnapshotVersion)
 	}
 
-	engine, err := NewEngine(config)
+	engine, err := NewEngine(config, opts...)
 	if err != nil {
+		return nil, err
+	}
+
+	// 与 Start 同一条校验：缺解析器的阶段会把收到的技能悄悄丢掉，
+	// 这种失败在对局中几乎无法定位，必须在把引擎交出去之前拦下
+	if err := engine.phase.validateResolvers(); err != nil {
 		return nil, err
 	}
 

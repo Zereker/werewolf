@@ -33,7 +33,7 @@ type Engine struct {
 // config 为 nil 时使用默认配置。配置会先经 GameConfig.Validate 校验——
 // 阶段流转图是使用者可替换的数据，悬空的 NextPhase 会让游戏推进到一半
 // 静默结束，这类问题必须在构造时暴露。
-func NewEngine(config *GameConfig) (*Engine, error) {
+func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 	if config == nil {
 		config = DefaultGameConfig()
 	}
@@ -41,7 +41,7 @@ func NewEngine(config *GameConfig) (*Engine, error) {
 		return nil, err
 	}
 
-	return &Engine{
+	e := &Engine{
 		config:          config,
 		state:           newState(),
 		phase:           newPhaseManager(config),
@@ -51,14 +51,18 @@ func NewEngine(config *GameConfig) (*Engine, error) {
 		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
 		messageHandlers: make([]MessageHandler, 0),
-	}, nil
+	}
+	if err := e.applyOptions(opts); err != nil {
+		return nil, err
+	}
+	return e, nil
 }
 
 // MustNewEngine 同 NewEngine，配置不合法时 panic。
 //
 // 适用于配置是编译期常量的场合（示例、测试、写死默认配置的服务启动路径）。
-func MustNewEngine(config *GameConfig) *Engine {
-	engine, err := NewEngine(config)
+func MustNewEngine(config *GameConfig, opts ...EngineOption) *Engine {
+	engine, err := NewEngine(config, opts...)
 	if err != nil {
 		panic("werewolf: invalid game config: " + err.Error())
 	}
@@ -124,6 +128,9 @@ func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, cate
 //
 // 只能在 Start 之前调用。resolver 为 nil 时报错——若想让某阶段
 // 不产生任何效果，注册一个返回空切片的解析器。
+//
+// 从快照或效果流恢复出来的引擎已经不在 START 阶段，这个入口对它们
+// 无效，请在构造时用 WithResolver。
 func (e *Engine) RegisterResolver(phase pb.PhaseType, resolver Resolver) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -131,47 +138,57 @@ func (e *Engine) RegisterResolver(phase pb.PhaseType, resolver Resolver) error {
 	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
 		return ErrGameAlreadyStarted
 	}
-	if resolver == nil {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
-			"resolver for phase %v must not be nil", phase)
+
+	return WithResolver(phase, resolver)(e)
+}
+
+// Start 开始游戏。
+//
+// 开局事件会推给 OnEvent 的订阅者，与其他事件走同一条通道。
+func (e *Engine) Start() error {
+	effect, handlers, logger, err := e.startLocked()
+	if err != nil {
+		return err
 	}
 
-	e.phase.registerResolver(phase, resolver)
+	// 分发在锁外：回调里可能回调 Engine
+	dispatchEvent(handlers, logger, effect.ToEvent())
 	return nil
 }
 
-// Start 开始游戏
-func (e *Engine) Start() error {
+// startLocked 在锁内完成开局，返回需要在锁外发布的内容。
+func (e *Engine) startLocked() (*Effect, []EventHandler, Logger, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
-		return ErrGameAlreadyStarted
+		return nil, nil, nil, ErrGameAlreadyStarted
 	}
 
 	// 校验板子：缺任一阵营的局面从第一次结算起就已分出胜负，
 	// 与其让它「开局即结束」，不如在这里直接拒绝
 	good, evil := e.state.countCamps()
 	if evil == 0 {
-		return ErrNoWerewolf
+		return nil, nil, nil, ErrNoWerewolf
 	}
 	if good == 0 {
-		return ErrNoGoodPlayer
+		return nil, nil, nil, ErrNoGoodPlayer
 	}
 
 	// 每个阶段都必须有解析器，否则推进到那里时技能会被静默丢弃。
 	// 解析器可以在构造之后注册，故此项校验放在这里而非 NewEngine。
 	if err := e.phase.validateResolvers(); err != nil {
-		return err
+		return nil, nil, nil, err
 	}
 
 	start := e.config.startPhase()
 	e.state.startAt(start)
 
-	e.effectLog = append(e.effectLog, newGameStartedEffect(start))
+	effect := newGameStartedEffect(start)
+	e.effectLog = append(e.effectLog, effect)
 	e.logger.Info("game started", RoundField(1), PhaseField(start))
 
-	return nil
+	return effect, e.snapshotEventHandlersLocked(), e.logger, nil
 }
 
 // SubmitSkillUse 提交技能使用
@@ -236,6 +253,12 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	currentPhase := e.state.Phase
 	if currentPhase == pb.PhaseType_PHASE_TYPE_END {
 		return phaseOutcome{}, ErrGameEnded
+	}
+	// 未开局就推进会绕过 Start 的全部前置校验——板子里有没有狼、
+	// 每个阶段有没有解析器——而 Start 此后永远返回「已开始」，
+	// 那些校验再也跑不到
+	if currentPhase == pb.PhaseType_PHASE_TYPE_START {
+		return phaseOutcome{}, ErrGameNotStarted
 	}
 
 	e.logger.Debug("ending phase", PhaseField(currentPhase), RoundField(e.state.Round))
@@ -337,29 +360,20 @@ func (e *Engine) Round() int {
 	return e.state.Round
 }
 
-// allowedSkills 获取玩家当前可用的技能
+// AllowedSkills 该玩家此刻能提交的技能，为空即「还没轮到他」。
+//
+// 与 PlayerView(id).AllowedSkills 走同一条路径，也与 SubmitSkillUse
+// 的校验一致：三者答案不同的话，调用方按其中一个组织流程，
+// 玩家的提交就会被另一个拒掉。
 func (e *Engine) AllowedSkills(playerID string) []pb.SkillType {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	player, ok := e.state.getPlayer(playerID)
+	info, ok := e.state.PlayerInfo(playerID)
 	if !ok {
 		return nil
 	}
-
-	// 待结算死亡技能的玩家即便已出局，本阶段仍持有其技能
-	if !player.Alive && !e.isPendingActor(playerID) {
-		return nil
-	}
-
-	return e.phase.allowedSkills(e.state.Phase, player.Role)
-}
-
-// isPendingActor 该玩家是否是当前阶段待结算死亡技能的持有者。
-// 调用前需持有 e.mu。
-func (e *Engine) isPendingActor(playerID string) bool {
-	t, ok := e.state.peekTrigger()
-	return ok && t.PlayerID == playerID && t.Phase == e.state.Phase
+	return e.allowedSkillsForPlayer(playerID, info)
 }
 
 // AlivePlayerIDs 返回所有存活玩家的 ID，按字典序排序。
@@ -407,20 +421,11 @@ func (e *Engine) WolfTeammates(playerID string) []string {
 	return e.state.getWolfTeammates(playerID)
 }
 
-// PhaseInfo 获取当前阶段信息（上帝视角）。
-//
-// 返回的内容包含狼队名单、女巫可见的刀口等敏感信息，供调用方作为主持人
-// 组织本阶段的流程与公告使用，**不可以整体转发给玩家**。
-// 要拿到可以直接发给某个玩家的内容，用 PlayerView。
-//
-// 各角色的信息由阶段配置（PhaseConfig.Steps）派生，因此第三方通过
-// RegisterResolver 加入的自定义角色同样能拿到——此前这里是一个写死
+// calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。
+// 调用前需持有 e.mu。
 func (e *Engine) calculateNextPhase(currentPhase pb.PhaseType) pb.PhaseType {
-	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队。
-	// 不出队的话标记会在整个回合内持续为真，同一个玩家会被反复拉回来。
-	if t, ok := e.state.peekTrigger(); ok && t.Phase == currentPhase {
-		e.state.popTrigger()
-	}
+	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队
+	e.state.consumeTriggerFor(currentPhase)
 
 	// 还有待结算的死亡技能，先去处理（可能有多个，逐个来）
 	if t, ok := e.state.peekTrigger(); ok {
