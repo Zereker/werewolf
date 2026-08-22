@@ -591,9 +591,14 @@ golangci-lint run       # 静态检查（覆盖测试代码）
 go run ./example        # 示例必须能跑通，不是只能编译
 ```
 
-## 更新日志
+## 更新日志与发版
 
 见 [CHANGELOG.md](CHANGELOG.md)。破坏性变更在每个版本开头单独列出。
+
+发版走 GitHub Actions：**Actions → Release → Run workflow**，填一个形如 `v1.3.0`
+的版本号。workflow 会先跑一遍完整验证，再创建 tag 与 Release，发布说明取自
+CHANGELOG 里对应的小节。四道闸：版本号格式、tag 未占用、CHANGELOG 里有对应
+小节、v2 及以上必须先改模块路径（本项目刻意不走 `/vN`，所以这一条实际是拦下）。
 
 ## 许可证
 
