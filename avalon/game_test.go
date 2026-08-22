@@ -163,3 +163,128 @@ func typesOf(effects []*engine.Effect) []engine.EventType {
 	}
 	return out
 }
+
+// runMission 打完一整轮任务：提名 -> 全票通过 -> 队员按 fails 投失败票
+//
+// members 里前 fails 个人投失败，其余投成功。
+func runMission(t *testing.T, e *engine.Engine, fails int, members ...string) []*engine.Effect {
+	t.Helper()
+	leader := leaderID(e.View())
+	for _, m := range members {
+		mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, TargetID: m})
+	}
+	mustEnd(t, e)
+
+	for _, id := range e.AlivePlayerIDs() {
+		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
+	}
+	mustEnd(t, e)
+
+	for i, id := range members {
+		skill := SkillMissionSuccess
+		if i < fails {
+			skill = SkillMissionFail
+		}
+		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: skill})
+	}
+	return mustEnd(t, e)
+}
+
+// TestFullGame_GoodWinsThreeThenSurvivesAssassination
+// 好人连赢三轮，刺客指错人，好人获胜。
+func TestFullGame_GoodWinsThreeThenSurvivesAssassination(t *testing.T) {
+	e := fivePlayer(t) // a=梅林 b=派西维尔 c=忠臣 d=刺客 e=莫甘娜
+
+	// 5 人局任务人数：2,3,2,3,3。三轮全成功，队伍里只放好人。
+	runMission(t, e, 0, "a", "b")
+	runMission(t, e, 0, "a", "b", "c")
+	last := runMission(t, e, 0, "a", "b")
+
+	t.Logf("三轮成功之后：阶段=%v 结束=%v 效果=%v", e.Phase(), e.IsGameOver(), typesOf(last))
+
+	if e.IsGameOver() {
+		t.Fatal("刺杀还没进行，这局不该结束——胜负判定必须推迟到刺杀之后")
+	}
+	if e.Phase() != PhaseAssassin {
+		t.Fatalf("阶段 = %v，期望被触发队列带到 ASSASSIN", e.Phase())
+	}
+
+	// 刺客指错人（指了派西维尔，梅林是 a）
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, TargetID: "b"})
+	mustEnd(t, e)
+
+	if !e.IsGameOver() {
+		t.Fatal("刺杀结束之后这局该结束了")
+	}
+	if got := e.Winner(); got != CampGood {
+		t.Errorf("赢家 = %v，期望 GOOD（刺客指错了）", got)
+	}
+}
+
+// TestFullGame_AssassinFindsMerlin 好人连赢三轮，但刺客指中梅林，坏人反败为胜。
+func TestFullGame_AssassinFindsMerlin(t *testing.T) {
+	e := fivePlayer(t)
+
+	runMission(t, e, 0, "a", "b")
+	runMission(t, e, 0, "a", "b", "c")
+	runMission(t, e, 0, "a", "b")
+
+	if e.Phase() != PhaseAssassin {
+		t.Fatalf("阶段 = %v，期望 ASSASSIN", e.Phase())
+	}
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, TargetID: "a"})
+	mustEnd(t, e)
+
+	if !e.IsGameOver() {
+		t.Fatal("刺杀之后该结束")
+	}
+	if got := e.Winner(); got != CampEvil {
+		t.Errorf("赢家 = %v，期望 EVIL（刺中梅林反败为胜）", got)
+	}
+}
+
+// TestFullGame_EvilWinsThreeMissions 坏人破坏三轮任务直接获胜，不经过刺杀。
+func TestFullGame_EvilWinsThreeMissions(t *testing.T) {
+	e := fivePlayer(t) // d=刺客 e=莫甘娜 都是坏人
+
+	runMission(t, e, 1, "d", "e")
+	runMission(t, e, 1, "d", "e", "a")
+	runMission(t, e, 1, "d", "e")
+
+	if !e.IsGameOver() {
+		t.Fatal("三轮失败之后该结束")
+	}
+	if got := e.Winner(); got != CampEvil {
+		t.Errorf("赢家 = %v，期望 EVIL", got)
+	}
+}
+
+// TestHammer_FiveRejectionsEndTheGame 连续五次组队被否决，坏人直接获胜。
+func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
+	e := fivePlayer(t)
+
+	for i := 1; i <= HammerRejections; i++ {
+		leader := leaderID(e.View())
+		for _, m := range []string{"a", "b"} {
+			mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, TargetID: m})
+		}
+		mustEnd(t, e)
+		for _, id := range e.AlivePlayerIDs() {
+			mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
+		}
+		mustEnd(t, e)
+		if i < HammerRejections {
+			if e.IsGameOver() {
+				t.Fatalf("才否决 %d 次就结束了，应当到 %d 次", i, HammerRejections)
+			}
+			mustEnd(t, e) // 空转的任务阶段
+		}
+	}
+
+	if !e.IsGameOver() {
+		t.Fatalf("连续 %d 次否决之后该结束", HammerRejections)
+	}
+	if got := e.Winner(); got != CampEvil {
+		t.Errorf("赢家 = %v，期望 EVIL", got)
+	}
+}
