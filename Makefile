@@ -11,8 +11,11 @@ build:
 test:
 	go test ./...
 
+# 覆盖率按两个库包合并统计：拆包之后内核大部分代码由规则包的测试驱动，
+# 分开看的话内核会显示成 39%，而那是统计口径的假象。
 test-cover:
-	go test -cover ./...
+	go test -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/engine \
+		-coverprofile=coverage.out ./... && go tool cover -func=coverage.out | tail -1
 
 race:
 	go test -race ./...

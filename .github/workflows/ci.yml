@@ -36,7 +36,13 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        # -coverpkg 指到两个库包：拆包之后内核大部分代码由规则包的测试
+        # 驱动，不加这个的话内核会显示成 39%，而那是统计口径的假象。
+        # 不含 example/：示例是使用者，不是被测对象，算进去只会稀释数字。
+        run: >
+          go test -v -race -covermode=atomic -coverprofile=coverage.out
+          -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/engine
+          ./...
 
       # 每个基准各跑一次。不比对耗时（CI 的机器时快时慢，比了也是噪声），
       # 只确保它们没有随重构烂掉——不跑的基准迟早编译不过或 panic。

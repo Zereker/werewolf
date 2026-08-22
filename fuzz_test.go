@@ -158,7 +158,7 @@ func withWolfKing(cfg *GameConfig, rules Rules) []EngineOption {
 	cfg.Phases[phaseWolfKing] = &PhaseConfig{
 		Type:      phaseWolfKing,
 		Steps:     []PhaseStep{{Role: roleWolfKing, Skill: skillWolfClaw}},
-		NextPhase: cfg.startPhase(),
+		NextPhase: cfg.StartPhase,
 	}
 	return []EngineOption{
 		WithRoleSetup(roleWolfKing, RoleSetupFunc(wolfKingSetup)),
@@ -332,7 +332,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		if e.Round() < lastRound {
 			t.Fatalf("seed=%d step=%d 回合数倒退: %d -> %d", seed, step, lastRound, e.Round())
 		}
-		if e.Phase() == cfg.startPhase() {
+		if e.Phase() == cfg.StartPhase {
 			cycles++
 		}
 		if e.Round() < cycles {

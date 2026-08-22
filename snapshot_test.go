@@ -139,20 +139,20 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 
 	t.Run("守卫上回合目标", func(t *testing.T) {
 		// 第一夜守的是 v2，恢复后连守限制必须仍然生效
-		p, ok := restored.state.getPlayer("g")
+		p, ok := restored.PlayerInfo("g")
 		if !ok {
 			t.Fatal("守卫丢失")
 		}
-		if got := p.Vars[PlayerVarLastProtectedTarget]; got != "v2" {
+		if got := p.Var(PlayerVarLastProtectedTarget); got != "v2" {
 			t.Errorf("守卫上回合目标: 期望 v2，实际 %q", got)
 		}
 	})
 
 	t.Run("出局玩家", func(t *testing.T) {
-		if restored.state.mustAlive(t, "v3") {
+		if mustAlive(t, restored, "v3") {
 			t.Error("被放逐的 v3 不应复活")
 		}
-		if !restored.state.mustAlive(t, "v1") {
+		if !mustAlive(t, restored, "v1") {
 			t.Error("被救回的 v1 应当存活")
 		}
 	})
@@ -167,10 +167,11 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	})
 
 	t.Run("未结算技能", func(t *testing.T) {
-		if len(restored.pendingUses) != 1 {
-			t.Fatalf("待结算技能数: 期望 1，实际 %d", len(restored.pendingUses))
+		snap := restored.Snapshot()
+		if len(snap.PendingUses) != 1 {
+			t.Fatalf("待结算技能数: 期望 1，实际 %d", len(snap.PendingUses))
 		}
-		u := restored.pendingUses[0]
+		u := snap.PendingUses[0]
 		if u.PlayerID != "g" || u.Skill != SkillProtect || u.TargetID != "s" {
 			t.Errorf("待结算技能内容不符: %+v", u)
 		}
@@ -178,9 +179,9 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 }
 
 // mustAlive 测试辅助
-func (s *gameState) mustAlive(t *testing.T, id string) bool {
+func mustAlive(t *testing.T, e *Engine, id string) bool {
 	t.Helper()
-	p, ok := s.getPlayer(id)
+	p, ok := e.PlayerInfo(id)
 	if !ok {
 		t.Fatalf("玩家不存在: %s", id)
 	}
@@ -472,9 +473,7 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 	g.endAny()
 
 	// 再加一项第三方的自定义状态
-	g.e.mu.Lock()
-	g.e.state.applyEffect(NewSetPlayerVarEffect("v3", "custom.flag", "yes"))
-	g.e.mu.Unlock()
+	g.e.Apply(NewSetPlayerVarEffect("v3", "custom.flag", "yes"))
 
 	snap := g.e.Snapshot()
 	byID := make(map[string]PlayerSnapshot, len(snap.Players))
@@ -482,9 +481,9 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 		byID[p.ID] = p
 	}
 
-	// 逐个字段与引擎内部的真值比对
-	g.e.mu.RLock()
-	for id, want := range g.e.state.players {
+	// 逐个字段与引擎给出的真值比对
+	for _, id := range g.e.AlivePlayerIDs() {
+		want, _ := g.e.PlayerInfo(id)
 		got := byID[id]
 		switch {
 		case got.Role != want.Role:
@@ -499,7 +498,6 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 				id, got.RoundVars, want.RoundVars)
 		}
 	}
-	g.e.mu.RUnlock()
 
 	// 往返之后再导一次，必须逐字节一致
 	restored, err := Restore(nil, DefaultRules(), snap)

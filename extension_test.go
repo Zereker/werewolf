@@ -187,13 +187,13 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 	engine := newWolfKingGame(t)
 
 	// 内置狼人出局，狼王还在 —— 狼人阵营未灭，游戏继续
-	engine.state.applyEffect(NewSetAliveEffect("w1", false))
+	engine.Apply(NewSetAliveEffect("w1", false))
 	if over, _ := checkVictory(engine); over {
 		t.Error("狼王仍在场，狼人阵营不应判为全灭")
 	}
 
 	// 狼王也出局 —— 好人获胜
-	engine.state.applyEffect(NewSetAliveEffect("wk", false))
+	engine.Apply(NewSetAliveEffect("wk", false))
 	over, winner := checkVictory(engine)
 	if !over || winner != CampGood {
 		t.Errorf("狼人阵营全灭应判好人胜利，实际 over=%v winner=%v", over, winner)
@@ -307,13 +307,13 @@ func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	}
 
 	// 互为队友
-	if got := engine.WolfTeammates("wk"); len(got) != 1 || got[0] != "w1" {
+	if got := engine.Teammates("wk"); len(got) != 1 || got[0] != "w1" {
 		t.Errorf("狼王应当看到队友 w1，实际 %v", got)
 	}
-	if got := engine.WolfTeammates("w1"); len(got) != 1 || got[0] != "wk" {
+	if got := engine.Teammates("w1"); len(got) != 1 || got[0] != "wk" {
 		t.Errorf("真狼应当看到队友 wk，实际 %v", got)
 	}
-	if got := engine.WolfTeammates("s"); got != nil {
+	if got := engine.Teammates("s"); got != nil {
 		t.Errorf("好人不该有狼队友，实际 %v", got)
 	}
 

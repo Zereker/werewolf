@@ -139,10 +139,22 @@ major version 2 and above, which would change every user's import path. Paying
 the breakage once and staying on the v1 line is the better trade for a library
 with no known importers yet.
 
-What is left is the physical split into two packages — `werewolf` and
-`werewolf/engine` — so that "the rules only use public API" is enforced by the
-compiler rather than by discipline. That is a sub-package, which also needs no
-`/vN` suffix.
+The two layers are two packages:
+
+| Package | What it is |
+|---|---|
+| `github.com/Zereker/werewolf` | The Werewolf rules: roles, phases, resolvers, victory |
+| `github.com/Zereker/werewolf/engine` | The kernel: players, a phase ring, four state primitives, the information boundary |
+
+**"The rules only use public API" is enforced by the compiler**, not by
+discipline — the rules package sits outside the kernel, and every door it uses
+is a door you can use too. To check: grep `engine/` for `WEREWOLF`. It is not
+there.
+
+You do not have to import both. The kernel's public API is re-exported from the
+root package (`alias.go`), so `werewolf.Effect` and `engine.Effect` are the same
+type. Import `werewolf/engine` directly when you are writing a rules pack of
+your own.
 
 ## Testing
 

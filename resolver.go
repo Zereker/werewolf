@@ -2,16 +2,6 @@ package werewolf
 
 import ()
 
-// Resolver 冲突解析器接口。
-//
-// 实现者只能读 GameView、只能通过返回 Effect 表达状态变更——
-// 这是引擎最重要的不变量，由签名保证而非靠约定。
-//
-// 注意：Resolve 在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法。
-type Resolver interface {
-	Resolve(uses []*SkillUse, view GameView) []*Effect
-}
-
 // voteResult 投票结果（包内使用）
 type voteResult struct {
 	Winner  string              // 得票最多的目标（平票时为空）

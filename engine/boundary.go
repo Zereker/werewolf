@@ -13,7 +13,7 @@
 // 现在这三个问题都由规则回答，内核只保证一件事：**自己的状态原语永远
 // 不外发**。狼人杀的答案在 wolfboundary.go 里，它没有特权，可以整个换掉。
 
-package werewolf
+package engine
 
 // AudienceProvider 回答「一件事该告诉哪些玩家」。
 //

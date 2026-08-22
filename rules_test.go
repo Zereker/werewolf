@@ -250,16 +250,16 @@ func (g *ruleGame) vote(target string, voters ...string) {
 }
 
 // setDead 直接把玩家置为死亡，用于构造胜负判定的局面。
+//
+// 走 Engine.Apply 而不是伸手改状态：它是同一个写入点，效果会进效果流，
+// 存档与回放因此不会因为测试铺前置而失真。
 func (g *ruleGame) setDead(ids ...string) {
 	g.t.Helper()
-	g.e.mu.Lock()
-	defer g.e.mu.Unlock()
 	for _, id := range ids {
-		p, ok := g.e.state.players[id]
-		if !ok {
+		if _, ok := g.e.PlayerInfo(id); !ok {
 			g.t.Fatalf("玩家不存在: %s", id)
 		}
-		p.Alive = false
+		g.e.Apply(NewSetAliveEffect(id, false))
 	}
 }
 
@@ -1134,9 +1134,7 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	}
 
 	// 好人这边唯一的神职出局 —— 屠神成立，狼人胜
-	e.mu.Lock()
-	e.state.players["s"].Alive = false
-	e.mu.Unlock()
+	e.Apply(NewSetAliveEffect("s", false))
 
 	over, winner := checkVictory(e)
 	if !over {

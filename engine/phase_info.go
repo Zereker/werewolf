@@ -3,7 +3,7 @@
 // 全部由阶段配置（PhaseConfig.Steps）派生，因此第三方经 WithResolver
 // 加入的自定义角色同样能拿到。
 
-package werewolf
+package engine
 
 import ()
 
@@ -128,8 +128,8 @@ func (e *Engine) buildRolePhaseInfo(role RoleType, triggerActive bool, trigger P
 
 	for _, id := range ri.PlayerIDs {
 		// 队友由 TeammateProvider 回答，与 PlayerView 走同一条路。
-		// 此前这里是 case RoleWerewolf，于是经 AddCustomPlayer 加进来的
-		// 狼王在这份名单里拿不到队友——而另外两条路都是对的，只有主持人
+		// 此前这里按角色硬判，于是自定义的同阵营角色
+		// 自定义的同阵营角色在这份名单里拿不到队友——而另外两条路都是对的，只有主持人
 		// 照着组织流程的这一份漏了。三处共用一个判定就不会再有这种事。
 		if mates := e.teammatesOf(id); len(mates) > 0 {
 			if ri.Teammates == nil {

@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"sync"
@@ -36,6 +36,12 @@ type Engine struct {
 	teammates TeammateProvider
 	speech    SpeechProvider
 
+	// winner 分出胜负时的赢家，未分出时为 CampUnspecified。
+	//
+	// 记下来而不是每次现算：判定器是可替换的，「这局谁赢了」应该是
+	// 结束那一刻定下的事实，不该因为之后有人换了判定器就变了。
+	winner Camp
+
 	// 当前阶段收集的技能使用
 	pendingUses []*SkillUse
 
@@ -55,12 +61,12 @@ type Engine struct {
 // 没有受众划分。规则全部经 opts 传入——狼人杀的那一整套见 werewolf.New，
 // 它自己也只是这么组装的，没有走任何后门。
 //
-// config 为 nil 时使用默认阶段配置。配置会先经 GameConfig.Validate 校验——
-// 阶段流转图是使用者可替换的数据，悬空的 NextPhase 会让游戏推进到一半
-// 静默结束，这类问题必须在构造时暴露。
+// config 是必需的：内核没有默认板子可给。配置会先经 GameConfig.Validate
+// 校验——阶段流转图是使用者可替换的数据，悬空的 NextPhase 会让游戏推进到
+// 一半静默结束，这类问题必须在构造时暴露。
 func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 	if config == nil {
-		config = DefaultGameConfig()
+		return nil, WrapError(CodeInvalidConfig, "config must not be nil")
 	}
 	if err := config.Validate(); err != nil {
 		return nil, err
@@ -104,7 +110,7 @@ func MustNewEngine(config *GameConfig, opts ...EngineOption) *Engine {
 //
 // 阵营、角色类别这些**不是参数**：它们是规则的分法，由该角色的
 // RoleSetup 在入座时作为初始状态发放（见 WithRoleSetup）。这里此前
-// 还有一个 AddCustomPlayer，多两个参数专供扩展角色显式给出阵营与类别——
+// 还有一个多两个参数的重载，专供扩展角色显式给出阵营与类别——
 // 于是「这个角色属于哪一边」这件事的答案，取决于调用方在每一处入座
 // 时记得填对，而不是写在角色自己身上。
 func (e *Engine) AddPlayer(id string, role RoleType) error {
@@ -308,6 +314,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 		e.effectLog = append(e.effectLog, endEffect)
 		out.events = append(out.events, endEffect.ToEvent())
 
+		e.winner = winner
 		e.logger.Info("game ended", F("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
 	} else {
@@ -330,6 +337,55 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 // 为准，并处理动态触发的阶段（猎人死亡后的开枪阶段）。
 func (e *Engine) EndPhase() ([]*Effect, error) {
 	return e.endPhaseInternal()
+}
+
+// Winner 这局的赢家。还没分出胜负时为 CampUnspecified。
+//
+// 谁赢是结束那一刻由 VictoryChecker 定下的，此后不再变——之后换掉判定器
+// 也不会改写已经结束的这一局。
+func (e *Engine) Winner() Camp {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.winner
+}
+
+// View 返回当前局面的只读视图。
+//
+// 与 Resolver 拿到的是同一种东西。宿主想自己算一次什么（「按我这套判定
+// 现在谁赢了」「还有几个神职活着」）时用它，不必把局面一项项读出来再拼。
+//
+// 视图是取那一刻的值：之后引擎推进不会改动已经拿到的这一份。
+func (e *Engine) View() GameView {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return newStateView(e.state.clone())
+}
+
+// Apply 直接施加一批效果，绕开阶段结算。
+//
+// 这是一把有刃的工具，但它是必需的：宿主真的会遇到「玩家掉线判死」
+// 「管理员踢人」「后台修正一次误判」这类不属于任何阶段的状态变更，
+// 而规则包要单元测试自己的解析器时也需要它。
+//
+// 它走的仍然是**同一个写入点**：效果进效果流、被否决的不生效、内核的
+// 状态原语不外发、其余推给 OnEvent。因此存档、回放、审计都不会因为
+// 用了它而失真——这正是它比「伸手改 PlayerState」强的地方。
+//
+// 它不做的事：不判胜负、不流转阶段。想让引擎重新算一次胜负，
+// 调用 EndPhase。
+//
+// 返回真正生效的那些效果（nil 会被剔除）。
+func (e *Engine) Apply(effects ...*Effect) []*Effect {
+	e.mu.Lock()
+	kept, events := e.applyEffects(effects)
+	e.effectLog = append(e.effectLog, kept...)
+	handlers := e.snapshotEventHandlersLocked()
+	e.mu.Unlock()
+
+	for _, event := range events {
+		dispatchEvent(handlers, e.logger, event)
+	}
+	return kept
 }
 
 // PlayerInfo 获取玩家信息的只读副本（推荐使用）
@@ -388,14 +444,14 @@ func (e *Engine) IsGameOver() bool {
 	return e.state.Phase == PhaseEnd
 }
 
-// NightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）。
+// RoundVar 读本回合的一项自定义状态，没有则为空串。
 //
-// 这是狼人杀规则包提供的便利读法，内核只知道有一个叫
-// RoundVarKillTarget 的回合变量，不知道它是什么意思。
-func (e *Engine) NightKillTarget() string {
+// 规则用它提供自己的便利读法——狼人杀的「今晚的刀口」就是
+// werewolf.Engine.NightKillTarget，内核只知道有这么一个键。
+func (e *Engine) RoundVar(key string) string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.state.roundVar(RoundVarKillTarget)
+	return e.state.roundVar(key)
 }
 
 // RoundContext 获取回合上下文的只读副本
@@ -405,11 +461,11 @@ func (e *Engine) RoundContext() *RoundContext {
 	return e.state.RoundContext()
 }
 
-// WolfTeammates 获取狼队队友（不含自己），非狼队成员返回 nil。
+// Teammates 这名玩家被告知与他同一边的人，不含自己。
 //
-// 这是狼人杀规则包的便利读法，与 PlayerView.Teammates、PhaseInfo 里的
-// 那一份共用同一个 TeammateProvider——换掉 provider，三处一起变。
-func (e *Engine) WolfTeammates(playerID string) []string {
+// 与 PlayerView.Teammates、PhaseInfo 里的那一份共用同一个
+// TeammateProvider——换掉 provider，三处一起变。
+func (e *Engine) Teammates(playerID string) []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.teammatesOf(playerID)

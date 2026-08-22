@@ -32,7 +32,7 @@ func TestWithLoggerAndMetrics(t *testing.T) {
 
 // TestWithNilOption nil 选项与 nil 日志/指标都不该让构造失败。
 func TestWithNilOption(t *testing.T) {
-	if _, err := NewEngine(nil, nil, WithLogger(nil), WithMetrics(nil)); err != nil {
+	if _, err := NewEngine(DefaultGameConfig(), nil, WithLogger(nil), WithMetrics(nil)); err != nil {
 		t.Errorf("nil 选项应当被忽略，实际 %v", err)
 	}
 }

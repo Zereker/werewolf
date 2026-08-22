@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import ()
 
@@ -46,6 +46,26 @@ func (p *phaseManager) phaseConfig(phase PhaseType) *PhaseConfig {
 // resolver 获取阶段解析器
 func (p *phaseManager) resolver(phase PhaseType) Resolver {
 	return p.resolvers[phase]
+}
+
+// stepFor 找出「这个角色在这个阶段用这个技能」对应的步骤声明。
+//
+// 与 allowedSkills 共用同一份判定：RoleUnspecified 表示「所有角色」。
+// 找不到即这个技能此刻不被允许。
+func (p *phaseManager) stepFor(phase PhaseType, role RoleType, skill SkillType) (PhaseStep, bool) {
+	pc := p.phaseConfig(phase)
+	if pc == nil {
+		return PhaseStep{}, false
+	}
+	for _, step := range pc.Steps {
+		if step.Skill != skill {
+			continue
+		}
+		if step.Role == role || step.Role == RoleUnspecified {
+			return step, true
+		}
+	}
+	return PhaseStep{}, false
 }
 
 // allowedSkills 获取指定角色在当前阶段允许的技能
@@ -102,20 +122,13 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 		return ErrPlayerDead
 	}
 
-	// 检查技能是否在当前阶段允许
-	allowedSkills := p.allowedSkills(state.Phase, player.Role)
-	allowed := false
-	for _, skill := range allowedSkills {
-		if skill == use.Skill {
-			allowed = true
-			break
-		}
-	}
+	// 检查技能是否在当前阶段允许，并取出它的声明
+	step, allowed := p.stepFor(state.Phase, player.Role, use.Skill)
 	if !allowed {
 		return ErrSkillNotAllowed
 	}
 
-	// SKIP 技能不需要目标
+	// 弃权不需要目标
 	if use.Skill == SkillSkip {
 		return nil
 	}
@@ -126,8 +139,8 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 		if !ok {
 			return ErrTargetNotFound
 		}
-		// 某些技能需要目标存活
-		if !target.Alive && use.Skill != SkillAntidote {
+		// 能否指向已出局的玩家由步骤声明，内核不认得任何具体技能
+		if !target.Alive && !step.AllowDeadTarget {
 			return ErrTargetDead
 		}
 	}

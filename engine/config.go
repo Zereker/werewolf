@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"time"
@@ -10,45 +10,12 @@ import (
 // 这些常量与 PhaseConfig.Timeout 是给调用方参考的建议值，
 // 调用方据此设置自己的定时器。
 const (
-	DefaultPhaseTimeout = 30 * time.Second // 默认阶段超时
-	DayPhaseTimeout     = 60 * time.Second // 白天阶段超时（发言时间较长）
-	VotePhaseTimeout    = 30 * time.Second // 投票阶段超时
-	NightPhaseTimeout   = 15 * time.Second // 夜晚子阶段超时
-	WolfPhaseTimeout    = 30 * time.Second // 狼人阶段超时（需要协商）
-
-	// HunterPhaseTimeout 猎人开枪阶段超时。
-	// 与夜晚子阶段同为 15 秒，但白天的开枪阶段也用它——开枪是一个
-	// 即时决定，不需要白天那 60 秒的发言时间，与「白天」无关。
-	HunterPhaseTimeout = 15 * time.Second
+	// DefaultPhaseTimeout 未给出 PhaseConfig.Timeout 时的兜底建议值。
+	//
+	// 这是给调用方参考的建议值，引擎不据此计时——什么时候调 EndPhase
+	// 完全由调用方决定。各阶段的建议值是板子数据，见规则包。
+	DefaultPhaseTimeout = 30 * time.Second
 )
-
-// hunterShootGroup 猎人「开枪 / 不开枪」这一对互斥备选的组名。
-const hunterShootGroup = "hunter-shoot"
-
-// VictoryMode 胜负判定方式
-type VictoryMode int
-
-const (
-	// VictoryModeSideWipe 屠边（默认）：狼人需淘汰「所有平民」或「所有神职」之一。
-	// 依据维基「狼人殺」条目：「狼人陣營需要淘汰所有平民或神職人員以獲取勝利」。
-	VictoryModeSideWipe VictoryMode = iota
-
-	// VictoryModeTownWipe 屠城：好人存活数 <= 狼人存活数即狼人胜利。
-	// 不区分神职与平民，适合无神职或角色板子简单的场合。
-	VictoryModeTownWipe
-)
-
-// String 实现 fmt.Stringer，让日志与错误信息里出现的是名字而不是 0/1。
-func (m VictoryMode) String() string {
-	switch m {
-	case VictoryModeSideWipe:
-		return "SIDE_WIPE"
-	case VictoryModeTownWipe:
-		return "TOWN_WIPE"
-	default:
-		return "UNKNOWN"
-	}
-}
 
 // GameConfig 阶段机的配置：从哪儿开始、阶段怎么流转、建议多久。
 //
@@ -120,6 +87,15 @@ type PhaseStep struct {
 	// 只影响就绪判断，不影响技能校验：一个阶段允许哪些技能仍由
 	// 全部步骤共同决定。
 	Group string
+
+	// AllowDeadTarget 这个技能能否指向已出局的玩家。
+	//
+	// 默认不能——指着一具尸体用技能几乎总是提交错了。女巫的解药是例外：
+	// 她要救的正是今晚已经被判死的那个人。
+	//
+	// 此前这条例外按技能名字硬判写在内核的校验里，
+	// 也就是内核认得「解药」。现在它是规则声明出来的数据。
+	AllowDeadTarget bool
 }
 
 // SkillUse 技能使用记录
@@ -134,151 +110,6 @@ type SkillUse struct {
 	Phase PhaseType
 	Round int
 }
-
-// DefaultGameConfig 默认游戏配置
-func DefaultGameConfig() *GameConfig {
-	return &GameConfig{
-		StartPhase:     PhaseNightGuard,
-		DefaultTimeout: DefaultPhaseTimeout,
-		Phases: map[PhaseType]*PhaseConfig{
-			// 白天和投票阶段
-			PhaseDay:       StandardDayPhase(),
-			PhaseVote:      StandardVotePhase(),
-			PhaseDayHunter: DayHunterPhase(),
-			// 夜晚子阶段
-			PhaseNightGuard:   NightGuardPhase(),
-			PhaseNightWolf:    NightWolfPhase(),
-			PhaseNightWitch:   NightWitchPhase(),
-			PhaseNightSeer:    NightSeerPhase(),
-			PhaseNightResolve: NightResolvePhase(),
-			PhaseNightHunter:  NightHunterPhase(),
-		},
-	}
-}
-
-// StandardDayPhase 标准白天阶段配置
-func StandardDayPhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseDay,
-		// 白天只有发言，而发言走 SendMessage 而非技能通道，
-		// 因此这里没有玩家技能步骤
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-		},
-		Timeout:   DayPhaseTimeout,
-		NextPhase: PhaseVote,
-	}
-}
-
-// StandardVotePhase 标准投票阶段配置
-func StandardVotePhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseVote,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-			{Role: RoleUnspecified, Skill: SkillVote, Required: true, Multiple: true},
-		},
-		Timeout:   VotePhaseTimeout,
-		NextPhase: PhaseNightGuard, // 进入下一夜
-	}
-}
-
-// DayHunterPhase 白天猎人阶段配置（被投票出局后触发）
-func DayHunterPhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseDayHunter,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-			// 开枪与不开枪是二选一，用同一个 Group 声明出来
-			{Role: RoleHunter, Skill: SkillShoot, Group: hunterShootGroup},
-			{Role: RoleHunter, Skill: SkillSkip, Group: hunterShootGroup},
-		},
-		Timeout:   HunterPhaseTimeout,
-		NextPhase: PhaseNightGuard, // 猎人行动后进入下一夜
-	}
-}
-
-// NightGuardPhase 守卫阶段配置
-func NightGuardPhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseNightGuard,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-			{Role: RoleGuard, Skill: SkillProtect},
-		},
-		Timeout:   NightPhaseTimeout,
-		NextPhase: PhaseNightWolf,
-	}
-}
-
-// NightWolfPhase 狼人阶段配置
-func NightWolfPhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseNightWolf,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-			{Role: RoleWerewolf, Skill: SkillKill, Required: true, Multiple: true},
-		},
-		Timeout:   WolfPhaseTimeout,
-		NextPhase: PhaseNightWitch,
-	}
-}
-
-// NightWitchPhase 女巫阶段配置
-func NightWitchPhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseNightWitch,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-			{Role: RoleWitch, Skill: SkillAntidote},
-			{Role: RoleWitch, Skill: SkillPoison},
-		},
-		Timeout:   NightPhaseTimeout,
-		NextPhase: PhaseNightSeer,
-	}
-}
-
-// NightSeerPhase 预言家阶段配置
-func NightSeerPhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseNightSeer,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-			{Role: RoleSeer, Skill: SkillCheck},
-		},
-		Timeout:   NightPhaseTimeout,
-		NextPhase: PhaseNightResolve,
-	}
-}
-
-// NightResolvePhase 夜晚结算阶段配置（处理击杀、猎人触发等）
-func NightResolvePhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseNightResolve,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-		},
-		Timeout:   NightPhaseTimeout,
-		NextPhase: PhaseDay, // 默认进入白天，如有猎人死亡则动态改为猎人阶段
-	}
-}
-
-// NightHunterPhase 夜晚猎人阶段配置（被动触发）
-func NightHunterPhase() *PhaseConfig {
-	return &PhaseConfig{
-		Type: PhaseNightHunter,
-		Steps: []PhaseStep{
-			{Role: RoleGod, Skill: SkillAnnounce},
-			// 开枪与不开枪是二选一，用同一个 Group 声明出来
-			{Role: RoleHunter, Skill: SkillShoot, Group: hunterShootGroup},
-			{Role: RoleHunter, Skill: SkillSkip, Group: hunterShootGroup},
-		},
-		Timeout:   HunterPhaseTimeout,
-		NextPhase: PhaseDay,
-	}
-}
-
-// ==================== 配置校验 ====================
 
 // Validate 检查配置自身是否自洽。
 //
@@ -299,10 +130,15 @@ func (c *GameConfig) Validate() error {
 		return WrapError(CodeInvalidConfig, "config contains no phases")
 	}
 
-	start := c.startPhase()
-	if _, ok := c.Phases[start]; !ok {
+	// 起始阶段必须显式给出：内核没有默认板子，也就没有默认的第一个阶段。
+	// 此前留空会退回 NIGHT_GUARD——那是狼人杀的第一个阶段。
+	if c.StartPhase == PhaseUnspecified {
+		return WrapError(CodeInvalidConfig,
+			"config must declare StartPhase: the kernel has no default")
+	}
+	if _, ok := c.Phases[c.StartPhase]; !ok {
 		return WrapError(CodeInvalidPhase,
-			"start phase %v is not present in config", start)
+			"start phase %v is not present in config", c.StartPhase)
 	}
 
 	for phaseType, pc := range c.Phases {
@@ -388,10 +224,10 @@ func validateSteps(phaseType PhaseType, steps []PhaseStep) error {
 	return nil
 }
 
-// startPhase 返回起始阶段，未配置时用默认值
+// startPhase 返回起始阶段。
+//
+// 一定有值：Validate 强制配置给出它。此前留空会退回 NIGHT_GUARD——
+// 那是狼人杀的第一个阶段，内核没有资格替任何规则挑一个默认值。
 func (c *GameConfig) startPhase() PhaseType {
-	if c.StartPhase == PhaseUnspecified {
-		return PhaseNightGuard
-	}
 	return c.StartPhase
 }

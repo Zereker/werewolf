@@ -9,6 +9,83 @@
 > 公开的 tag 只有 `v1.0.0` 与 `v1.2.0`。`v1.0.0` 到 `v1.2.0` 之间的全部改动
 > 都归入 `v1.2.0` 一节——对使用者而言，中间没有可取用的版本。
 
+## 未发布
+
+### 内核与规则物理拆成两个包
+
+**破坏性变更**：`Engine.WolfTeammates(id)` 更名为 `Engine.Teammates(id)`；
+`Engine.NightKillTarget()` 从方法变成包级函数 `werewolf.NightKillTarget(e)`；
+`NewEngine(nil, ...)` 不再回退默认配置而是报错；`GameConfig.StartPhase`
+成为必填项；`PhaseStep` 增加 `AllowDeadTarget`；快照格式未变。
+
+上一版做到的是**逻辑**分离——内核不装任何狼人杀默认值，规则经公开选项
+装上去。但那件事当时靠自觉：`Options()` 用的还是同包内的未导出符号，
+「规则只用公开 API」没有任何东西强制。
+
+现在是两个包：
+
+| 包 | 是什么 | 行数 |
+|---|---|---|
+| `github.com/Zereker/werewolf/engine` | 内核 | ~2500 |
+| `github.com/Zereker/werewolf` | 狼人杀规则 | ~1900 |
+
+**由编译器保证。** 想验证的话把 grep 指向 `engine/`：非测试代码里
+没有一个 `WEREWOLF`、`NIGHT_WITCH` 这样的取值，也没有一句话认得
+「女巫能不能自救」。
+
+`go get` 的路径不变——子包不需要 `/vN` 后缀，那只跟主版本走。
+
+#### 使用者基本不受影响
+
+内核的公开 API 在根包全部再导出了一遍（`alias.go`）：`werewolf.Effect`
+与 `engine.Effect` 是**同一个类型**，不需要转换，也不必 import 两个包。
+写自己的规则包时直接 import `werewolf/engine`。
+
+拆包只动了两个名字，都是因为它们是狼人杀的说法却挂在内核类型上：
+
+- `Engine.WolfTeammates(id)` → `Engine.Teammates(id)`。它本来就走
+  `TeammateProvider`，与「狼」无关，名字是旧的。
+- `Engine.NightKillTarget()` → `werewolf.NightKillTarget(e)`。
+  `Engine` 住在内核里，本包没有办法给别人的类型加方法。
+  等价写法：`e.RoundVar(werewolf.RoundVarKillTarget)`。
+
+曾想过让规则包套一层自己的 `Engine` 好把这两个留成方法。没有那么做：
+两个同名类型互相不能赋值，使用者迟早会在 `RestoreEngine` 的返回值上
+撞到，那比改两个调用点糟糕得多。
+
+#### 拆的过程中补上的内核 API
+
+不是为了让测试编译过——每一个都是规则包作者真的会撞到的需求：
+
+- **`Board` / `NewGameView` / `Board.Apply`**：手工摆一副局面，转成
+  `GameView` 喂给自己的解析器，再把产出的效果折回去看局面变成了什么样。
+  没有它，规则的解析器就只能整局跑起来才测得动——那测的是集成，
+  不是这个解析器本身。
+- **`Engine.Apply(effects...)`**：直接施加效果，绕开阶段结算。宿主真的
+  会遇到「玩家掉线判死」「管理员踢人」这类不属于任何阶段的状态变更。
+  它走的仍是同一个写入点，因此存档与回放不会失真。
+- **`Engine.View()`**：当前局面的只读视图。宿主想自己算一次什么时用它。
+- **`Engine.Winner()`**：这局的赢家。谁赢是结束那一刻定下的事实，
+  此后不再变——之后换掉判定器也不会改写已经结束的这一局。
+- **`Engine.RoundVar(key)`**：读本回合的一项状态。规则用它提供自己的
+  便利读法。
+
+#### 内核补齐的两处
+
+- **`PhaseStep.AllowDeadTarget`。** 「解药可以指向已出局的玩家」此前是
+  内核校验里的一句 `use.Skill != SkillAntidote`——内核认得解药。
+  现在它是规则声明出来的数据。
+- **`GameConfig.StartPhase` 必填。** 留空此前会退回 `NIGHT_GUARD`，
+  而那是狼人杀的第一个阶段。内核没有资格替任何规则挑一个默认值，
+  `NewEngine(nil)` 同理，现在直接报错。
+
+#### 覆盖率的统计口径
+
+拆包之后 `go test -cover ./engine` 只有 39.2%——内核大部分代码由规则包的
+测试驱动，而那是另一个包了。这是**统计口径的假象**，不是覆盖真的掉了。
+CI 与 `make test-cover` 现在都按两个库包合并统计（`-coverpkg`），
+数字是 **94.5%**，与拆包前一致。示例不计入：它们是使用者，不是被测对象。
+
 ## v1.5.0 — 2026-08-22
 
 这一版把**通用内核**与**狼人杀规则**分开了：引擎的代码路径里没有一处认得
@@ -379,22 +456,6 @@ if role == RoleWitch {
 - `example/netserver`：TCP 长连接的服务端，库的第二个真实使用者。命令行主持台
   碰不到的那半边——事件推送、每条连接一份视图、并发、断线重连、超时真的触发——
   由它来压，七条端到端测试全在 `-race` 下跑。
-
-## 路线：把两层物理拆成两个包
-
-到 v1.5.0 为止，内核与狼人杀规则在**逻辑上**已经分开：内核什么都不认识，
-规则经公开选项装上去（`TestBareEngine_KnowsNothing` 守着这一条）。
-
-还差的是物理拆分——`werewolf`（规则）与 `werewolf/engine`（内核）两个包。
-现在 `Options()` 还在用 `builtinAudience` 这些未导出符号，也就是说
-「规则只用公开 API」目前靠自觉；拆成两个包之后由编译器保证。
-
-这是 dogfooding 的最强形式：内置六角色如果能用公开 API 完整表达，扩展性就
-被证明了；如果不能，缺什么当场暴露。这几版补上的 `WithRoleSetup`、
-`WithAudience`、`WithTeammates` 都是这么找出来的。
-
-**这一步不需要换模块路径**：`werewolf/engine` 是子包，`/vN` 后缀只跟主版本
-走，不跟包结构走。
 
 ## v1.3.0 — 2026-08-22
 

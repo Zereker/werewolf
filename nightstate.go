@@ -83,3 +83,13 @@ func markProtected(view GameView, guardID, targetID string) []*Effect {
 		NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
 	}
 }
+
+// NightKillTarget 今晚被狼人选中的刀口，没有则为空。
+//
+// 拆包之后它是包级函数而不是 Engine 的方法：Engine 住在内核里，
+// 而「刀口」是狼人杀的概念，本包没有办法给别人的类型加方法。
+//
+// 等价写法：e.RoundVar(werewolf.RoundVarKillTarget)。
+func NightKillTarget(e *Engine) string {
+	return e.RoundVar(RoundVarKillTarget)
+}

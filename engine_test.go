@@ -13,42 +13,44 @@ import (
 // 测试引擎构造本身（含开局前状态）的、以及并发用例。
 // 这些用例换成 newRuleGame 之后就测不到它们原本想测的东西了。
 
-// TestNewEngine_NilConfig 测的是构造函数与内部字段的初始化，不开局，
-// 故不适用 newRuleGame。
-func TestNewEngine_NilConfig(t *testing.T) {
+// TestNew_Defaults 刚造出来的引擎处于「还没开局」，各项读法都能用。
+//
+// 此前这里断言的是 engine.config / engine.state 这些内部字段非 nil。
+// 拆包之后规则包看不到它们了——而那本来也不是使用者关心的东西，
+// 使用者关心的是「这台引擎能不能用」。
+func TestNew_Defaults(t *testing.T) {
 	engine := MustNew(DefaultRules())
 
-	if engine.config == nil {
-		t.Error("expected default config to be set")
+	if got := engine.Phase(); got != PhaseStart {
+		t.Errorf("刚造出来应当处于 START，实际 %v", got)
 	}
-	if engine.state == nil {
-		t.Error("expected state to be initialized")
+	if got := engine.Round(); got != 0 {
+		t.Errorf("还没开局，回合应为 0，实际 %d", got)
 	}
-	if engine.phase == nil {
-		t.Error("expected phase to be initialized")
+	if engine.IsGameOver() {
+		t.Error("还没开局，不该已经结束")
 	}
-	if engine.pendingUses == nil {
-		t.Error("expected pendingUses to be initialized")
-	}
-	if engine.eventHandlers == nil {
-		t.Error("expected eventHandlers to be initialized")
+	if got := engine.AlivePlayerIDs(); len(got) != 0 {
+		t.Errorf("还没有人入座，实际 %v", got)
 	}
 }
 
-// TestNewEngine_CustomConfig 同上：测的是构造函数是否原样保留了传入的配置，
-// 断言的是 engine.config 这个内部字段的指针身份。
-func TestNewEngine_CustomConfig(t *testing.T) {
-	config := &GameConfig{
-		StartPhase: PhaseNightWolf,
-		Phases:     DefaultGameConfig().Phases,
-	}
-	engine := MustNewWith(config, DefaultRules())
+// TestNewWith_CustomConfig 传进去的阶段配置要真的生效。
+func TestNewWith_CustomConfig(t *testing.T) {
+	config := DefaultGameConfig()
+	config.StartPhase = PhaseNightWolf
 
-	if engine.config != config {
-		t.Error("expected custom config to be set")
+	engine := MustNewWith(config, DefaultRules())
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "s", RoleSeer)
+	mustAdd(t, engine, "v1", RoleVillager)
+	mustAdd(t, engine, "v2", RoleVillager)
+	if err := engine.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
-	if engine.config.StartPhase != PhaseNightWolf {
-		t.Error("expected StartPhase=NIGHT_WOLF")
+
+	if got := engine.Phase(); got != PhaseNightWolf {
+		t.Errorf("起始阶段应当是配置里那个，实际 %v", got)
 	}
 }
 
@@ -59,7 +61,7 @@ func TestEngine_AddPlayer(t *testing.T) {
 
 	mustAdd(t, engine, "p1", RoleWerewolf)
 
-	player, ok := engine.state.getPlayer("p1")
+	player, ok := engine.PlayerInfo("p1")
 	if !ok {
 		t.Fatal("expected player to be added")
 	}
@@ -197,12 +199,12 @@ func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
-	if len(engine.pendingUses) != 1 {
-		t.Errorf("expected 1 pending use, got %d", len(engine.pendingUses))
+	if len(engine.Snapshot().PendingUses) != 1 {
+		t.Errorf("expected 1 pending use, got %d", len(engine.Snapshot().PendingUses))
 	}
 
 	// Verify phase and round are set on skill use
-	use := engine.pendingUses[0]
+	use := engine.Snapshot().PendingUses[0]
 	if use.Phase != PhaseNightGuard {
 		t.Errorf("expected Phase=NIGHT_GUARD, got %v", use.Phase)
 	}
@@ -282,8 +284,8 @@ func TestEngine_EndPhase(t *testing.T) {
 	}
 
 	// Pending uses should be cleared
-	if len(engine.pendingUses) != 0 {
-		t.Errorf("expected pending uses to be cleared, got %d", len(engine.pendingUses))
+	if len(engine.Snapshot().PendingUses) != 0 {
+		t.Errorf("expected pending uses to be cleared, got %d", len(engine.Snapshot().PendingUses))
 	}
 }
 
@@ -337,11 +339,10 @@ func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
 	}
 }
 
-// TestEngine_EndPhase_AlreadyEnded 直接把 engine.state.Phase 写成 END 构造局面，
-// 不经开局，故保留显式风格。
+// TestEngine_EndPhase_AlreadyEnded 已经结束的游戏不能再推进。
 func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 	engine := MustNew(DefaultRules())
-	engine.state.Phase = PhaseEnd
+	endTheGame(t, engine)
 
 	_, err := engine.EndPhase()
 	if err != ErrGameEnded {
@@ -420,7 +421,7 @@ func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
 	}
 }
 
-// TestEngine_IsGameOver 直接把 engine.state.Phase 写成 END，且要看开局前的
+// TestEngine_IsGameOver 看开局前与结束后的
 // IsGameOver=false，故保留显式风格。
 func TestEngine_IsGameOver(t *testing.T) {
 	engine := MustNew(DefaultRules())
@@ -429,7 +430,7 @@ func TestEngine_IsGameOver(t *testing.T) {
 		t.Error("expected IsGameOver=false initially")
 	}
 
-	engine.state.Phase = PhaseEnd
+	endTheGame(t, engine)
 
 	if !engine.IsGameOver() {
 		t.Error("expected IsGameOver=true when Phase=END")
@@ -497,7 +498,7 @@ func TestEngine_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_ = engine.state
+			_ = engine.Phase()
 			engine.Phase()
 			engine.Round()
 			engine.AllowedSkills("guard")
@@ -1011,5 +1012,34 @@ func TestEngine_EndPhase_ReturnsGameEnded(t *testing.T) {
 	audience, known := g.e.AudienceOf(ended.ToEvent())
 	if !known || len(audience) == 0 {
 		t.Errorf("GAME_ENDED 应当是全场可见，实际 (%v, %v)", audience, known)
+	}
+}
+
+// endTheGame 把一局游戏推到结束。
+//
+// 此前测试是直接把 engine.state.Phase 写成 END——拆包之后规则包碰不到那个
+// 字段了，而这么写本来也更实在：走的是真的结束路径，不是伪造的状态。
+func endTheGame(t *testing.T, e *Engine) {
+	t.Helper()
+	if e.Phase() == PhaseStart {
+		for id, role := range map[string]RoleType{
+			"w1": RoleWerewolf, "s": RoleSeer,
+			"v1": RoleVillager, "v2": RoleVillager,
+		} {
+			mustAdd(t, e, id, role)
+		}
+		if err := e.Start(); err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+	}
+	// 狼人出局，好人立即获胜
+	e.Apply(NewSetAliveEffect("w1", false))
+	for i := 0; i < 30 && !e.IsGameOver(); i++ {
+		if _, err := e.EndPhase(); err != nil {
+			t.Fatalf("EndPhase: %v", err)
+		}
+	}
+	if !e.IsGameOver() {
+		t.Fatal("推不到结束")
 	}
 }

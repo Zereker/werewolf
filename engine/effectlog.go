@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import ()
 

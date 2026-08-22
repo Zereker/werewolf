@@ -41,18 +41,18 @@ func TestVictoryChecker_ThirdCamp(t *testing.T) {
 		seats(wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"))...)
 
 	// 还没到只剩两人，走的是内置规则
-	if over, _ := checkVictory(g.e); over {
+	if g.e.IsGameOver() {
 		t.Fatal("前置条件：现在不该分出胜负")
 	}
 
 	// 只留下这对情侣
 	g.setDead("w2", "s", "v2", "v3")
+	g.endAny()
 
-	over, winner := checkVictory(g.e)
-	if !over {
+	if !g.e.IsGameOver() {
 		t.Fatal("只剩情侣两人，应当分出胜负")
 	}
-	if winner != campLovers {
+	if winner := g.e.Winner(); winner != campLovers {
 		t.Errorf("胜方应当是情侣阵营，实际 %v", winner)
 	}
 }

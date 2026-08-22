@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 // PhaseReadiness 当前阶段的行动就绪情况。
 //

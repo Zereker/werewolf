@@ -304,7 +304,7 @@ func fullGameFlow() {
 	fmt.Printf("  当前阶段: %s\n", engine.Phase())
 
 	// 狼人获取队友信息
-	teammates := engine.WolfTeammates("wolf1")
+	teammates := engine.Teammates("wolf1")
 	fmt.Printf("  wolf1 的狼队友: %v\n", teammates)
 
 	// 两只狼都投票杀村民
@@ -326,7 +326,7 @@ func fullGameFlow() {
 	fmt.Printf("  当前阶段: %s\n", engine.Phase())
 
 	// 女巫查看谁被杀
-	killTarget := engine.NightKillTarget()
+	killTarget := werewolf.NightKillTarget(engine)
 	fmt.Printf("  女巫得知: %s 今晚被狼人杀害\n", killTarget)
 
 	// 女巫使用解药救人

@@ -192,8 +192,18 @@ func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 // TestStart_RejectsMissingResolver 阶段没有解析器时，技能会被静默丢弃，
 // 必须在开局前拦下。
 func TestStart_RejectsMissingResolver(t *testing.T) {
-	engine := MustNew(DefaultRules())
-	delete(engine.phase.resolvers, PhaseNightWolf)
+	// 拿掉狼人阶段的解析器：Options 里的那些只是选项，去掉一项即可
+	opts := Options(DefaultRules())
+	cfg := DefaultGameConfig()
+	cfg.Phases[PhaseType("NO_RESOLVER")] = &PhaseConfig{
+		Type:      PhaseType("NO_RESOLVER"),
+		NextPhase: PhaseNightGuard,
+	}
+	cfg.Phases[PhaseVote].NextPhase = PhaseType("NO_RESOLVER")
+	engine, err := NewEngine(cfg, opts...)
+	if err != nil {
+		t.Fatalf("配置本身应当合法: %v", err)
+	}
 
 	mustAdd(t, engine, "w1", RoleWerewolf)
 	mustAdd(t, engine, "v1", RoleVillager)

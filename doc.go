@@ -22,14 +22,23 @@
 // 扩展性就被证明了；如果不能，缺什么当场暴露。这几版补上的
 // WithRoleSetup、WithAudience、WithTeammates 都是这么找出来的。
 //
-// 接线的方向是「规则组装内核」，不是「内核认得规则」：NewEngine 造出来的
-// 是一台什么都不认识的状态机——没有解析器、不会判出胜负、不认得任何角色、
-// 不划分信息边界。狼人杀的那一整套由 werewolf.Options 经公开选项装上去，
-// 与第三方注册自定义角色走的是同一批入口（见 TestBareEngine_KnowsNothing）。
+// 两层是两个包：
 //
-// 两层目前仍在同一个包里，往后会分成 werewolf 与 werewolf/engine 两个包，
-// 让「规则只用公开 API」这件事由编译器保证而不是靠自觉。那是子包，
-// 不影响 import 路径。
+//	github.com/Zereker/werewolf         这个包，狼人杀规则
+//	github.com/Zereker/werewolf/engine  内核
+//
+// 接线的方向是「规则组装内核」，不是「内核认得规则」：engine.NewEngine
+// 造出来的是一台什么都不认识的状态机——没有解析器、不会判出胜负、
+// 不认得任何角色、不划分信息边界。狼人杀的那一整套由 Options 经公开选项
+// 装上去，与第三方注册自定义角色走的是同一批入口。
+//
+// 这件事由**编译器**保证，不靠自觉：本包在内核之外，它能用的东西
+// 使用者也能用。想验证的话，把 grep 指向 engine/——那里没有一个
+// 「女巫」「狼人」这样的取值。
+//
+// 使用者不必 import 两个包：内核的公开 API 在本包全部再导出了一遍
+// （见 alias.go），werewolf.Effect 与 engine.Effect 是同一个类型。
+// 要写一套自己的规则包，直接 import werewolf/engine 即可。
 //
 // # 起手
 //

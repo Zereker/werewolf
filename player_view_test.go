@@ -139,7 +139,7 @@ func TestPlayerView_AllowedSkillsGateAction(t *testing.T) {
 	}
 
 	// 出局玩家没有可用技能
-	e.state.applyEffect(NewSetAliveEffect("g", false))
+	e.Apply(NewSetAliveEffect("g", false))
 	if got := e.PlayerView("g").AllowedSkills; len(got) != 0 {
 		t.Errorf("已出局玩家不应有可用技能，实际 %v", got)
 	}
@@ -285,24 +285,23 @@ func canceledEffect(e *Effect) *Effect {
 //
 // 枚举还是整数的时候，这里遍历的是「取值到名字」那张对照表。改成字符串
 // 之后那张表没有了（名字直接就是值），于是换成读源码。读的是本包自己的
-// 文件，路径稳定；扫不到取值会直接报错，不会安静地退化成一个空循环。
+// vocab.go，路径稳定；扫不到取值会直接报错，不会安静地退化成一个空循环。
 func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 	e := newViewGame(t)
 
-	src, err := os.ReadFile("event.go")
+	// 扫的是 vocab.go——狼人杀自己定义的事件全在那里。内核的状态原语
+	// 不在这个文件里，因此不需要再过滤一遍「是不是内部事件」。
+	src, err := os.ReadFile("vocab.go")
 	if err != nil {
-		t.Fatalf("读不到 event.go: %v", err)
+		t.Fatalf("读不到 vocab.go: %v", err)
 	}
 	found := regexp.MustCompile(`EventType = "([A-Z_]+)"`).FindAllStringSubmatch(string(src), -1)
-	if len(found) < 12 {
-		t.Fatalf("只从 event.go 扫到 %d 个事件类型，取值的写法变了？", len(found))
+	if len(found) < 9 {
+		t.Fatalf("只从 vocab.go 扫到 %d 个事件类型，取值的写法变了？", len(found))
 	}
 
 	for _, m := range found {
 		typ := EventType(m[1])
-		if isInternalEvent(typ) {
-			continue
-		}
 		ef := NewEffect(typ, "s", "v1")
 		got, known := e.AudienceOf(ef.ToEvent())
 		if !known {

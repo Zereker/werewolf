@@ -737,8 +737,20 @@ API 是承诺。
 模块带 `/vN` 后缀，那会让每个使用者的 import 路径都变一次；把破坏一次付清、留在 v1
 线上更划算。
 
-还差的是把两层**物理拆成两个包**（`werewolf` 与 `werewolf/engine`），让「规则只用
-公开 API」由编译器保证而不是靠自觉。那是子包，同样不需要 `/vN`。
+两层现在是两个包：
+
+| 包 | 是什么 |
+|---|---|
+| `github.com/Zereker/werewolf` | 狼人杀规则：角色、阶段、解析器、屠边屠城 |
+| `github.com/Zereker/werewolf/engine` | 内核：玩家、阶段环、四条状态原语、信息边界 |
+
+**「规则只用公开 API」由编译器保证**，不靠自觉——规则包在内核之外，它能用的
+入口使用者也能用。想验证的话把 grep 指向 `engine/`：那里没有一个「女巫」
+「狼人」这样的取值。
+
+使用者**不必 import 两个包**：内核的公开 API 在根包全部再导出了一遍
+（见 `alias.go`），`werewolf.Effect` 与 `engine.Effect` 是同一个类型。
+要写一套自己的规则包，直接 import `werewolf/engine`。
 
 ## 许可证
 

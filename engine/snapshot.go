@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"sort"
@@ -48,7 +48,7 @@ type PlayerSnapshot struct {
 	// []string，v8 起并入玩家自身，与规则包自己定的标记同一条路。
 	RoundVars map[string]string `json:"round_vars,omitempty"`
 
-	// Vars 角色私有的状态。女巫的药也在其中（键见 VarWitchAntidote）——
+	// Vars 角色私有的状态（狼人杀的女巫药剂就在其中）——
 	// 它们此前是这里两个具名 bool 字段，v7 起并入 Vars，与第三方角色
 	// 同一条路。存这一项是整个机制成立的前提：带不上它，角色的状态
 	// 就只能藏在 Resolver 里，那正是要解决的问题。

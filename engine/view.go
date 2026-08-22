@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import ()
 
@@ -37,8 +37,7 @@ type GameView interface {
 	//
 	// 第三方角色用它存放自身状态（白痴翻没翻牌、骑士的决斗用没用掉），
 	// 写入走 NewSetPlayerVarEffect，初始值由 RoleSetup 发放。
-	// 内置女巫的两瓶药就存在这里（VarWitchAntidote / VarWitchPoison），
-	// 与第三方角色同一条路。
+	// 规则把角色私有的状态放在这里，内置角色与第三方角色同一条路。
 	PlayerVar(playerID, key string) string
 
 	// PlayerRoundVar 返回某个玩家在本回合的一项标记，没有则为空串。
@@ -52,7 +51,7 @@ type GameView interface {
 	// RoundVar 返回本回合的一项自定义状态，没有则为空串。
 	//
 	// 与 PlayerVar 的分工：那个跟着玩家走一整局，这个每回合自动清零，
-	// 且不属于任何玩家——今晚的刀口（RoundVarKillTarget）就是这一类。
+	// 且不属于任何玩家——狼人杀的「今晚刀口」就是这一类。
 	RoundVar(key string) string
 
 	// Round 返回当前回合数
