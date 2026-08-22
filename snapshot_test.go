@@ -92,7 +92,7 @@ func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 		if st.player != "" {
 			for _, e := range []*Engine{original, restored} {
 				if err := e.SubmitSkillUse(&SkillUse{
-					PlayerID: st.player, Skill: st.skill, TargetID: st.target,
+					PlayerID: st.player, Skill: st.skill, Targets: []string{st.target},
 				}); err != nil {
 					t.Fatalf("第 %d 步提交失败: %v", i, err)
 				}
@@ -173,7 +173,7 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 			t.Fatalf("待结算技能数: 期望 1，实际 %d", len(snap.PendingUses))
 		}
 		u := snap.PendingUses[0]
-		if u.PlayerID != "g" || u.Skill != SkillProtect || u.TargetID != "s" {
+		if u.PlayerID != "g" || u.Skill != SkillProtect || len(u.Targets) != 1 || u.Targets[0] != "s" {
 			t.Errorf("待结算技能内容不符: %+v", u)
 		}
 	})
@@ -276,7 +276,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		bad.PendingUses = []engine.SkillUseSnapshot{{
 			PlayerID: "查无此人",
 			Skill:    SkillProtect,
-			TargetID: "s",
+			Targets:  []string{"s"},
 		}}
 		_, err := Restore(nil, DefaultRules(), &bad)
 		if !engine.HasCode(err, engine.CodeInvalidSnapshot) {
@@ -445,7 +445,7 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 	snap.PendingUses = []engine.SkillUseSnapshot{{
 		PlayerID: "w1",
 		Skill:    SkillKill,
-		TargetID: "查无此人",
+		Targets:  []string{"查无此人"},
 		Phase:    PhaseNightWolf,
 		Round:    1,
 	}}

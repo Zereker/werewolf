@@ -90,7 +90,7 @@ type PendingTriggerSnapshot struct {
 type SkillUseSnapshot struct {
 	PlayerID string    `json:"player_id"`
 	Skill    SkillType `json:"skill"`
-	TargetID string    `json:"target_id,omitempty"`
+	Targets  []string  `json:"targets,omitempty"`
 	Phase    PhaseType `json:"phase"`
 	Round    int       `json:"round"`
 }
@@ -122,7 +122,7 @@ func (e *Engine) Snapshot() *Snapshot {
 		snap.PendingUses = append(snap.PendingUses, SkillUseSnapshot{
 			PlayerID: use.PlayerID,
 			Skill:    use.Skill,
-			TargetID: use.TargetID,
+			Targets:  append([]string(nil), use.Targets...),
 			Phase:    use.Phase,
 			Round:    use.Round,
 		})
@@ -229,16 +229,19 @@ func (e *Engine) restorePendingUses(uses []SkillUseSnapshot) error {
 			return WrapError(CodeInvalidSnapshot,
 				"pending skill references unknown player %q", u.PlayerID)
 		}
-		if u.TargetID != "" {
-			if _, ok := e.state.getPlayer(u.TargetID); !ok {
+		for _, id := range u.Targets {
+			if id == "" {
+				continue
+			}
+			if _, ok := e.state.getPlayer(id); !ok {
 				return WrapError(CodeInvalidSnapshot,
-					"pending skill references unknown target %q", u.TargetID)
+					"pending skill references unknown target %q", id)
 			}
 		}
 		e.pendingUses = append(e.pendingUses, &SkillUse{
 			PlayerID: u.PlayerID,
 			Skill:    u.Skill,
-			TargetID: u.TargetID,
+			Targets:  append([]string(nil), u.Targets...),
 			Phase:    u.Phase,
 			Round:    u.Round,
 		})

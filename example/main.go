@@ -148,7 +148,7 @@ func godNarratorDemo() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    werewolf.SkillProtect,
-		TargetID: "seer",
+		Targets:  []string{"seer"},
 	})
 	step(eng)
 
@@ -157,12 +157,12 @@ func godNarratorDemo() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillKill,
-		TargetID: "villager",
+		Targets:  []string{"villager"},
 	})
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    werewolf.SkillKill,
-		TargetID: "villager",
+		Targets:  []string{"villager"},
 	})
 	step(eng)
 
@@ -176,7 +176,7 @@ func godNarratorDemo() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    werewolf.SkillCheck,
-		TargetID: "wolf1",
+		Targets:  []string{"wolf1"},
 	})
 	step(eng)
 
@@ -292,7 +292,7 @@ func fullGameFlow() {
 		Skill:    werewolf.SkillProtect,
 		// 守的不是狼刀目标：守护叠加女巫解药即「同守同救」，
 		// 按默认规则目标依然死亡，与本段想演示的「被解药救回」相反
-		TargetID: "seer",
+		Targets: []string{"seer"},
 	})
 	if err != nil {
 		fmt.Printf("  守卫技能提交失败: %v\n", err)
@@ -312,12 +312,12 @@ func fullGameFlow() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillKill,
-		TargetID: "villager",
+		Targets:  []string{"villager"},
 	})
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    werewolf.SkillKill,
-		TargetID: "villager",
+		Targets:  []string{"villager"},
 	})
 
 	// 结束狼人阶段，进入女巫阶段
@@ -334,7 +334,7 @@ func fullGameFlow() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "witch",
 		Skill:    werewolf.SkillAntidote,
-		TargetID: killTarget,
+		Targets:  []string{killTarget},
 	})
 
 	// 结束女巫阶段，进入预言家阶段
@@ -347,7 +347,7 @@ func fullGameFlow() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    werewolf.SkillCheck,
-		TargetID: "wolf1",
+		Targets:  []string{"wolf1"},
 	})
 
 	// 结束预言家阶段，进入夜晚结算
@@ -377,34 +377,34 @@ func fullGameFlow() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "witch",
 		Skill:    werewolf.SkillVote,
-		TargetID: "wolf1",
+		Targets:  []string{"wolf1"},
 	})
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    werewolf.SkillVote,
-		TargetID: "wolf1",
+		Targets:  []string{"wolf1"},
 	})
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    werewolf.SkillVote,
-		TargetID: "wolf1",
+		Targets:  []string{"wolf1"},
 	})
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "villager",
 		Skill:    werewolf.SkillVote,
-		TargetID: "wolf1",
+		Targets:  []string{"wolf1"},
 	})
 
 	// 狼人投票预言家
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillVote,
-		TargetID: "seer",
+		Targets:  []string{"seer"},
 	})
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    werewolf.SkillVote,
-		TargetID: "seer",
+		Targets:  []string{"seer"},
 	})
 
 	// 结束投票
@@ -471,7 +471,7 @@ func messagingDemo() {
 	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillKill,
-		TargetID: "villager1",
+		Targets:  []string{"villager1"},
 	})
 	step(eng) // 狼人阶段结束
 	step(eng) // 女巫阶段结束

@@ -55,7 +55,7 @@
 //	g.Start()
 //
 //	g.SubmitSkillUse(&werewolf.SkillUse{
-//		PlayerID: "w1", Skill: werewolf.SkillKill, TargetID: "s",
+//		PlayerID: "w1", Skill: werewolf.SkillKill, Targets: []string{"s"},
 //	})
 //	effects, err := g.EndPhase()   // 结算并流转到下一阶段
 //

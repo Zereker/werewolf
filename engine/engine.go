@@ -235,7 +235,7 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 	e.logger.Debug("skill submitted",
 		playerField(use.PlayerID),
 		skillField(use.Skill),
-		targetField(use.TargetID))
+		targetField(use.Target()))
 	e.metrics.IncSkillSubmitted(use.Skill)
 
 	return nil

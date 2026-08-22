@@ -19,23 +19,30 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 	leader := leaderID(view)
 	need := MissionSize(len(view.AllPlayers()), mission(view))
 
-	// 不再检查 u.PlayerID == leader：内核已经在 SubmitSkillUse 就拦下了
-	// 非队长的提交（这个阶段的行动者由 SetActors 指定）。留着那一行不算错，
-	// 但它会让人以为内核不管这件事。
+	// 一次提交带整支队伍。
+	//
+	// SkillUse 此前只能带一个目标，队长得提交 N 次——就绪判定因此说不清
+	// 「还差几个人没提」，提名了 1 人（需要 2 人）之后就报 Ready=true。
+	// 现在一次提交就是一支完整的队伍，就绪判定跟着说对话。
+	//
+	// 不检查提交者是不是队长：内核已经在 SubmitSkillUse 就拦下了非队长的
+	// 提交（这个阶段的行动者由 SetActors 指定）。
 	seen := map[string]bool{}
 	var team []string
 	for _, u := range uses {
-		if u.Skill != SkillPropose || u.TargetID == "" {
+		if u.Skill != SkillPropose {
 			continue
 		}
-		if seen[u.TargetID] || len(team) >= need {
-			continue
+		for _, id := range u.Targets {
+			if id == "" || seen[id] || len(team) >= need {
+				continue
+			}
+			if _, ok := view.Player(id); !ok {
+				continue
+			}
+			seen[id] = true
+			team = append(team, id)
 		}
-		if _, ok := view.Player(u.TargetID); !ok {
-			continue
-		}
-		seen[u.TargetID] = true
-		team = append(team, u.TargetID)
 	}
 
 	// 先清掉上一次提名留下的标记。
@@ -204,16 +211,16 @@ type assassinResolver struct{}
 
 func (assassinResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
 	for _, u := range uses {
-		if u.Skill != SkillAssassinate || u.TargetID == "" {
+		if u.Skill != SkillAssassinate || u.Target() == "" {
 			continue
 		}
-		p, ok := view.Player(u.TargetID)
+		p, ok := view.Player(u.Target())
 		if !ok {
 			continue
 		}
 		hit := p.Role == RoleMerlin
 		return []*engine.Effect{
-			engine.NewEffect(EventAssassinated, u.PlayerID, u.TargetID).WithData("hit", hit),
+			engine.NewEffect(EventAssassinated, u.PlayerID, u.Target()).WithData("hit", hit),
 			engine.NewSetGameVarEffect(varAssassinated, boolVar(hit)),
 		}
 	}

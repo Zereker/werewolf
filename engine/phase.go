@@ -141,9 +141,13 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 		return nil
 	}
 
-	// 检查目标是否有效
-	if use.TargetID != "" {
-		target, ok := state.getPlayer(use.TargetID)
+	// 检查目标是否有效。多目标的技能逐个查——一次提交里混进一个无效目标，
+	// 整条提交都该被拒绝，而不是悄悄留下有效的那几个。
+	for _, id := range use.Targets {
+		if id == "" {
+			continue
+		}
+		target, ok := state.getPlayer(id)
 		if !ok {
 			return ErrTargetNotFound
 		}

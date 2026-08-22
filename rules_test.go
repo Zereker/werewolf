@@ -159,7 +159,7 @@ func seats(groups ...interface{}) []seat {
 // use 提交技能，返回错误供调用方断言。
 func (g *ruleGame) use(playerID string, skill SkillType, targetID string) error {
 	g.t.Helper()
-	return g.e.SubmitSkillUse(&SkillUse{PlayerID: playerID, Skill: skill, TargetID: targetID})
+	return g.e.SubmitSkillUse(&SkillUse{PlayerID: playerID, Skill: skill, Targets: []string{targetID}})
 }
 
 // mustUse 提交技能，失败即终止用例。

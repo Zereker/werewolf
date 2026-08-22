@@ -312,7 +312,7 @@ func (t *table) act(args []string) {
 	}
 
 	err := t.eng.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: args[0], Skill: skill, TargetID: target,
+		PlayerID: args[0], Skill: skill, Targets: []string{target},
 	})
 	if err != nil {
 		// 库把「为什么不行」分了类，主持人照着分类给出人话
@@ -424,7 +424,7 @@ func (t *table) auto() {
 			// 提交失败是正常的：随机挑的目标可能不合规（女巫救了没被刀的人、
 			// 守卫连守同一个人）。规则由引擎裁决，这里不预判。
 			_ = t.eng.SubmitSkillUse(&werewolf.SkillUse{
-				PlayerID: id, Skill: skill, TargetID: target,
+				PlayerID: id, Skill: skill, Targets: []string{target},
 			})
 		}
 	}

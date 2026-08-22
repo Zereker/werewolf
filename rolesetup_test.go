@@ -110,7 +110,7 @@ func TestRoleSetup_BuiltinWitchWalksTheSamePath(t *testing.T) {
 		// 而不只是视图上少显示了一行
 		endTo(t, e, PhaseNightWitch)
 		if err := e.SubmitSkillUse(&SkillUse{
-			PlayerID: "wi", Skill: SkillAntidote, TargetID: "v1",
+			PlayerID: "wi", Skill: SkillAntidote, Targets: []string{"v1"},
 		}); err != nil {
 			t.Fatalf("提交解药: %v", err)
 		}
@@ -163,9 +163,9 @@ func TestRoleSetup_SurvivesSnapshot(t *testing.T) {
 
 	// 女巫先用掉解药，留下一个「初始状态已被改动」的局面
 	endTo(t, e, PhaseNightWolf)
-	mustSubmit(t, e, &SkillUse{PlayerID: "w1", Skill: SkillKill, TargetID: "v1"})
+	mustSubmit(t, e, &SkillUse{PlayerID: "w1", Skill: SkillKill, Targets: []string{"v1"}})
 	endTo(t, e, PhaseNightWitch)
-	mustSubmit(t, e, &SkillUse{PlayerID: "wi", Skill: SkillAntidote, TargetID: "v1"})
+	mustSubmit(t, e, &SkillUse{PlayerID: "wi", Skill: SkillAntidote, Targets: []string{"v1"}})
 	mustEnd(t, e)
 
 	before, _ := e.PlayerInfo("wi")
@@ -239,9 +239,9 @@ func TestRoleSetup_WitchSeesHerOwnPotions(t *testing.T) {
 
 	// 用掉解药之后只剩毒药，刀口也随之看不到了
 	endTo(t, e, PhaseNightWolf)
-	mustSubmit(t, e, &SkillUse{PlayerID: "w1", Skill: SkillKill, TargetID: "v1"})
+	mustSubmit(t, e, &SkillUse{PlayerID: "w1", Skill: SkillKill, Targets: []string{"v1"}})
 	endTo(t, e, PhaseNightWitch)
-	mustSubmit(t, e, &SkillUse{PlayerID: "wi", Skill: SkillAntidote, TargetID: "v1"})
+	mustSubmit(t, e, &SkillUse{PlayerID: "wi", Skill: SkillAntidote, Targets: []string{"v1"}})
 	mustEnd(t, e)
 
 	v = e.PlayerView("wi")

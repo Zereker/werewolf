@@ -70,24 +70,24 @@ func TestResolvers_EffectOrderIsDeterminedByTheBoard(t *testing.T) {
 	// 一批四散的投票：三方并列最高票，逼出平票分支
 	spreadVotes := func(skill SkillType) []*SkillUse {
 		return []*SkillUse{
-			{PlayerID: "w1", Skill: skill, TargetID: "v1"},
-			{PlayerID: "w2", Skill: skill, TargetID: "v2"},
-			{PlayerID: "w3", Skill: skill, TargetID: "v3"},
-			{PlayerID: "s", Skill: skill, TargetID: "v1"},
-			{PlayerID: "wi", Skill: skill, TargetID: "v2"},
-			{PlayerID: "g", Skill: skill, TargetID: "v3"},
-			{PlayerID: "h", Skill: skill, TargetID: "v4"},
-			{PlayerID: "v1", Skill: skill, TargetID: "v5"},
+			{PlayerID: "w1", Skill: skill, Targets: []string{"v1"}},
+			{PlayerID: "w2", Skill: skill, Targets: []string{"v2"}},
+			{PlayerID: "w3", Skill: skill, Targets: []string{"v3"}},
+			{PlayerID: "s", Skill: skill, Targets: []string{"v1"}},
+			{PlayerID: "wi", Skill: skill, Targets: []string{"v2"}},
+			{PlayerID: "g", Skill: skill, Targets: []string{"v3"}},
+			{PlayerID: "h", Skill: skill, Targets: []string{"v4"}},
+			{PlayerID: "v1", Skill: skill, Targets: []string{"v5"}},
 		}
 	}
 	// 一批有唯一最高票的投票
 	clearVotes := func(skill SkillType) []*SkillUse {
 		return []*SkillUse{
-			{PlayerID: "w1", Skill: skill, TargetID: "v1"},
-			{PlayerID: "w2", Skill: skill, TargetID: "v1"},
-			{PlayerID: "w3", Skill: skill, TargetID: "v2"},
-			{PlayerID: "s", Skill: skill, TargetID: "v3"},
-			{PlayerID: "wi", Skill: skill, TargetID: "v4"},
+			{PlayerID: "w1", Skill: skill, Targets: []string{"v1"}},
+			{PlayerID: "w2", Skill: skill, Targets: []string{"v1"}},
+			{PlayerID: "w3", Skill: skill, Targets: []string{"v2"}},
+			{PlayerID: "s", Skill: skill, Targets: []string{"v3"}},
+			{PlayerID: "wi", Skill: skill, Targets: []string{"v4"}},
 		}
 	}
 
@@ -106,17 +106,17 @@ func TestResolvers_EffectOrderIsDeterminedByTheBoard(t *testing.T) {
 			{PlayerID: "v3", Skill: SkillSpeak},
 		}, full},
 		{"守卫", NewGuardResolver(rules), []*SkillUse{
-			{PlayerID: "g", Skill: SkillProtect, TargetID: "s"},
+			{PlayerID: "g", Skill: SkillProtect, Targets: []string{"s"}},
 		}, full},
 		{"预言家", NewSeerResolver(), []*SkillUse{
-			{PlayerID: "s", Skill: SkillCheck, TargetID: "w1"},
+			{PlayerID: "s", Skill: SkillCheck, Targets: []string{"w1"}},
 		}, full},
 		{"女巫·双开药", NewWitchResolver(rules), []*SkillUse{
-			{PlayerID: "wi", Skill: SkillAntidote, TargetID: "v1"},
-			{PlayerID: "wi", Skill: SkillPoison, TargetID: "w1"},
+			{PlayerID: "wi", Skill: SkillAntidote, Targets: []string{"v1"}},
+			{PlayerID: "wi", Skill: SkillPoison, Targets: []string{"w1"}},
 		}, withKill(full, "v1")},
 		{"猎人·开枪", NewHunterResolver(), []*SkillUse{
-			{PlayerID: "h", Skill: SkillShoot, TargetID: "w1"},
+			{PlayerID: "h", Skill: SkillShoot, Targets: []string{"w1"}},
 		}, full},
 		{"夜晚结算·有刀口", NewNightResolveResolver(rules), nil, withKill(full, "v1")},
 		{"夜晚结算·刀口被守", NewNightResolveResolver(rules),
@@ -191,7 +191,7 @@ func TestFullGame_EffectLogIsReproducible(t *testing.T) {
 					if sk != SkillSkip && sk != SkillSpeak {
 						target = "h" // 一路投猎人，逼出他出局时的开枪
 					}
-					_ = g.e.SubmitSkillUse(&SkillUse{PlayerID: id, Skill: sk, TargetID: target})
+					_ = g.e.SubmitSkillUse(&SkillUse{PlayerID: id, Skill: sk, Targets: []string{target}})
 					break
 				}
 			}

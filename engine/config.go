@@ -133,11 +133,33 @@ type PhaseStep struct {
 type SkillUse struct {
 	PlayerID string    // 使用技能的玩家
 	Skill    SkillType // 技能类型
-	TargetID string    // 技能目标（单人）
+
+	// Targets 技能目标。绝大多数技能只有一个，少数一次指定一组。
+	//
+	// 此前这里是 `TargetID string`——一个目标。那个形状是被样本量为一固定
+	// 下来的：狼人杀的九个技能恰好每个都只有一个目标。阿瓦隆的「提名任务
+	// 队伍」一次要指定 2-5 个人，只能拆成多次提交，代价是就绪判定说不清
+	// 「还差几个人没提」——它只知道队长提交过没有，于是提名了 1 人（需要
+	// 2 人）之后就报 Ready=true。那与「AllowedSkills 对没资格的人说他能行动」
+	// 是同一类问题：内核对玩家说了不实的话。
+	//
+	// 单目标的技能写 Targets: []string{"x"}，读用 Target()。
+	Targets []string
 
 	// 以下字段由 Engine 在提交时填充，调用方无需设置
 	Phase PhaseType
 	Round int
+}
+
+// Target 单目标技能的那一个目标，没有则为空串。
+//
+// 绝大多数技能只有一个目标，这个方法让它们不必每次都写 Targets[0] 并自己判空。
+// 多目标的技能直接读 Targets。
+func (u *SkillUse) Target() string {
+	if u == nil || len(u.Targets) == 0 {
+		return ""
+	}
+	return u.Targets[0]
 }
 
 // Validate 检查配置自身是否自洽。

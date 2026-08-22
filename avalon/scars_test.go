@@ -41,7 +41,7 @@ func TestOnlyNamedActorsMayAct(t *testing.T) {
 			t.Errorf("%s 不是队长，AllowedSkills 却给出 %v", id, allowed)
 		}
 		if err := e.SubmitSkillUse(&engine.SkillUse{
-			PlayerID: id, Skill: SkillPropose, TargetID: "a",
+			PlayerID: id, Skill: SkillPropose, Targets: []string{"a"},
 		}); err == nil {
 			t.Errorf("%s 不是队长，内核却收下了他的提名", id)
 		}
@@ -213,9 +213,7 @@ func mustEnd(t *testing.T, e *engine.Engine) []*engine.Effect {
 func propose(t *testing.T, e *engine.Engine, members ...string) {
 	t.Helper()
 	leader := leaderID(e.View())
-	for _, m := range members {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, TargetID: m})
-	}
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: members})
 	mustEnd(t, e)
 }
 
@@ -226,4 +224,40 @@ func proposeAndApprove(t *testing.T, e *engine.Engine, members ...string) {
 		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
 	}
 	mustEnd(t, e)
+}
+
+// TestReadinessKnowsTheWholeTeamIsProposed 就绪判定说得清「提名齐了没有」。
+//
+// **这条曾经是疤 5**：`SkillUse` 只能带一个目标，队长得提交 N 次。那个形状是
+// 被样本量为一固定下来的——狼人杀九个技能恰好每个都只有一个目标。后果是就绪
+// 判定只知道「队长提交过没有」：7 人局第一轮要 2 个人，队长只提名 1 个，
+// 它就报 Ready=true。
+//
+// 那与「AllowedSkills 对没资格的人说他能行动」是同一类问题：内核对玩家说了
+// 不实的话。既然疤 1 按这个标准修了，这条也该按同一个标准修。
+//
+// 现在一次提交带整支队伍，提名与就绪是同一件事。
+func TestReadinessKnowsTheWholeTeamIsProposed(t *testing.T) {
+	e := fivePlayer(t)
+	need := MissionSize(5, 1)
+	if need < 2 {
+		t.Fatalf("这个测试需要至少 2 人的任务，实际 %d", need)
+	}
+
+	if e.PhaseReadiness().Ready {
+		t.Fatal("还没提名就报就绪了")
+	}
+	leader := leaderID(e.View())
+	mustSubmit(t, e, &engine.SkillUse{
+		PlayerID: leader, Skill: SkillPropose, Targets: []string{"a", "b"},
+	})
+	if !e.PhaseReadiness().Ready {
+		t.Error("整支队伍都提名了，还报没就绪")
+	}
+
+	// 提名的确实是整支队伍
+	mustEnd(t, e)
+	if got := len(teamIDs(e.View())); got != need {
+		t.Errorf("队伍人数 = %d，期望 %d", got, need)
+	}
 }

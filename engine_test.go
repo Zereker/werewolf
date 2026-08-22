@@ -194,7 +194,7 @@ func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 	err := eng.SubmitSkillUse(&SkillUse{
 		PlayerID: "guard",
 		Skill:    SkillProtect,
-		TargetID: "victim",
+		Targets:  []string{"victim"},
 	})
 
 	if err != nil {
@@ -260,7 +260,7 @@ func TestEngine_EndPhase(t *testing.T) {
 	mustSubmit(t, eng, &SkillUse{
 		PlayerID: "guard",
 		Skill:    SkillProtect,
-		TargetID: "v1",
+		Targets:  []string{"v1"},
 	})
 
 	effects, err := eng.EndPhase()
@@ -515,7 +515,7 @@ func TestEngine_Concurrency(t *testing.T) {
 			err := eng.SubmitSkillUse(&SkillUse{
 				PlayerID: "guard",
 				Skill:    SkillProtect,
-				TargetID: "v1",
+				Targets:  []string{"v1"},
 			})
 			if err != nil && err != engine.ErrPlayerDead && err != engine.ErrTargetDead {
 				errors <- err

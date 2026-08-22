@@ -107,7 +107,7 @@ func TestSkillUse_Fields(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "p1",
 		Skill:    SkillKill,
-		TargetID: "p2",
+		Targets:  []string{"p2"},
 		Phase:    PhaseNight,
 		Round:    1,
 	}
@@ -118,8 +118,8 @@ func TestSkillUse_Fields(t *testing.T) {
 	if use.Skill != SkillKill {
 		t.Errorf("expected Skill=KILL, got %v", use.Skill)
 	}
-	if use.TargetID != "p2" {
-		t.Errorf("expected TargetID=p2, got %s", use.TargetID)
+	if use.Target() != "p2" {
+		t.Errorf("expected TargetID=p2, got %s", use.Target())
 	}
 	if use.Phase != PhaseNight {
 		t.Errorf("expected Phase=NIGHT, got %v", use.Phase)

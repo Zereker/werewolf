@@ -172,7 +172,7 @@ func (r *room) detach(player string, c *conn) {
 
 func (r *room) act(player string, skill werewolf.SkillType, target string) {
 	err := r.eng.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: player, Skill: skill, TargetID: target,
+		PlayerID: player, Skill: skill, Targets: []string{target},
 	})
 	if err != nil {
 		r.sendTo(player, serverMsg{Type: "error", Message: err.Error()})

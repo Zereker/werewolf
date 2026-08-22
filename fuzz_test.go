@@ -268,7 +268,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 			}
 			skill := skills[rng.Intn(len(skills))]
 			target := ids[rng.Intn(len(ids))]
-			_ = e.SubmitSkillUse(&SkillUse{PlayerID: id, Skill: skill, TargetID: target})
+			_ = e.SubmitSkillUse(&SkillUse{PlayerID: id, Skill: skill, Targets: []string{target}})
 		}
 
 		// 不变量 A：PlayerView 与 AllowedSkills 一致

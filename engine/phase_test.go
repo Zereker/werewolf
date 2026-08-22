@@ -305,7 +305,7 @@ func TestValidateSkillUse_Valid(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "wolf",
 		Skill:    skillKill,
-		TargetID: "victim",
+		Targets:  []string{"victim"},
 		Phase:    phaseNightWolf,
 	}
 
@@ -325,7 +325,7 @@ func TestValidateSkillUse_PlayerNotFound(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "nonexistent",
 		Skill:    skillKill,
-		TargetID: "victim",
+		Targets:  []string{"victim"},
 		Phase:    phaseNightWolf,
 	}
 
@@ -348,7 +348,7 @@ func TestValidateSkillUse_PlayerDead(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "wolf",
 		Skill:    skillKill,
-		TargetID: "victim",
+		Targets:  []string{"victim"},
 		Phase:    phaseNightWolf,
 	}
 
@@ -371,7 +371,7 @@ func TestValidateSkillUse_SkillNotAllowed(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "villager",
 		Skill:    skillKill,
-		TargetID: "victim",
+		Targets:  []string{"victim"},
 		Phase:    phaseNightWolf,
 	}
 
@@ -392,7 +392,7 @@ func TestValidateSkillUse_TargetNotFound(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "wolf",
 		Skill:    skillKill,
-		TargetID: "nonexistent",
+		Targets:  []string{"nonexistent"},
 		Phase:    phaseNightWolf,
 	}
 
@@ -415,7 +415,7 @@ func TestValidateSkillUse_TargetDead(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "wolf",
 		Skill:    skillKill,
-		TargetID: "victim",
+		Targets:  []string{"victim"},
 		Phase:    phaseNightWolf,
 	}
 
@@ -439,7 +439,7 @@ func TestValidateSkillUse_AntidoteOnDead(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "witch",
 		Skill:    skillAntidote,
-		TargetID: "victim",
+		Targets:  []string{"victim"},
 		Phase:    phaseNightWitch,
 	}
 
@@ -461,7 +461,7 @@ func TestValidateSkillUse_NoTarget(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "wolf",
 		Skill:    skillKill,
-		TargetID: "",
+		Targets:  []string{""},
 		Phase:    phaseNightWolf,
 	}
 
