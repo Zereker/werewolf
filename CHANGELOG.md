@@ -15,6 +15,31 @@
 
 ## 未发布
 
+### 面向玩家的结构不许有自由格式的状态口袋——这条规矩从注释变成测试
+
+`PlayerInfo`（上帝视角）/ `SelfInfo`（自己那份）/ `PublicPlayerInfo`
+（别人那份）是同一名玩家的三副面孔。它们分开的全部理由写在
+`PlayerInfo.Vars` 的注释里：「往里放什么由角色决定，默认把它交给玩家等于
+让每个角色自己去想『这一项能不能给他看』」。
+
+而这条**此前只是一句注释**。谁给 `SelfInfo` 加一个 `Vars map[string]string`，
+女巫还剩几瓶药、守卫上回合守了谁就一起发给全场了，没有任何东西会响——
+与 `GOTO_PHASE` 被错分成状态原语是同一类问题：规矩写在注释里。
+
+`TestPlayerView_CarriesNoFreeFormState` 用反射走 `PlayerView` 的整张类型图，
+任何 `map[string]string` 都算泄漏，白名单上只有 `PlayerView.RoleInfo`
+（那是角色经 `RoleInfoProvider` **显式**投射的一次有意公开）。给 `SelfInfo`
+或 `PublicPlayerInfo` 加口袋会立刻变红。
+
+配套的 `TestPlayerView_ShapeTestActuallyWalks` 盯着这个测试自己：反射走类型图
+很容易因为一个提前 return 而什么都没查、然后永远是绿的。
+
+**这三个类型不合并**，`docs/API-SHAPE.md` 里原来把它们判成「同一个概念摊成
+三个名字」是错的。作用域那四格行为完全一致、只有挂点不同，所以合得起来；
+这三个是三份不同的契约，`PublicPlayerInfo` 在类型上就装不下 `Vars`——
+那是与「`Resolver` 只能返回 `Effect`」同一级别的编译期保证，合成一个带可选
+字段的类型会把它退回成运行时判断。
+
 ### `Engine` 的四个摘要读法合成 `Status()`，理由不是名字多，是会撕裂
 
 **破坏性变更。** `Engine.Phase()` / `Round()` / `IsGameOver()` / `Winner()`

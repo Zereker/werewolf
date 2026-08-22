@@ -73,7 +73,14 @@ type SelfInfo struct {
 	Camp Camp `json:"camp,omitempty"`
 }
 
-// PublicPlayerInfo 一名玩家对外公开的信息
+// PublicPlayerInfo 一名玩家对外公开的信息。
+//
+// 它与 SelfInfo、PlayerInfo 是同一名玩家的三副面孔，分开不是命名上的巧合：
+// 这个类型**在类型上就装不下** Vars，于是「这一项该不该给他看」是一个签名
+// 问题而不是运行时问题。合成一个带可选字段的类型会把这条保证丢掉。
+//
+// 这条规矩由 TestPlayerView_CarriesNoFreeFormState 执行：面向玩家的结构里
+// 出现任何自由格式的状态口袋都会变红。
 type PublicPlayerInfo struct {
 	ID    string `json:"id"`
 	Alive bool   `json:"alive"`

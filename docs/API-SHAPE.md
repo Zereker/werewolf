@@ -131,7 +131,7 @@ kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有
 
 ---
 
-## 四、影子类型：同一批数据的三套形状
+## 四、影子类型：同一批数据的三套形状 —— 判断有误，改为加执法
 
 同一批游戏状态，在代码里有三副面孔：
 
@@ -145,9 +145,36 @@ kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有
 四个 `*Snapshot` 影子类型的存在是**刻意的**（快照是写进存储的格式，字段名必须稳定，
 不能随内部重构漂移——这一条写在 `snapshot.go` 里，我仍然认为是对的）。
 
-但视图那一列不是：`PlayerInfo` / `PublicPlayerInfo` / `SelfInfo` 三个类型描述的都是
-「一名玩家，按看的人不同露出不同的字段」——**「谁在看」这个维度没有对应物**，
-于是变成了三个类型名。
+视图那一列我原来判成同一个问题：`PlayerInfo` / `PublicPlayerInfo` / `SelfInfo`
+描述的都是「一名玩家，按看的人不同露出不同的字段」，「谁在看」这个维度没有
+对应物，于是变成三个类型名。
+
+**这个判断是错的，不该合。** 与作用域不同——作用域的四格行为完全一致，只有
+挂点不同，所以合得起来；这三个是**三份不同的契约**：
+
+```
+PlayerInfo         上帝视角   ID Role Alive Vars RoundVars
+SelfInfo           自己那份   ID Role Alive Camp
+PublicPlayerInfo   别人那份   ID Alive Role(仅在对本视角公开时)
+```
+
+`PublicPlayerInfo` **在类型上就装不下** `Vars`。这不是命名的巧合，是与
+「`Resolver` 只能返回 `Effect`」同一级别的编译期保证：合成一个带可选字段的
+类型，「这一项该不该给他看」就从签名问题退回成运行时问题。
+
+**真正缺的不是类型，是执法。** 「往里放什么由角色决定，默认把它交给玩家等于
+让每个角色自己去想『这一项能不能给他看』」——这条写在 `PlayerInfo.Vars` 的
+注释里，是三副面孔分开的全部理由，而它此前**只是一句注释**。谁给 `SelfInfo`
+加一个 `Vars map[string]string`，女巫还剩几瓶药就一起发给全场了，没有任何
+东西会响。与 `GOTO_PHASE` 那次是同一类问题：规矩写在注释里。
+
+现在 `TestPlayerView_CarriesNoFreeFormState` 用反射走 `PlayerView` 的整张类型图，
+任何 `map[string]string` 都算泄漏，只有 `PlayerView.RoleInfo` 在白名单上
+（那是角色**显式**投射的一次有意公开）。给 `SelfInfo` 或 `PublicPlayerInfo`
+加口袋会立刻变红。
+
+配套的 `TestPlayerView_ShapeTestActuallyWalks` 盯着这个测试自己：反射走类型图
+很容易因为一个提前 return 而什么都没查、然后永远是绿的。
 
 ---
 
@@ -187,7 +214,7 @@ Status{ Phase, Round, Over, Winner }
 | 变量作用域（2×2） | ~~没有~~ → `VarScope` | ~~8~~ → 已收敛 |
 | 规则对内核说的话（三类） | `eventKind`（未导出） | 6（构造器未收敛） |
 | 一个扩展点 | 部分（接口有，装配没有） | 8 × 3 = 24（已齐整，未收敛） |
-| 「谁在看这份数据」 | **没有** | 3 |
+| 「谁在看这份数据」 | 三个类型（**本来就该三个**） | 3，不该动 |
 | 便宜的状态读法（摘要那组） | `Status` | ~~4~~ → 已收敛 |
 
 **53 个导出类型里，相当一部分是「概念没有对应物」摊出来的。**
