@@ -19,29 +19,46 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 	leader := leaderID(view)
 	need := MissionSize(len(view.AllPlayers()), mission(view))
 
+	// 一次提交带整支队伍。
+	//
+	// SkillUse 此前只能带一个目标，队长得提交 N 次——就绪判定因此说不清
+	// 「还差几个人没提」，提名了 1 人（需要 2 人）之后就报 Ready=true。
+	// 现在一次提交就是一支完整的队伍，就绪判定跟着说对话。
+	//
+	// 不检查提交者是不是队长：内核已经在 SubmitSkillUse 就拦下了非队长的
+	// 提交（这个阶段的行动者由 SetActors 指定）。
 	seen := map[string]bool{}
 	var team []string
 	for _, u := range uses {
-		if u.Skill != SkillPropose || u.PlayerID != leader || u.TargetID == "" {
+		if u.Skill != SkillPropose {
 			continue
 		}
-		if seen[u.TargetID] || len(team) >= need {
-			continue
+		for _, id := range u.Targets {
+			if id == "" || seen[id] || len(team) >= need {
+				continue
+			}
+			if _, ok := view.Player(id); !ok {
+				continue
+			}
+			seen[id] = true
+			team = append(team, id)
 		}
-		if _, ok := view.Player(u.TargetID); !ok {
-			continue
-		}
-		seen[u.TargetID] = true
-		team = append(team, u.TargetID)
 	}
 
+	// 上一次提名留下的标记不用在这里清：提名阶段声明了 ClearsRoundVars，
+	// 内核在它结算完时清。此前内核只有「回合级」一档寿命，而这里要的是
+	// 「一次提名」，只好手工清一遍——那段代码现在删掉了。
 	var effects []*engine.Effect
 	for _, id := range team {
 		effects = append(effects,
 			engine.NewEffect(EventProposed, leader, id),
 			engine.NewSetPlayerRoundVarEffect(id, varOnTeam, engine.VarPresent))
 	}
-	return effects
+	// 点名任务阶段的行动者：只有这几个人能投成败。
+	//
+	// 名单在这里算出来、到下一个阶段才用——这正是 SetActors 要指定阶段
+	// 而不是只作用于当前阶段的原因。
+	return append(effects, engine.NewSetActorsEffect(PhaseMission, team...))
 }
 
 // teamVoteResolver 全员表决这支队伍。
@@ -78,15 +95,18 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 	ok := len(team) == need && need > 0 && approve > reject
 
 	// 队长每一轮都往下传一位，无论通过与否
+	next := gameNum(view, varLeader) + 1
 	effects = append(effects,
-		setGameNum(view, varLeader, gameNum(view, varLeader)+1),
-		engine.NewEffect(EventLeaderChanged, "", ""))
+		setGameNum(view, varLeader, next),
+		engine.NewEffect(EventLeaderChanged, "", ""),
+		engine.NewSetActorsEffect(PhasePropose, leaderAt(view, next)))
 
 	if ok {
 		return append(effects,
 			engine.NewEffect(EventTeamApproved, "", "").WithData("team", len(team)),
 			engine.NewSetRoundVarEffect(varApproved, engine.VarPresent),
-			setGameNum(view, varRejects, 0))
+			setGameNum(view, varRejects, 0),
+			engine.NewGotoPhaseEffect(PhaseMission))
 	}
 
 	n := rejects(view) + 1
@@ -97,7 +117,12 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 		// 连续五次否决，坏人直接获胜。胜负由 VictoryChecker 读这个数判定。
 		effects = append(effects, engine.NewEffect(EventHammerReached, "", ""))
 	}
-	return effects
+	// 被否决就直接回提名，不再空转一次任务阶段。
+	//
+	// 这是内核把「下一步去哪」交给规则之后立刻兑现的：条件分支的结果由
+	// 本阶段的结算算出来，静态的 NextPhase 表达不了。顺带把回合数也修对了
+	// ——任务阶段声明了 EndsRound，空转一次就多推一个回合。
+	return append(effects, engine.NewGotoPhaseEffect(PhasePropose))
 }
 
 // missionResolver 任务结算。
@@ -116,11 +141,7 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 		return nil // 上一轮表决没通过，这个阶段空转
 	}
 
-	team := map[string]bool{}
-	for _, id := range teamIDs(view) {
-		team[id] = true
-	}
-
+	// 不再检查「他在不在队伍里」：内核已经拦下了非队员的提交。
 	acted := map[string]bool{}
 	fails := 0
 	var effects []*engine.Effect
@@ -128,8 +149,8 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 		if u.Skill != SkillMissionSuccess && u.Skill != SkillMissionFail {
 			continue
 		}
-		if !team[u.PlayerID] || acted[u.PlayerID] {
-			continue // 没上任务的人投的票不算数
+		if acted[u.PlayerID] {
+			continue // 一人一票，以第一次为准
 		}
 		acted[u.PlayerID] = true
 		if u.Skill != SkillMissionFail {
@@ -179,23 +200,23 @@ type assassinResolver struct{}
 
 func (assassinResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
 	for _, u := range uses {
-		if u.Skill != SkillAssassinate || u.TargetID == "" {
+		if u.Skill != SkillAssassinate || u.Target() == "" {
 			continue
 		}
-		p, ok := view.Player(u.TargetID)
+		p, ok := view.Player(u.Target())
 		if !ok {
 			continue
 		}
 		hit := p.Role == RoleMerlin
 		return []*engine.Effect{
-			engine.NewEffect(EventAssassinated, u.PlayerID, u.TargetID).WithData("hit", hit),
-			engine.NewSetPlayerVarEffect(ledger(view), varAssassinated, boolVar(hit)),
+			engine.NewEffect(EventAssassinated, u.PlayerID, u.Target()).WithData("hit", hit),
+			engine.NewSetGameVarEffect(varAssassinated, boolVar(hit)),
 		}
 	}
 	// 没有指认视为刺杀落空
 	return []*engine.Effect{
 		engine.NewEffect(EventAssassinated, "", "").WithData("hit", false),
-		engine.NewSetPlayerVarEffect(ledger(view), varAssassinated, "miss"),
+		engine.NewSetGameVarEffect(varAssassinated, "miss"),
 	}
 }
 

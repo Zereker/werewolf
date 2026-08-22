@@ -12,104 +12,156 @@ import (
 // 意义是：SCARS.md 里的每一条都能被验证，而不是我说了算。内核补上对应
 // 能力之后，它们会变红——那时候就该把它们改写成正面断言。
 
-// TestScar1_AllowedSkillsLiesToNonTeamMembers 没上任务的人，被告知他可以投票。
+// TestOnlyNamedActorsMayAct 只有被点名的人能行动，内核自己拦。
 //
-// 内核判定行动者只看 (阶段, 角色, 技能)，而任务队伍是运行时定的，
-// 因此任务阶段只能对所有角色开放。后果是 AllowedSkills 与 PlayerView
-// 会对没被选上的玩家说「你可以投成功/失败」——而这两个正是这个库
-// 拿来给玩家看的东西。
-func TestScar1_AllowedSkillsLiesToNonTeamMembers(t *testing.T) {
+// **这条曾经是疤 1**，而且是六条里最贵的一条——代价直接落在给玩家看的东西上：
+// 内核判定行动者只看 (阶段, 角色, 技能)，而角色是入座时定死的，任何运行时
+// 选出来的集合都表达不了。阿瓦隆里它咬了两次（队长、任务队伍），
+// 狼人杀里咬了一次（猎人开枪，内核为它开了触发队列这个单人特例）。
+//
+// 后果是内核对没资格的玩家说谎：AllowedSkills 说他能动、PhaseReadiness
+// 等着他、SubmitSkillUse 收下他的提交再由解析器丢掉。
+//
+// 内核补上 NewSetActorsEffect 之后，三个问题（校验、AllowedSkills、
+// PhaseReadiness）改从同一处取数。这个测试把三处一起盯住。
+func TestOnlyNamedActorsMayAct(t *testing.T) {
 	e := fivePlayer(t)
-	proposeAndApprove(t, e, "a", "b") // 队伍是 a、b
 
-	notOnTeam := "c"
-	if onTeamNow(e, notOnTeam) {
-		t.Fatalf("%s 不该在队伍里，测试前提坏了", notOnTeam)
+	// 一、提名阶段：只有队长
+	leader := leaderID(e.View())
+	for _, id := range allPlayerIDs(e) {
+		allowed := e.AllowedSkills(id)
+		if id == leader {
+			if len(allowed) == 0 {
+				t.Errorf("队长 %s 该能提名，AllowedSkills 是空的", id)
+			}
+			continue
+		}
+		if len(allowed) != 0 {
+			t.Errorf("%s 不是队长，AllowedSkills 却给出 %v", id, allowed)
+		}
+		if err := e.SubmitSkillUse(&engine.SkillUse{
+			PlayerID: id, Skill: SkillPropose, Targets: []string{"a"},
+		}); err == nil {
+			t.Errorf("%s 不是队长，内核却收下了他的提名", id)
+		}
 	}
 
-	allowed := e.AllowedSkills(notOnTeam)
-	if len(allowed) == 0 {
-		t.Skip("内核已经能按运行时名单划行动者了——这道疤该改成正面断言")
+	// 二、任务阶段：只有队伍成员
+	proposeAndApprove(t, e, "a", "b")
+	team := map[string]bool{"a": true, "b": true}
+	for _, id := range allPlayerIDs(e) {
+		allowed := e.AllowedSkills(id)
+		if team[id] {
+			if len(allowed) == 0 {
+				t.Errorf("队员 %s 该能投票，AllowedSkills 是空的", id)
+			}
+			continue
+		}
+		if len(allowed) != 0 {
+			t.Errorf("%s 没上任务，AllowedSkills 却给出 %v", id, allowed)
+		}
+		if err := e.SubmitSkillUse(&engine.SkillUse{
+			PlayerID: id, Skill: SkillMissionFail,
+		}); err == nil {
+			t.Errorf("%s 没上任务，内核却收下了他的失败票", id)
+		}
 	}
-	t.Logf("疤 1：%s 没上任务，AllowedSkills 却给出 %v", notOnTeam, allowed)
 
-	// 而且他真的提交得进去（只是解析器会丢掉）
-	if err := e.SubmitSkillUse(&engine.SkillUse{
-		PlayerID: notOnTeam, Skill: SkillMissionFail,
-	}); err != nil {
-		t.Skipf("内核已经拦住了非队员的提交：%v", err)
+	// 三、就绪判定也只等队伍成员
+	for _, p := range e.PhaseReadiness().Pending {
+		if !team[p.PlayerID] {
+			t.Errorf("PhaseReadiness 在等 %s，可他没上任务", p.PlayerID)
+		}
 	}
-	t.Logf("疤 1：%s 的失败票被内核收下了，只能靠解析器丢弃", notOnTeam)
-
-	// 就绪判定同样把他算进「还差谁」
-	r := e.PhaseReadiness()
-	t.Logf("疤 1：PhaseReadiness 认为还差 %v（队伍其实只有 a、b）", r.Pending)
 }
 
-// TestScar2_RejectedProposalSpinsThroughAnEmptyMissionPhase 表决没通过，仍然要空转一次任务阶段。
+// TestRejectedProposalGoesStraightBackToPropose 提名被否决，直接回提名，不空转任务阶段。
 //
-// 阶段流转是静态的 NextPhase，没有「表决通过就去任务、否则回提名」这种
-// 条件分支。绕法是让任务阶段在没通过时什么都不做。
-func TestScar2_RejectedProposalSpinsThroughAnEmptyMissionPhase(t *testing.T) {
+// **这条曾经是疤 2**：阶段流转是一张静态图，没有「表决通过就去任务、否则
+// 回提名」这种条件分支，于是被否决的提名也要空转一次任务阶段。
+//
+// 内核把「下一步去哪」交给规则之后（NewGotoPhaseEffect），表决解析器自己
+// 说去哪，这条疤关掉了。这个测试从「断言缺陷」翻成了「断言修好」。
+func TestRejectedProposalGoesStraightBackToPropose(t *testing.T) {
 	e := fivePlayer(t)
 	propose(t, e, "a", "b")
-	// 全员否决
 	for _, id := range allPlayerIDs(e) {
 		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
 	}
 	mustEnd(t, e)
 
-	if got := e.Phase(); got != PhaseMission {
-		t.Fatalf("阶段 = %v，期望仍然被推到 MISSION（这正是疤）", got)
-	}
-	t.Log("疤 2：队伍被否决了，引擎还是把大家带进了任务阶段")
-
-	effects := mustEnd(t, e)
-	if len(effects) != 0 {
-		t.Logf("空转的任务阶段产出了 %v", typesOf(effects))
-	}
 	if got := e.Phase(); got != PhasePropose {
-		t.Fatalf("空转之后该回到 PROPOSE，实际 %v", got)
+		t.Fatalf("阶段 = %v，期望直接回到 PROPOSE（不再空转任务阶段）", got)
 	}
 }
 
-// TestScar3_RoundIsAProposalCounterNotAMission 引擎的「回合」对阿瓦隆玩家没有意义。
+// TestApprovedProposalGoesToMission 表决通过，进任务阶段。
 //
-// 内核把「回合数加一」与「阶段环绕回起始阶段」焊成同一件事。阿瓦隆每提名
-// 一次就绕一圈，于是 Engine.Round() 数的是提名次数——而阿瓦隆自己说的
-// 「第几轮」指的是第几个任务，两者可以差五倍。PlayerView.Round 直接把这个
-// 没意义的数发给玩家。
-func TestScar3_RoundIsAProposalCounterNotAMission(t *testing.T) {
+// 与上面一条成对：同一个解析器算出两个不同的出口，这正是静态图表达不了的。
+func TestApprovedProposalGoesToMission(t *testing.T) {
+	e := fivePlayer(t)
+	propose(t, e, "a", "b")
+	for _, id := range allPlayerIDs(e) {
+		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
+	}
+	mustEnd(t, e)
+
+	if got := e.Phase(); got != PhaseMission {
+		t.Fatalf("阶段 = %v，期望 MISSION", got)
+	}
+}
+
+// TestRoundEqualsMissionNumber 引擎的「回合」等于阿瓦隆的「第几轮任务」。
+//
+// **这条曾经是疤 3**：内核把「回合数加一」焊死在「阶段环绕回起始阶段」上，
+// 而阿瓦隆每提名一次就绕一圈，于是 Round 成了提名计数器，与「第几轮任务」
+// 最多差五倍，还被 PlayerView.Round 原样发给玩家。
+//
+// 两处改动合起来才关掉它，缺一不可：
+//   - PhaseConfig.EndsRound 让板子自己声明回合边界（阿瓦隆声明在任务阶段）；
+//   - NewGotoPhaseEffect 让被否决的提名直接跳回提名阶段，不再空转任务阶段
+//     ——只改前者的话，空转那一次照样推进回合，这条疤只关掉一半。
+//
+// 两条疤耦合这件事本身是个发现：它们同根，都是内核替规则做了只有规则知道
+// 答案的决定。
+func TestRoundEqualsMissionNumber(t *testing.T) {
 	e := fivePlayer(t)
 
-	// 连续否决两次，一个任务都没打
+	// 先连续否决两次：一个任务都没打，回合数就不该动
 	for i := 0; i < 2; i++ {
 		propose(t, e, "a", "b")
 		for _, id := range allPlayerIDs(e) {
 			mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
 		}
-		mustEnd(t, e) // -> MISSION
-		mustEnd(t, e) // -> PROPOSE，回合数 +1
+		mustEnd(t, e)
+	}
+	if got, want := e.Round(), 1; got != want {
+		t.Errorf("否决两次之后 Round = %d，期望仍是 %d——一个任务都没打", got, want)
 	}
 
-	engineRound := e.Round()
-	avalonMission := missionOf(e)
-	t.Logf("疤 3：引擎说第 %d 回合，阿瓦隆说还在第 %d 轮任务", engineRound, avalonMission)
-	if engineRound == avalonMission {
-		t.Skip("两者恰好相等——换个用例再看")
+	// 打完两轮任务，回合数跟着任务走
+	runMission(t, e, 0, "a", "b")
+	runMission(t, e, 0, "a", "b", "c")
+
+	if got, want := e.Round(), missionOf(e); got != want {
+		t.Errorf("Round = %d，阿瓦隆的第几轮 = %d，两者该相等", got, want)
 	}
-	if v := e.PlayerView("a"); v.Round != engineRound {
-		t.Fatalf("PlayerView.Round = %d，引擎 = %d", v.Round, engineRound)
+	if v := e.PlayerView("a"); v.Round != e.Round() {
+		t.Errorf("PlayerView.Round = %d，引擎 = %d", v.Round, e.Round())
 	}
-	t.Logf("疤 3：而 PlayerView.Round 把 %d 这个数原样发给了玩家", engineRound)
 }
 
-// TestScar4_GameProgressLivesOnSomeonesPrivateState 整局进度记在某个玩家身上。
+// TestGameProgressLivesInGameVars 整局进度住在整局作用域里，不挂在任何玩家身上。
 //
-// 内核的三种变量作用域里没有「整局有效 + 无主」这一格，阿瓦隆的五个计数器
-// 只能挂到 ID 字典序最小的那名玩家的 PlayerVar 上。后果是那个玩家的私有
-// 状态里凭空多出五个与他无关的字段。
-func TestScar4_GameProgressLivesOnSomeonesPrivateState(t *testing.T) {
+// **这条曾经是疤 4**：内核的变量作用域是一张 2x2 的表，缺「整局有效 + 无主」
+// 这一格。阿瓦隆的五个计数器（第几轮、成功几次、失败几次、连续否决几次、
+// 队长是谁）只能挂到 ID 字典序最小那名玩家的 PlayerVar 上当账本——全局事实
+// 记在某个人名下，那个玩家的视图里凭空多出五个与他无关的字段。
+//
+// 内核补上第四格（GameVar）之后账本整个删掉了。这个测试盯住两件事：
+// 进度确实在整局作用域里，且**没有任何玩家身上沾着它**。
+func TestGameProgressLivesInGameVars(t *testing.T) {
 	e := fivePlayer(t)
 	proposeAndApprove(t, e, "a", "b")
 	for _, id := range []string{"a", "b"} {
@@ -117,27 +169,28 @@ func TestScar4_GameProgressLivesOnSomeonesPrivateState(t *testing.T) {
 	}
 	mustEnd(t, e)
 
-	holder, _ := e.PlayerInfo("a") // AllPlayers 排序后的第一位
-	var leaked []string
-	for k := range holder.Vars {
-		if k != engine.VarCamp {
-			leaked = append(leaked, k)
+	// 一、进度读得到，而且在整局作用域里
+	if got := successes(e.View()); got != 1 {
+		t.Fatalf("成功次数 = %d，期望 1", got)
+	}
+	if e.GameVar(varSuccess) == "" {
+		t.Errorf("成功次数该住在 GameVar 里，%q 是空的", varSuccess)
+	}
+
+	// 二、没有任何玩家身上沾着阿瓦隆的整局计数
+	for _, id := range e.AlivePlayerIDs() {
+		p, _ := e.PlayerInfo(id)
+		for k := range p.Vars {
+			if k != engine.VarCamp {
+				t.Errorf("玩家 %s 身上不该有 %q——那是整局状态，不属于任何人", id, k)
+			}
 		}
 	}
-	if len(leaked) == 0 {
-		t.Skip("内核已经有整局作用域了——这道疤该改成正面断言")
-	}
-	t.Logf("疤 4：玩家 a 的私有状态里多出 %d 个与他无关的字段：%v", len(leaked), leaked)
 }
 
 // ==================== 测试辅助 ====================
 
 func allPlayerIDs(e *engine.Engine) []string { return e.AlivePlayerIDs() }
-
-func onTeamNow(e *engine.Engine, id string) bool {
-	v := e.View()
-	return onTeam(v, id)
-}
 
 func missionOf(e *engine.Engine) int { return mission(e.View()) }
 
@@ -160,9 +213,7 @@ func mustEnd(t *testing.T, e *engine.Engine) []*engine.Effect {
 func propose(t *testing.T, e *engine.Engine, members ...string) {
 	t.Helper()
 	leader := leaderID(e.View())
-	for _, m := range members {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, TargetID: m})
-	}
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: members})
 	mustEnd(t, e)
 }
 
@@ -173,4 +224,40 @@ func proposeAndApprove(t *testing.T, e *engine.Engine, members ...string) {
 		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
 	}
 	mustEnd(t, e)
+}
+
+// TestReadinessKnowsTheWholeTeamIsProposed 就绪判定说得清「提名齐了没有」。
+//
+// **这条曾经是疤 5**：`SkillUse` 只能带一个目标，队长得提交 N 次。那个形状是
+// 被样本量为一固定下来的——狼人杀九个技能恰好每个都只有一个目标。后果是就绪
+// 判定只知道「队长提交过没有」：7 人局第一轮要 2 个人，队长只提名 1 个，
+// 它就报 Ready=true。
+//
+// 那与「AllowedSkills 对没资格的人说他能行动」是同一类问题：内核对玩家说了
+// 不实的话。既然疤 1 按这个标准修了，这条也该按同一个标准修。
+//
+// 现在一次提交带整支队伍，提名与就绪是同一件事。
+func TestReadinessKnowsTheWholeTeamIsProposed(t *testing.T) {
+	e := fivePlayer(t)
+	need := MissionSize(5, 1)
+	if need < 2 {
+		t.Fatalf("这个测试需要至少 2 人的任务，实际 %d", need)
+	}
+
+	if e.PhaseReadiness().Ready {
+		t.Fatal("还没提名就报就绪了")
+	}
+	leader := leaderID(e.View())
+	mustSubmit(t, e, &engine.SkillUse{
+		PlayerID: leader, Skill: SkillPropose, Targets: []string{"a", "b"},
+	})
+	if !e.PhaseReadiness().Ready {
+		t.Error("整支队伍都提名了，还报没就绪")
+	}
+
+	// 提名的确实是整支队伍
+	mustEnd(t, e)
+	if got := len(teamIDs(e.View())); got != need {
+		t.Errorf("队伍人数 = %d，期望 %d", got, need)
+	}
 }

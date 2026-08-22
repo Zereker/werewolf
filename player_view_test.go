@@ -85,7 +85,7 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := e.SubmitSkillUse(&SkillUse{
-		PlayerID: "w1", Skill: SkillKill, TargetID: "v1",
+		PlayerID: "w1", Skill: SkillKill, Targets: []string{"v1"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 
 	// 用掉解药后不再可见
 	if err := e.SubmitSkillUse(&SkillUse{
-		PlayerID: "wi", Skill: SkillAntidote, TargetID: "v1",
+		PlayerID: "wi", Skill: SkillAntidote, Targets: []string{"v1"},
 	}); err != nil {
 		t.Fatal(err)
 	}

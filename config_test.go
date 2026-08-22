@@ -1,9 +1,11 @@
 package werewolf
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Zereker/werewolf/engine"
 )
 
 // TestDefaultRules 规则开关的默认值。
@@ -107,7 +109,7 @@ func TestSkillUse_Fields(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "p1",
 		Skill:    SkillKill,
-		TargetID: "p2",
+		Targets:  []string{"p2"},
 		Phase:    PhaseNight,
 		Round:    1,
 	}
@@ -118,8 +120,8 @@ func TestSkillUse_Fields(t *testing.T) {
 	if use.Skill != SkillKill {
 		t.Errorf("expected Skill=KILL, got %v", use.Skill)
 	}
-	if use.TargetID != "p2" {
-		t.Errorf("expected TargetID=p2, got %s", use.TargetID)
+	if use.Target() != "p2" {
+		t.Errorf("expected TargetID=p2, got %s", use.Target())
 	}
 	if use.Phase != PhaseNight {
 		t.Errorf("expected Phase=NIGHT, got %v", use.Phase)
@@ -323,5 +325,51 @@ func TestValidate_RejectsGroupSpanningRoles(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("跨角色的同名 Group 应当被拒")
+	}
+}
+
+// TestValidate_RequiresBothRoundDeclarations 板子必须说清「一回合怎么算」和「什么时候干净」。
+//
+// 这两条是把决定权交给规则之后**换来的**可检查性：内核自己焊死的时候，
+// 它没办法检查自己焊得对不对；规则声明出来之后反而查得动了。
+//
+// 少了哪一条都是必然出错的配置，而且错得很隐蔽：
+//
+//	没有 EndsRound        回合数永远停在 1，报给玩家的数没有意义
+//	没有 ClearsRoundVars  回合级变量永不清空——女巫用掉的那瓶解药会一夜
+//	                      又一夜地把同一个人救回来，一次性道具变成永久道具
+//
+// 两条都该在建局时被拒，而不是跑到半局才让人发现。
+func TestValidate_RequiresBothRoundDeclarations(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		drop func(*GameConfig)
+		want string
+	}{
+		{"没有阶段声明 EndsRound", func(c *GameConfig) {
+			for _, pc := range c.Phases {
+				pc.EndsRound = false
+			}
+		}, "EndsRound"},
+		{"没有阶段声明 ClearsRoundVars", func(c *GameConfig) {
+			for _, pc := range c.Phases {
+				pc.ClearsRoundVars = false
+			}
+		}, "ClearsRoundVars"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultGameConfig()
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("前提坏了：默认板子应当合法，实际 %v", err)
+			}
+			tc.drop(cfg)
+			err := cfg.Validate()
+			if err == nil {
+				t.Fatalf("这样的板子应当被拒")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("错误信息该点出 %s，实际 %v", tc.want, err)
+			}
+		})
 	}
 }

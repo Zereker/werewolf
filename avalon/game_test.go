@@ -38,7 +38,7 @@ func TestFirstMission(t *testing.T) {
 	// 队长（座位 0 = "a"）提名两人
 	for _, target := range []string{"a", "b"} {
 		if err := e.SubmitSkillUse(&engine.SkillUse{
-			PlayerID: "a", Skill: SkillPropose, TargetID: target,
+			PlayerID: "a", Skill: SkillPropose, Targets: []string{target},
 		}); err != nil {
 			t.Fatalf("提名 %s: %v", target, err)
 		}
@@ -170,9 +170,7 @@ func typesOf(effects []*engine.Effect) []engine.EventType {
 func runMission(t *testing.T, e *engine.Engine, fails int, members ...string) []*engine.Effect {
 	t.Helper()
 	leader := leaderID(e.View())
-	for _, m := range members {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, TargetID: m})
-	}
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: members})
 	mustEnd(t, e)
 
 	for _, id := range e.AlivePlayerIDs() {
@@ -210,7 +208,7 @@ func TestFullGame_GoodWinsThreeThenSurvivesAssassination(t *testing.T) {
 	}
 
 	// 刺客指错人（指了派西维尔，梅林是 a）
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, TargetID: "b"})
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"b"}})
 	mustEnd(t, e)
 
 	if !e.IsGameOver() {
@@ -232,7 +230,7 @@ func TestFullGame_AssassinFindsMerlin(t *testing.T) {
 	if e.Phase() != PhaseAssassin {
 		t.Fatalf("阶段 = %v，期望 ASSASSIN", e.Phase())
 	}
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, TargetID: "a"})
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"a"}})
 	mustEnd(t, e)
 
 	if !e.IsGameOver() {
@@ -265,9 +263,7 @@ func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
 
 	for i := 1; i <= HammerRejections; i++ {
 		leader := leaderID(e.View())
-		for _, m := range []string{"a", "b"} {
-			mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, TargetID: m})
-		}
+		mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: []string{"a", "b"}})
 		mustEnd(t, e)
 		for _, id := range e.AlivePlayerIDs() {
 			mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
@@ -277,7 +273,9 @@ func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
 			if e.IsGameOver() {
 				t.Fatalf("才否决 %d 次就结束了，应当到 %d 次", i, HammerRejections)
 			}
-			mustEnd(t, e) // 空转的任务阶段
+			if got := e.Phase(); got != PhasePropose {
+				t.Fatalf("被否决之后该直接回 PROPOSE，实际 %v", got)
+			}
 		}
 	}
 

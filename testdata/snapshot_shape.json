@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "phase": "NIGHT_SEER",
   "round": 1,
   "players": [
@@ -103,7 +103,9 @@
     {
       "player_id": "s",
       "skill": "CHECK",
-      "target_id": "w1",
+      "targets": [
+        "w1"
+      ],
       "phase": "NIGHT_SEER",
       "round": 1
     }

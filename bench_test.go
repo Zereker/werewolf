@@ -62,7 +62,7 @@ func BenchmarkFullGame(b *testing.B) {
 		for steps := 0; steps < 400 && !e.IsGameOver(); steps++ {
 			for _, p := range e.PhaseReadiness().Pending {
 				_ = e.SubmitSkillUse(&SkillUse{
-					PlayerID: p.PlayerID, Skill: p.Skill, TargetID: alive[0],
+					PlayerID: p.PlayerID, Skill: p.Skill, Targets: []string{alive[0]},
 				})
 			}
 			if _, err := e.EndPhase(); err != nil {
@@ -80,7 +80,7 @@ func BenchmarkEndPhase(b *testing.B) {
 		e := benchEngine(b, PhaseNightWolf)
 		for j := 0; j < 4; j++ {
 			if err := e.SubmitSkillUse(&SkillUse{
-				PlayerID: playerID(j), Skill: SkillKill, TargetID: playerID(8),
+				PlayerID: playerID(j), Skill: SkillKill, Targets: []string{playerID(8)},
 			}); err != nil {
 				b.Fatal(err)
 			}

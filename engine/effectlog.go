@@ -127,11 +127,17 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		// 离开一个阶段时消费掉它对应的待结算技能，与正常推进
 		// （calculateNextPhase）做同样的事。少了这一步，回放出来的引擎
 		// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉
+		// 回合边界由**刚离开的**那个阶段声明，先取下来再流转。
+		// 与正常推进同一条规矩：还有待结算的触发时不能落下，
+		// 否则会把住在回合上下文里的待结算队列一起抹掉。
+		endsRound := e.config.endsRound(e.state.Phase)
 		e.state.consumeTriggerFor(e.state.Phase)
-		e.state.nextPhase(phase, e.config.startPhase())
+		settled := !e.state.hasPendingTrigger()
+		e.state.nextPhase(phase, endsRound && settled,
+			settled && e.config.clearsRoundVars(phase))
 
 	case EventGameEnded:
-		e.state.nextPhase(PhaseEnd, e.config.startPhase())
+		e.state.nextPhase(PhaseEnd, false, false) // 整局结束，不是新回合
 
 	default:
 		e.state.applyEffect(effect)

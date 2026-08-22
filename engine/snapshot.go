@@ -13,7 +13,7 @@ import (
 // 而那恰恰是这个版本号想防的事。现在规则包里有一个 golden 测试
 // （TestSnapshot_ShapeIsPinnedToVersion）把序列化形状钉住，字段增删改名
 // 都会让它变红，红了之后再判断该不该递增。
-const SnapshotVersion = 10
+const SnapshotVersion = 11
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -36,6 +36,18 @@ type Snapshot struct {
 
 	Phase PhaseType `json:"phase"`
 	Round int       `json:"round"`
+
+	// Seed 随机流的种子。它决定对局结果，因此随快照走——恢复出来的对局
+	// 摇出同一串数，不必指望调用方记得传对配置。
+	Seed int64 `json:"seed,omitempty"`
+
+	// Vars 整局有效、不属于任何玩家的状态。
+	Vars map[string]string `json:"vars,omitempty"`
+
+	// Actors 规则为各阶段指定的行动者。名单往往在更早的阶段算出来
+	// （阿瓦隆的任务队伍是提名阶段选的），因此必须随快照走，
+	// 否则从提名与任务之间恢复出来的对局会丢掉队伍。
+	Actors map[PhaseType][]string `json:"actors,omitempty"`
 
 	Players      []PlayerSnapshot   `json:"players"`
 	RoundContext RoundCtxSnapshot   `json:"round_context"`
@@ -78,7 +90,7 @@ type PendingTriggerSnapshot struct {
 type SkillUseSnapshot struct {
 	PlayerID string    `json:"player_id"`
 	Skill    SkillType `json:"skill"`
-	TargetID string    `json:"target_id,omitempty"`
+	Targets  []string  `json:"targets,omitempty"`
 	Phase    PhaseType `json:"phase"`
 	Round    int       `json:"round"`
 }
@@ -98,6 +110,9 @@ func (e *Engine) Snapshot() *Snapshot {
 		Version:      SnapshotVersion,
 		Phase:        e.state.Phase,
 		Round:        e.state.Round,
+		Seed:         e.state.Seed,
+		Vars:         copyVars(e.state.Vars),
+		Actors:       copyActors(e.state.Actors),
 		Players:      e.state.snapshotPlayers(),
 		RoundContext: e.state.snapshotRoundCtx(),
 		PendingUses:  make([]SkillUseSnapshot, 0, len(e.pendingUses)),
@@ -107,7 +122,7 @@ func (e *Engine) Snapshot() *Snapshot {
 		snap.PendingUses = append(snap.PendingUses, SkillUseSnapshot{
 			PlayerID: use.PlayerID,
 			Skill:    use.Skill,
-			TargetID: use.TargetID,
+			Targets:  append([]string(nil), use.Targets...),
 			Phase:    use.Phase,
 			Round:    use.Round,
 		})
@@ -161,6 +176,9 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 		return nil, err
 	}
 
+	engine.state.Seed = snap.Seed
+	engine.state.Vars = copyVars(snap.Vars)
+	engine.state.Actors = copyActors(snap.Actors)
 	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)
 
 	return engine, nil
@@ -211,16 +229,19 @@ func (e *Engine) restorePendingUses(uses []SkillUseSnapshot) error {
 			return WrapError(CodeInvalidSnapshot,
 				"pending skill references unknown player %q", u.PlayerID)
 		}
-		if u.TargetID != "" {
-			if _, ok := e.state.getPlayer(u.TargetID); !ok {
+		for _, id := range u.Targets {
+			if id == "" {
+				continue
+			}
+			if _, ok := e.state.getPlayer(id); !ok {
 				return WrapError(CodeInvalidSnapshot,
-					"pending skill references unknown target %q", u.TargetID)
+					"pending skill references unknown target %q", id)
 			}
 		}
 		e.pendingUses = append(e.pendingUses, &SkillUse{
 			PlayerID: u.PlayerID,
 			Skill:    u.Skill,
-			TargetID: u.TargetID,
+			Targets:  append([]string(nil), u.Targets...),
 			Phase:    u.Phase,
 			Round:    u.Round,
 		})

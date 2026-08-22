@@ -18,7 +18,7 @@ func countVotes(uses []*SkillUse, skillType SkillType) voteResult {
 	votedPlayers := make(map[string]bool)
 
 	for _, use := range uses {
-		if use.Skill != skillType || use.TargetID == "" {
+		if use.Skill != skillType || use.Target() == "" {
 			continue
 		}
 		// 防止同一玩家重复投票
@@ -26,8 +26,8 @@ func countVotes(uses []*SkillUse, skillType SkillType) voteResult {
 			continue
 		}
 		votedPlayers[use.PlayerID] = true
-		votes[use.TargetID]++
-		voters[use.TargetID] = append(voters[use.TargetID], use.PlayerID)
+		votes[use.Target()]++
+		voters[use.Target()] = append(voters[use.Target()], use.PlayerID)
 	}
 
 	// 两遍扫描：先求最高票，再数有几个人拿到最高票。
@@ -155,24 +155,24 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	firstUsePerPlayer(uses, func(use *SkillUse) {
-		if use.Skill != SkillProtect || use.TargetID == "" {
+		if use.Skill != SkillProtect || use.Target() == "" {
 			return
 		}
 
-		protect := engine.NewEffect(EventProtect, use.PlayerID, use.TargetID)
+		protect := engine.NewEffect(EventProtect, use.PlayerID, use.Target())
 
 		switch {
-		case !r.rules.GuardCanRepeat && lastProtected(view, use.PlayerID) == use.TargetID:
+		case !r.rules.GuardCanRepeat && lastProtected(view, use.PlayerID) == use.Target():
 			// 连守限制：视图只给「上回合守了谁」，是否允许由规则配置决定
 			protect.Cancel("cannot protect same target consecutively")
-		case use.PlayerID == use.TargetID && !r.rules.GuardCanProtectSelf:
+		case use.PlayerID == use.Target() && !r.rules.GuardCanProtectSelf:
 			protect.Cancel("guard cannot protect self")
 		default:
 			// PROTECT 是「发生了什么」的说法，下面两条才真正改状态：
 			// 标记今晚被守的人，并记下本回合的守护供下回合判断连守。
 			effects = append(effects,
-				engine.NewSetPlayerRoundVarEffect(use.TargetID, PlayerRoundVarProtected, VarPresent))
-			effects = append(effects, markProtected(view, use.PlayerID, use.TargetID)...)
+				engine.NewSetPlayerRoundVarEffect(use.Target(), PlayerRoundVarProtected, VarPresent))
+			effects = append(effects, markProtected(view, use.PlayerID, use.Target())...)
 		}
 
 		effects = append(effects, protect)
@@ -241,7 +241,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			use.Skill != SkillPoison {
 			continue
 		}
-		if use.TargetID == "" {
+		if use.Target() == "" {
 			continue
 		}
 
@@ -279,19 +279,19 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 // 第二个返回值表示解药是否真的被消耗，用于判断本夜能否再用毒药。
 // 这个信息必须显式返回：从产出的效果个数去反推既脆弱又难读。
 func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget string, blocked bool) ([]*Effect, bool) {
-	save := engine.NewEffect(EventSave, use.PlayerID, use.TargetID)
+	save := engine.NewEffect(EventSave, use.PlayerID, use.Target())
 
 	switch {
 	case blocked:
 		save.Cancel("cannot use both potions in one night")
 	case !witchHas(view, use.PlayerID, potionAntidote):
 		save.Cancel("no antidote")
-	case use.PlayerID == use.TargetID && !rules.WitchCanSaveSelf:
+	case use.PlayerID == use.Target() && !rules.WitchCanSaveSelf:
 		save.Cancel("witch cannot save self")
 	case killTarget == "":
 		// 今晚没有人被杀（狼人空刀或平票）
 		save.Cancel("no one is dying tonight")
-	case use.TargetID != killTarget:
+	case use.Target() != killTarget:
 		save.Cancel("target is not dying")
 	default:
 		// 救的是被杀的人，消耗解药。是否真的救回由 NightResolveResolver
@@ -301,7 +301,7 @@ func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget strin
 		return []*Effect{
 			save,
 			engine.NewSetPlayerVarEffect(use.PlayerID, VarWitchAntidote, ""),
-			engine.NewSetPlayerRoundVarEffect(use.TargetID, PlayerRoundVarSaved, VarPresent),
+			engine.NewSetPlayerRoundVarEffect(use.Target(), PlayerRoundVarSaved, VarPresent),
 		}, true
 	}
 
@@ -310,14 +310,14 @@ func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget strin
 
 // resolvePoison 结算一次毒药使用。与 resolveAntidote 同构。
 func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool) {
-	poison := engine.NewEffect(EventPoison, use.PlayerID, use.TargetID)
+	poison := engine.NewEffect(EventPoison, use.PlayerID, use.Target())
 
 	switch {
 	case blocked:
 		poison.Cancel("cannot use both potions in one night")
 	case !witchHas(view, use.PlayerID, potionPoison):
 		poison.Cancel("no poison")
-	case use.PlayerID == use.TargetID:
+	case use.PlayerID == use.Target():
 		poison.Cancel("witch cannot poison self")
 	default:
 		// 消耗毒药并标记目标，实际死亡在 NightResolveResolver 结算。
@@ -325,7 +325,7 @@ func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool)
 		// 等于当场告诉全场谁被毒了。
 		return []*Effect{
 			engine.NewSetPlayerVarEffect(use.PlayerID, VarWitchPoison, ""),
-			engine.NewSetPlayerRoundVarEffect(use.TargetID, PlayerRoundVarPoisoned, VarPresent),
+			engine.NewSetPlayerRoundVarEffect(use.Target(), PlayerRoundVarPoisoned, VarPresent),
 		}, true
 	}
 
@@ -345,13 +345,13 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	firstUsePerPlayer(uses, func(use *SkillUse) {
-		if use.Skill != SkillCheck || use.TargetID == "" {
+		if use.Skill != SkillCheck || use.Target() == "" {
 			return
 		}
 
-		check := engine.NewEffect(EventCheck, use.PlayerID, use.TargetID)
+		check := engine.NewEffect(EventCheck, use.PlayerID, use.Target())
 		// 只报阵营，不报具体角色
-		if target, ok := view.Player(use.TargetID); ok {
+		if target, ok := view.Player(use.Target()); ok {
 			check.
 				WithData("camp", campOf(target)).
 				WithData("isGood", campOf(target) == CampGood)
@@ -456,15 +456,15 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	firstUsePerPlayer(uses, func(use *SkillUse) {
 		switch use.Skill {
 		case SkillShoot:
-			if use.TargetID != "" {
+			if use.Target() != "" {
 				effects = append(effects,
-					engine.NewEffect(EventShoot, use.PlayerID, use.TargetID),
-					engine.NewSetAliveEffect(use.TargetID, false))
+					engine.NewEffect(EventShoot, use.PlayerID, use.Target()),
+					engine.NewSetAliveEffect(use.Target(), false))
 				// 枪口下的另一名猎人同样可以回枪：规则排除的只有
 				// 殉情与毒杀，被枪打死属于「其他方式」。
 				// 死亡触发的入队分散在狼刀、投票、开枪三条通道上，
 				// 少一条这类连锁就断在那里。
-				effects = append(effects, hunterTrigger(view, use.TargetID, use.Phase)...)
+				effects = append(effects, hunterTrigger(view, use.Target(), use.Phase)...)
 			}
 		case SkillSkip:
 			// 猎人选择不开枪

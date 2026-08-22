@@ -38,7 +38,7 @@ func mustSubmit(t *testing.T, e *Engine, use *SkillUse) {
 	t.Helper()
 	if err := e.SubmitSkillUse(use); err != nil {
 		t.Fatalf("SubmitSkillUse(player=%s skill=%v target=%s) 于 %v: %v",
-			use.PlayerID, use.Skill, use.TargetID, e.Phase(), err)
+			use.PlayerID, use.Skill, use.Target(), e.Phase(), err)
 	}
 }
 

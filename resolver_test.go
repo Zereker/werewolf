@@ -28,7 +28,7 @@ func TestVoteResolver_Single(t *testing.T) {
 	b.Players = append(b.Players, seatOf("p2", RoleVillager))
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: SkillVote, TargetID: "p2"},
+		{PlayerID: "p1", Skill: SkillVote, Targets: []string{"p2"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -54,9 +54,9 @@ func TestVoteResolver_Clear(t *testing.T) {
 	b.Players = append(b.Players, seatOf("wolf", RoleWerewolf))
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: SkillVote, TargetID: "wolf"},
-		{PlayerID: "p2", Skill: SkillVote, TargetID: "wolf"},
-		{PlayerID: "p3", Skill: SkillVote, TargetID: "p1"},
+		{PlayerID: "p1", Skill: SkillVote, Targets: []string{"wolf"}},
+		{PlayerID: "p2", Skill: SkillVote, Targets: []string{"wolf"}},
+		{PlayerID: "p3", Skill: SkillVote, Targets: []string{"p1"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -80,10 +80,10 @@ func TestVoteResolver_Tie(t *testing.T) {
 	b.Players = append(b.Players, seatOf("p4", RoleVillager))
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: SkillVote, TargetID: "p3"},
-		{PlayerID: "p2", Skill: SkillVote, TargetID: "p3"},
-		{PlayerID: "p3", Skill: SkillVote, TargetID: "p4"},
-		{PlayerID: "p4", Skill: SkillVote, TargetID: "p4"},
+		{PlayerID: "p1", Skill: SkillVote, Targets: []string{"p3"}},
+		{PlayerID: "p2", Skill: SkillVote, Targets: []string{"p3"}},
+		{PlayerID: "p3", Skill: SkillVote, Targets: []string{"p4"}},
+		{PlayerID: "p4", Skill: SkillVote, Targets: []string{"p4"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -107,9 +107,9 @@ func TestVoteResolver_Invalid(t *testing.T) {
 
 	uses := []*SkillUse{
 		// Not a vote skill
-		{PlayerID: "p1", Skill: SkillKill, TargetID: "p2"},
+		{PlayerID: "p1", Skill: SkillKill, Targets: []string{"p2"}},
 		// Empty target
-		{PlayerID: "p2", Skill: SkillVote, TargetID: ""},
+		{PlayerID: "p2", Skill: SkillVote, Targets: []string{""}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -130,8 +130,8 @@ func TestDayResolver(t *testing.T) {
 	b := newBoard()
 
 	uses := []*SkillUse{
-		{PlayerID: "p1", Skill: SkillSpeak, TargetID: ""},
-		{PlayerID: "p2", Skill: SkillSpeak, TargetID: ""},
+		{PlayerID: "p1", Skill: SkillSpeak, Targets: []string{""}},
+		{PlayerID: "p2", Skill: SkillSpeak, Targets: []string{""}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -153,8 +153,8 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 
 	// 平票：wolf1 投 v1, wolf2 投 v2
 	uses := []*SkillUse{
-		{PlayerID: "wolf1", Skill: SkillKill, TargetID: "v1"},
-		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "v2"},
+		{PlayerID: "wolf1", Skill: SkillKill, Targets: []string{"v1"}},
+		{PlayerID: "wolf2", Skill: SkillKill, Targets: []string{"v2"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -180,8 +180,8 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 
 	// 达成共识：两个狼人投同一个目标
 	uses := []*SkillUse{
-		{PlayerID: "wolf1", Skill: SkillKill, TargetID: "victim"},
-		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "victim"},
+		{PlayerID: "wolf1", Skill: SkillKill, Targets: []string{"victim"}},
+		{PlayerID: "wolf2", Skill: SkillKill, Targets: []string{"victim"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -213,9 +213,9 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 
 	// 多数决：2票 v1, 1票 v2
 	uses := []*SkillUse{
-		{PlayerID: "wolf1", Skill: SkillKill, TargetID: "v1"},
-		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "v1"},
-		{PlayerID: "wolf3", Skill: SkillKill, TargetID: "v2"},
+		{PlayerID: "wolf1", Skill: SkillKill, Targets: []string{"v1"}},
+		{PlayerID: "wolf2", Skill: SkillKill, Targets: []string{"v1"}},
+		{PlayerID: "wolf3", Skill: SkillKill, Targets: []string{"v2"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -248,7 +248,7 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	rules.SameGuardKillIsEmpty = true
 
 	uses := []*SkillUse{
-		{PlayerID: "wolf", Skill: SkillKill, TargetID: "victim"},
+		{PlayerID: "wolf", Skill: SkillKill, Targets: []string{"victim"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -279,7 +279,7 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	rules.SameGuardKillIsEmpty = false // 不是空刀
 
 	uses := []*SkillUse{
-		{PlayerID: "wolf", Skill: SkillKill, TargetID: "victim"},
+		{PlayerID: "wolf", Skill: SkillKill, Targets: []string{"victim"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -311,7 +311,7 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 
 	// 女巫使用解药救人
 	uses := []*SkillUse{
-		{PlayerID: "witch", Skill: SkillAntidote, TargetID: "victim"},
+		{PlayerID: "witch", Skill: SkillAntidote, Targets: []string{"victim"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -354,7 +354,7 @@ func TestWitchResolver_Poison(t *testing.T) {
 	b.Players = append(b.Players, seatOf("wolf", RoleWerewolf))
 
 	uses := []*SkillUse{
-		{PlayerID: "witch", Skill: SkillPoison, TargetID: "wolf"},
+		{PlayerID: "witch", Skill: SkillPoison, Targets: []string{"wolf"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -384,7 +384,7 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 	rules.WitchCanSaveSelf = false
 
 	uses := []*SkillUse{
-		{PlayerID: "witch", Skill: SkillAntidote, TargetID: "witch"},
+		{PlayerID: "witch", Skill: SkillAntidote, Targets: []string{"witch"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -413,7 +413,7 @@ func TestGuardResolver_Protect(t *testing.T) {
 	b.Players = append(b.Players, seatOf("target", RoleVillager))
 
 	uses := []*SkillUse{
-		{PlayerID: "guard", Skill: SkillProtect, TargetID: "target"},
+		{PlayerID: "guard", Skill: SkillProtect, Targets: []string{"target"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -454,7 +454,7 @@ func TestSeerResolver_CheckWolf(t *testing.T) {
 	b.Players = append(b.Players, seatOf("wolf", RoleWerewolf))
 
 	uses := []*SkillUse{
-		{PlayerID: "seer", Skill: SkillCheck, TargetID: "wolf"},
+		{PlayerID: "seer", Skill: SkillCheck, Targets: []string{"wolf"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())
@@ -477,7 +477,7 @@ func TestSeerResolver_CheckGood(t *testing.T) {
 	b.Players = append(b.Players, seatOf("villager", RoleVillager))
 
 	uses := []*SkillUse{
-		{PlayerID: "seer", Skill: SkillCheck, TargetID: "villager"},
+		{PlayerID: "seer", Skill: SkillCheck, Targets: []string{"villager"}},
 	}
 
 	effects := resolver.Resolve(uses, b.View())

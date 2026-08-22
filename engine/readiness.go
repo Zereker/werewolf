@@ -175,6 +175,16 @@ func requirementsOf(steps []PhaseStep) []requirement {
 }
 
 // actorsForStep 该步骤的合格行动者。调用前需持有 e.mu。
+//
+// 这是「谁可以行动」的**唯一**取数点——技能校验、AllowedSkills、
+// PhaseReadiness 三处都从这里取。三个问题一个来源，才不会出现
+// 「内核收下了他的提交，却告诉别人他不该行动」这种自相矛盾。
+//
+// 三层，优先级从高到低：
+//
+//	待结算的触发    队列必须排空，胜负判定与回合边界都等着它
+//	规则指定的名单  NewSetActorsEffect，运行时才选得出来的那些
+//	PhaseStep.Role  默认：按角色算，角色是入座时定死的
 func (e *Engine) actorsForStep(role RoleType, triggerActive bool, trigger PendingTrigger) []string {
 	if triggerActive {
 		// 死亡技能阶段只有触发者能行动，但他只承担与自己角色相符的步骤。
@@ -182,10 +192,40 @@ func (e *Engine) actorsForStep(role RoleType, triggerActive bool, trigger Pendin
 		// 死亡技能阶段声称「触发者要替所有角色行动」。
 		return e.triggerActorFor(role, trigger)
 	}
+	if ids, ok := e.state.actorsFor(e.state.Phase); ok {
+		return e.namedActorsFor(role, ids)
+	}
 	if role == RoleUnspecified {
 		return sortedStrings(e.state.getAlivePlayerIDs())
 	}
 	return sortedStrings(e.state.getAlivePlayerIDsByRole(role))
+}
+
+// namedActorsFor 规则点名的那些人里，谁承担这个角色的步骤。调用前需持有 e.mu。
+//
+// 与 triggerActorFor 同一个道理：点名不等于「他要替所有角色行动」。
+// 步骤声明了具体角色的，只有角色相符的人算数；声明 RoleUnspecified 的，
+// 点到的人都算。
+//
+// **不按存活过滤**：规则点名谁，谁就能行动。此前这里会把已出局的人剔掉，
+// 而那是内核在替规则做判断——同一个内核，却允许**自己的**触发队列让死人
+// 行动（猎人被刀之后开枪），不允许**规则的**点名这么做，自相矛盾。
+//
+// 挡掉的是真实存在的玩法：血染钟楼的死人保留一张「幽灵票」，狼人杀的
+// 遗言阶段同理。存活与否是规则的判断，点名就是规则在判断。
+func (e *Engine) namedActorsFor(role RoleType, ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		p, ok := e.state.getPlayer(id)
+		if !ok {
+			continue
+		}
+		if role != RoleUnspecified && p.Role != role {
+			continue
+		}
+		out = append(out, id)
+	}
+	return sortedStrings(out)
 }
 
 // triggerActorFor 触发者是否承担该角色的步骤。调用前需持有 e.mu。

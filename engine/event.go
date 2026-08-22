@@ -54,6 +54,9 @@ const (
 	EventSetRoundVar       EventType = "SET_ROUND_VAR"        // 写本回合的自定义状态
 	EventSetAlive          EventType = "SET_ALIVE"            // 改玩家的存活状态
 	EventSetPlayerRoundVar EventType = "SET_PLAYER_ROUND_VAR" // 写玩家的回合级自定义状态
+	EventGotoPhase         EventType = "GOTO_PHASE"           // 规则指定下一阶段，改写 NextPhase
+	EventSetGameVar        EventType = "SET_GAME_VAR"         // 写整局有效、不属于任何玩家的状态
+	EventSetActors         EventType = "SET_ACTORS"           // 指定哪些玩家可以在某个阶段行动
 )
 
 // String 实现 fmt.Stringer。

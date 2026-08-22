@@ -31,6 +31,16 @@ type Config struct {
 	// 阶段配置
 	Phases map[PhaseType]*PhaseConfig
 
+	// Seed 随机流的种子。
+	//
+	// 规则要摇随机数（掷骰、摸牌、随机事件）时经 GameView.Rand 取，
+	// 而那条流由 (Seed, 回合, 阶段) 唯一决定——因此同一个局面摇出来的永远
+	// 是同一串数，回放与快照比对不受影响。
+	//
+	// 留 0 也能跑，只是每一局都摇出同样的结果。真要每局不同，
+	// 建局时给一个不同的值，并把它与快照一起存好——它是局面的一部分。
+	Seed int64
+
 	// DefaultTimeout 未给出 PhaseConfig.Timeout 时的建议超时。
 	// 建议值，引擎不据此计时，详见超时常量的说明；
 	// 用 Config.PhaseTimeout(phase) 取某个阶段的最终建议值。
@@ -57,7 +67,46 @@ type PhaseConfig struct {
 	Type      PhaseType     // 阶段类型
 	Steps     []PhaseStep   // 步骤列表
 	Timeout   time.Duration // 超时时间（建议值，引擎不据此计时）
-	NextPhase PhaseType     // 下一阶段（声明式配置）
+	NextPhase PhaseType     // 下一阶段（默认出口，可被 GOTO_PHASE 效果改写）
+
+	// EndsRound 结算完这个阶段之后是新的一回合：回合数加一，
+	// 回合级的状态（RoundVar 与 PlayerRoundVar）全部清空。
+	//
+	// 这件事此前由内核自己猜：「绕回 StartPhase 就算新回合」。狼人杀里
+	// 那个猜测恰好成立（夜→昼→夜），别的规则里就不一定——阿瓦隆每提名
+	// 一次就绕一圈，于是引擎的「回合」成了提名计数器，与那套规则自己说的
+	// 「第几轮任务」最多差五倍，还被 PlayerView.Round 原样发给玩家。
+	//
+	// 一局游戏的「一回合」是什么，只有规则知道。内核不再猜，改成读这个字段：
+	// 声明在哪个阶段上，就是「这个阶段结算完，这一回合结束」。
+	//
+	// Validate 会检查至少有一个阶段声明了它——一个都没有的话回合数永远
+	// 停在 1、回合状态永不重置，那是个必然出错的配置，应当在建局时就被
+	// 拒绝，而不是跑到半局才让人发现。
+	//
+	// 它**只管计数**。回合级变量什么时候清空是另一件事，
+	// 由下面的 ClearsRoundVars 声明——两者常常标在相邻的两个阶段上，
+	// 但它们是两件事。
+	EndsRound bool
+
+	// ClearsRoundVars **进入**这个阶段之前，回合级变量全部清空。
+	//
+	// 读法是「这个阶段从干净的局面开始」——与 EndsRound 相反，它说的是
+	// 自己开始时的样子，不是自己结束时的效果。
+	//
+	// 「回合数」与「变量寿命」此前焊在一起：EndsRound 一次做两件事。
+	// 狼人杀里它们恰好重合（夜间标记活到下一个夜晚，而那正是一回合），
+	// 所以一直看不出问题。阿瓦隆里不重合：
+	//
+	//	队伍标记活到「下一次提名开始」   一轮任务里可能提名五次
+	//	回合数跟着「第几轮任务」走       否则报给玩家的数没有意义
+	//
+	// 于是阿瓦隆只能在提名解析器里手工清一遍——那是内核少给了一档寿命，
+	// 规则替它补。现在两件事各自声明，每个阶段只说关于自己的事。
+	//
+	// Validate 会检查至少有一个阶段声明了它：一个都没有的话回合级变量
+	// 永不清空，狼人杀里女巫用掉的那瓶解药会一夜又一夜救同一个人。
+	ClearsRoundVars bool
 }
 
 // PhaseStep 阶段步骤。步骤的先后由切片顺序决定。
@@ -107,11 +156,33 @@ type PhaseStep struct {
 type SkillUse struct {
 	PlayerID string    // 使用技能的玩家
 	Skill    SkillType // 技能类型
-	TargetID string    // 技能目标（单人）
+
+	// Targets 技能目标。绝大多数技能只有一个，少数一次指定一组。
+	//
+	// 此前这里是 `TargetID string`——一个目标。那个形状是被样本量为一固定
+	// 下来的：狼人杀的九个技能恰好每个都只有一个目标。阿瓦隆的「提名任务
+	// 队伍」一次要指定 2-5 个人，只能拆成多次提交，代价是就绪判定说不清
+	// 「还差几个人没提」——它只知道队长提交过没有，于是提名了 1 人（需要
+	// 2 人）之后就报 Ready=true。那与「AllowedSkills 对没资格的人说他能行动」
+	// 是同一类问题：内核对玩家说了不实的话。
+	//
+	// 单目标的技能写 Targets: []string{"x"}，读用 Target()。
+	Targets []string
 
 	// 以下字段由 Engine 在提交时填充，调用方无需设置
 	Phase PhaseType
 	Round int
+}
+
+// Target 单目标技能的那一个目标，没有则为空串。
+//
+// 绝大多数技能只有一个目标，这个方法让它们不必每次都写 Targets[0] 并自己判空。
+// 多目标的技能直接读 Targets。
+func (u *SkillUse) Target() string {
+	if u == nil || len(u.Targets) == 0 {
+		return ""
+	}
+	return u.Targets[0]
 }
 
 // Validate 检查配置自身是否自洽。
@@ -138,6 +209,14 @@ func (c *Config) Validate() error {
 	if c.StartPhase == PhaseUnspecified {
 		return WrapError(CodeInvalidConfig,
 			"config must declare StartPhase: the kernel has no default")
+	}
+	if !c.hasRoundBoundary() {
+		return WrapError(CodeInvalidConfig,
+			"no phase declares EndsRound: the round would never advance")
+	}
+	if !c.hasVarReset() {
+		return WrapError(CodeInvalidConfig,
+			"no phase declares ClearsRoundVars: round-scoped state would never reset")
 	}
 	if _, ok := c.Phases[c.StartPhase]; !ok {
 		return WrapError(CodeInvalidPhase,
@@ -233,4 +312,51 @@ func validateSteps(phaseType PhaseType, steps []PhaseStep) error {
 // 那是狼人杀的第一个阶段，内核没有资格替任何规则挑一个默认值。
 func (c *Config) startPhase() PhaseType {
 	return c.StartPhase
+}
+
+// endsRound 结算完这个阶段之后是不是新的一回合。
+//
+// 认不得的阶段一律为否：回合边界宁可不推进，也不能凭空多推一次——
+// 多推一次会把本回合的标记全部清空，规则会看到一个从未发生过的
+// 「新回合」。
+func (c *Config) endsRound(phase PhaseType) bool {
+	pc := c.Phases[phase]
+	return pc != nil && pc.EndsRound
+}
+
+// clearsRoundVars 进入这个阶段之前要不要清空回合级变量。
+func (c *Config) clearsRoundVars(phase PhaseType) bool {
+	pc := c.Phases[phase]
+	return pc != nil && pc.ClearsRoundVars
+}
+
+// hasRoundBoundary 配置里有没有阶段声明自己是回合的终点。
+//
+// 一个都没有的话，回合数永远停在 1、回合级状态永不重置——狼人杀里这意味着
+// 女巫用掉的那瓶解药会一夜又一夜地把同一个人救回来，一次性道具变成永久道具。
+// 这类配置必然出错，应当在建局时就被拒绝，而不是跑到半局才让人发现。
+//
+// 这道检查是把回合边界交给规则之后**换来的**：内核自己猜的时候没法检查
+// 「猜得对不对」，规则声明出来之后反而查得动。
+func (c *Config) hasRoundBoundary() bool {
+	for _, pc := range c.Phases {
+		if pc != nil && pc.EndsRound {
+			return true
+		}
+	}
+	return false
+}
+
+// hasVarReset 配置里有没有阶段声明自己从干净的局面开始。
+//
+// 一个都没有的话回合级变量永不清空——狼人杀里女巫用掉的那瓶解药会一夜又
+// 一夜救同一个人，一次性道具变成永久道具。与 hasRoundBoundary 一样，
+// 这是把决定权交给规则之后**换来的**：内核自己焊死的时候没法检查。
+func (c *Config) hasVarReset() bool {
+	for _, pc := range c.Phases {
+		if pc != nil && pc.ClearsRoundVars {
+			return true
+		}
+	}
+	return false
 }

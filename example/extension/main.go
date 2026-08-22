@@ -151,7 +151,7 @@ func endPhase(eng *werewolf.Engine) []*werewolf.Effect {
 func vote(eng *werewolf.Engine, target string, voters ...string) {
 	for _, v := range voters {
 		if err := eng.SubmitSkillUse(&werewolf.SkillUse{
-			PlayerID: v, Skill: werewolf.SkillVote, TargetID: target,
+			PlayerID: v, Skill: werewolf.SkillVote, Targets: []string{target},
 		}); err != nil {
 			log.Fatalf("%s 投票失败: %v", v, err)
 		}
@@ -164,7 +164,7 @@ func voteAll(eng *werewolf.Engine, target string) {
 			continue
 		}
 		if err := eng.SubmitSkillUse(&werewolf.SkillUse{
-			PlayerID: id, Skill: werewolf.SkillVote, TargetID: target,
+			PlayerID: id, Skill: werewolf.SkillVote, Targets: []string{target},
 		}); err != nil {
 			log.Fatalf("%s 投票失败: %v", id, err)
 		}

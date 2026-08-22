@@ -32,6 +32,7 @@ func Options() []engine.EngineOption {
 		engine.WithAudience(engine.AudienceFunc(audience)),
 		engine.WithTeammates(engine.TeammateFunc(teammates)),
 		engine.WithSpeech(engine.SpeechFunc(speech)),
+		engine.WithGameSetup(engine.GameSetupFunc(gameSetup)),
 	}
 	for role, setup := range builtinRoleSetup {
 		opts = append(opts, engine.WithRoleSetup(role, setup))

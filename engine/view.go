@@ -1,6 +1,8 @@
 package engine
 
-import ()
+import (
+	"math/rand"
+)
 
 // GameView 只读的游戏视图。
 //
@@ -47,6 +49,24 @@ type GameView interface {
 	// 今晚谁被守了、谁被救了、谁被毒了都是这一类。
 	// 写入走 NewSetPlayerRoundVarEffect。
 	PlayerRoundVar(playerID, key string) string
+
+	// Rand 这一刻的随机流。
+	//
+	// 由 (Config.Seed, 当前回合, 当前阶段) 唯一决定：同一个局面拿到的永远是
+	// 同一条流，因此回放能重现完全相同的结果，而 Resolver 仍然是局面的纯函数。
+	//
+	// 每次调用返回一条**新的、从头开始**的流——不要把它存起来跨阶段用，
+	// 那会让结果依赖调用次序而不是局面。
+	Rand() *rand.Rand
+
+	// GameVar 返回整局的一项自定义状态，没有则为空串。
+	//
+	// 四种作用域里的第四种：**整局有效、不属于任何玩家**。比分、计数器、
+	// 轮到谁这类「全局事实」属于这里。跟着某个玩家走一整局的用 PlayerVar，
+	// 本回合有效且无主的用 RoundVar，「本回合标记了某人」用 PlayerRoundVar。
+	//
+	// 写入走 NewSetGameVarEffect。
+	GameVar(key string) string
 
 	// RoundVar 返回本回合的一项自定义状态，没有则为空串。
 	//
@@ -116,6 +136,12 @@ func (v stateView) PlayerVar(playerID, key string) string {
 func (v stateView) PlayerRoundVar(playerID, key string) string {
 	return v.s.playerRoundVar(playerID, key)
 }
+
+func (v stateView) Rand() *rand.Rand {
+	return randStream(v.s.Seed, v.s.currentRound(), v.s.currentPhase())
+}
+
+func (v stateView) GameVar(key string) string { return v.s.gameVar(key) }
 
 func (v stateView) RoundVar(key string) string { return v.s.roundVar(key) }
 

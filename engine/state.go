@@ -83,6 +83,47 @@ type gameState struct {
 	Round   int                     // 当前回合
 	players map[string]*playerState // 玩家状态（私有，通过方法访问）
 
+	// Vars 整局有效、不属于任何玩家的状态。
+	//
+	// 变量作用域是一张 2x2 的表——时间尺度（整局 / 本回合）乘以有没有主人
+	// （无主 / 属于某个玩家）。此前只有三格：
+	//
+	//	              无主          属于某个玩家
+	//	  整局有效     （缺）        playerState.Vars
+	//	  本回合有效   RoundCtx.Vars playerState.RoundVars
+	//
+	// 缺的那一格不是刻意留白，是漏了：狼人杀整局有效的状态恰好都挂在人身上
+	// （女巫的药、守卫上回合守了谁），所以一直没人撞到。阿瓦隆撞到了——
+	// 「第几轮任务」「成功几次」「连续否决几次」「队长轮到谁」四样全是整局
+	// 有效且不属于任何玩家，只能挂到某个玩家的私有状态上当账本，
+	// 那个玩家的 PlayerView 里于是凭空多出四个与他无关的字段。
+	//
+	// 写走 NewSetGameVarEffect，读走 GameView.GameVar / Engine.GameVar。
+	Vars map[string]string
+
+	// Seed 随机流的种子。开局时由 Config.Seed 定下，此后不变。
+	//
+	// 放在状态里而不是只留在配置里：它决定对局结果，就是局面的一部分。
+	// 随快照走，恢复出来的对局因此摇出同一串数，不必指望调用方记得传对配置。
+	Seed int64
+
+	// Actors 「哪些玩家可以在某个阶段行动」，由规则在运行时指定。
+	//
+	// 内核判定行动者此前只有一条路：拿 PhaseStep.Role 去比对玩家的角色。
+	// 而角色是入座时定死的——任何运行时才选出来的行动者集合都表达不了。
+	// 这个抽象已经被逃逸三次：狼人杀的猎人开枪（内核为它开了触发队列这个
+	// 单人特例）、阿瓦隆的队长提名、阿瓦隆的任务队伍。后两处只能让所有人
+	// 都提交、再由解析器丢掉不该算的，代价是 AllowedSkills 对没资格的玩家
+	// 说谎、PhaseReadiness 等一群不可能行动的人。
+	//
+	// 现在规则可以直接说：「这几个人，在那个阶段行动」。写走
+	// NewSetActorsEffect，内核在 SubmitSkillUse 就拦，不是让规则事后过滤。
+	//
+	// 按阶段存而不是只存「当前阶段」，是因为集合往往在**更早的阶段**算出来
+	// ——阿瓦隆的任务队伍是提名阶段选的，到任务阶段才用。
+	// 某个阶段结算完，它的那一份就被消费掉。
+	Actors map[PhaseType][]string
+
 	// 回合临时上下文（每个回合重新创建）
 	RoundCtx *RoundContext
 }
@@ -272,6 +313,9 @@ func (s *gameState) clone() *gameState {
 	out := newState()
 	out.Phase = s.Phase
 	out.Round = s.Round
+	out.Seed = s.Seed
+	out.Vars = copyVars(s.Vars)
+	out.Actors = copyActors(s.Actors)
 	out.RoundCtx = &RoundContext{
 		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
 		Vars:            copyVars(s.RoundCtx.Vars),
@@ -359,6 +403,24 @@ func (s *gameState) applyEffect(effect *Effect) {
 			}
 		}
 
+	case EventSetActors:
+		// 规则指定某个阶段的行动者。不存在的玩家忽略掉。
+		if phase, ids, ok := actorsOf(effect); ok {
+			kept := make([]string, 0, len(ids))
+			for _, id := range ids {
+				if _, exists := s.players[id]; exists {
+					kept = append(kept, id)
+				}
+			}
+			s.setActors(phase, kept)
+		}
+
+	case EventSetGameVar:
+		// 整局有效、不属于任何玩家。值为空即删除。
+		if key, value := roundVarOf(effect); key != "" {
+			s.setGameVar(key, value)
+		}
+
 	case EventSetRoundVar:
 		// 本回合的状态，不属于任何玩家。值为空即删除。
 		key, value := roundVarOf(effect)
@@ -407,14 +469,19 @@ func (s *gameState) startAt(phase PhaseType) {
 
 // nextPhase 切换到下一阶段。
 //
-// roundStart 是本局的起始阶段：绕回它即是新的一回合，此时回合数加一、
-// 回合上下文重置。回合边界此前写死成 NIGHT_GUARD，而起始阶段和阶段环
-// 都是可配置的——环里不含守卫阶段时，回合数永远停在 1，回合上下文也
-// 永远不重置，上一夜的「被救」「被守」「被毒」记录会一直累积下去。
-func (s *gameState) nextPhase(phase, roundStart PhaseType) {
+// endsRound 由**刚结算完的那个阶段**声明（PhaseConfig.EndsRound）：
+// 它为真即这一回合到此为止，回合数加一、回合级状态全部清空。
+//
+// 这件事此前是内核猜的——「绕回起始阶段就算新回合」。那个猜测对狼人杀
+// 成立（夜→昼→夜），对别的规则不成立：阿瓦隆每提名一次就绕一圈，
+// 于是「回合」成了提名计数器。一局游戏的「一回合」是什么只有规则知道，
+// 内核不再替它决定。
+func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 	s.Phase = phase
-	if phase == roundStart {
+	if endsRound {
 		s.Round++
+	}
+	if clearVars {
 		s.resetRoundStateUnlocked()
 	}
 }
@@ -498,4 +565,64 @@ func (s *gameState) RoundContext() *RoundContext {
 		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
 		Vars:            copyVars(s.RoundCtx.Vars),
 	}
+}
+
+// gameVar 读一项整局有效的状态，没有则为空串。
+func (s *gameState) gameVar(key string) string {
+	if s.Vars == nil {
+		return ""
+	}
+	return s.Vars[key]
+}
+
+// setGameVar 写一项整局有效的状态。空串等同删除——与其余三种作用域同一个口径。
+func (s *gameState) setGameVar(key, value string) {
+	if value == "" {
+		delete(s.Vars, key)
+		return
+	}
+	if s.Vars == nil {
+		s.Vars = map[string]string{}
+	}
+	s.Vars[key] = value
+}
+
+// copyActors 深拷一份行动者表。
+func copyActors(in map[PhaseType][]string) map[PhaseType][]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[PhaseType][]string, len(in))
+	for k, v := range in {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
+// actorsFor 规则为某个阶段指定的行动者，没指定则为 nil。
+//
+// nil 与空切片是两件事：nil 是「规则没说，按角色算」，空切片是
+// 「规则说了，这个阶段没有人能行动」。
+func (s *gameState) actorsFor(phase PhaseType) ([]string, bool) {
+	if s.Actors == nil {
+		return nil, false
+	}
+	v, ok := s.Actors[phase]
+	return v, ok
+}
+
+// setActors 指定某个阶段的行动者。
+func (s *gameState) setActors(phase PhaseType, ids []string) {
+	if s.Actors == nil {
+		s.Actors = map[PhaseType][]string{}
+	}
+	s.Actors[phase] = sortedStrings(ids)
+}
+
+// consumeActors 某个阶段结算完，它的行动者指定就用掉了。
+//
+// 不清的话，下一次进同一个阶段会沿用上一次的名单——那几乎总是错的：
+// 名单是上一轮算出来的。
+func (s *gameState) consumeActors(phase PhaseType) {
+	delete(s.Actors, phase)
 }

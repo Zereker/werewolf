@@ -32,6 +32,9 @@ var kernelPrimitives = map[EventType]bool{
 	EventAbilityTriggered:  true,
 	EventPlayerAdded:       true,
 	EventPhaseChanged:      true,
+	EventGotoPhase:         true,
+	EventSetGameVar:        true,
+	EventSetActors:         true,
 }
 
 // isInternalEvent 判断事件是否为内核的状态原语。
@@ -49,6 +52,41 @@ const triggerPhaseKey = "trigger_phase"
 func NewAbilityTriggerEffect(playerID string, phase PhaseType) *Effect {
 	return NewEffect(EventAbilityTriggered, playerID, "").
 		WithData(triggerPhaseKey, phase)
+}
+
+// gotoPhaseKey 改写下一阶段的效果里记录目标阶段的键
+const gotoPhaseKey = "goto_phase"
+
+// NewGotoPhaseEffect 声明「这个阶段结算完之后去指定的阶段」。
+//
+// 它改写 PhaseConfig.NextPhase 那个默认出口。阶段流转此前是一张纯静态的图，
+// 唯一的动态跳转是死亡触发队列——于是所有条件分支都得从那个后门走，
+// 而那个后门的语义是「某人的技能待结算」，根本不是「往哪走」。
+//
+// 阿瓦隆的「表决通过就去任务、否则回提名」是这类分支最朴素的样子：
+// 结果由本阶段的结算算出来，静态图表达不了。
+//
+// 优先级：待结算的触发队列 > 本效果 > PhaseConfig.NextPhase。触发排在最前
+// 是因为队列必须排空——胜负判定与回合边界都等着它，中途跳走会把还没结算的
+// 死亡技能丢掉。
+//
+// 目标阶段不在配置里时，内核记一条错误日志并退回 NextPhase：一条效果写错了
+// 不该让整局崩掉，但也不能安静地跳去一个没人预期的地方。
+func NewGotoPhaseEffect(phase PhaseType) *Effect {
+	return NewEffect(EventGotoPhase, "", "").WithData(gotoPhaseKey, phase)
+}
+
+// gotoPhase 从改写效果里读出目标阶段
+func (e *Effect) gotoPhase() (PhaseType, bool) {
+	v, ok := e.Data[gotoPhaseKey]
+	if !ok {
+		return PhaseUnspecified, false
+	}
+	p, ok := v.(PhaseType)
+	if !ok {
+		return PhaseUnspecified, false
+	}
+	return p, true
 }
 
 // triggerPhase 从触发效果中读出目标阶段
@@ -147,6 +185,65 @@ func playerVarOf(e *Effect) (key, value string) {
 	key, _ = e.Data[playerVarKeyKey].(string)
 	value, _ = e.Data[playerVarValueKey].(string)
 	return key, value
+}
+
+// actorsPhaseKey / actorsListKey 行动者效果里的两个键
+const (
+	actorsPhaseKey = "actors_phase"
+	actorsListKey  = "actors_list"
+)
+
+// NewSetActorsEffect 声明「这几个玩家可以在指定阶段行动」。
+//
+// 内核判定行动者的默认办法是拿 PhaseStep.Role 比对玩家角色——而角色是入座时
+// 定死的，任何**运行时才选出来的**行动者集合都表达不了：阿瓦隆的任务队伍是
+// 上一个阶段投票选出来的，队长是按座位轮转的。没有这条效果，规则只能让所有人
+// 都提交、再自己丢掉不该算的，而内核会对没资格的玩家说「你可以行动」。
+//
+// 优先级：待结算的触发队列 > 本效果 > PhaseStep.Role。与 NewGotoPhaseEffect
+// 是同一个分层——默认值加运行时改写。
+//
+// 名单在**更早的阶段**算出来是常态，所以要指定阶段而不是只作用于当前阶段。
+// 某个阶段结算完，它的这一份就被消费掉：不清的话下一次进同一个阶段会沿用
+// 上一轮的名单。
+//
+// 传空名单是有意义的：那是「这个阶段没有人能行动」，与「规则没指定」不同。
+//
+// 名单里不存在的玩家会被忽略；名单会按 ID 排序后存下，效果流因此是确定的。
+func NewSetActorsEffect(phase PhaseType, playerIDs ...string) *Effect {
+	return NewEffect(EventSetActors, "", "").
+		WithData(actorsPhaseKey, phase).
+		WithData(actorsListKey, append([]string(nil), playerIDs...))
+}
+
+// actorsOf 从效果里读出阶段与名单
+func actorsOf(e *Effect) (PhaseType, []string, bool) {
+	p, ok := e.Data[actorsPhaseKey].(PhaseType)
+	if !ok {
+		return PhaseUnspecified, nil, false
+	}
+	ids, ok := e.Data[actorsListKey].([]string)
+	if !ok {
+		return PhaseUnspecified, nil, false
+	}
+	return p, ids, true
+}
+
+// NewSetGameVarEffect 声明「把整局的某项状态改成某值」。
+//
+// 四种作用域里的第四种，也是补上的那一格：**整局有效、不属于任何玩家**。
+// 跟着玩家走一整局的用 NewSetPlayerVarEffect，本回合有效且无主的用
+// NewSetRoundVarEffect，「本回合标记了某人」用 NewSetPlayerRoundVarEffect。
+//
+// 比分、计数器、轮到谁这类「全局事实」属于这一格。此前没有它，规则只能把
+// 这类数挂到某个玩家的私有状态上当账本——全局事实记在个人名下，那个玩家的
+// 视图里还会凭空多出与他无关的字段。
+//
+// 值为空串等同删除，与其余三种一致。
+func NewSetGameVarEffect(key, value string) *Effect {
+	return NewEffect(EventSetGameVar, "", "").
+		WithData(roundVarKeyKey, key).
+		WithData(roundVarValueKey, value)
 }
 
 // NewSetRoundVarEffect 声明「把本回合的某项自定义状态改成某值」。

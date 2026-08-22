@@ -38,7 +38,7 @@ type wolfKingResolver struct{}
 func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 	for _, use := range uses {
-		if use.Skill != skillWolfClaw || use.TargetID == "" {
+		if use.Skill != skillWolfClaw || use.Target() == "" {
 			continue
 		}
 		// 枪只有一发。子弹是入座时发的（wolfKingSetup），用掉即清空——
@@ -50,8 +50,8 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 		// 真正让人出局的是旁边那条 SET_ALIVE。内置角色的狼刀、
 		// 投票放逐走的也是同一条路，第三方在这件事上没有额外负担。
 		effects = append(effects,
-			engine.NewEffect(EventShoot, use.PlayerID, use.TargetID),
-			engine.NewSetAliveEffect(use.TargetID, false),
+			engine.NewEffect(EventShoot, use.PlayerID, use.Target()),
+			engine.NewSetAliveEffect(use.Target(), false),
 			engine.NewSetPlayerVarEffect(use.PlayerID, varWolfKingGun, ""))
 		break
 	}
@@ -144,7 +144,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	// 放逐狼王
 	for _, voter := range []string{"s", "g", "v1", "v2"} {
 		if err := eng.SubmitSkillUse(&SkillUse{
-			PlayerID: voter, Skill: SkillVote, TargetID: "wk",
+			PlayerID: voter, Skill: SkillVote, Targets: []string{"wk"},
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -160,14 +160,14 @@ func TestExtension_WolfKing(t *testing.T) {
 
 	// 别的玩家不能冒用狼王的技能
 	if err := eng.SubmitSkillUse(&SkillUse{
-		PlayerID: "w1", Skill: skillWolfClaw, TargetID: "s",
+		PlayerID: "w1", Skill: skillWolfClaw, Targets: []string{"s"},
 	}); err == nil {
 		t.Error("非触发者不应能使用狼王技能")
 	}
 
 	// 狼王开枪带走预言家
 	if err := eng.SubmitSkillUse(&SkillUse{
-		PlayerID: "wk", Skill: skillWolfClaw, TargetID: "s",
+		PlayerID: "wk", Skill: skillWolfClaw, Targets: []string{"s"},
 	}); err != nil {
 		t.Fatalf("被触发的狼王应当可以开枪: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	}
 	for _, voter := range []string{"s", "g", "v1", "v2"} {
 		if err := eng.SubmitSkillUse(&SkillUse{
-			PlayerID: voter, Skill: SkillVote, TargetID: "wk",
+			PlayerID: voter, Skill: SkillVote, Targets: []string{"wk"},
 		}); err != nil {
 			t.Fatal(err)
 		}

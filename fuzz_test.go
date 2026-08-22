@@ -91,6 +91,9 @@ func randomConfig(rng *rand.Rand) (*GameConfig, Rules) {
 		cfg.Phases[PhaseVote].NextPhase = PhaseNightWolf
 		cfg.Phases[PhaseDayHunter].NextPhase = PhaseNightWolf
 		delete(cfg.Phases, PhaseNightGuard)
+		// 「每夜从干净的局面开始」跟着搬到新的第一个夜间阶段——
+		// 这个声明是板子的一部分，改板子就要跟着改，和 NextPhase 一样。
+		cfg.Phases[PhaseNightWolf].ClearsRoundVars = true
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -254,7 +257,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 
 	dead := map[string]bool{}
 	lastRound := e.Round()
-	cycles := 1 // 已经进入起始阶段一次
+	lastPhase := e.Phase()
 	for step := 0; step < 400; step++ {
 		if e.IsGameOver() {
 			return append(tags, "结束")
@@ -268,7 +271,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 			}
 			skill := skills[rng.Intn(len(skills))]
 			target := ids[rng.Intn(len(ids))]
-			_ = e.SubmitSkillUse(&SkillUse{PlayerID: id, Skill: skill, TargetID: target})
+			_ = e.SubmitSkillUse(&SkillUse{PlayerID: id, Skill: skill, Targets: []string{target}})
 		}
 
 		// 不变量 A：PlayerView 与 AllowedSkills 一致
@@ -325,20 +328,21 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 				seed, step, a, b)
 		}
 
-		// 不变量 H：回合数单调不减，且绕回起始阶段就必须是新的一回合。
+		// 不变量 H：回合数单调不减，且只在声明了 EndsRound 的阶段之后前进。
 		//
-		// 「回合边界」此前写死成守卫阶段，阶段环里没有它的时候回合数
-		// 永远停在 1。光看这一条还不够——回合数不动本身不刺眼，
-		// 真正的后果由下面的 I 抓。
+		// 这一条此前写的是「绕回起始阶段就必须是新的一回合」——那编码的是
+		// 内核自己猜回合边界的旧设计。现在边界由板子声明（PhaseConfig.
+		// EndsRound），于是能断言更强的东西：**回合数不该在别的地方偷偷跳**。
+		//
+		// 光看回合数还不够——它不动本身不刺眼，真正的后果由下面的 I 抓。
 		if e.Round() < lastRound {
 			t.Fatalf("seed=%d step=%d 回合数倒退: %d -> %d", seed, step, lastRound, e.Round())
 		}
-		if e.Phase() == cfg.StartPhase {
-			cycles++
-		}
-		if e.Round() < cycles {
-			t.Fatalf("seed=%d step=%d 第 %d 次绕回起始阶段，回合数却只有 %d",
-				seed, step, cycles, e.Round())
+		if e.Round() > lastRound {
+			if pc := cfg.Phases[lastPhase]; pc == nil || !pc.EndsRound {
+				t.Fatalf("seed=%d step=%d 回合数从 %d 跳到 %d，但刚结算完的 %v 没有声明 EndsRound",
+					seed, step, lastRound, e.Round(), lastPhase)
+			}
 		}
 
 		// 不变量 I：进入新的一回合时，回合上下文必须是干净的。
@@ -358,7 +362,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 				}
 			}
 		}
-		lastRound = e.Round()
+		lastRound, lastPhase = e.Round(), e.Phase()
 
 		// 不变量 C：死人不复活；身份不变
 		for _, id := range ids {

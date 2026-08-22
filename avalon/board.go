@@ -84,6 +84,15 @@ func DefaultConfig() *engine.Config {
 		Phases: map[engine.PhaseType]*engine.PhaseConfig{
 			PhasePropose: {
 				Type: PhasePropose,
+
+				// 队伍标记活到「下一次提名开始」，不是「下一轮任务」——
+				// 一轮任务里可能提名五次。此前内核只有「回合级」一档寿命，
+				// 而回合数要跟着第几轮任务走（EndsRound 标在任务阶段），
+				// 两者不重合，只能在提名解析器里手工清一遍。
+				//
+				// 现在寿命与计数分开声明：这里说「我开始时是干净的」，
+				// 回合数由任务阶段的 EndsRound 管。
+				ClearsRoundVars: true,
 				// 队长提名：一支队伍要几个人，就提交几次 PROPOSE。
 				//
 				// SkillUse.TargetID 是单个字符串，表达不了「一次提名一支队伍」。
@@ -117,6 +126,15 @@ func DefaultConfig() *engine.Config {
 				},
 				Timeout:   MissionTimeout,
 				NextPhase: PhasePropose,
+
+				// 任务结算完是新的一回合。
+				//
+				// 这是「回合边界交给规则」之后立刻兑现的好处：阿瓦隆的
+				// Round 从此等于**第几轮任务**，与它自己说的话对得上。
+				// 此前内核猜「绕回起始阶段就算新回合」，而这里每提名一次
+				// 就绕一圈，于是 Round 成了提名计数器，跟「第几轮任务」
+				// 最多差五倍，还被 PlayerView.Round 原样发给玩家。
+				EndsRound: true,
 			},
 			PhaseAssassin: {
 				Type: PhaseAssassin,

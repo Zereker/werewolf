@@ -76,3 +76,29 @@ func (e *Engine) setupFor(playerID string, role RoleType) map[string]string {
 	}
 	return setup.Setup(playerID, role)
 }
+
+// GameSetup 开局那一刻，规则要先把局面铺成什么样。
+//
+// 与 RoleSetup 是一对：那个管**一名玩家**入座时带着什么，这个管**整局**
+// 开始时的初始状态。它拿到的是全员就座之后的局面，因此能做到 RoleSetup
+// 做不到的事——比如「第一个队长是几号座位」，那取决于场上有谁。
+//
+// 典型用途：初始化整局计数器（GameVar），以及**指定第一个阶段的行动者**
+// （SetActors）。后者是这个扩展点存在的直接原因：行动者集合通常由上一个
+// 阶段的解析器算出来，而第一个阶段前面没有阶段。
+//
+// 它在 Start() 里被调用一次，产出的效果走与其余效果完全相同的写入点，
+// 因此进效果流、能回放、进快照。
+//
+// 与其余扩展点一样：只能读 GameView，在引擎持锁期间被调用，实现中不要
+// 回调 Engine 的任何方法——后果是挂住，不是报错。
+// 详见 doc.go「扩展点不能回头找引擎」。
+type GameSetup interface {
+	Setup(view GameView) []*Effect
+}
+
+// GameSetupFunc 让普通函数满足 GameSetup。
+type GameSetupFunc func(view GameView) []*Effect
+
+// Setup 实现 GameSetup。
+func (f GameSetupFunc) Setup(view GameView) []*Effect { return f(view) }

@@ -53,9 +53,7 @@ func TestMissionFailIsAnonymous(t *testing.T) {
 func TestGoodPlayerCannotFail(t *testing.T) {
 	e := fivePlayer(t) // c=忠臣（好人）
 	leader := leaderID(e.View())
-	for _, m := range []string{"c", "d"} {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, TargetID: m})
-	}
+	mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: []string{"c", "d"}})
 	mustEnd(t, e)
 	for _, id := range e.AlivePlayerIDs() {
 		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})

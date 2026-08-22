@@ -29,6 +29,12 @@ type Engine struct {
 	// 开局带什么，走的是同一张表、同一条写入路径。
 	roleSetup map[RoleType]RoleSetup
 
+	// gameSetup 开局那一刻的初始化。与 roleSetup 是一对：那个管一名玩家
+	// 入座时带着什么，这个管整局开始时的局面——初始化整局计数器，
+	// 以及指定第一个阶段的行动者（后者是它存在的直接原因：行动者集合通常
+	// 由上一个阶段的解析器算出来，而第一个阶段前面没有阶段）。
+	gameSetup GameSetup
+
 	// 信息边界的三个问题，全部由规则回答（见 boundary.go）：
 	// 一件事该告诉谁、谁和谁是一边的、发言谁能听到。内核只保证
 	// 自己的状态原语永远不外发。
@@ -190,10 +196,18 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 	}
 
 	start := e.config.startPhase()
+	e.state.Seed = e.config.Seed
 	e.state.startAt(start)
 
 	effect := newGameStartedEffect(start)
 	e.recordEffects(effect)
+
+	// 规则的开局初始化。走与其余效果完全相同的写入点，因此进效果流、
+	// 能回放。放在 GAME_STARTED 之后，好让效果流读起来就是事情发生的顺序。
+	if e.gameSetup != nil {
+		setupEffects, _ := e.applyEffects(e.gameSetup.Setup(newStateView(e.state)))
+		e.recordEffects(setupEffects...)
+	}
 	e.logger.Info("game started", roundField(1), phaseField(start))
 
 	return effect, e.snapshotEventHandlersLocked(), nil
@@ -221,7 +235,7 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 	e.logger.Debug("skill submitted",
 		playerField(use.PlayerID),
 		skillField(use.Skill),
-		targetField(use.TargetID))
+		targetField(use.Target()))
 	e.metrics.IncSkillSubmitted(use.Skill)
 
 	return nil
@@ -289,7 +303,10 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	// 4. 计算下一阶段。
 	//    死亡技能可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
 	//    因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
-	nextPhase := e.calculateNextPhase(currentPhase)
+	// 本阶段的行动者指定用掉了：不清的话下一次进同一个阶段会沿用上一轮的名单
+	e.state.consumeActors(currentPhase)
+
+	nextPhase := e.calculateNextPhase(currentPhase, out.effects)
 
 	gameOver, winner := e.victory.CheckVictory(newStateView(e.state))
 	endNow := gameOver && !e.state.hasPendingTrigger()
@@ -299,7 +316,23 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	// 5. 流转。END 也走 nextPhase，不直接赋值 Phase——
 	//    状态的每一次改动都经同一条路径，别处才不会漏掉伴随的逻辑
-	e.state.nextPhase(nextPhase, e.config.startPhase())
+	//
+	//    回合边界与胜负判定守同一条：**还有待结算的触发时不能落下**。
+	//    理由不同但都硬：胜负是因为死亡技能可能翻盘；回合边界是因为
+	//    待结算队列本身就住在回合上下文里，清掉回合状态等于把队列抹掉,
+	//    被投出去的猎人那一枪会凭空消失。
+	//    整局结束不算新回合：END 之后没有下一回合，多推一次会让回放对不上
+	//    （回放那条路上 GAME_ENDED 走的是 nextPhase(PhaseEnd, false)）。
+	//    「回合数 +1」与「回合级变量清空」是两件事，分开算：绝大多数板子
+	//    把它们标在同一个阶段（EndsRound 蕴含清空），需要更细的变量寿命时
+	//    单独标 ClearsRoundVars——阿瓦隆的队伍标记活到下一次提名，
+	//    而回合数要跟着第几轮任务走，两者不重合。
+	//    计数看**刚结束的**阶段，清空看**要进入的**阶段——前者说「我结束了
+	//    就是一回合」，后者说「我开始时是干净的」。
+	settled := !endNow && !e.state.hasPendingTrigger()
+	e.state.nextPhase(nextPhase,
+		settled && e.config.endsRound(currentPhase),
+		settled && e.config.clearsRoundVars(nextPhase))
 
 	if endNow {
 		// 结束事件与其他事件走同一条构造路径：Effect -> ToEvent，
@@ -444,6 +477,16 @@ func (e *Engine) IsGameOver() bool {
 	return e.state.Phase == PhaseEnd
 }
 
+// GameVar 读整局的一项自定义状态，没有则为空串。
+//
+// 与 RoundVar 对称：那个每回合清零，这个跟着整局走。规则用它提供自己的
+// 便利读法（阿瓦隆的「第几轮任务」「成功几次」就是）。
+func (e *Engine) GameVar(key string) string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.state.gameVar(key)
+}
+
 // RoundVar 读本回合的一项自定义状态，没有则为空串。
 //
 // 规则用它提供自己的便利读法——狼人杀的「今晚的刀口」就是
@@ -534,15 +577,49 @@ func (e *Engine) vetTrigger(effect *Effect) {
 
 // calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。
 // 调用前需持有 e.mu。
-func (e *Engine) calculateNextPhase(currentPhase PhaseType) PhaseType {
+func (e *Engine) calculateNextPhase(currentPhase PhaseType, effects []*Effect) PhaseType {
 	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队
 	e.state.consumeTriggerFor(currentPhase)
 
-	// 还有待结算的死亡技能，先去处理（可能有多个，逐个来）
+	// 还有待结算的死亡技能，先去处理（可能有多个，逐个来）。
+	//
+	// 它排在 GOTO_PHASE 前面：队列必须排空——胜负判定与回合边界都等着它，
+	// 中途跳走会把还没结算的死亡技能丢掉。
 	if t, ok := e.state.peekTrigger(); ok {
 		return t.Phase
 	}
 
-	// 使用声明式配置获取下一阶段
+	// 规则可以改写出口：本阶段产出了 GOTO_PHASE 就听它的。
+	// 多条以最后一条为准——与「同一个角色重复注册以最后一次为准」同一个口径。
+	if p, ok := e.gotoFrom(effects); ok {
+		return p
+	}
+
+	// 都没有，走声明式配置里的默认出口
 	return e.phase.nextSubPhase(currentPhase)
+}
+
+// gotoFrom 从本阶段产出的效果里找出规则指定的下一阶段。
+//
+// 被否决的效果不算数：规则自己把它 Cancel 掉了，说明那条指令不该生效。
+func (e *Engine) gotoFrom(effects []*Effect) (PhaseType, bool) {
+	var out PhaseType
+	var found bool
+	for _, ef := range effects {
+		if ef == nil || ef.Canceled || ef.Type != EventGotoPhase {
+			continue
+		}
+		p, ok := ef.gotoPhase()
+		if !ok {
+			continue
+		}
+		if e.config.Phases[p] == nil {
+			// 写错的目标不该让整局崩掉，但也不能安静地跳去没人预期的地方
+			e.logger.Error("goto phase not in config, falling back to NextPhase",
+				phaseField(p))
+			continue
+		}
+		out, found = p, true
+	}
+	return out, found
 }
