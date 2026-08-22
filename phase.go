@@ -92,7 +92,7 @@ func (p *phaseManager) requiredRoles(phase pb.PhaseType) []pb.RoleType {
 func (p *phaseManager) allowedSkills(phase pb.PhaseType, role pb.RoleType) []pb.SkillType {
 	config := p.phaseConfig(phase)
 	if config == nil {
-		return nil
+		return []pb.SkillType{}
 	}
 
 	skills := make([]pb.SkillType, 0)

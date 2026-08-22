@@ -154,6 +154,12 @@ func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*E
 		if p.ID == "" {
 			return nil, ErrInvalidPlayerID
 		}
+		// 与 AddPlayer 同一条角色校验：恢复要还原快照里的存活状态与药剂，
+		// 但不该顺带放行 AddPlayer 会拒绝的身份
+		if p.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED || p.Role == pb.RoleType_ROLE_TYPE_GOD {
+			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
+				"role %v cannot be assigned to a player", p.Role)
+		}
 		if _, exists := engine.state.getPlayer(p.ID); exists {
 			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 				"duplicate player %q in snapshot", p.ID)
@@ -161,11 +167,17 @@ func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*E
 		engine.state.restorePlayer(p)
 	}
 
-	// 技能引用的玩家必须存在，否则结算时会静默丢弃
+	// 技能引用的玩家与目标都必须存在，否则结算时会静默丢弃
 	for _, u := range snap.PendingUses {
 		if _, ok := engine.state.getPlayer(u.PlayerID); !ok {
 			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 				"pending skill references unknown player %q", u.PlayerID)
+		}
+		if u.TargetID != "" {
+			if _, ok := engine.state.getPlayer(u.TargetID); !ok {
+				return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+					"pending skill references unknown target %q", u.TargetID)
+			}
 		}
 		engine.pendingUses = append(engine.pendingUses, &SkillUse{
 			PlayerID: u.PlayerID,

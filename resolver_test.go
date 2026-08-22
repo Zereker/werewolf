@@ -589,3 +589,40 @@ func filterEffects(effects []*Effect, eventType pb.EventType) []*Effect {
 	}
 	return result
 }
+
+// TestNightResolveResolver_PoisonOrderIsDeterministic 同一个局面结算出的效果顺序必须稳定。
+//
+// 毒杀名单是一个 map，直接遍历产出效果的话，同一个局面每次结算的顺序
+// 都不一样，效果流的回放与比对就没了确定性。
+func TestNightResolveResolver_PoisonOrderIsDeterministic(t *testing.T) {
+	st := newState()
+	for _, id := range []string{"a", "b", "c", "d", "e"} {
+		if err := st.addPlayer(id, pb.RoleType_ROLE_TYPE_VILLAGER); err != nil {
+			t.Fatal(err)
+		}
+		st.RoundCtx.PoisonedPlayers[id] = true
+	}
+
+	r := NewNightResolveResolver()
+	want := targetsOf(r.Resolve(nil, newStateView(st), DefaultGameConfig()))
+	for i := 0; i < 20; i++ {
+		got := targetsOf(r.Resolve(nil, newStateView(st), DefaultGameConfig()))
+		if len(got) != len(want) {
+			t.Fatalf("效果数不稳定: %v vs %v", want, got)
+		}
+		for j := range got {
+			if got[j] != want[j] {
+				t.Fatalf("第 %d 次结算顺序不同: %v vs %v", i, want, got)
+			}
+		}
+	}
+}
+
+// targetsOf 取出效果的目标列表，用于比对顺序。
+func targetsOf(effects []*Effect) []string {
+	out := make([]string, 0, len(effects))
+	for _, e := range effects {
+		out = append(out, e.TargetID)
+	}
+	return out
+}

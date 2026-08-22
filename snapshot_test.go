@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -408,4 +409,46 @@ func (r *markerResolver) Resolve(uses []*SkillUse, view GameView, config *GameCo
 		out = append(out, NewEffect(pb.EventType_EVENT_TYPE_SKIP, use.PlayerID, ""))
 	}
 	return out
+}
+
+// TestRestoreEngine_RejectsInvalidPlayers 恢复不该放行 AddPlayer 会拒绝的东西。
+//
+// restorePlayer 刻意不走 AddPlayer（要原样还原存活状态与药剂），
+// 但角色校验也跟着一起绕过去了；技能引用的目标同样没有校验，
+// 指向一个不存在的人时会在结算时被静默丢弃。
+func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
+	base := func() *Snapshot {
+		return &Snapshot{
+			Version: SnapshotVersion,
+			Phase:   pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+			Round:   1,
+			Players: []PlayerSnapshot{
+				{ID: "w1", Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Camp: pb.Camp_CAMP_EVIL, Alive: true},
+				{ID: "v1", Role: pb.RoleType_ROLE_TYPE_VILLAGER, Camp: pb.Camp_CAMP_GOOD, Alive: true},
+			},
+		}
+	}
+
+	// 正常快照能恢复
+	if _, err := RestoreEngine(nil, base()); err != nil {
+		t.Fatalf("前置条件：正常快照应能恢复，实际 %v", err)
+	}
+
+	snap := base()
+	snap.Players[0].Role = pb.RoleType_ROLE_TYPE_GOD
+	if _, err := RestoreEngine(nil, snap); !errors.Is(err, ErrInvalidRole) {
+		t.Errorf("上帝不是玩家身份，恢复应当被拒，实际 %v", err)
+	}
+
+	snap = base()
+	snap.PendingUses = []SkillUseSnapshot{{
+		PlayerID: "w1",
+		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		TargetID: "查无此人",
+		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Round:    1,
+	}}
+	if _, err := RestoreEngine(nil, snap); err == nil {
+		t.Error("技能指向不存在的目标，恢复应当被拒")
+	}
 }

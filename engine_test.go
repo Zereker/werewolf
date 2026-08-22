@@ -379,8 +379,9 @@ func TestEngine_GetAllowedSkills_Dead(t *testing.T) {
 
 	skills := g.e.AllowedSkills("wolf")
 
-	if skills != nil {
-		t.Errorf("expected nil for dead player, got %v", skills)
+	// 空切片而非 nil：同一个字段序列化出去不该一会儿是 [] 一会儿是 null
+	if skills == nil || len(skills) != 0 {
+		t.Errorf("expected empty non-nil slice for dead player, got %v", skills)
 	}
 }
 

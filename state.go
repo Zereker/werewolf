@@ -250,16 +250,19 @@ func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 	return p, ok
 }
 
-// PlayerInfo 玩家信息只读视图
+// PlayerInfo 玩家信息只读视图（上帝视角）。
+//
+// 含 Protected 这类只有上帝该知道的信息，不可整体转发给玩家——
+// 要发给玩家的内容用 Engine.PlayerView。
 type PlayerInfo struct {
-	ID          string
-	Role        pb.RoleType
-	Camp        pb.Camp
-	Category    RoleCategory
-	Alive       bool
-	Protected   bool // 今晚是否被保护（取自本回合上下文）
-	HasAntidote bool
-	HasPoison   bool
+	ID          string       `json:"id"`
+	Role        pb.RoleType  `json:"role"`
+	Camp        pb.Camp      `json:"camp"`
+	Category    RoleCategory `json:"category"`
+	Alive       bool         `json:"alive"`
+	Protected   bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
+	HasAntidote bool         `json:"has_antidote"`
+	HasPoison   bool         `json:"has_poison"`
 }
 
 // PlayerInfo 获取玩家信息的只读副本

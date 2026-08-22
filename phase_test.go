@@ -288,8 +288,8 @@ func TestGetAllowedSkills_InvalidPhase(t *testing.T) {
 	p := newPhaseManager(config)
 
 	skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_START, pb.RoleType_ROLE_TYPE_WEREWOLF)
-	if skills != nil {
-		t.Error("expected nil for invalid phase")
+	if skills == nil || len(skills) != 0 {
+		t.Errorf("expected empty non-nil slice for invalid phase, got %v", skills)
 	}
 }
 

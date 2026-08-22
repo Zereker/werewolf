@@ -21,27 +21,27 @@ import (
 // 视图是「此刻的状态」，不是「历史」。预言家历次查验的结果、公开的死亡
 // 记录属于历史，由 Effect 日志（Engine.EffectLog）承载。
 type PlayerView struct {
-	PlayerID string       // 视角所属玩家
-	Round    int          // 当前回合
-	Phase    pb.PhaseType // 当前阶段
+	PlayerID string       `json:"player_id"` // 视角所属玩家
+	Round    int          `json:"round"`     // 当前回合
+	Phase    pb.PhaseType `json:"phase"`     // 当前阶段
 
 	// Self 自己的信息：身份、阵营、存活、（女巫的）药剂
-	Self SelfInfo
+	Self SelfInfo `json:"self"`
 
 	// Players 全场玩家的公开信息，按 ID 排序。
 	// 身份只在对本视角公开时才填充（自己、狼队友）。
-	Players []PublicPlayerInfo
+	Players []PublicPlayerInfo `json:"players"`
 
-	// AllowedSkills 本阶段自己可以提交的技能。
-	// 不该自己行动时为空——这也是判断「轮到我了吗」的依据。
-	AllowedSkills []pb.SkillType
+	// AllowedSkills 本阶段自己可以提交的技能，永不为 nil。
+	// 不该自己行动时为空切片——这也是判断「轮到我了吗」的依据。
+	AllowedSkills []pb.SkillType `json:"allowed_skills"`
 
 	// Teammates 狼队可见：其余狼队友的 ID。好人阵营恒为空。
-	Teammates []string
+	Teammates []string `json:"teammates,omitempty"`
 
 	// KillTarget 女巫可见：今晚狼人的击杀目标。
 	// 依规则「解藥未使用時可以得知狼人的殺害對象」，解药用完后恒为空。
-	KillTarget string
+	KillTarget string `json:"kill_target,omitempty"`
 }
 
 // SelfInfo 一名玩家对自己有权知道的全部信息。
@@ -146,18 +146,21 @@ func (e *Engine) publicPlayers(revealed map[string]bool) []PublicPlayerInfo {
 	return out
 }
 
-// allowedSkillsForPlayer 该玩家此刻能提交的技能。
+// allowedSkillsForPlayer 该玩家此刻能提交的技能，永不返回 nil。
+//
+// 「为空表示还没轮到我」在语义上与 nil 等价，但序列化出去一个是 []
+// 一个是 null，同一个字段两种形状，调用方要分别处理。
 // 调用前需持有 e.mu。
 func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []pb.SkillType {
 	// 死亡技能阶段只有触发者能行动
 	if t, ok := e.state.peekTrigger(); ok && t.Phase == e.state.Phase {
 		if t.PlayerID != playerID {
-			return nil
+			return []pb.SkillType{}
 		}
 		return e.allowedSkillsFor(info.Role)
 	}
 	if !info.Alive {
-		return nil
+		return []pb.SkillType{}
 	}
 	return e.allowedSkillsFor(info.Role)
 }

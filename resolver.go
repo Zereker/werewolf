@@ -431,7 +431,9 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 	//
 	// 规则「除殉情或被毒殺外，以任何其他方式被淘汰時可以…開槍」：
 	// 被毒死的猎人不触发开枪，这正是毒药相对于狼刀的战术价值所在。
-	for playerID := range rc.PoisonedPlayers {
+	// 按 ID 排序遍历：map 的遍历顺序是随机的，同一个局面每次结算
+	// 产出的效果顺序都不一样，效果流的回放与比对就没了确定性
+	for _, playerID := range sortedKeys(rc.PoisonedPlayers) {
 		poisonKillEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "", playerID)
 		effects = append(effects, poisonKillEffect)
 	}
