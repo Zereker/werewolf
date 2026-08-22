@@ -16,7 +16,7 @@ import (
 // TestNewEngine_NilConfig 测的是构造函数与内部字段的初始化，不开局，
 // 故不适用 newRuleGame。
 func TestNewEngine_NilConfig(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 
 	if engine.config == nil {
 		t.Error("expected default config to be set")
@@ -39,23 +39,23 @@ func TestNewEngine_NilConfig(t *testing.T) {
 // 断言的是 engine.config 这个内部字段的指针身份。
 func TestNewEngine_CustomConfig(t *testing.T) {
 	config := &GameConfig{
-		WitchCanSaveSelf: true,
-		Phases:           DefaultGameConfig().Phases,
+		StartPhase: PhaseNightWolf,
+		Phases:     DefaultGameConfig().Phases,
 	}
-	engine := MustNewEngine(config)
+	engine := MustNewWith(config, DefaultRules())
 
 	if engine.config != config {
 		t.Error("expected custom config to be set")
 	}
-	if !engine.config.WitchCanSaveSelf {
-		t.Error("expected WitchCanSaveSelf=true")
+	if engine.config.StartPhase != PhaseNightWolf {
+		t.Error("expected StartPhase=NIGHT_WOLF")
 	}
 }
 
 // TestEngine_AddPlayer 只加人不开局（板子只有一只狼，Start 会被拒），
 // 且断言的是 engine.state 里的玩家记录，故保留显式风格。
 func TestEngine_AddPlayer(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 
 	mustAdd(t, engine, "p1", RoleWerewolf)
 
@@ -113,9 +113,9 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := DefaultGameConfig()
-			cfg.VictoryMode = tc.mode
-			engine := MustNewEngine(cfg)
+			rules := DefaultRules()
+			rules.VictoryMode = tc.mode
+			engine := MustNew(rules)
 			for id, role := range tc.roles {
 				mustAdd(t, engine, id, role)
 			}
@@ -127,7 +127,7 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 	}
 
 	t.Run("正常板子照常开局", func(t *testing.T) {
-		engine := MustNewEngine(nil)
+		engine := MustNew(DefaultRules())
 		for id, role := range map[string]RoleType{
 			"w1": RoleWerewolf, "s": RoleSeer,
 			"v1": RoleVillager, "v2": RoleVillager,
@@ -143,7 +143,7 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 // TestEngine_AddPlayer_Validation 故意用非法输入并期待 AddPlayer() 报错，
 // 同理不能交给 newRuleGame 建局。
 func TestEngine_AddPlayer_Validation(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 
 	if err := engine.AddPlayer("", RoleVillager); err != ErrInvalidPlayerID {
 		t.Errorf("空 ID 应返回 ErrInvalidPlayerID，实际 %v", err)
@@ -181,7 +181,7 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 // TestEngine_SubmitSkillUse_Valid 断言的是 engine.pendingUses 这个内部队列的
 // 长度与元素内容（提交时是否补齐了 Phase/Round），故保留显式风格。
 func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	mustAdd(t, engine, "wolf", RoleWerewolf)
 	mustAdd(t, engine, "guard", RoleGuard)
 	mustAdd(t, engine, "victim", RoleVillager)
@@ -247,7 +247,7 @@ func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
 // TestEngine_EndPhase 断言 EndPhase 结束后 engine.pendingUses 被清空，
 // 这是对内部队列的直接检查，故保留显式风格。
 func TestEngine_EndPhase(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	mustAdd(t, engine, "guard", RoleGuard)
 	mustAdd(t, engine, "wolf", RoleWerewolf)
 	mustAdd(t, engine, "v1", RoleVillager)
@@ -340,7 +340,7 @@ func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
 // TestEngine_EndPhase_AlreadyEnded 直接把 engine.state.Phase 写成 END 构造局面，
 // 不经开局，故保留显式风格。
 func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	engine.state.Phase = PhaseEnd
 
 	_, err := engine.EndPhase()
@@ -352,7 +352,7 @@ func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 // TestEngine_GetCurrentPhase 断言的重点之一是「开局之前」的阶段为 START，
 // newRuleGame 建局即开局，拿不到这个时刻，故保留显式风格。
 func TestEngine_GetCurrentPhase(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 
 	if engine.Phase() != PhaseStart {
 		t.Errorf("expected Phase=START, got %v", engine.Phase())
@@ -369,7 +369,7 @@ func TestEngine_GetCurrentPhase(t *testing.T) {
 
 // TestEngine_GetCurrentRound 同上：断言「开局之前」Round=0。
 func TestEngine_GetCurrentRound(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 
 	if engine.Round() != 0 {
 		t.Errorf("expected Round=0, got %d", engine.Round())
@@ -423,7 +423,7 @@ func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
 // TestEngine_IsGameOver 直接把 engine.state.Phase 写成 END，且要看开局前的
 // IsGameOver=false，故保留显式风格。
 func TestEngine_IsGameOver(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 
 	if engine.IsGameOver() {
 		t.Error("expected IsGameOver=false initially")
@@ -483,7 +483,7 @@ func TestEngine_MultipleHandlers(t *testing.T) {
 // TestEngine_Concurrency 并发用例：要自己控制多 goroutine 的读写时序，
 // 不走 newRuleGame 的单线程推进辅助。
 func TestEngine_Concurrency(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	mustAdd(t, engine, "guard", RoleGuard)
 	mustAdd(t, engine, "wolf", RoleWerewolf)
 	mustAdd(t, engine, "v1", RoleVillager)
@@ -727,7 +727,7 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 // 并发用例：EndPhase 由独立 goroutine 反复调用，不能走 newRuleGame 的
 // 单线程推进辅助（g.end 会断言阶段流转，在并发下无意义）。
 func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	mustAdd(t, engine, "w1", RoleWerewolf)
 	mustAdd(t, engine, "s", RoleSeer)
 	mustAdd(t, engine, "v1", RoleVillager)
@@ -826,7 +826,7 @@ func (l *recordingLogger) hasError(msg string) bool {
 // 绕过 Start 的板子校验与解析器校验；而 Start 此后永远返回
 // 「已开始」，那些校验再也跑不到。
 func TestEngine_EndPhase_BeforeStart(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	mustAdd(t, engine, "w1", RoleWerewolf)
 	mustAdd(t, engine, "v1", RoleVillager)
 
@@ -838,7 +838,7 @@ func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 	}
 
 	// 非法板子（全好人）同样推不动，Start 的校验因此仍然有效
-	bad := MustNewEngine(nil)
+	bad := MustNew(DefaultRules())
 	mustAdd(t, bad, "v1", RoleVillager)
 	if _, err := bad.EndPhase(); !errors.Is(err, ErrGameNotStarted) {
 		t.Fatalf("期望 ErrGameNotStarted，实际 %v", err)
@@ -850,7 +850,7 @@ func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 
 // TestEngine_Start_DispatchesGameStarted 开局事件要推给 OnEvent 的订阅者。
 func TestEngine_Start_DispatchesGameStarted(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	mustAdd(t, engine, "w1", RoleWerewolf)
 	mustAdd(t, engine, "v1", RoleVillager)
 
@@ -909,7 +909,7 @@ func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
 // applyEffect 里有 nil 保护，但 advancePhase 的循环在它之前就先取了
 // effect.Type / effect.Canceled——那道保护够不着。
 func TestEngine_ResolverReturningNilEffect(t *testing.T) {
-	engine := MustNewEngine(nil,
+	engine := MustNew(DefaultRules(),
 		WithResolver(PhaseNightGuard, resolverReturningNil{}))
 	mustAdd(t, engine, "w1", RoleWerewolf)
 	mustAdd(t, engine, "v1", RoleVillager)
@@ -934,7 +934,7 @@ func TestEngine_ResolverReturningNilEffect(t *testing.T) {
 // resolverReturningNil 返回一个含 nil 的效果切片。
 type resolverReturningNil struct{}
 
-func (resolverReturningNil) Resolve([]*SkillUse, GameView, *GameConfig) []*Effect {
+func (resolverReturningNil) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{nil, NewEffect(EventSkip, "v1", "")}
 }
 

@@ -17,8 +17,8 @@ import (
 
 // 自定义取值从 1000 起，避免与后续内置枚举撞号。
 const (
-	roleIdiot     = werewolf.RoleType(1000)
-	eventRevealed = werewolf.EventType(1001) // 白痴翻牌
+	roleIdiot     = werewolf.RoleType("IDIOT")
+	eventRevealed = werewolf.EventType("IDIOT_REVEALED") // 白痴翻牌
 )
 
 // idiotRule 白痴的规则，包在内置投票解析器外面。
@@ -54,7 +54,7 @@ func newIdiotRule(inner werewolf.Resolver) *idiotRule {
 // 这一条。ELIMINATE 也一并否决，是为了让效果流与受众看到「投出来的
 // 是他，但他没死」。
 func (r *idiotRule) Resolve(
-	uses []*werewolf.SkillUse, view werewolf.GameView, cfg *werewolf.GameConfig,
+	uses []*werewolf.SkillUse, view werewolf.GameView,
 ) []*werewolf.Effect {
 	// 失去投票权：引擎那边没法表达「某个人不能用某个技能」——
 	// 阶段配置声明的是「角色 + 技能」，投票那一步写的是「全体」。
@@ -67,7 +67,7 @@ func (r *idiotRule) Resolve(
 		kept = append(kept, u)
 	}
 
-	effects := r.inner.Resolve(kept, view, cfg)
+	effects := r.inner.Resolve(kept, view)
 
 	// 先看这一批里有没有「还没翻牌的白痴要死了」。判断依据是那条致死的
 	// 原语，与内置解析器把它叫作什么无关。

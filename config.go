@@ -50,19 +50,11 @@ func (m VictoryMode) String() string {
 	}
 }
 
-// GameConfig 游戏配置
+// GameConfig 阶段机的配置：从哪儿开始、阶段怎么流转、建议多久。
+//
+// 规则开关（女巫能否自救之类）此前也在这里，现在住在 Rules 上——
+// 内核不该认得「女巫」这个概念，更不该认得她能不能自救。
 type GameConfig struct {
-	// 规则变体
-	WitchCanSaveSelf       bool // 女巫能否自救
-	WitchCanUseBothPotions bool // 女巫能否在同一夜同时使用解药和毒药
-	GuardCanProtectSelf    bool // 守卫能否自守
-	GuardCanRepeat         bool // 守卫能否连续守同一人
-	SameGuardKillIsEmpty   bool // 守卫守住刀口时是否空刀（守护是否生效）
-	GuardSaveTogetherDies  bool // 同守同救（守卫守护 + 女巫解药）目标是否依然死亡
-
-	// 胜负判定方式
-	VictoryMode VictoryMode
-
 	// 起始阶段。Start 之后进入的第一个阶段，为空时默认 NIGHT_GUARD。
 	StartPhase PhaseType
 
@@ -146,15 +138,8 @@ type SkillUse struct {
 // DefaultGameConfig 默认游戏配置
 func DefaultGameConfig() *GameConfig {
 	return &GameConfig{
-		WitchCanSaveSelf:       false,
-		WitchCanUseBothPotions: false,
-		GuardCanProtectSelf:    true,
-		GuardCanRepeat:         false,
-		SameGuardKillIsEmpty:   true,
-		GuardSaveTogetherDies:  true,
-		VictoryMode:            VictoryModeSideWipe,
-		StartPhase:             PhaseNightGuard,
-		DefaultTimeout:         DefaultPhaseTimeout,
+		StartPhase:     PhaseNightGuard,
+		DefaultTimeout: DefaultPhaseTimeout,
 		Phases: map[PhaseType]*PhaseConfig{
 			// 白天和投票阶段
 			PhaseDay:       StandardDayPhase(),
@@ -348,11 +333,6 @@ func (c *GameConfig) Validate() error {
 		if err := validateSteps(phaseType, pc.Steps); err != nil {
 			return err
 		}
-	}
-
-	if c.VictoryMode < VictoryModeSideWipe || c.VictoryMode > VictoryModeTownWipe {
-		return WrapError(CodeInvalidConfig,
-			"unknown victory mode %d", int(c.VictoryMode))
 	}
 
 	return nil

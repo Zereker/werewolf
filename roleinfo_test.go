@@ -3,7 +3,7 @@ package werewolf
 import "testing"
 
 const (
-	roleThief         = RoleType(1001)
+	roleThief         = RoleType("THIEF")
 	roleInfoSpareCard = "spare_card"
 )
 
@@ -17,7 +17,7 @@ func TestRoleInfo_ThirdPartyRoleCanShowItsOwnInfo(t *testing.T) {
 		return map[string]string{roleInfoSpareCard: "SEER"}
 	})
 
-	e := MustNewEngine(nil,
+	e := MustNew(DefaultRules(),
 		WithRoleInfo(roleThief, provider),
 		WithRoleSetup(roleThief, sideSetup(CampGood, RoleCategoryGod)))
 	mustAdd(t, e, "w1", RoleWerewolf)
@@ -46,7 +46,7 @@ func TestRoleInfo_ThirdPartyRoleCanShowItsOwnInfo(t *testing.T) {
 // 狼王在 PhaseInfo 这一份名单里拿不到队友——而 PlayerView 与 WolfTeammates
 // 那两条路都是对的，只有主持人照着组织流程的这一份漏了。
 func TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo(t *testing.T) {
-	const roleWolfKing2 = RoleType(1002)
+	const roleWolfKing2 = RoleType("WOLF_KING_2")
 
 	cfg := DefaultGameConfig()
 	// 让狼王和狼人在同一个阶段行动，才会出现在 PhaseInfo 里
@@ -54,7 +54,7 @@ func TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo(t *testing.T) {
 	wolfPhase.Steps = append(wolfPhase.Steps,
 		PhaseStep{Role: roleWolfKing2, Skill: SkillKill})
 
-	e := MustNewEngine(cfg, WithRoleSetup(roleWolfKing2, sideSetup(CampEvil, RoleCategoryWolf)))
+	e := MustNewWith(cfg, DefaultRules(), WithRoleSetup(roleWolfKing2, sideSetup(CampEvil, RoleCategoryWolf)))
 	mustAdd(t, e, "w1", RoleWerewolf)
 	if err := e.AddPlayer("wk", roleWolfKing2); err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestRoleInfo_WitchIsJustAnotherProvider(t *testing.T) {
 	}
 
 	// 换掉内置女巫的提供者：内置的没有特权，能被覆盖
-	e2 := MustNewEngine(nil, WithRoleInfo(RoleWitch,
+	e2 := MustNew(DefaultRules(), WithRoleInfo(RoleWitch,
 		RoleInfoFunc(func(string, GameView) map[string]string {
 			return map[string]string{"custom": "yes"}
 		})))

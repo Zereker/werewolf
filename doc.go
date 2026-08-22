@@ -1,12 +1,39 @@
-// Package werewolf 是狼人杀（Mafia）的规则引擎。
+// Package werewolf 是狼人杀（Mafia）的规则引擎，零依赖。
 //
 // 它只负责一件事：给定一副板子和一套规则，裁决每个阶段发生了什么，
 // 以及每个人有权知道什么。计时、联网、房间、持久化都不在里面——
 // 那些是使用者的事，见下文「边界」。
 //
+// 社会推理游戏容易做出来，难在做对。难的不是状态机，是信息边界：
+// 女巫只在解药还在手上时看得到今晚的刀口；一次被否决的用毒只能给女巫
+// 本人，否则她当场暴露；同守同救到底死不死取决于一条桌面规则。
+// 这类判断错了不会崩，只会安静地产出一局不公平的游戏。
+//
+// # 内核与规则
+//
+// 这个包里其实是两层东西：一层通用内核，一层狼人杀规则。
+//
+// 内核不认识任何角色、阵营或死法。它知道的只有：玩家、阶段、效果、
+// 四条状态原语，以及「有些事只该给某些人看」。狼人杀的六个角色、
+// 九个阶段、屠边屠城，全部由公开的扩展点组装出来——与第三方角色
+// 走的是同一批入口，没有特权。
+//
+// 这是 dogfooding 的最强形式：内置角色如果能用公开 API 完整表达，
+// 扩展性就被证明了；如果不能，缺什么当场暴露。这几版补上的
+// WithRoleSetup、WithAudience、WithTeammates 都是这么找出来的。
+//
+// 接线的方向是「规则组装内核」，不是「内核认得规则」：NewEngine 造出来的
+// 是一台什么都不认识的状态机——没有解析器、不会判出胜负、不认得任何角色、
+// 不划分信息边界。狼人杀的那一整套由 werewolf.Options 经公开选项装上去，
+// 与第三方注册自定义角色走的是同一批入口（见 TestBareEngine_KnowsNothing）。
+//
+// 两层目前仍在同一个包里，往后会分成 werewolf 与 werewolf/engine 两个包，
+// 让「规则只用公开 API」这件事由编译器保证而不是靠自觉。那是子包，
+// 不影响 import 路径。
+//
 // # 起手
 //
-//	engine, err := werewolf.NewEngine(nil)   // nil 表示默认配置
+//	engine, err := werewolf.New(werewolf.DefaultRules())
 //	engine.AddPlayer("w1", werewolf.RoleWerewolf)
 //	engine.AddPlayer("s", werewolf.RoleSeer)
 //	// ... 其余玩家
@@ -68,7 +95,7 @@
 // 不需要 fork 这个库：
 //
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }        // 声明阶段
-//	engine, _ := werewolf.NewEngine(cfg,
+//	engine, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
 //		werewolf.WithResolver(myPhase, myResolver),           // 注册行为
 //		werewolf.WithRoleSetup(myRole, mySetup))              // 注册初始状态
 //	engine.AddPlayer("p1", myRole)                            // 入座，与内置角色同一个入口
@@ -101,13 +128,14 @@
 // 那类板子根本没有地方表达；包一层 DefaultVictoryChecker 即可在内置
 // 规则之上再加一条。
 //
-// 自定义取值一律从 1000 起。这不只是「避免撞号」的建议——事件类型的
-// 编号是分段的，1000 以上才是扩展的地盘：
+// 自定义取值直接用自己的字符串即可，比如 RoleType("KNIGHT")、
+// EventType("IDIOT_REVEALED")。枚举的底层是字符串，不会与内置的撞号——
+// 「自定义取值从 1000 起」那条旧约定不再需要，它自己也咬到过自己：
+// 事件类型的内部段曾写成「>= 100」，于是第三方定义的每一个事件类型都被
+// 判成内核的内部事件，扩展的事件根本发不出去。
 //
-//	  1 ..  99   引擎的外部可见事件，通过 OnEvent 推给调用方
-//	100 .. 999   引擎的内部状态变更，不外发
-//	1000 起      第三方扩展自己的事件类型，照常推给 OnEvent；
-//	             AudienceOf 对它们回答「不知道」，路由由扩展自己决定
+// 内核只把自己那七个状态原语当内部事件，别的一律推给 OnEvent；
+// 对不认得的类型，AudienceOf 回答「不知道」，路由由扩展自己决定。
 //
 // example/extension 用白痴把这条路径走通，全程只用导出 API；
 // extension_test.go 用狼王再走一遍死亡触发那条分支。

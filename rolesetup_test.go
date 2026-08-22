@@ -13,7 +13,7 @@ import (
 const (
 	// 骑士：好人，开局带一次决斗，用掉就没了。只为测初始状态而存在，
 	// 不实现决斗的结算——那是 Resolver 的事，另有测试覆盖。
-	roleKnight             = RoleType(1002)
+	roleKnight             = RoleType("KNIGHT")
 	varKnightDuel          = "knight.duel"
 	roleInfoKnightDuelLeft = "duel"
 )
@@ -33,7 +33,7 @@ func newKnightGame(t *testing.T, extra ...EngineOption) *Engine {
 		WithRoleSetup(roleKnight, RoleSetupFunc(knightSetup)),
 	}, extra...)
 
-	e := MustNewEngine(DefaultGameConfig(), opts...)
+	e := MustNew(DefaultRules(), opts...)
 	seats := []struct {
 		id   string
 		role RoleType
@@ -131,10 +131,10 @@ func TestRoleSetup_BuiltinWitchWalksTheSamePath(t *testing.T) {
 func TestRoleSetup_SurvivesReplayWithoutTheOption(t *testing.T) {
 	e := newKnightGame(t)
 
-	// 回放时只带解析器所需的选项，**不带** WithRoleSetup
-	replayed, err := ReplayEngine(DefaultGameConfig(), e.EffectLog())
+	// 回放时只带规则包的默认选项，**不带**骑士的 WithRoleSetup
+	replayed, err := Replay(nil, DefaultRules(), e.EffectLog())
 	if err != nil {
-		t.Fatalf("ReplayEngine: %v", err)
+		t.Fatalf("Replay: %v", err)
 	}
 
 	for id, want := range map[string]map[string]string{
@@ -172,9 +172,9 @@ func TestRoleSetup_SurvivesSnapshot(t *testing.T) {
 		t.Fatalf("前置条件：解药应已用掉，实际 %v", before.Vars)
 	}
 
-	restored, err := RestoreEngine(DefaultGameConfig(), e.Snapshot())
+	restored, err := Restore(nil, DefaultRules(), e.Snapshot())
 	if err != nil {
-		t.Fatalf("RestoreEngine: %v", err)
+		t.Fatalf("Restore: %v", err)
 	}
 
 	after, _ := restored.PlayerInfo("wi")
@@ -254,7 +254,7 @@ func TestRoleSetup_WitchSeesHerOwnPotions(t *testing.T) {
 
 // TestRoleSetup_NilRejected 与 WithResolver、WithRoleInfo 一致，拒绝 nil。
 func TestRoleSetup_NilRejected(t *testing.T) {
-	_, err := NewEngine(DefaultGameConfig(), WithRoleSetup(roleKnight, nil))
+	_, err := New(DefaultRules(), WithRoleSetup(roleKnight, nil))
 	if err == nil {
 		t.Fatal("注册 nil 的初始状态应当报错")
 	}

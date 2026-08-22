@@ -67,7 +67,7 @@ func newTable(seed int64) *table {
 	roles := append([]werewolf.RoleType(nil), defaultBoard...)
 	rng.Shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
 
-	engine := werewolf.MustNewEngine(nil)
+	engine := werewolf.MustNew(werewolf.DefaultRules())
 	seats := make([]string, 0, len(roles))
 	for i, role := range roles {
 		id := fmt.Sprintf("%d号", i+1)

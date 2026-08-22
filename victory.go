@@ -12,7 +12,8 @@ package werewolf
 // VictoryChecker 判定这一刻胜负是否已分。
 //
 // 返回 (false, CampUnspecified) 表示还没分出胜负。
-// winner 可以是自定义阵营（Camp 从 1000 起），引擎只负责把它原样报出去。
+// winner 可以是任何自定义阵营——Camp 的底层是字符串，内核不预设取值，
+// 只负责把结论原样报出去。
 //
 // 与 Resolver 一样：只能读 GameView，在引擎持锁期间被调用，
 // 实现中不要回调 Engine 的任何方法。
@@ -34,6 +35,16 @@ func WithVictoryChecker(checker VictoryChecker) EngineOption {
 		return nil
 	}
 }
+
+// neverEnds 内核的缺省判定：永远不结束。
+//
+// 内核不知道什么叫「赢」，所以缺省只能是「不知道」。做成一个不结束的
+// 判定而不是留 nil：一台只装了内核的引擎应该能推进阶段、只是永不分出胜负，
+// 而不是在第一次 Start 就空指针崩掉。规则包一定会用 WithVictoryChecker
+// 换掉它（见 werewolf.Options）。
+type neverEnds struct{}
+
+func (neverEnds) CheckVictory(GameView) (bool, Camp) { return false, CampUnspecified }
 
 // DefaultVictoryChecker 内置判定，按 GameConfig.VictoryMode 分屠边与屠城。
 //

@@ -9,7 +9,7 @@ import ()
 //
 // 注意：Resolve 在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法。
 type Resolver interface {
-	Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect
+	Resolve(uses []*SkillUse, view GameView) []*Effect
 }
 
 // voteResult 投票结果（包内使用）
@@ -99,7 +99,7 @@ func NewVoteResolver() *VoteResolver {
 }
 
 // Resolve 解析投票结果
-func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	result := countVotes(uses, SkillVote)
@@ -140,7 +140,7 @@ func NewDayResolver() *DayResolver {
 }
 
 // Resolve 解析白天行动（发言不产生状态变化）
-func (r *DayResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *DayResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	// 白天发言不产生游戏状态变化
 	return []*Effect{}
 }
@@ -148,17 +148,20 @@ func (r *DayResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfi
 // ==================== 夜晚子阶段 Resolver ====================
 
 // GuardResolver 守卫阶段解析器
-type GuardResolver struct{}
+type GuardResolver struct{ rules Rules }
 
 // NewGuardResolver 创建守卫阶段解析器。
 //
+// 规则开关在构造时给：解析器的配置是「它是什么」的一部分，本来就该定死，
+// 而不是每次结算重新递一遍。这也让 Resolve 的签名与内核彻底无关。
+//
 // 内置解析器都是导出的，扩展可以包装它们复用已有逻辑，
 // 再经 WithResolver 换上——参见 extension_test.go。
-func NewGuardResolver() *GuardResolver {
-	return &GuardResolver{}
+func NewGuardResolver(rules Rules) *GuardResolver {
+	return &GuardResolver{rules: rules}
 }
 
-func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	firstUsePerPlayer(uses, func(use *SkillUse) {
@@ -169,10 +172,10 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView, config *GameCon
 		protect := NewEffect(EventProtect, use.PlayerID, use.TargetID)
 
 		switch {
-		case !config.GuardCanRepeat && lastProtected(view, use.PlayerID) == use.TargetID:
+		case !r.rules.GuardCanRepeat && lastProtected(view, use.PlayerID) == use.TargetID:
 			// 连守限制：视图只给「上回合守了谁」，是否允许由规则配置决定
 			protect.Cancel("cannot protect same target consecutively")
-		case use.PlayerID == use.TargetID && !config.GuardCanProtectSelf:
+		case use.PlayerID == use.TargetID && !r.rules.GuardCanProtectSelf:
 			protect.Cancel("guard cannot protect self")
 		default:
 			// PROTECT 是「发生了什么」的说法，下面两条才真正改状态：
@@ -196,7 +199,7 @@ func NewWolfResolver() *WolfResolver {
 	return &WolfResolver{}
 }
 
-func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	// 使用公共投票统计函数
@@ -220,14 +223,14 @@ func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 }
 
 // WitchResolver 女巫阶段解析器
-type WitchResolver struct{}
+type WitchResolver struct{ rules Rules }
 
 // NewWitchResolver 创建女巫阶段解析器。
-func NewWitchResolver() *WitchResolver {
-	return &WitchResolver{}
+func NewWitchResolver(rules Rules) *WitchResolver {
+	return &WitchResolver{rules: rules}
 }
 
-func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 	killTarget := nightKillTarget(view)
 
@@ -259,12 +262,12 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView, config *GameCon
 		used[key] = true
 
 		// 本夜是否已经用过另一瓶药
-		blocked := !config.WitchCanUseBothPotions && potionUsed[use.PlayerID]
+		blocked := !r.rules.WitchCanUseBothPotions && potionUsed[use.PlayerID]
 
 		var produced []*Effect
 		var consumed bool
 		if use.Skill == SkillAntidote {
-			produced, consumed = resolveAntidote(use, view, config, killTarget, blocked)
+			produced, consumed = resolveAntidote(use, view, r.rules, killTarget, blocked)
 		} else {
 			produced, consumed = resolvePoison(use, view, blocked)
 		}
@@ -285,7 +288,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView, config *GameCon
 //
 // 第二个返回值表示解药是否真的被消耗，用于判断本夜能否再用毒药。
 // 这个信息必须显式返回：从产出的效果个数去反推既脆弱又难读。
-func resolveAntidote(use *SkillUse, view GameView, config *GameConfig, killTarget string, blocked bool) ([]*Effect, bool) {
+func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget string, blocked bool) ([]*Effect, bool) {
 	save := NewEffect(EventSave, use.PlayerID, use.TargetID)
 
 	switch {
@@ -293,7 +296,7 @@ func resolveAntidote(use *SkillUse, view GameView, config *GameConfig, killTarge
 		save.Cancel("cannot use both potions in one night")
 	case !witchHas(view, use.PlayerID, potionAntidote):
 		save.Cancel("no antidote")
-	case use.PlayerID == use.TargetID && !config.WitchCanSaveSelf:
+	case use.PlayerID == use.TargetID && !rules.WitchCanSaveSelf:
 		save.Cancel("witch cannot save self")
 	case killTarget == "":
 		// 今晚没有人被杀（狼人空刀或平票）
@@ -348,7 +351,7 @@ func NewSeerResolver() *SeerResolver {
 	return &SeerResolver{}
 }
 
-func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	firstUsePerPlayer(uses, func(use *SkillUse) {
@@ -371,14 +374,14 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 
 // NightResolveResolver 夜晚结算阶段解析器
 // 处理狼人击杀结算、女巫毒杀结算、猎人触发检测等
-type NightResolveResolver struct{}
+type NightResolveResolver struct{ rules Rules }
 
 // NewNightResolveResolver 创建夜晚结算解析器。
-func NewNightResolveResolver() *NightResolveResolver {
-	return &NightResolveResolver{}
+func NewNightResolveResolver(rules Rules) *NightResolveResolver {
+	return &NightResolveResolver{rules: rules}
 }
 
-func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	// 处理狼人击杀。
@@ -398,10 +401,10 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 		switch {
 		case protected && saved:
 			// 同守同救
-			dies = config.GuardSaveTogetherDies
+			dies = r.rules.GuardSaveTogetherDies
 			reason = "guard and antidote used on the same target"
 		case protected:
-			dies = !config.SameGuardKillIsEmpty
+			dies = !r.rules.SameGuardKillIsEmpty
 			reason = "protected by guard"
 		case saved:
 			dies = false
@@ -457,7 +460,7 @@ func NewHunterResolver() *HunterResolver {
 	return &HunterResolver{}
 }
 
-func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := make([]*Effect, 0)
 
 	firstUsePerPlayer(uses, func(use *SkillUse) {

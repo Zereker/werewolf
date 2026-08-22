@@ -76,10 +76,10 @@ func TestVictoryChecker_FallsBackToBuiltin(t *testing.T) {
 // TestVictoryChecker_DefaultIsUnchanged 不换判定器时，行为与从前一致。
 func TestVictoryChecker_DefaultIsUnchanged(t *testing.T) {
 	for _, mode := range []VictoryMode{VictoryModeSideWipe, VictoryModeTownWipe} {
-		cfg := DefaultGameConfig()
-		cfg.VictoryMode = mode
+		cfgRules := DefaultRules()
+		cfgRules.VictoryMode = mode
 
-		g := newRuleGame(t, cfg, seats(
+		g := newRuleGameR(t, cfgRules, seats(
 			wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"),
 		)...)
 		g.setDead("w1", "w2")

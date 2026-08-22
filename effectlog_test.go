@@ -89,7 +89,7 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 func TestEffectLog_ReplayRebuildsGame(t *testing.T) {
 	original := playMidGame(t)
 
-	replayed, err := ReplayEngine(nil, original.EffectLog())
+	replayed, err := Replay(nil, DefaultRules(), original.EffectLog())
 	if err != nil {
 		t.Fatalf("回放失败: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestEffectLog_ReplayRebuildsGame(t *testing.T) {
 // 且与原引擎给出相同结果。
 func TestEffectLog_ReplayedEngineContinuesIdentically(t *testing.T) {
 	original := playMidGame(t)
-	replayed, err := ReplayEngine(nil, original.EffectLog())
+	replayed, err := Replay(nil, DefaultRules(), original.EffectLog())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,21 +146,21 @@ func TestEffectLog_IsAppendOnlyCopy(t *testing.T) {
 
 func TestReplayEngine_Rejects(t *testing.T) {
 	t.Run("含 nil 条目", func(t *testing.T) {
-		if _, err := ReplayEngine(nil, []*Effect{nil}); err == nil {
+		if _, err := Replay(nil, DefaultRules(), []*Effect{nil}); err == nil {
 			t.Error("应当拒绝 nil 条目")
 		}
 	})
 
 	t.Run("开局效果缺少阶段", func(t *testing.T) {
 		bad := []*Effect{NewEffect(EventGameStarted, "", "")}
-		if _, err := ReplayEngine(nil, bad); err == nil {
+		if _, err := Replay(nil, DefaultRules(), bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
 	})
 
 	t.Run("流转效果缺少阶段", func(t *testing.T) {
 		bad := []*Effect{NewEffect(EventPhaseChanged, "", "")}
-		if _, err := ReplayEngine(nil, bad); err == nil {
+		if _, err := Replay(nil, DefaultRules(), bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
 	})
@@ -168,13 +168,13 @@ func TestReplayEngine_Rejects(t *testing.T) {
 	t.Run("配置不合法", func(t *testing.T) {
 		cfg := DefaultGameConfig()
 		delete(cfg.Phases, PhaseNightWitch)
-		if _, err := ReplayEngine(cfg, nil); err == nil {
+		if _, err := Replay(cfg, DefaultRules(), nil); err == nil {
 			t.Error("残缺配置应当被拒绝")
 		}
 	})
 
 	t.Run("空日志得到未开局的引擎", func(t *testing.T) {
-		e, err := ReplayEngine(nil, nil)
+		e, err := Replay(nil, DefaultRules(), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +208,7 @@ func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
 	g.mustUse("h", SkillShoot, "v1")
 	g.end(PhaseDay)
 
-	replayed, err := ReplayEngine(nil, g.e.EffectLog())
+	replayed, err := Replay(nil, DefaultRules(), g.e.EffectLog())
 	if err != nil {
 		t.Fatalf("ReplayEngine 失败: %v", err)
 	}

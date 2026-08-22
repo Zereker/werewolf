@@ -69,7 +69,7 @@ func build(rule *idiotRule) *werewolf.Engine {
 	//
 	//    阵营与类别写在角色自己身上，不是入座时的参数——引擎不认识
 	//    「白痴」，也就没有办法替它推导。类别决定屠边怎么算：白痴算神职。
-	engine, err := werewolf.NewEngine(cfg,
+	engine, err := werewolf.NewWith(cfg, werewolf.DefaultRules(),
 		werewolf.WithResolver(werewolf.PhaseVote, rule),
 		werewolf.WithRoleSetup(roleIdiot, werewolf.RoleSetupFunc(
 			func(string, werewolf.RoleType) map[string]string {

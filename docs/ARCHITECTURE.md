@@ -257,7 +257,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 
 内置的六个角色是一套默认板子，不是能力上限。第三方加入新角色只需要：
 
-1. 用超出内置枚举的取值定义角色、技能、阶段（建议从 1000 起）
+1. 用自己的字符串定义角色、技能、阶段（枚举底层是字符串，不会撞号）
 2. 在 `GameConfig.Phases` 里声明该阶段
 3. 构造时用 `werewolf.WithResolver(phase, resolver)` 注册解析器
    （`NewEngine` / `RestoreEngine` / `ReplayEngine` 都接受）

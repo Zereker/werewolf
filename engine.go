@@ -17,9 +17,8 @@ type Engine struct {
 	logger  Logger
 	metrics Metrics
 
-	// victory 胜负判定。默认按 GameConfig.VictoryMode 走内置规则，
-	// 可用 WithVictoryChecker 换掉——第三方阵营有自己的胜利条件，
-	// 判定写死在引擎里的话那类板子根本没有地方表达。
+	// victory 胜负判定。内核的缺省是「永不结束」——它不知道什么叫赢；
+	// 规则包用 WithVictoryChecker 装上自己的那一套。
 	victory VictoryChecker
 
 	// roleInfo 各角色的专属信息提供者。内置的与第三方注册的同在一张表里，
@@ -52,7 +51,11 @@ type Engine struct {
 
 // NewEngine 创建游戏引擎。
 //
-// config 为 nil 时使用默认配置。配置会先经 GameConfig.Validate 校验——
+// 造出来的是一台**什么都不认识**的状态机：没有解析器、没有胜负判定、
+// 没有受众划分。规则全部经 opts 传入——狼人杀的那一整套见 werewolf.New，
+// 它自己也只是这么组装的，没有走任何后门。
+//
+// config 为 nil 时使用默认阶段配置。配置会先经 GameConfig.Validate 校验——
 // 阶段流转图是使用者可替换的数据，悬空的 NextPhase 会让游戏推进到一半
 // 静默结束，这类问题必须在构造时暴露。
 func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
@@ -69,22 +72,13 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 		phase:           newPhaseManager(config),
 		logger:          NewNopLogger(),
 		metrics:         NewNopMetrics(),
-		victory:         DefaultVictoryChecker{Mode: config.VictoryMode},
-		roleInfo:        make(map[RoleType]RoleInfoProvider, len(builtinRoleInfo)),
-		roleSetup:       make(map[RoleType]RoleSetup, len(builtinRoleSetup)),
-		audience:        builtinAudience,
-		teammates:       builtinTeammates,
-		speech:          builtinSpeech,
+		victory:         neverEnds{},
+		roleInfo:        make(map[RoleType]RoleInfoProvider, 4),
+		roleSetup:       make(map[RoleType]RoleSetup, 8),
 		pendingUses:     make([]*SkillUse, 0),
 		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
 		messageHandlers: make([]MessageHandler, 0),
-	}
-	for role, p := range builtinRoleInfo {
-		e.roleInfo[role] = p
-	}
-	for role, su := range builtinRoleSetup {
-		e.roleSetup[role] = su
 	}
 	if err := e.applyOptions(opts); err != nil {
 		return nil, err
@@ -274,7 +268,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	// 1. 解析技能，产生效果
 	if resolver := e.phase.resolver(currentPhase); resolver != nil {
-		out.effects = resolver.Resolve(e.pendingUses, newStateView(e.state), e.config)
+		out.effects = resolver.Resolve(e.pendingUses, newStateView(e.state))
 		e.logger.Debug("resolved effects", PhaseField(currentPhase), F("effect_count", len(out.effects)))
 	}
 

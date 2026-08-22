@@ -1,20 +1,33 @@
 # Werewolf Game Engine
 
+中文 · [English README](README.en.md)
+
 [![Go Version](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Zereker/werewolf.svg)](https://pkg.go.dev/github.com/Zereker/werewolf)
 
-一个纯 Go 实现的狼人杀游戏引擎库。状态机驱动，声明式配置，规则对齐维基百科条目。
+狼人杀（Mafia）的规则引擎，纯 Go，**零依赖**。
+
+它只负责一件事：给定一副板子和一套规则，裁决每个阶段发生了什么，
+以及**每个人有权知道什么**。计时、联网、房间、持久化刻意不在里面。
+
+社会推理游戏容易做出来，难在做对。难的不是状态机，是信息边界——女巫只在
+解药还在手上时看得到今晚的刀口；一次被否决的用毒只能给女巫本人，否则她当场
+暴露；同守同救到底死不死取决于一条桌面规则。这些判断错了不会崩，只会安静地
+产出一局不公平的游戏，而你几周后才从玩家嘴里知道。
+
+这个库把这类判断收进来，并且拿测试摁住。
 
 ## 特性
 
-- **状态机驱动** - 清晰的阶段流转，声明式规则配置
+- **信息边界收在库内** - `PlayerView` 返回的内容可以原样发给玩家，不需要调用方再过滤；
+  `AudienceOf` 回答「这件事该告诉谁」
+- **确定性** - 同一副板子、同一批输入，导出的快照逐字节一致，由 5000 局随机对局摁住
 - **规则对齐维基** - 以维基百科「狼人殺」条目为基准，规则逐条有测试覆盖
 - **规则可配置** - 女巫自救、守卫连守、同守同救、屠边/屠城均可切换
-- **可扩展** - 自定义角色与阶段无需 fork：注册解析器即可
-- **管住信息** - 提供玩家视角与效果受众，不必自己实现信息过滤
-- **单包设计** - 只需 `import "github.com/Zereker/werewolf"`
-- **零依赖** - 只用标准库
-- **可存档** - 局面可完整导出为 JSON，恢复后继续推进
+- **可扩展** - 八个扩展点，内置角色与第三方走同一条路，没有特权
+- **可存档、可回放** - 局面导出为 JSON 恢复后继续推进；效果流是完整历史，可重建整局
+- **零依赖** - `go.mod` 里没有 require
 - **线程安全** - 引擎的所有导出方法都可并发调用
 
 ## 安装
@@ -36,9 +49,9 @@ import (
 )
 
 func main() {
-	// 1. 创建引擎（nil 表示使用默认配置）。
+	// 1. 组装一局。DefaultRules 是维基那一套规则；
 	//    配置会先经校验，残缺的阶段流转图在这里就会被拒绝
-	engine, err := werewolf.NewEngine(nil)
+	engine, err := werewolf.New(werewolf.DefaultRules())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -133,7 +146,7 @@ func must(err error) {
 - 判定胜负条件
 
 ```go
-engine := werewolf.NewEngine(config)
+engine := werewolf.MustNew(werewolf.DefaultRules())
 engine.Start()
 engine.SubmitSkillUse(use)
 effects, _ := engine.EndPhase()
@@ -158,25 +171,34 @@ err := engine.AddPlayer("p1", werewolf.RoleWerewolf)
 | 角色是上帝或未指定 | `INVALID_ROLE` |
 | 游戏已开始 | `ErrGameAlreadyStarted` |
 
-`Start` 同样会校验板子：缺狼返回 `ErrNoWerewolf`，缺好人返回 `ErrNoGoodPlayer`，
-重复调用返回 `ErrGameAlreadyStarted`。
+`Start` 同样会校验板子：**开局就已分出胜负**的局面返回 `ErrInvalidBoard`
+（缺狼、缺好人、屠城模式下狼不比好人少都属于这一类），重复调用返回
+`ErrGameAlreadyStarted`。
 
-### GameConfig（游戏配置）
+### Rules（规则开关）
 
-声明式规则配置：
+桌面上有分歧的规则做成开关，引擎不替谁做主：
 
 ```go
-config := &werewolf.GameConfig{
-    WitchCanSaveSelf:       false, // 女巫不能自救
-    WitchCanUseBothPotions: false, // 女巫不能在同一夜同时用解药和毒药
-    GuardCanProtectSelf:    true,  // 守卫可以自守
-    GuardCanRepeat:         false, // 守卫不能连续守同一人
-    SameGuardKillIsEmpty:   true,  // 守卫守住刀口时空刀（守护生效）
-    GuardSaveTogetherDies:  true,  // 同守同救，目标依然死亡
+rules := werewolf.DefaultRules()      // 维基那一套
+rules.WitchCanSaveSelf = false        // 女巫不能自救
+rules.WitchCanUseBothPotions = false  // 女巫不能在同一夜同时用解药和毒药
+rules.GuardCanProtectSelf = true      // 守卫可以自守
+rules.GuardCanRepeat = false          // 守卫不能连续守同一人
+rules.SameGuardKillIsEmpty = true     // 守卫守住刀口时空刀（守护生效）
+rules.GuardSaveTogetherDies = true    // 同守同救，目标依然死亡
+rules.VictoryMode = werewolf.VictoryModeSideWipe // 屠边判定
 
-    VictoryMode: werewolf.VictoryModeSideWipe, // 屠边判定
-}
+engine, _ := werewolf.New(rules)
 ```
+
+规则开关**不在 `GameConfig` 上**：那是阶段机的配置（起始阶段、阶段图、
+建议超时），内核不该认得「女巫能不能自救」。解析器在构造时拿到 `Rules`，
+`Resolve` 的签名因此与规则无关。
+
+### GameConfig（阶段配置）
+
+阶段机的声明式配置：
 
 ### 胜负判定
 
@@ -338,9 +360,10 @@ engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用
 
 ```go
 const (
-    roleWolfKing  = werewolf.RoleType(1000)   // 自定义取值一律从 1000 起
-    skillWolfClaw = werewolf.SkillType(1000)
-    phaseWolfKing = werewolf.PhaseType(1000)
+    // 枚举的底层是字符串，用自己的名字即可，不会与内置的撞号
+    roleWolfKing  = werewolf.RoleType("WOLF_KING")
+    skillWolfClaw = werewolf.SkillType("WOLF_CLAW")
+    phaseWolfKing = werewolf.PhaseType("PHASE_WOLF_KING")
 )
 
 cfg := werewolf.DefaultGameConfig()
@@ -350,7 +373,7 @@ cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
     NextPhase: werewolf.PhaseNightGuard,
 }
 
-engine, _ := werewolf.NewEngine(cfg,
+engine, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
     werewolf.WithResolver(phaseWolfKing, &wolfKingResolver{}),
     // 阵营与类别写在角色自己身上，入座时不用再给一遍
     werewolf.WithRoleSetup(roleWolfKing, werewolf.RoleSetupFunc(
@@ -360,8 +383,8 @@ engine, _ := werewolf.NewEngine(cfg,
 engine.AddPlayer("wk", roleWolfKing)
 ```
 
-`WithResolver` 是构造选项，`NewEngine` / `RestoreEngine` / `ReplayEngine`
-三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
+`WithResolver` 是构造选项，`New` / `NewWith` / `Restore` / `Replay`
+四个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
 扩展能改动的八处，都由构造选项给出：
@@ -395,13 +418,19 @@ engine.AddPlayer("wk", roleWolfKing)
 「只能通过返回 Effect 表达状态变更」，存在字段里的东西快照带不上、回放
 也重建不出，恢复出来的对局是错的**还不会报错**。
 
-**事件类型的编号是分段的**，这一点关系到扩展的事件能不能发出去：
+**扩展的事件会不会发出去**，取决于它是不是内核的状态原语：
 
-| 段 | 归谁 | 会不会推给 `OnEvent` |
+| | 归谁 | 会不会推给 `OnEvent` |
 |---|---|---|
-| `1..99` | 引擎的外部可见事件 | 会 |
-| `100..999` | 引擎的内部状态变更 | 不会 |
-| **`1000` 起** | **第三方扩展** | **会**；`AudienceOf` 回答「不知道」，路由由扩展自己决定 |
+| `SET_ALIVE` 等七个 | 内核的状态原语 | 不会，且不可配置 |
+| 其余一切 | 规则给「发生了什么」起的名字 | 会 |
+
+第三方定义的事件类型落在第二行：照常推给 `OnEvent`，`AudienceOf` 回答
+「不知道」，路由由扩展自己决定。
+
+这里此前按编号分三段（`1..99` 外部、`100..999` 内部、`1000` 起第三方），
+而那个约定自己咬到过自己——第三方的取值从 1000 起，却全都落进「内部」段，
+于是扩展的事件根本发不出去。
 
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
@@ -494,8 +523,7 @@ import (
 )
 
 func main() {
-	config := werewolf.DefaultGameConfig()
-	engine := werewolf.MustNewEngine(config) // 配置是常量时可用 Must 版本
+	engine := werewolf.MustNew(werewolf.DefaultRules()) // 配置是常量时可用 Must 版本
 	for id, role := range map[string]werewolf.RoleType{
 		"w1": werewolf.RoleWerewolf,
 		"wi": werewolf.RoleWitch,
@@ -693,7 +721,24 @@ go run ./example        # 示例必须能跑通，不是只能编译
 发版走 GitHub Actions：**Actions → Release → Run workflow**，填一个形如 `v1.3.0`
 的版本号。workflow 会先跑一遍完整验证，再创建 tag 与 Release，发布说明取自
 CHANGELOG 里对应的小节。四道闸：版本号格式、tag 未占用、CHANGELOG 里有对应
-小节、v2 及以上必须先改模块路径（本项目刻意不走 `/vN`，所以这一条实际是拦下）。
+小节、主版本 ≥ 2 时必须先改模块路径（本项目刻意留在 v1 线上，这一道闸因此不会触发）。
+
+## 项目状态
+
+**当前版本：[v1.5.0](CHANGELOG.md)。** 通用内核与狼人杀规则已经分开：引擎的代码
+路径里没有一处认得具体角色、阵营或死法，狼人杀的一整套由 `werewolf.Options` 经公开
+选项装上去，与第三方注册自定义角色走同一批入口。覆盖率 94.5%，规则逐条对齐维基条目，
+每次测试跑 5000 局随机对局。
+
+**v1.5.0 是 API 的冻结点。** 这一版含大量破坏性变更（清单见 CHANGELOG），此后公开
+API 是承诺。
+
+**模块路径不会变**，`go get github.com/Zereker/werewolf` 照旧。Go 要求主版本 ≥ 2 的
+模块带 `/vN` 后缀，那会让每个使用者的 import 路径都变一次；把破坏一次付清、留在 v1
+线上更划算。
+
+还差的是把两层**物理拆成两个包**（`werewolf` 与 `werewolf/engine`），让「规则只用
+公开 API」由编译器保证而不是靠自觉。那是子包，同样不需要 `/vN`。
 
 ## 许可证
 

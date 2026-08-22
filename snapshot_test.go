@@ -54,7 +54,7 @@ func TestSnapshot_RoundTripThroughJSON(t *testing.T) {
 		t.Fatalf("反序列化失败: %v", err)
 	}
 
-	restored, err := RestoreEngine(nil, &decoded)
+	restored, err := Restore(nil, DefaultRules(), &decoded)
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestSnapshot_RoundTripThroughJSON(t *testing.T) {
 func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 	original := buildMidGameEngine(t)
 
-	restored, err := RestoreEngine(nil, original.Snapshot())
+	restored, err := Restore(nil, DefaultRules(), original.Snapshot())
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
@@ -80,11 +80,11 @@ func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 		skill  SkillType
 		target string
 	}{
-		{"", 0, ""}, // NIGHT_GUARD 结算（技能已在快照里）
+		{"", SkillUnspecified, ""}, // NIGHT_GUARD 结算（技能已在快照里）
 		{"w1", SkillKill, "s"},
 		{"wi", SkillPoison, "w2"},
 		{"s", SkillCheck, "w2"},
-		{"", 0, ""}, // NIGHT_RESOLVE
+		{"", SkillUnspecified, ""}, // NIGHT_RESOLVE
 	}
 
 	for i, st := range steps {
@@ -122,7 +122,7 @@ func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 
 func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	engine := buildMidGameEngine(t)
-	restored, err := RestoreEngine(nil, engine.Snapshot())
+	restored, err := Restore(nil, DefaultRules(), engine.Snapshot())
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 	valid := buildMidGameEngine(t).Snapshot()
 
 	t.Run("nil 快照", func(t *testing.T) {
-		if _, err := RestoreEngine(nil, nil); err != ErrNilSnapshot {
+		if _, err := Restore(nil, DefaultRules(), nil); err != ErrNilSnapshot {
 			t.Errorf("期望 ErrNilSnapshot，实际 %v", err)
 		}
 	})
@@ -245,7 +245,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 	t.Run("版本不兼容", func(t *testing.T) {
 		bad := *valid
 		bad.Version = SnapshotVersion + 1
-		_, err := RestoreEngine(nil, &bad)
+		_, err := Restore(nil, DefaultRules(), &bad)
 		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
@@ -255,7 +255,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		bad := *valid
 		bad.Players = append([]PlayerSnapshot(nil), valid.Players...)
 		bad.Players[0].ID = ""
-		if _, err := RestoreEngine(nil, &bad); err != ErrInvalidPlayerID {
+		if _, err := Restore(nil, DefaultRules(), &bad); err != ErrInvalidPlayerID {
 			t.Errorf("期望 ErrInvalidPlayerID，实际 %v", err)
 		}
 	})
@@ -263,7 +263,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 	t.Run("玩家ID重复", func(t *testing.T) {
 		bad := *valid
 		bad.Players = append(append([]PlayerSnapshot(nil), valid.Players...), valid.Players[0])
-		_, err := RestoreEngine(nil, &bad)
+		_, err := Restore(nil, DefaultRules(), &bad)
 		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
@@ -276,7 +276,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 			Skill:    SkillProtect,
 			TargetID: "s",
 		}}
-		_, err := RestoreEngine(nil, &bad)
+		_, err := Restore(nil, DefaultRules(), &bad)
 		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
@@ -286,8 +286,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		// 构造一个自身合法、但不含快照所在阶段的配置：
 		// 只有白天与投票互相流转，没有任何夜晚阶段
 		cfg := &GameConfig{
-			VictoryMode: VictoryModeSideWipe,
-			StartPhase:  PhaseDay,
+			StartPhase: PhaseDay,
 			Phases: map[PhaseType]*PhaseConfig{
 				PhaseDay: {
 					Type:      PhaseDay,
@@ -304,7 +303,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 		}
 
 		// 快照停在 NIGHT_GUARD，而该配置里没有这个阶段
-		_, err := RestoreEngine(cfg, valid)
+		_, err := Restore(cfg, DefaultRules(), valid)
 		if !HasCode(err, CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
@@ -324,7 +323,7 @@ func TestSnapshot_EndedGame(t *testing.T) {
 		t.Fatal("狼人全灭，游戏应当结束")
 	}
 
-	restored, err := RestoreEngine(nil, g.e.Snapshot())
+	restored, err := Restore(nil, DefaultRules(), g.e.Snapshot())
 	if err != nil {
 		t.Fatalf("恢复已结束的对局失败: %v", err)
 	}
@@ -341,7 +340,7 @@ func TestSnapshot_EndedGame(t *testing.T) {
 // 解析器只能在构造时给出。漏掉的话恢复本身就会报错，
 // 而不是给出一个「那个阶段的技能被静默丢弃」的引擎。
 func TestRestoreEngine_WithCustomResolver(t *testing.T) {
-	const customPhase = PhaseType(77)
+	const customPhase = PhaseType("CUSTOM_RESOLVER_PHASE")
 
 	cfg := DefaultGameConfig()
 	cfg.Phases[customPhase] = &PhaseConfig{
@@ -355,7 +354,7 @@ func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 
 	marker := &markerResolver{}
 
-	engine, err := NewEngine(cfg, WithResolver(customPhase, marker))
+	engine, err := NewWith(cfg, DefaultRules(), WithResolver(customPhase, marker))
 	if err != nil {
 		t.Fatalf("NewEngine 失败: %v", err)
 	}
@@ -375,11 +374,11 @@ func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 	snap := engine.Snapshot()
 
 	// 忘了带解析器：必须直接报错，而不是给一个会静默丢技能的引擎
-	if _, err := RestoreEngine(cfg, snap); err == nil {
+	if _, err := Restore(cfg, DefaultRules(), snap); err == nil {
 		t.Fatal("缺少自定义阶段的解析器时，恢复应当报错")
 	}
 
-	restored, err := RestoreEngine(cfg, snap, WithResolver(customPhase, marker))
+	restored, err := Restore(cfg, DefaultRules(), snap, WithResolver(customPhase, marker))
 	if err != nil {
 		t.Fatalf("RestoreEngine 失败: %v", err)
 	}
@@ -400,7 +399,7 @@ func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 // markerResolver 一个只产出可辨认效果的解析器，用于验证它确实被调用了。
 type markerResolver struct{}
 
-func (r *markerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+func (r *markerResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	out := make([]*Effect, 0, len(uses))
 	for _, use := range uses {
 		out = append(out, NewEffect(EventSkip, use.PlayerID, ""))
@@ -429,13 +428,13 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 	}
 
 	// 正常快照能恢复
-	if _, err := RestoreEngine(nil, base()); err != nil {
+	if _, err := Restore(nil, DefaultRules(), base()); err != nil {
 		t.Fatalf("前置条件：正常快照应能恢复，实际 %v", err)
 	}
 
 	snap := base()
 	snap.Players[0].Role = RoleGod
-	if _, err := RestoreEngine(nil, snap); !errors.Is(err, ErrInvalidRole) {
+	if _, err := Restore(nil, DefaultRules(), snap); !errors.Is(err, ErrInvalidRole) {
 		t.Errorf("上帝不是玩家身份，恢复应当被拒，实际 %v", err)
 	}
 
@@ -447,7 +446,7 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 		Phase:    PhaseNightWolf,
 		Round:    1,
 	}}
-	if _, err := RestoreEngine(nil, snap); err == nil {
+	if _, err := Restore(nil, DefaultRules(), snap); err == nil {
 		t.Error("技能指向不存在的目标，恢复应当被拒")
 	}
 }
@@ -503,7 +502,7 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 	g.e.mu.RUnlock()
 
 	// 往返之后再导一次，必须逐字节一致
-	restored, err := RestoreEngine(nil, snap)
+	restored, err := Restore(nil, DefaultRules(), snap)
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
@@ -520,7 +519,7 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 // 住在 Resolver 自己的字段里的话，快照带不上、回放也重建不出——
 // 而 Resolver 接口本来就要求它无状态。
 func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
-	const customPhase = PhaseType(1000)
+	const customPhase = PhaseType("CUSTOM_PHASE")
 
 	cfg := DefaultGameConfig()
 	cfg.Phases[customPhase] = &PhaseConfig{
@@ -544,7 +543,7 @@ func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
 	}
 
 	// 快照
-	restored, err := RestoreEngine(cfg, g.e.Snapshot(), opts...)
+	restored, err := Restore(cfg, DefaultRules(), g.e.Snapshot(), opts...)
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
@@ -553,7 +552,7 @@ func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
 	}
 
 	// 效果流回放
-	replayed, err := ReplayEngine(cfg, g.e.EffectLog(), opts...)
+	replayed, err := Replay(cfg, DefaultRules(), g.e.EffectLog(), opts...)
 	if err != nil {
 		t.Fatalf("回放失败: %v", err)
 	}
@@ -565,6 +564,6 @@ func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
 // varWritingResolver 一个只写自定义状态的解析器。
 type varWritingResolver struct{}
 
-func (varWritingResolver) Resolve([]*SkillUse, GameView, *GameConfig) []*Effect {
+func (varWritingResolver) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{NewSetPlayerVarEffect("v1", "custom.mark", "set")}
 }

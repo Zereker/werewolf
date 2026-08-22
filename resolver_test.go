@@ -9,9 +9,8 @@ import (
 func TestVoteResolver_Empty(t *testing.T) {
 	resolver := NewVoteResolver()
 	state := newState()
-	config := DefaultGameConfig()
 
-	effects := resolver.Resolve([]*SkillUse{}, newStateView(state), config)
+	effects := resolver.Resolve([]*SkillUse{}, newStateView(state))
 
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (tied), got %d", len(effects))
@@ -26,13 +25,12 @@ func TestVoteResolver_Single(t *testing.T) {
 	state := newState()
 	mustAddTo(t, state, "p1", RoleVillager)
 	mustAddTo(t, state, "p2", RoleVillager)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "p1", Skill: SkillVote, TargetID: "p2"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// 断言的是结果而不是效果个数：ELIMINATE 是「发生了什么」的说法，
 	// 旁边那条 SET_ALIVE 才真正让人出局，两者缺一不可。
@@ -55,7 +53,6 @@ func TestVoteResolver_Clear(t *testing.T) {
 	mustAddTo(t, state, "p2", RoleVillager)
 	mustAddTo(t, state, "p3", RoleVillager)
 	mustAddTo(t, state, "wolf", RoleWerewolf)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "p1", Skill: SkillVote, TargetID: "wolf"},
@@ -63,7 +60,7 @@ func TestVoteResolver_Clear(t *testing.T) {
 		{PlayerID: "p3", Skill: SkillVote, TargetID: "p1"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	elim := filterEffects(effects, EventEliminate)
 	if len(elim) != 1 || elim[0].TargetID != "wolf" {
@@ -84,7 +81,6 @@ func TestVoteResolver_Tie(t *testing.T) {
 	mustAddTo(t, state, "p2", RoleVillager)
 	mustAddTo(t, state, "p3", RoleVillager)
 	mustAddTo(t, state, "p4", RoleVillager)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "p1", Skill: SkillVote, TargetID: "p3"},
@@ -93,7 +89,7 @@ func TestVoteResolver_Tie(t *testing.T) {
 		{PlayerID: "p4", Skill: SkillVote, TargetID: "p4"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
@@ -111,7 +107,6 @@ func TestVoteResolver_Invalid(t *testing.T) {
 	state := newState()
 	mustAddTo(t, state, "p1", RoleVillager)
 	mustAddTo(t, state, "p2", RoleVillager)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		// Not a vote skill
@@ -120,7 +115,7 @@ func TestVoteResolver_Invalid(t *testing.T) {
 		{PlayerID: "p2", Skill: SkillVote, TargetID: ""},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// Should be treated as tie (no valid votes)
 	if len(effects) != 1 {
@@ -136,14 +131,13 @@ func TestVoteResolver_Invalid(t *testing.T) {
 func TestDayResolver(t *testing.T) {
 	resolver := NewDayResolver()
 	state := newState()
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "p1", Skill: SkillSpeak, TargetID: ""},
 		{PlayerID: "p2", Skill: SkillSpeak, TargetID: ""},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	if len(effects) != 0 {
 		t.Errorf("expected 0 effects for day phase, got %d", len(effects))
@@ -159,7 +153,6 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 	mustAddTo(t, state, "wolf2", RoleWerewolf)
 	mustAddTo(t, state, "v1", RoleVillager)
 	mustAddTo(t, state, "v2", RoleVillager)
-	config := DefaultGameConfig()
 
 	// 平票：wolf1 投 v1, wolf2 投 v2
 	uses := []*SkillUse{
@@ -167,7 +160,7 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "v2"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// 平票应该不产生击杀
 	killEffects := filterEffects(effects, EventKill)
@@ -187,7 +180,6 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 	mustAddTo(t, state, "wolf1", RoleWerewolf)
 	mustAddTo(t, state, "wolf2", RoleWerewolf)
 	mustAddTo(t, state, "victim", RoleVillager)
-	config := DefaultGameConfig()
 
 	// 达成共识：两个狼人投同一个目标
 	uses := []*SkillUse{
@@ -195,7 +187,7 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 		{PlayerID: "wolf2", Skill: SkillKill, TargetID: "victim"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// 狼人阶段只记刀口，实际结算在 NightResolveResolver。
 	// 刀口是一个回合变量，不是内核认得的「击杀」事件。
@@ -223,7 +215,6 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 	mustAddTo(t, state, "wolf3", RoleWerewolf)
 	mustAddTo(t, state, "v1", RoleVillager)
 	mustAddTo(t, state, "v2", RoleVillager)
-	config := DefaultGameConfig()
 
 	// 多数决：2票 v1, 1票 v2
 	uses := []*SkillUse{
@@ -232,7 +223,7 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 		{PlayerID: "wolf3", Skill: SkillKill, TargetID: "v2"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// 狼人阶段只记刀口，实际结算在 NightResolveResolver
 	if len(effects) != 1 {
@@ -260,14 +251,14 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置保护状态
 	markRound(state, "victim", PlayerRoundVarProtected)
-	config := DefaultGameConfig()
-	config.SameGuardKillIsEmpty = true
+	rules := DefaultRules()
+	rules.SameGuardKillIsEmpty = true
 
 	uses := []*SkillUse{
 		{PlayerID: "wolf", Skill: SkillKill, TargetID: "victim"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// 目标被守护，但刀口仍应被记录
 	if len(effects) != 1 {
@@ -293,14 +284,14 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置保护状态
 	markRound(state, "victim", PlayerRoundVarProtected)
-	config := DefaultGameConfig()
-	config.SameGuardKillIsEmpty = false // 不是空刀
+	rules := DefaultRules()
+	rules.SameGuardKillIsEmpty = false // 不是空刀
 
 	uses := []*SkillUse{
 		{PlayerID: "wolf", Skill: SkillKill, TargetID: "victim"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// 应该返回 SET_NIGHT_KILL effect
 	if len(effects) != 1 {
@@ -321,20 +312,20 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 // ==================== WitchResolver Tests (Sub-step mode) ====================
 
 func TestWitchResolver_QueryKillTarget(t *testing.T) {
-	resolver := NewWitchResolver()
+	rules := DefaultRules()
+	resolver := NewWitchResolver(rules)
 	state := newState()
 	mustAddTo(t, state, "witch", RoleWitch)
 	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置击杀目标
 	setKill(state, "victim")
-	config := DefaultGameConfig()
 
 	// 女巫使用解药救人
 	uses := []*SkillUse{
 		{PlayerID: "witch", Skill: SkillAntidote, TargetID: "victim"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// 三个效果：SAVE（说法）、解药少一瓶、目标带上「今晚被救」的标记。
 	// 解药不再直接清除刀口——是否真的救回由 NightResolveResolver
@@ -369,17 +360,17 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 }
 
 func TestWitchResolver_Poison(t *testing.T) {
-	resolver := NewWitchResolver()
+	rules := DefaultRules()
+	resolver := NewWitchResolver(rules)
 	state := newState()
 	mustAddTo(t, state, "witch", RoleWitch)
 	mustAddTo(t, state, "wolf", RoleWerewolf)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "witch", Skill: SkillPoison, TargetID: "wolf"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// WitchResolver 只产生 USE_POISON 效果，实际死亡由 NightResolveResolver 处理
 	usePoisonEffects := filterEffects(effects, EventSetPlayerRoundVar)
@@ -400,18 +391,18 @@ func TestWitchResolver_Poison(t *testing.T) {
 }
 
 func TestWitchResolver_CannotSaveSelf(t *testing.T) {
-	resolver := NewWitchResolver()
+	rules := DefaultRules()
+	resolver := NewWitchResolver(rules)
 	state := newState()
 	mustAddTo(t, state, "witch", RoleWitch)
 	setKill(state, "witch") // 狼人杀女巫
-	config := DefaultGameConfig()
-	config.WitchCanSaveSelf = false
+	rules.WitchCanSaveSelf = false
 
 	uses := []*SkillUse{
 		{PlayerID: "witch", Skill: SkillAntidote, TargetID: "witch"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	saveEffects := filterEffects(effects, EventSave)
 	if len(saveEffects) != 1 {
@@ -430,17 +421,17 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 // ==================== GuardResolver Tests (Sub-step mode) ====================
 
 func TestGuardResolver_Protect(t *testing.T) {
-	resolver := NewGuardResolver()
+	rules := DefaultRules()
+	resolver := NewGuardResolver(rules)
 	state := newState()
 	mustAddTo(t, state, "guard", RoleGuard)
 	mustAddTo(t, state, "target", RoleVillager)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "guard", Skill: SkillProtect, TargetID: "target"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	// PROTECT 是说法，另外三条是状态：今晚谁被守了，以及守卫这一回合
 	// 守的是谁（供下回合判断连守）。
@@ -478,13 +469,12 @@ func TestSeerResolver_CheckWolf(t *testing.T) {
 	state := newState()
 	mustAddTo(t, state, "seer", RoleSeer)
 	mustAddTo(t, state, "wolf", RoleWerewolf)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "seer", Skill: SkillCheck, TargetID: "wolf"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
@@ -502,13 +492,12 @@ func TestSeerResolver_CheckGood(t *testing.T) {
 	state := newState()
 	mustAddTo(t, state, "seer", RoleSeer)
 	mustAddTo(t, state, "villager", RoleVillager)
-	config := DefaultGameConfig()
 
 	uses := []*SkillUse{
 		{PlayerID: "seer", Skill: SkillCheck, TargetID: "villager"},
 	}
 
-	effects := resolver.Resolve(uses, newStateView(state), config)
+	effects := resolver.Resolve(uses, newStateView(state))
 
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
@@ -593,10 +582,10 @@ func TestNightResolveResolver_PoisonOrderIsDeterministic(t *testing.T) {
 		markRound(st, id, PlayerRoundVarPoisoned)
 	}
 
-	r := NewNightResolveResolver()
-	want := targetsOf(r.Resolve(nil, newStateView(st), DefaultGameConfig()))
+	r := NewNightResolveResolver(DefaultRules())
+	want := targetsOf(r.Resolve(nil, newStateView(st)))
 	for i := 0; i < 20; i++ {
-		got := targetsOf(r.Resolve(nil, newStateView(st), DefaultGameConfig()))
+		got := targetsOf(r.Resolve(nil, newStateView(st)))
 		if len(got) != len(want) {
 			t.Fatalf("效果数不稳定: %v vs %v", want, got)
 		}
