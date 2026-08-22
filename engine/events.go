@@ -33,7 +33,7 @@ func (e *Engine) snapshotEventHandlersLocked() []EventHandler {
 func dispatchEvent(handlers []EventHandler, logger Logger, event *Event) {
 	for _, handler := range handlers {
 		func() {
-			defer recoverHandlerPanic(logger, "event handler", EventField(event.Type))
+			defer recoverHandlerPanic(logger, "event handler", eventField(event.Type))
 			handler(event)
 		}()
 	}
@@ -50,7 +50,7 @@ func recoverHandlerPanic(logger Logger, kind string, fields ...Field) {
 	}
 	logger.Error(kind+" panicked",
 		append(fields,
-			F("panic", fmt.Sprintf("%v", r)),
-			F("stack", string(debug.Stack())),
+			logField("panic", fmt.Sprintf("%v", r)),
+			logField("stack", string(debug.Stack())),
 		)...)
 }

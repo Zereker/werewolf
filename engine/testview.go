@@ -24,11 +24,6 @@ type Board struct {
 	RoundVars map[string]string
 }
 
-// NewGameView 按给定局面构造一份只读视图。
-//
-// 返回的视图是快照式的：之后改动 Board 不会影响它。
-func NewGameView(b Board) GameView { return newStateView(b.state()) }
-
 // Apply 把一批效果折进局面，返回改过的副本。
 //
 // 规则测试用它接住解析器的产出：`b = b.Apply(r.Resolve(uses, b.View()))`，
@@ -44,8 +39,10 @@ func (b Board) Apply(effects []*Effect) Board {
 	return boardOf(s)
 }
 
-// View 构造这份局面的只读视图。等价于 NewGameView(b)。
-func (b Board) View() GameView { return NewGameView(b) }
+// View 构造这份局面的只读视图。
+//
+// 返回的视图是快照式的：之后改动 Board 不会影响它。
+func (b Board) View() GameView { return newStateView(b.state()) }
 
 // Player 取出一名玩家，不存在时第二个返回值为 false。
 func (b Board) Player(id string) (PlayerInfo, bool) {
@@ -72,7 +69,7 @@ func (b Board) state() *gameState {
 	s.RoundCtx = newRoundContext()
 	s.RoundCtx.Vars = copyVars(b.RoundVars)
 	for _, p := range b.Players {
-		s.players[p.ID] = &PlayerState{
+		s.players[p.ID] = &playerState{
 			ID: p.ID, Role: p.Role, Alive: p.Alive,
 			Vars: copyVars(p.Vars), RoundVars: copyVars(p.RoundVars),
 		}

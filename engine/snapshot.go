@@ -258,7 +258,7 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 // 不走 AddPlayer：恢复时要原样还原快照里的存活状态与 Vars，
 // 而 AddPlayer 会经 RoleSetup 重新发一遍初始状态——用掉的药会回来。
 func (s *gameState) restorePlayer(p PlayerSnapshot) {
-	s.players[p.ID] = &PlayerState{
+	s.players[p.ID] = &playerState{
 		ID:        p.ID,
 		Role:      p.Role,
 		Alive:     p.Alive,

@@ -76,8 +76,8 @@ func NewEngine(config *Config, opts ...EngineOption) (*Engine, error) {
 		config:          config,
 		state:           newState(),
 		phase:           newPhaseManager(config),
-		logger:          NewNopLogger(),
-		metrics:         NewNopMetrics(),
+		logger:          newNopLogger(),
+		metrics:         newNopMetrics(),
 		victory:         neverEnds{},
 		roleInfo:        make(map[RoleType]RoleInfoProvider, 4),
 		roleSetup:       make(map[RoleType]RoleSetup, 8),
@@ -194,7 +194,7 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 
 	effect := newGameStartedEffect(start)
 	e.effectLog = append(e.effectLog, effect)
-	e.logger.Info("game started", RoundField(1), PhaseField(start))
+	e.logger.Info("game started", roundField(1), phaseField(start))
 
 	return effect, e.snapshotEventHandlersLocked(), nil
 }
@@ -207,9 +207,9 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 	// 验证技能使用
 	if err := e.phase.validateSkillUse(use, e.state); err != nil {
 		e.logger.Debug("skill validation failed",
-			PlayerField(use.PlayerID),
-			SkillField(use.Skill),
-			F("error", err.Error()))
+			playerField(use.PlayerID),
+			skillField(use.Skill),
+			logField("error", err.Error()))
 		return err
 	}
 
@@ -219,9 +219,9 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 	e.pendingUses = append(e.pendingUses, use)
 
 	e.logger.Debug("skill submitted",
-		PlayerField(use.PlayerID),
-		SkillField(use.Skill),
-		TargetField(use.TargetID))
+		playerField(use.PlayerID),
+		skillField(use.Skill),
+		targetField(use.TargetID))
 	e.metrics.IncSkillSubmitted(use.Skill)
 
 	return nil
@@ -268,14 +268,14 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 		return phaseOutcome{}, ErrGameNotStarted
 	}
 
-	e.logger.Debug("ending phase", PhaseField(currentPhase), RoundField(e.state.Round))
+	e.logger.Debug("ending phase", phaseField(currentPhase), roundField(e.state.Round))
 
 	out := phaseOutcome{}
 
 	// 1. 解析技能，产生效果
 	if resolver := e.phase.resolver(currentPhase); resolver != nil {
 		out.effects = resolver.Resolve(e.pendingUses, newStateView(e.state))
-		e.logger.Debug("resolved effects", PhaseField(currentPhase), F("effect_count", len(out.effects)))
+		e.logger.Debug("resolved effects", phaseField(currentPhase), logField("effect_count", len(out.effects)))
 	}
 
 	// 2. 应用效果，收集对外可见的事件
@@ -315,13 +315,13 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 		out.events = append(out.events, endEffect.ToEvent())
 
 		e.winner = winner
-		e.logger.Info("game ended", F("winner", winner.String()))
+		e.logger.Info("game ended", logField("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
 	} else {
 		e.effectLog = append(e.effectLog, newPhaseChangedEffect(nextPhase))
 		e.logger.Debug("phase transition",
-			F("from", currentPhase.String()),
-			F("to", nextPhase.String()))
+			logField("from", currentPhase.String()),
+			logField("to", nextPhase.String()))
 	}
 
 	// 在锁内快照 handler：回调要在锁外执行，
@@ -369,7 +369,7 @@ func (e *Engine) View() GameView {
 //
 // 它走的仍然是**同一个写入点**：效果进效果流、被否决的不生效、内核的
 // 状态原语不外发、其余推给 OnEvent。因此存档、回放、审计都不会因为
-// 用了它而失真——这正是它比「伸手改 PlayerState」强的地方。
+// 用了它而失真——这正是它比「伸手改 playerState」强的地方。
 //
 // 它不做的事：不判胜负、不流转阶段。想让引擎重新算一次胜负，
 // 调用 EndPhase。
@@ -490,10 +490,10 @@ func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*Event) {
 		e.state.applyEffect(effect)
 
 		e.logger.Debug("effect applied",
-			EventField(effect.Type),
-			PlayerField(effect.SourceID),
-			TargetField(effect.TargetID),
-			F("canceled", effect.Canceled))
+			eventField(effect.Type),
+			playerField(effect.SourceID),
+			targetField(effect.TargetID),
+			logField("canceled", effect.Canceled))
 		e.metrics.IncEffectApplied(effect.Type)
 
 		if !isInternalEvent(effect.Type) {
@@ -522,13 +522,13 @@ func (e *Engine) vetTrigger(effect *Effect) {
 	if !ok {
 		effect.Cancel("ability trigger carries no target phase")
 		e.logger.Error("ability trigger carries no target phase",
-			PlayerField(effect.SourceID))
+			playerField(effect.SourceID))
 		return
 	}
 	if e.phase.phaseConfig(phase) == nil {
 		effect.Cancel("target phase is not present in the game config")
 		e.logger.Error("ability trigger points to an unconfigured phase",
-			PlayerField(effect.SourceID), PhaseField(phase))
+			playerField(effect.SourceID), phaseField(phase))
 	}
 }
 

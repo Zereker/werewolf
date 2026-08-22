@@ -11,6 +11,35 @@
 
 ## 未发布
 
+### 内核 API 面审计：砍掉 13 个不该导出的名字
+
+用狼人杀这一套规则把内核的导出面过了一遍，问两个问题：**每个导出的名字，
+包外有没有可能的调用者？** 以及**同一件事有没有两个入口？**
+
+量化结果：导出类型 53 → 50，包级函数 34 → 24，方法 51 → 44。
+
+- **`PlayerState` 降为未导出。** 它是唯一一个**包外根本拿不到**的导出类型
+  ——只存在于私有的 `gameState.players` 里，没有任何导出签名提到它。
+  导出它等于把内部结构摆出来却不给路进去。现在包外拿不到的导出类型是零。
+- **七个 `Field` 构造器降为未导出**（`F` `PlayerField` `PhaseField`
+  `SkillField` `TargetField` `EventField` `RoundField`）。只有内核会写日志
+  ——`Resolver` 与 `VictoryChecker` 拿到的只有 `GameView`，拿不到 `Logger`。
+  包外**结构上不可能**构造一个 `Field` 去喂给谁：三个 example 里四个
+  `Logger` 实现全部只读 `...engine.Field`。`Field` 类型本身保留，它是
+  `Logger` 契约的一部分；字段是导出的，真要自己拼一个用字面量就够。
+- **`NopLogger` / `NopMetrics` 与两个构造器降为未导出。** 四个名字表达
+  「什么都不做」，而不传 `WithLogger` 本来就是这个行为，`WithLogger(nil)`
+  也是。没有任何场景需要显式拿到它们。
+- **`NewGameView` 删除。** 它与 `Board.View()` 是同一件事——`View()` 的
+  实现就是 `return NewGameView(b)`。同一件事留一个入口。
+
+看着像重复、但**保留**的一处：`Engine.Phase()` / `Round()` / `RoundVar()` /
+`RoundContext()` / `PlayerInfo()` / `AlivePlayerIDs()` 与 `Engine.View()`
+问的是同一批问题。但 `View()` 会 `clone()` 整个状态，问一句「现在第几回合」
+不该付那个代价。这是性能分层，不是 API 重复。
+
+没有行为变化：全部是可见性调整与一处同义入口的删除。
+
 ### 根包的再导出砍成一个刻意的小集合
 
 **破坏性变更**：根包 `werewolf` 此前把内核的公开 API 整个再导出了一遍
@@ -27,7 +56,7 @@
 | `Engine` `EngineOption` `SkillUse` `GameView` `Effect` `Snapshot` | 六个 `New*Effect` 构造函数 |
 | | `Logger` `Metrics` `Field` 与字段助手 |
 | | 全部错误码、哨兵错误、`WrapError` / `CodeOf` / `HasCode` |
-| | `Board` `NewGameView` `Seat` `Mark`（解析器单测） |
+| | `Board` `Seat` `Mark`（解析器单测） |
 | | 快照子结构与 `SnapshotVersion` |
 
 理由：那份完整镜像等于宣称「两层拆分与使用者无关」，可它恰恰是这个库
