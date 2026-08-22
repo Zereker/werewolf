@@ -122,13 +122,9 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 		WithData("allVotes", result.Votes)
 	effects = append(effects, effect)
 
-	// 检查被处决者是否是猎人
-	if target, ok := view.Player(result.Winner); ok {
-		if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-			effects = append(effects,
-				NewAbilityTriggerEffect(result.Winner, pb.PhaseType_PHASE_TYPE_DAY_HUNTER))
-		}
-	}
+	// 被投票出局的猎人可以开枪
+	effects = append(effects,
+		hunterTrigger(view, result.Winner, pb.PhaseType_PHASE_TYPE_DAY_HUNTER)...)
 
 	return effects
 }
@@ -413,12 +409,11 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 			}
 			effects = append(effects, killEffect)
 
-			// 检查被杀者是否是猎人，如果是则触发猎人技能
-			if target, ok := view.Player(killTarget); ok {
-				if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-					effects = append(effects,
-						NewAbilityTriggerEffect(killTarget, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER))
-				}
+			// 「除殉情或被毒殺外」是对死因的排除。同一晚既被刀又被毒的猎人
+			// 身上有毒，即便这里走的是刀口这条通道，也不能开枪。
+			if !rc.IsPoisoned(killTarget) {
+				effects = append(effects,
+					hunterTrigger(view, killTarget, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)...)
 			}
 		} else {
 			// 刀口未生效，清除击杀目标
@@ -457,6 +452,11 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameCo
 			if use.TargetID != "" {
 				effects = append(effects,
 					NewEffect(pb.EventType_EVENT_TYPE_SHOOT, use.PlayerID, use.TargetID))
+				// 枪口下的另一名猎人同样可以回枪：规则排除的只有
+				// 殉情与毒杀，被枪打死属于「其他方式」。
+				// 死亡触发的入队分散在狼刀、投票、开枪三条通道上，
+				// 少一条这类连锁就断在那里。
+				effects = append(effects, hunterTrigger(view, use.TargetID, use.Phase)...)
 			}
 		case pb.SkillType_SKILL_TYPE_SKIP:
 			// 猎人选择不开枪
@@ -466,6 +466,21 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameCo
 	})
 
 	return effects
+}
+
+// hunterTrigger 目标若是猎人，产出一个把他拉进 phase 结算开枪的触发效果。
+//
+// 猎人可以死于狼刀、投票、另一名猎人的枪口，三条通道各自都要记得入队。
+// 收在一处是为了让「又多了一条死亡通道」时只有一个地方需要改。
+func hunterTrigger(view GameView, playerID string, phase pb.PhaseType) []*Effect {
+	if playerID == "" {
+		return nil
+	}
+	target, ok := view.Player(playerID)
+	if !ok || target.Role != pb.RoleType_ROLE_TYPE_HUNTER {
+		return nil
+	}
+	return []*Effect{NewAbilityTriggerEffect(playerID, phase)}
 }
 
 // potionKind 女巫的两种药

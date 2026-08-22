@@ -26,7 +26,10 @@ type GameView interface {
 	// RoundContext 返回本回合上下文的只读副本
 	RoundContext() RoundContext
 
-	// LastProtectedTarget 返回守卫上一回合守护的目标，无则为空
+	// LastProtectedTarget 返回守卫在上一回合守护的目标，无则为空。
+	//
+	// 「上一回合」是严格的：空守一晚、或那次守护被判无效，都返回空。
+	// 视图只给事实，是否允许再守由 Resolver 依配置判定。
 	LastProtectedTarget(guardID string) string
 
 	// Round 返回当前回合数
@@ -74,11 +77,7 @@ func (v stateView) RoundContext() RoundContext {
 }
 
 func (v stateView) LastProtectedTarget(guardID string) string {
-	p, ok := v.s.getPlayerSnapshot(guardID)
-	if !ok {
-		return ""
-	}
-	return p.LastProtectedTarget
+	return v.s.lastProtectedTarget(guardID)
 }
 
 func (v stateView) Round() int { return v.s.currentRound() }

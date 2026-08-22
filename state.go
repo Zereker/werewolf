@@ -123,8 +123,13 @@ type PlayerState struct {
 	HasAntidote bool // 是否有解药
 	HasPoison   bool // 是否有毒药
 
-	// 守卫连续保护限制
-	LastProtectedTarget string // 上一回合保护的目标
+	// 守卫连续保护限制。
+	//
+	// 只记「哪一回合守了谁」，不记「最后一次成功守护的目标」——
+	// 后者不会因为守卫弃权而失效，一旦命中就把那个目标永久锁死。
+	// 是否构成连守由 gameState.lastProtectedTarget 按回合号判定。
+	LastProtectedTarget string // 最近一次生效守护的目标
+	LastProtectedRound  int    // 那次守护发生在第几回合，0 表示从未守护
 }
 
 // gameState 游戏状态。
@@ -225,15 +230,6 @@ func (s *gameState) countCamps() (good, evil int) {
 		}
 	}
 	return good, evil
-}
-
-// getPlayerSnapshot 返回玩家内部状态的值副本（包内使用）
-func (s *gameState) getPlayerSnapshot(id string) (PlayerState, bool) {
-	p, ok := s.players[id]
-	if !ok {
-		return PlayerState{}, false
-	}
-	return *p, true
 }
 
 // currentPhase 当前阶段（包内使用，自带锁）
@@ -365,15 +361,19 @@ func (s *gameState) applyEffect(effect *Effect) {
 	case pb.EventType_EVENT_TYPE_CLEAR_NIGHT_KILL:
 		s.RoundCtx.KillTarget = ""
 	case pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED:
-		if guard, ok := s.players[effect.SourceID]; ok && guard.Role == pb.RoleType_ROLE_TYPE_GUARD {
+		if guard, ok := s.players[effect.SourceID]; ok {
 			guard.LastProtectedTarget = effect.TargetID
+			guard.LastProtectedRound = s.Round
 		}
+	// 药剂与守护记录不按角色设限：这里是状态的写入点，谁有资格用药
+	// 是规则问题，由 Resolver 判定（内置的 WitchResolver 会查 Role）。
+	// 在这里再写死一遍角色，等于第三方的「女巫类」角色改不动自己的状态。
 	case pb.EventType_EVENT_TYPE_USE_ANTIDOTE:
-		if witch, ok := s.players[effect.SourceID]; ok && witch.Role == pb.RoleType_ROLE_TYPE_WITCH {
+		if witch, ok := s.players[effect.SourceID]; ok {
 			witch.HasAntidote = false
 		}
 	case pb.EventType_EVENT_TYPE_USE_POISON:
-		if witch, ok := s.players[effect.SourceID]; ok && witch.Role == pb.RoleType_ROLE_TYPE_WITCH {
+		if witch, ok := s.players[effect.SourceID]; ok {
 			witch.HasPoison = false
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
@@ -442,22 +442,28 @@ func (s *gameState) getWolfTeammates(playerID string) []string {
 //
 // 屠边判定只对开局就存在的类别生效：没有神职的板子不会因
 // 「神职全灭」在开局瞬间判负，平民同理。
+//
+// 「平民」「神職人員」说的都是好人阵营的那一半。狼队也可以有自己的神
+// （隐狼、狼美人，经 AddCustomPlayer 标成 RoleCategoryGod），把它们一起
+// 计进总数会让一名活着的隐狼把「好人的神已经死光」这个事实一直挡住。
 func (s *gameState) checkVictory(mode VictoryMode) (bool, pb.Camp) {
 	var goodAlive, evilAlive int
 	var godsTotal, godsAlive int
 	var villagersTotal, villagersAlive int
 
 	for _, p := range s.players {
-		switch p.Category {
-		case RoleCategoryGod:
-			godsTotal++
-			if p.Alive {
-				godsAlive++
-			}
-		case RoleCategoryVillager:
-			villagersTotal++
-			if p.Alive {
-				villagersAlive++
+		if p.Camp == pb.Camp_CAMP_GOOD {
+			switch p.Category {
+			case RoleCategoryGod:
+				godsTotal++
+				if p.Alive {
+					godsAlive++
+				}
+			case RoleCategoryVillager:
+				villagersTotal++
+				if p.Alive {
+					villagersAlive++
+				}
 			}
 		}
 
@@ -500,6 +506,19 @@ func (s *gameState) checkVictory(mode VictoryMode) (bool, pb.Camp) {
 	}
 
 	return false, pb.Camp_CAMP_UNSPECIFIED
+}
+
+// lastProtectedTarget 该守卫在**上一回合**守护的目标，无则为空。
+//
+// 连守判定问的是「上一晚是不是守的同一个人」，而不是「上一次守的是谁」：
+// 守卫空守一晚就打断了连续性，被判连守而取消的那一次也从来没生效过。
+// 两者都不会写进 LastProtectedRound，因此按回合号一比就都对了。
+func (s *gameState) lastProtectedTarget(guardID string) string {
+	p, ok := s.players[guardID]
+	if !ok || p.LastProtectedRound != s.Round-1 {
+		return ""
+	}
+	return p.LastProtectedTarget
 }
 
 // anyAliveWitchHasAntidote 是否还有存活女巫持有解药。

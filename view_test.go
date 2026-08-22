@@ -43,7 +43,12 @@ func TestGameView_ReadsThrough(t *testing.T) {
 		}
 	}
 	st.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "v2"))
+
+	// LastProtectedTarget 问的是「上一回合」，因此守护要发生在第 1 回合，
+	// 再把状态推到第 2 回合去读
+	st.Round = 1
 	st.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED, "g", "v1"))
+	st.Round = 2
 	st.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SET_NIGHT_KILL, "", "v1"))
 
 	view := newStateView(st)
@@ -59,6 +64,11 @@ func TestGameView_ReadsThrough(t *testing.T) {
 	}
 	if got := view.LastProtectedTarget("查无此人"); got != "" {
 		t.Errorf("不存在的玩家应返回空，实际 %q", got)
+	}
+	// 再过一回合，那次守护就不再是「上一回合」了
+	st.Round = 3
+	if got := view.LastProtectedTarget("g"); got != "" {
+		t.Errorf("隔了一回合应返回空，实际 %q", got)
 	}
 	if got := view.RoundContext().KillTarget; got != "v1" {
 		t.Errorf("刀口: 期望 v1，实际 %q", got)

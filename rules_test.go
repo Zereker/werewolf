@@ -597,6 +597,77 @@ func TestRule_R6_GuardMayReprotectAfterGap(t *testing.T) {
 	}
 }
 
+// TestRule_R6_GuardMayReprotectAfterIdleNight 空守一晚后可以再守回同一人。
+//
+// 与 GuardMayReprotectAfterGap 的区别在于中间那一晚守卫**什么都没做**。
+// 规则限制的是「连续两晚守同一人」，守卫弃权的那一晚打断了这个连续性。
+// 用「最后一次成功守护的目标」来判连守是不对的：那个记录不会因为
+// 守卫弃权而失效，一旦命中就永久卡住这个目标。
+func TestRule_R6_GuardMayReprotectAfterIdleNight(t *testing.T) {
+	requireRule(t, "R6")
+
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), guard("g"),
+		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
+	)...)
+
+	// 第一夜守 v1
+	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.walkNight()
+
+	// 第二夜守卫弃权
+	g.toNextNight()
+	g.walkNight()
+
+	// 第三夜守回 v1 —— 上一晚没守任何人，不构成连守
+	g.toNextNight()
+	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+
+	protect := findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT)
+	if protect == nil || protect.Canceled {
+		t.Fatalf("空守一晚后重新守回同一人应当生效，实际 %+v", protect)
+	}
+
+	// 并且真的守得住
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.assertAlive("v1", true, "空守一晚后的守护应当生效")
+}
+
+// TestRule_R6_CanceledProtectDoesNotBlockNextNight 被判为连守而取消的一次守护，
+// 不应该被记成「这一晚守了他」，从而连锁影响再下一晚。
+func TestRule_R6_CanceledProtectDoesNotBlockNextNight(t *testing.T) {
+	requireRule(t, "R6")
+
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), guard("g"),
+		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
+	)...)
+
+	// 第一夜守 v1（生效）
+	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.walkNight()
+
+	// 第二夜再守 v1（连守，被取消）
+	g.toNextNight()
+	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.walkNight()
+
+	// 第三夜守 v1 —— 第二夜那次没有生效，因此不构成连守
+	g.toNextNight()
+	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+
+	protect := findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT)
+	if protect == nil || protect.Canceled {
+		t.Fatalf("上一晚的守护被取消，本晚不应再判连守，实际 %+v", protect)
+	}
+}
+
 // ==================== R7 同守同救 ====================
 
 // TestRule_R7_GuardPlusAntidoteKillsTarget
@@ -721,6 +792,69 @@ func TestRule_R8_PoisonedHunterCannotShoot(t *testing.T) {
 	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
 	g.end(pb.PhaseType_PHASE_TYPE_DAY)
 	g.assertAlive("h", false, "猎人被毒杀")
+}
+
+// TestRule_R8_KnifedAndPoisonedHunterCannotShoot 同一晚既被狼刀又被毒的猎人不能开枪。
+//
+// 「除殉情或被毒殺外」是对死因的排除，不是对死亡通道的排除。
+// 夜晚结算按刀口走「死了 -> 是猎人 -> 触发开枪」这条路，
+// 如果只看守护与解药、不看毒药，被毒过的猎人照样会被拉进开枪阶段。
+func TestRule_R8_KnifedAndPoisonedHunterCannotShoot(t *testing.T) {
+	requireRule(t, "R8.毒杀不开枪")
+
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), hunter("h"), witch("wi"),
+		villagers("v1", "v2", "v3", "v4", "v5"),
+	)...)
+
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	// 女巫不救，改为对同一个人补毒
+	g.mustUse("wi", pb.SkillType_SKILL_TYPE_POISON, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+
+	// 猎人身上有毒，结算后应直接进白天
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.assertAlive("h", false, "猎人同时被刀被毒")
+}
+
+// TestRule_R8_HunterShotHunterMayShootBack 猎人开枪打死另一名猎人，后者同样可以开枪。
+//
+// 「以任何其他方式被淘汰時可以…開槍」——被枪打死也是「其他方式」。
+// 死亡触发能力的入队目前分散在三条死亡通道上（狼刀、投票、开枪），
+// 只要有一条漏了检查，这一类连锁就断在那里。
+func TestRule_R8_HunterShotHunterMayShootBack(t *testing.T) {
+	requireRule(t, "R8.连锁开枪")
+
+	// 板子里留一名预言家：两名猎人都出局后神职仍未灭，
+	// 否则屠边判定会在连锁开完之前就结束游戏，测不到要测的东西。
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), hunter("h1"), hunter("h2"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	// 夜里狼刀 h1，h1 进开枪阶段
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+
+	// h1 打死另一名猎人 h2 —— h2 应当被拉进同一个开枪阶段
+	g.mustUse("h1", pb.SkillType_SKILL_TYPE_SHOOT, "h2")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.assertAlive("h2", false, "被 h1 打死")
+
+	if ids := g.e.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER].PlayerIDs; len(ids) != 1 || ids[0] != "h2" {
+		t.Fatalf("本阶段应由 h2 行动，实际 %v", ids)
+	}
+
+	g.mustUse("h2", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
+	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.assertAlive("w1", false, "h2 的回枪应当生效")
 }
 
 // TestRule_R8_HunterMayNotShoot 猎人可以选择不开枪。
@@ -935,6 +1069,43 @@ func TestRule_R7_GuardSaveTogetherDiesDisabled(t *testing.T) {
 	g.end(pb.PhaseType_PHASE_TYPE_DAY)
 
 	g.assertAlive("v1", true, "关闭同守同救致死后")
+}
+
+// TestRule_R10_SideWipeIgnoresEvilCategories 屠边只数好人阵营的神职与平民。
+//
+// AddCustomPlayer 允许把狼队成员标成神职（隐狼、狼美人这类角色本来就是
+// 「狼阵营的神」）。屠边的字面表述是「淘汰所有平民或神職人員」，指的是
+// 好人阵营那一半。把狼队的神一起计进总数，一名活着的隐狼就能让
+// 「好人的神已经死光」这个事实永远判不出来，狼队赢不了本该赢下的局。
+func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
+	requireRule(t, "R10.屠边只数好人")
+
+	e := MustNewEngine(nil)
+	mustAdd(t, e, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	// 隐狼：狼阵营，但角色类别是神职
+	if err := e.AddCustomPlayer("hidden", pb.RoleType_ROLE_TYPE_WEREWOLF,
+		pb.Camp_CAMP_EVIL, RoleCategoryGod); err != nil {
+		t.Fatalf("AddCustomPlayer 失败: %v", err)
+	}
+	mustAdd(t, e, "s", pb.RoleType_ROLE_TYPE_SEER)
+	mustAdd(t, e, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, e, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	if err := e.Start(); err != nil {
+		t.Fatalf("Start 失败: %v", err)
+	}
+
+	// 好人这边唯一的神职出局 —— 屠神成立，狼人胜
+	e.mu.Lock()
+	e.state.players["s"].Alive = false
+	e.mu.Unlock()
+
+	over, winner := e.state.checkVictory(e.config.VictoryMode)
+	if !over {
+		t.Fatal("好人神职已全部出局，屠神应当成立（活着的隐狼不算好人的神）")
+	}
+	if winner != pb.Camp_CAMP_EVIL {
+		t.Errorf("期望狼人胜利，实际 %v", winner)
+	}
 }
 
 // TestRule_R10_VictoryModeTownWipe 屠城判定的变体开关。

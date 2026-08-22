@@ -10,7 +10,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 2
+const SnapshotVersion = 3
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -46,6 +46,7 @@ type PlayerSnapshot struct {
 	HasPoison   bool `json:"has_poison"`
 
 	LastProtectedTarget string `json:"last_protected_target,omitempty"`
+	LastProtectedRound  int    `json:"last_protected_round,omitempty"`
 }
 
 // RoundCtxSnapshot 回合上下文的快照
@@ -220,6 +221,7 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 		HasAntidote:         p.HasAntidote,
 		HasPoison:           p.HasPoison,
 		LastProtectedTarget: p.LastProtectedTarget,
+		LastProtectedRound:  p.LastProtectedRound,
 	}
 }
 
