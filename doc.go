@@ -63,6 +63,10 @@
 // 而无状态正是这个接口的要求。内置角色的药剂、守护记录、刀口、被守被救
 // 都是同一件事，只是它们在 PlayerState / RoundContext 上有专门的字段。
 //
+// 角色额外让玩家看到什么（女巫的刀口、盗贼的底牌）由 RoleInfoProvider
+// 回答，用 WithRoleInfo 注册，结果出现在 PlayerView.RoleInfo 与
+// RolePhaseInfo.RoleInfo。内置女巫走的就是这条路，没有特权。
+//
 // 胜负条件由 VictoryChecker 决定，可用 WithVictoryChecker 换掉。
 // 第三方阵营（丘比特的情侣）有自己的胜利条件，判定写死在引擎里的话
 // 那类板子根本没有地方表达；包一层 DefaultVictoryChecker 即可在内置

@@ -646,8 +646,8 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 	if !ok {
 		t.Fatal("expected witch role info")
 	}
-	if witchInfo.KillTarget != "v1" {
-		t.Errorf("expected kill target v1, got %s", witchInfo.KillTarget)
+	if witchKill(witchInfo) != "v1" {
+		t.Errorf("expected kill target v1, got %s", witchKill(witchInfo))
 	}
 	if len(witchInfo.AllowedSkills) != 2 {
 		t.Errorf("expected 2 skills (ANTIDOTE, POISON), got %d", len(witchInfo.AllowedSkills))

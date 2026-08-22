@@ -32,6 +32,11 @@
 
 ### 新增
 
+- **`WithRoleInfo`：角色专属信息由角色自己回答。** 「谁额外看得到什么」此前是引擎里
+  一个认得所有内置角色的 `switch`——狼人给队友、女巫给刀口，别的角色什么都没有。
+  加一个盗贼（要看两张底牌）就得改引擎，而**加一个角色不该要求改引擎**。
+  内置女巫现在走的就是这条路，可以被换掉；`PlayerView.KillTarget` 与
+  `RolePhaseInfo.KillTarget` 两个具名字段随之改成 `RoleInfo` map。
 - **`WithVictoryChecker`：胜负条件可以换了。** 判定此前写死在引擎里、只认好人与
   狼人两边，丘比特的情侣、第三方阵营这类板子根本没有地方表达。内置判定导出为
   `DefaultVictoryChecker`，包一层就能在原规则之上再加一条。
@@ -102,6 +107,13 @@
 - 包文档（`doc.go`）、基准测试、本更新日志。
 
 ### 修复
+
+- **`PhaseInfo` 里的队友按角色判，自定义狼队角色拿不到。** `case RoleWerewolf` 只认
+  内置狼人，经 `AddCustomPlayer` 加进来的狼王在主持人用来组织流程的那份名单里
+  没有队友——而 `PlayerView` 与 `WolfTeammates` 两条路都是对的，只有这一份漏了。
+  改成按阵营。
+- **多女巫板子上，用掉解药的女巫仍能看到刀口。** 旧实现按「场上还有谁持有解药」
+  判（`anyAliveWitchHasAntidote`），现在按人判。
 
 - **快照漏掉 `LastProtectedRound`，存一次档守卫的连守限制就失效**——原引擎判连守
   取消、恢复后的引擎放行。这个字段是连守那轮加的，加进了 `PlayerState`、

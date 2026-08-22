@@ -60,3 +60,16 @@ func checkVictory(e *Engine) (bool, Camp) {
 	defer e.mu.RUnlock()
 	return e.victory.CheckVictory(newStateView(e.state))
 }
+
+// witchKill 从 RolePhaseInfo 里取出女巫可见的刀口。
+//
+// 刀口从 RolePhaseInfo 的一等字段变成了角色自己填的 RoleInfo——
+// 内置角色在信息这件事上不再比第三方角色多一等待遇。
+func witchKill(ri *RolePhaseInfo) string {
+	for _, info := range ri.RoleInfo {
+		if t := info[RoleInfoKillTarget]; t != "" {
+			return t
+		}
+	}
+	return ""
+}

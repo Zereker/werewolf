@@ -207,7 +207,7 @@ func (g *ruleGame) witchSeesKill() string {
 	if ri == nil {
 		return ""
 	}
-	return ri.KillTarget
+	return witchKill(ri)
 }
 
 // vote 让多名玩家投同一目标。

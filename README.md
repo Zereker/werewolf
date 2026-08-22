@@ -271,7 +271,7 @@ v.Self            // 自己的身份、阵营、（女巫的）药剂
 v.Players         // 全场公开信息；身份只对自己与狼队友可见
 v.AllowedSkills   // 本阶段自己能提交的技能，为空即「还没轮到我」
 v.Teammates       // 狼人可见：队友
-v.KillTarget      // 女巫可见：今晚刀口（解药用完即为空）
+v.RoleInfo        // 角色专属信息，如女巫的刀口 v.RoleInfo[RoleInfoKillTarget]
 ```
 
 配套的 `AudienceOf` 回答「发生的事该告诉谁」：
@@ -365,6 +365,11 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 | 新角色的行为 | `WithResolver(phase, resolver)`，可包装内置解析器复用逻辑 |
 | 角色自身的状态 | `NewSetPlayerVarEffect`（跟着玩家一整局）/ `NewSetRoundVarEffect`（每回合清零），读走 `GameView.PlayerVar` / `RoundVar` |
 | 新的胜利条件 | `WithVictoryChecker(checker)`，包一层 `DefaultVictoryChecker` 就能在内置规则之上再加一条 |
+| 角色专属信息 | `WithRoleInfo(role, provider)`，结果出现在 `PlayerView.RoleInfo` 与 `RolePhaseInfo.RoleInfo` |
+
+内置角色在这四件事上**没有特权**：女巫的刀口走的就是 `WithRoleInfo`（键名
+`RoleInfoKillTarget`），可以被换掉；队友按**阵营**给，`AddCustomPlayer` 加进来的
+狼王一样拿得到。加一个角色不需要改引擎里任何一行。
 
 状态一定要走 Var 而不是存在 Resolver 的字段里：`Resolver` 接口要求
 「只能通过返回 Effect 表达状态变更」，存在字段里的东西快照带不上、回放

@@ -555,20 +555,6 @@ func (s *gameState) playerVar(playerID, key string) string {
 	return p.Vars[key]
 }
 
-// anyAliveWitchHasAntidote 是否还有存活女巫持有解药。
-//
-// 用于规则「解藥未使用時可以得知狼人的殺害對象」：解药用完后，
-// 女巫不再获知刀口。标准板子只有一名女巫，此时即「该女巫是否仍持有解药」；
-// 多女巫板子下只要有一人持有解药，刀口就仍需下发。
-func (s *gameState) anyAliveWitchHasAntidote() bool {
-	for _, p := range s.players {
-		if p.Alive && p.Role == RoleWitch && p.HasAntidote {
-			return true
-		}
-	}
-	return false
-}
-
 // peekTrigger 查看队首的待结算死亡技能
 func (s *gameState) peekTrigger() (PendingTrigger, bool) {
 	if s.RoundCtx == nil || len(s.RoundCtx.PendingTriggers) == 0 {

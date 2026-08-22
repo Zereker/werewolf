@@ -90,12 +90,12 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := e.PlayerView("wi").KillTarget; got != "v1" {
+	if got := e.PlayerView("wi").RoleInfo[RoleInfoKillTarget]; got != "v1" {
 		t.Errorf("解药在手时女巫应看到刀口，实际 %q", got)
 	}
 	// 别人看不到
 	for _, id := range []string{"v1", "w1", "s", "g"} {
-		if got := e.PlayerView(id).KillTarget; got != "" {
+		if got := e.PlayerView(id).RoleInfo[RoleInfoKillTarget]; got != "" {
 			t.Errorf("%s 不应看到刀口，实际 %q", id, got)
 		}
 	}
@@ -116,7 +116,7 @@ func TestPlayerView_WitchKillTargetFollowsRule(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := e.PlayerView("wi").KillTarget; got != "" {
+	if got := e.PlayerView("wi").RoleInfo[RoleInfoKillTarget]; got != "" {
 		t.Errorf("解药已用完，女巫不应再看到刀口，实际 %q", got)
 	}
 }
@@ -179,8 +179,8 @@ func TestPlayerView_DeadWitchCannotSeeKillTarget(t *testing.T) {
 	if !v.Self.HasAntidote {
 		t.Fatal("前置条件：女巫的解药未使用")
 	}
-	if v.KillTarget != "" {
-		t.Errorf("出局的女巫不应看到刀口，实际 %q", v.KillTarget)
+	if v.RoleInfo[RoleInfoKillTarget] != "" {
+		t.Errorf("出局的女巫不应看到刀口，实际 %q", v.RoleInfo[RoleInfoKillTarget])
 	}
 }
 

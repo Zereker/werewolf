@@ -346,9 +346,9 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 				}
 			}
 			// 刀口只有活着且解药在手的女巫能看到
-			if v.KillTarget != "" {
+			if v.RoleInfo[RoleInfoKillTarget] != "" {
 				if !self.Alive || self.Role != RoleWitch || !self.HasAntidote {
-					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.KillTarget)
+					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.RoleInfo[RoleInfoKillTarget])
 				}
 			}
 			// 好人不该有狼队友

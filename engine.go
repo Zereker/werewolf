@@ -22,6 +22,10 @@ type Engine struct {
 	// 判定写死在引擎里的话那类板子根本没有地方表达。
 	victory VictoryChecker
 
+	// roleInfo 各角色的专属信息提供者。内置的与第三方注册的同在一张表里，
+	// 读取路径也是同一条——内置角色在这件事上没有特权。
+	roleInfo map[RoleType]RoleInfoProvider
+
 	// 当前阶段收集的技能使用
 	pendingUses []*SkillUse
 
@@ -55,10 +59,14 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 		logger:          NewNopLogger(),
 		metrics:         NewNopMetrics(),
 		victory:         DefaultVictoryChecker{Mode: config.VictoryMode},
+		roleInfo:        make(map[RoleType]RoleInfoProvider, len(builtinRoleInfo)),
 		pendingUses:     make([]*SkillUse, 0),
 		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
 		messageHandlers: make([]MessageHandler, 0),
+	}
+	for role, p := range builtinRoleInfo {
+		e.roleInfo[role] = p
 	}
 	if err := e.applyOptions(opts); err != nil {
 		return nil, err

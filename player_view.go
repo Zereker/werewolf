@@ -37,9 +37,13 @@ type PlayerView struct {
 	// Teammates 狼队可见：其余狼队友的 ID。好人阵营恒为空。
 	Teammates []string `json:"teammates,omitempty"`
 
-	// KillTarget 女巫可见：今晚狼人的击杀目标。
-	// 依规则「解藥未使用時可以得知狼人的殺害對象」，解药用完后恒为空。
-	KillTarget string `json:"kill_target,omitempty"`
+	// RoleInfo 角色专属信息：这个角色额外让他看到的东西。
+	//
+	// 由角色自己的 RoleInfoProvider 回答（见 WithRoleInfo），引擎不认识
+	// 任何具体角色。内置女巫的刀口在这里的键是 RoleInfoKillTarget——
+	// 它此前是 PlayerView 上一个具名字段，等于内置角色比第三方角色多
+	// 一等公民的待遇，而加一个角色不该要求改引擎。
+	RoleInfo map[string]string `json:"role_info,omitempty"`
 }
 
 // SelfInfo 一名玩家对自己有权知道的全部信息。
@@ -115,12 +119,8 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 
 	view.Players = e.publicPlayers(revealed)
 
-	// 女巫在解药尚在手时可知刀口。
-	// 已出局的女巫不再是行动者，天亮公布之前不该拿到今晚的刀口——
-	// AllowedSkills 那一路已经对死人关门了，这里也得关。
-	if self.Alive && self.Role == RoleWitch && self.HasAntidote {
-		view.KillTarget = e.state.RoundCtx.KillTarget
-	}
+	// 角色专属信息由角色自己回答
+	view.RoleInfo = e.roleInfoFor(playerID, self.Role)
 
 	return view
 }
