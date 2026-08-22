@@ -56,11 +56,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # go build ./... 已经覆盖库、示例与 CLI 三个包。
+      # 此前另有一个 `go build -o /tmp/example ./example/...` 步骤，
+      # 它既与这里重复，又在 example/cli 加进来之后直接失败——
+      # -o 指向单个文件时不允许匹配多个包。
       - name: Build
         run: go build -v ./...
-
-      - name: Build example
-        run: go build -v -o /tmp/example ./example/...
 
       # 只编译不运行是不够的：示例里一个必然 panic 的调用曾就此合入主干。
       # 示例是给使用者照抄的，它跑不通比库本身出问题更误导人。
