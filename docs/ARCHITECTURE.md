@@ -101,14 +101,14 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
 
 | 类别 | 方法 | 说明 |
 |------|------|------|
-| 建局 | `AddPlayer` / `AddCustomPlayer` | 只能在 `Start` 之前调用，全部返回 error |
+| 建局 | `AddPlayer` | 只能在 `Start` 之前调用，全部返回 error |
 | 推进 | `Start` / `EndPhase` | `EndPhase` 是唯一推进入口 |
 | 输入 | `SubmitSkillUse` / `SendMessage` | 技能与发言两条独立通道 |
 | 读取 | `PhaseInfo` / `PlayerInfo` / `RoundContext` … | 一律返回只读副本 |
 
 **非法输入一律返回 error，不静默生效**：重复 ID、空 ID、把上帝当玩家、
 开局后再加人、缺狼或缺好人的板子，都在入口处拒绝。阵营与角色类别由角色推导
-（`CampOf` / `CategoryOf`），调用方无从传错；扩展角色走 `AddCustomPlayer`
+（`builtinRoleSetup`），调用方无从传错；扩展角色用 `WithRoleSetup`
 显式指定。
 
 **并发模型**：所有导出方法可并发调用。用户回调（`OnEvent` / `OnMessage`）
@@ -195,7 +195,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 ### 添加新角色
 
 1. `types.go` 加 `RoleType`（及所需的 `SkillType`）取值
-2. `CategoryOf` 加类别映射，或调用方用 `State.SetPlayerCategory` 指定
+2. 用 `WithRoleSetup` + `CampVars` 登记它的阵营与类别
 3. 若需要独立行动窗口：加 `PhaseConfig` 并接进流转链
 4. 写对应的 `Resolver`，在 `NewPhase` 注册
 
@@ -261,7 +261,7 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 2. 在 `GameConfig.Phases` 里声明该阶段
 3. 构造时用 `werewolf.WithResolver(phase, resolver)` 注册解析器
    （`NewEngine` / `RestoreEngine` / `ReplayEngine` 都接受）
-4. `Engine.AddCustomPlayer` 显式给出阵营与角色类别
+4. `WithRoleSetup` 给出它的初始状态（阵营、类别、道具）
 
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect`，
 引擎会把它排入待结算队列、自动流转过去，并把胜负判定推迟到结算之后。

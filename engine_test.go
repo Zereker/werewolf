@@ -89,29 +89,55 @@ func TestEngine_Start_AlreadyStarted(t *testing.T) {
 	}
 }
 
-// TestEngine_Start_RejectsInvalidBoard 故意用不合法的板子并期待 Start() 报错，
+// TestEngine_Start_RejectsInvalidBoard 开局就已分出胜负的板子要在 Start 时拒绝。
+//
+// 这一条此前写成「必须有狼人、必须有好人」，也就是把狼人杀的阵营写进了内核。
+// 现在改成问胜负判定器——它本来就是「这一刻分出胜负了吗」的唯一权威，
+// 开局前问一次即可，而且顺带覆盖了原来漏掉的情况：屠城模式下 2 狼对 2 好人，
+// 第一次结算就是狼人胜，旧校验放它过关。
+//
 // newRuleGame 会在建局时就 Fatal，测不到目标，故保留显式风格。
 func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 	cases := []struct {
 		name  string
+		mode  VictoryMode
 		roles map[string]RoleType
-		want  error
 	}{
-		{"空板子", nil, ErrNoWerewolf},
-		{"只有狼", map[string]RoleType{"w1": RoleWerewolf}, ErrNoGoodPlayer},
-		{"只有好人", map[string]RoleType{"v1": RoleVillager}, ErrNoWerewolf},
+		{"空板子", VictoryModeTownWipe, nil},
+		{"只有狼", VictoryModeTownWipe, map[string]RoleType{"w1": RoleWerewolf}},
+		{"只有好人", VictoryModeTownWipe, map[string]RoleType{"v1": RoleVillager}},
+		{"屠城下二狼对二好人", VictoryModeTownWipe, map[string]RoleType{
+			"w1": RoleWerewolf, "w2": RoleWerewolf,
+			"v1": RoleVillager, "v2": RoleVillager,
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine := MustNewEngine(nil)
+			cfg := DefaultGameConfig()
+			cfg.VictoryMode = tc.mode
+			engine := MustNewEngine(cfg)
 			for id, role := range tc.roles {
 				mustAdd(t, engine, id, role)
 			}
-			if err := engine.Start(); err != tc.want {
-				t.Errorf("期望 %v，实际 %v", tc.want, err)
+			err := engine.Start()
+			if !errors.Is(err, ErrInvalidBoard) {
+				t.Errorf("期望 ErrInvalidBoard，实际 %v", err)
 			}
 		})
 	}
+
+	t.Run("正常板子照常开局", func(t *testing.T) {
+		engine := MustNewEngine(nil)
+		for id, role := range map[string]RoleType{
+			"w1": RoleWerewolf, "s": RoleSeer,
+			"v1": RoleVillager, "v2": RoleVillager,
+		} {
+			mustAdd(t, engine, id, role)
+		}
+		if err := engine.Start(); err != nil {
+			t.Errorf("合法板子不该被拒: %v", err)
+		}
+	})
 }
 
 // TestEngine_AddPlayer_Validation 故意用非法输入并期待 AddPlayer() 报错，
@@ -135,8 +161,8 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 
 	// 阵营由角色推导，调用方不再需要（也无法）传错
 	w1, _ := engine.PlayerInfo("w1")
-	if w1.Camp != CampEvil {
-		t.Errorf("狼人阵营应为 EVIL，实际 %v", w1.Camp)
+	if campOf(w1) != CampEvil {
+		t.Errorf("狼人阵营应为 EVIL，实际 %v", campOf(w1))
 	}
 
 	// 开局后不允许再改动玩家
@@ -239,9 +265,10 @@ func TestEngine_EndPhase(t *testing.T) {
 		t.Errorf("expected no error, got %v", err)
 	}
 
-	// Should have 2 effects: SET_LAST_PROTECTED + PROTECT
-	if len(effects) != 2 {
-		t.Errorf("expected 2 effects, got %d", len(effects))
+	// PROTECT 是说法，另外三条是状态：今晚谁被守了，以及守卫这一回合
+	// 守的是谁（供下回合判断连守）
+	if len(effects) != 4 {
+		t.Errorf("expected 4 effects, got %d: %v", len(effects), effects)
 	}
 
 	// 检查包含 PROTECT effect
@@ -816,7 +843,7 @@ func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 	if _, err := bad.EndPhase(); !errors.Is(err, ErrGameNotStarted) {
 		t.Fatalf("期望 ErrGameNotStarted，实际 %v", err)
 	}
-	if err := bad.Start(); !errors.Is(err, ErrNoWerewolf) {
+	if err := bad.Start(); !errors.Is(err, ErrInvalidBoard) {
 		t.Fatalf("板子校验应当仍然生效，实际 %v", err)
 	}
 }
@@ -945,8 +972,8 @@ func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	if got := g.e.Round(); got != 2 {
 		t.Errorf("绕回起始阶段应当进入第 2 回合，实际 %d", got)
 	}
-	if got := g.e.RoundContext().SavedPlayers; len(got) != 0 {
-		t.Errorf("回合上下文应当已重置，实际还留着 SavedPlayers=%v", got)
+	if got := g.info("v1").RoundVars; len(got) != 0 {
+		t.Errorf("回合标记应当已重置，实际还留着 %v", got)
 	}
 
 	// 第二夜再刀 v1，女巫的解药已经用完，这一刀必须命中

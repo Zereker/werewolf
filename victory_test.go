@@ -2,8 +2,12 @@ package werewolf
 
 import "testing"
 
-// campLovers 一个第三方阵营。自定义取值从 1000 起。
-const campLovers = Camp(1000)
+// campLovers 一个第三方阵营。
+//
+// Camp 的底层是字符串，内核不预设任何取值——好人与狼人也只是狼人杀
+// 定义的两个，与这里的「情侣」没有身份差别，不需要「自定义取值从 1000 起」
+// 这类约定来避让。
+const campLovers Camp = "LOVERS"
 
 // loversWin 情侣胜利：只剩这两个人时他们赢，无论阵营。
 //

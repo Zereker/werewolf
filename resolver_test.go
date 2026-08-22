@@ -34,14 +34,17 @@ func TestVoteResolver_Single(t *testing.T) {
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
-	if len(effects) != 1 {
-		t.Fatalf("expected 1 effect, got %d", len(effects))
+	// 断言的是结果而不是效果个数：ELIMINATE 是「发生了什么」的说法，
+	// 旁边那条 SET_ALIVE 才真正让人出局，两者缺一不可。
+	elim := filterEffects(effects, EventEliminate)
+	if len(elim) != 1 || elim[0].TargetID != "p2" {
+		t.Fatalf("expected one ELIMINATE on p2, got %v", effects)
 	}
-	if effects[0].Type != EventEliminate {
-		t.Errorf("expected ELIMINATE, got %v", effects[0].Type)
+	for _, e := range effects {
+		state.applyEffect(e)
 	}
-	if effects[0].TargetID != "p2" {
-		t.Errorf("expected target=p2, got %s", effects[0].TargetID)
+	if p, _ := state.getPlayer("p2"); p.Alive {
+		t.Error("被放逐的玩家应当出局")
 	}
 }
 
@@ -62,14 +65,15 @@ func TestVoteResolver_Clear(t *testing.T) {
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
-	if len(effects) != 1 {
-		t.Fatalf("expected 1 effect, got %d", len(effects))
+	elim := filterEffects(effects, EventEliminate)
+	if len(elim) != 1 || elim[0].TargetID != "wolf" {
+		t.Fatalf("expected one ELIMINATE on wolf (majority), got %v", effects)
 	}
-	if effects[0].Type != EventEliminate {
-		t.Errorf("expected ELIMINATE, got %v", effects[0].Type)
+	for _, e := range effects {
+		state.applyEffect(e)
 	}
-	if effects[0].TargetID != "wolf" {
-		t.Errorf("expected target=wolf (majority), got %s", effects[0].TargetID)
+	if p, _ := state.getPlayer("wolf"); p.Alive {
+		t.Error("得票最多的玩家应当出局")
 	}
 }
 
@@ -172,8 +176,8 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 	}
 
 	// Night.KillTarget 应该为空
-	if state.RoundCtx.KillTarget != "" {
-		t.Errorf("expected empty Night.KillTarget for tie, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "" {
+		t.Errorf("expected empty Night.KillTarget for tie, got %s", killTargetOf(state))
 	}
 }
 
@@ -193,26 +197,21 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
-	// 子阶段模式下，WolfResolver 返回 SET_NIGHT_KILL effect
-	// 实际击杀在 SeerResolver 中处理
+	// 狼人阶段只记刀口，实际结算在 NightResolveResolver。
+	// 刀口是一个回合变量，不是内核认得的「击杀」事件。
 	if len(effects) != 1 {
 		t.Errorf("expected 1 effect from WolfResolver, got %d", len(effects))
 	}
-
-	if effects[0].Type != EventSetNightKill {
-		t.Errorf("expected SET_NIGHT_KILL effect, got %v", effects[0].Type)
+	if effects[0].Type != EventSetRoundVar {
+		t.Errorf("expected SET_ROUND_VAR effect, got %v", effects[0].Type)
 	}
 
-	if effects[0].TargetID != "victim" {
-		t.Errorf("expected target=victim, got %s", effects[0].TargetID)
-	}
-
-	// 应用 Effect 后 Night.KillTarget 才会被设置
+	// 应用 Effect 后刀口才会被设置
 	for _, e := range effects {
 		state.applyEffect(e)
 	}
-	if state.RoundCtx.KillTarget != "victim" {
-		t.Errorf("expected Night.KillTarget=victim after applying effect, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim after applying effect, got %s", killTargetOf(state))
 	}
 }
 
@@ -235,21 +234,17 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
-	// 子阶段模式下，WolfResolver 返回 SET_NIGHT_KILL effect
+	// 狼人阶段只记刀口，实际结算在 NightResolveResolver
 	if len(effects) != 1 {
 		t.Errorf("expected 1 effect from WolfResolver, got %d", len(effects))
 	}
 
-	if effects[0].TargetID != "v1" {
-		t.Errorf("expected target=v1, got %s", effects[0].TargetID)
-	}
-
-	// 应用 Effect 后 Night.KillTarget 才会被设置
+	// 应用 Effect 后刀口才会被设置
 	for _, e := range effects {
 		state.applyEffect(e)
 	}
-	if state.RoundCtx.KillTarget != "v1" {
-		t.Errorf("expected Night.KillTarget=v1 after applying effect, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "v1" {
+		t.Errorf("expected Night.KillTarget=v1 after applying effect, got %s", killTargetOf(state))
 	}
 }
 
@@ -264,7 +259,7 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	mustAddTo(t, state, "wolf", RoleWerewolf)
 	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置保护状态
-	state.RoundCtx.ProtectedPlayers["victim"] = true
+	markRound(state, "victim", PlayerRoundVarProtected)
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = true
 
@@ -278,15 +273,15 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (SET_NIGHT_KILL) even when protected, got %d", len(effects))
 	}
-	if effects[0].Type != EventSetNightKill {
+	if effects[0].Type != EventSetRoundVar {
 		t.Errorf("expected SET_NIGHT_KILL, got %v", effects[0].Type)
 	}
 
 	for _, e := range effects {
 		state.applyEffect(e)
 	}
-	if state.RoundCtx.KillTarget != "victim" {
-		t.Errorf("expected Night.KillTarget=victim, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", killTargetOf(state))
 	}
 }
 
@@ -297,7 +292,7 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	mustAddTo(t, state, "wolf", RoleWerewolf)
 	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置保护状态
-	state.RoundCtx.ProtectedPlayers["victim"] = true
+	markRound(state, "victim", PlayerRoundVarProtected)
 	config := DefaultGameConfig()
 	config.SameGuardKillIsEmpty = false // 不是空刀
 
@@ -318,8 +313,8 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	}
 
 	// Night.KillTarget 应该被设置
-	if state.RoundCtx.KillTarget != "victim" {
-		t.Errorf("expected Night.KillTarget=victim, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", killTargetOf(state))
 	}
 }
 
@@ -331,7 +326,7 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 	mustAddTo(t, state, "witch", RoleWitch)
 	mustAddTo(t, state, "victim", RoleVillager)
 	// 使用 NightContext 设置击杀目标
-	state.RoundCtx.KillTarget = "victim"
+	setKill(state, "victim")
 	config := DefaultGameConfig()
 
 	// 女巫使用解药救人
@@ -341,11 +336,11 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
-	// 应该有2个effect: USE_ANTIDOTE, SAVE
+	// 三个效果：SAVE（说法）、解药少一瓶、目标带上「今晚被救」的标记。
 	// 解药不再直接清除刀口——是否真的救回由 NightResolveResolver
 	// 综合「是否同时被守卫守护」判定
-	if len(effects) != 2 {
-		t.Fatalf("expected 2 effects, got %d", len(effects))
+	if len(effects) != 3 {
+		t.Fatalf("expected 3 effects, got %d: %v", len(effects), effects)
 	}
 
 	saveEffects := filterEffects(effects, EventSave)
@@ -359,16 +354,16 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 	}
 
 	// 刀口保留到结算阶段，但目标已被标记为「已救」
-	if state.RoundCtx.KillTarget != "victim" {
-		t.Errorf("expected Night.KillTarget kept until resolve, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "victim" {
+		t.Errorf("expected Night.KillTarget kept until resolve, got %s", killTargetOf(state))
 	}
-	if !state.RoundCtx.IsSaved("victim") {
+	if !savedIn(state, "victim") {
 		t.Error("expected victim to be marked as saved")
 	}
 
 	// 解药应该被消耗
 	witch, _ := state.getPlayer("witch")
-	if witch.HasAntidote {
+	if witch.Vars[VarWitchAntidote] != "" {
 		t.Errorf("expected witch to have used antidote")
 	}
 }
@@ -387,7 +382,7 @@ func TestWitchResolver_Poison(t *testing.T) {
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
 	// WitchResolver 只产生 USE_POISON 效果，实际死亡由 NightResolveResolver 处理
-	usePoisonEffects := filterEffects(effects, EventUsePoison)
+	usePoisonEffects := filterEffects(effects, EventSetPlayerRoundVar)
 	if len(usePoisonEffects) != 1 {
 		t.Fatalf("expected 1 USE_POISON effect, got %d", len(usePoisonEffects))
 	}
@@ -399,7 +394,7 @@ func TestWitchResolver_Poison(t *testing.T) {
 	for _, e := range effects {
 		state.applyEffect(e)
 	}
-	if !state.RoundCtx.IsPoisoned("wolf") {
+	if !poisonedIn(state, "wolf") {
 		t.Error("expected wolf to be marked as poisoned after applying USE_POISON")
 	}
 }
@@ -408,7 +403,7 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 	resolver := NewWitchResolver()
 	state := newState()
 	mustAddTo(t, state, "witch", RoleWitch)
-	state.RoundCtx.KillTarget = "witch" // 狼人杀女巫
+	setKill(state, "witch") // 狼人杀女巫
 	config := DefaultGameConfig()
 	config.WitchCanSaveSelf = false
 
@@ -427,8 +422,8 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 	}
 
 	// Night.KillTarget 应该保持不变
-	if state.RoundCtx.KillTarget != "witch" {
-		t.Errorf("expected Night.KillTarget=witch, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "witch" {
+		t.Errorf("expected Night.KillTarget=witch, got %s", killTargetOf(state))
 	}
 }
 
@@ -447,19 +442,16 @@ func TestGuardResolver_Protect(t *testing.T) {
 
 	effects := resolver.Resolve(uses, newStateView(state), config)
 
-	// 现在返回2个effect: SET_LAST_PROTECTED + PROTECT
-	if len(effects) != 2 {
-		t.Fatalf("expected 2 effects, got %d", len(effects))
+	// PROTECT 是说法，另外三条是状态：今晚谁被守了，以及守卫这一回合
+	// 守的是谁（供下回合判断连守）。
+	if got := len(filterEffects(effects, EventProtect)); got != 1 {
+		t.Fatalf("expected one PROTECT, got %d in %v", got, effects)
 	}
-
-	// 检查 SET_LAST_PROTECTED effect
-	if effects[0].Type != EventSetLastProtected {
-		t.Errorf("expected SET_LAST_PROTECTED, got %v", effects[0].Type)
+	if got := len(filterEffects(effects, EventSetPlayerRoundVar)); got != 1 {
+		t.Fatalf("expected one round mark, got %d in %v", got, effects)
 	}
-
-	// 检查 PROTECT effect
-	if effects[1].Type != EventProtect {
-		t.Errorf("expected PROTECT, got %v", effects[1].Type)
+	if got := len(filterEffects(effects, EventSetPlayerVar)); got != 2 {
+		t.Fatalf("expected two guard records, got %d in %v", got, effects)
 	}
 
 	// 应用所有效果
@@ -468,14 +460,14 @@ func TestGuardResolver_Protect(t *testing.T) {
 	}
 
 	// 目标应该被标记为受保护（使用 NightContext）
-	if !state.RoundCtx.IsProtected("target") {
+	if !protectedIn(state, "target") {
 		t.Error("expected target to be protected after applying effect")
 	}
 
-	// LastProtectedTarget 应该被设置
+	// 守护记录应该被写下，供下回合判断连守
 	guard := state.players["guard"]
-	if guard.LastProtectedTarget != "target" {
-		t.Errorf("expected guard.LastProtectedTarget=target, got %s", guard.LastProtectedTarget)
+	if got := guard.Vars[PlayerVarLastProtectedTarget]; got != "target" {
+		t.Errorf("expected guard last protected target=target, got %s", got)
 	}
 }
 
@@ -538,7 +530,7 @@ func TestState_GetWolfTeammates(t *testing.T) {
 	mustAddTo(t, state, "wolf3", RoleWerewolf)
 	mustAddTo(t, state, "villager", RoleVillager)
 
-	teammates := state.getWolfTeammates("wolf1")
+	teammates := wolfTeammates("wolf1", newStateView(state))
 
 	// wolf1 的队友应该是 wolf2 和 wolf3（不包括自己）
 	if len(teammates) != 2 {
@@ -570,7 +562,7 @@ func TestState_GetWolfTeammates_NonWolf(t *testing.T) {
 	mustAddTo(t, state, "villager", RoleVillager)
 
 	// 非狼人查询应该返回空
-	teammates := state.getWolfTeammates("villager")
+	teammates := wolfTeammates("villager", newStateView(state))
 	if len(teammates) != 0 {
 		t.Errorf("expected 0 teammates for non-wolf, got %d", len(teammates))
 	}
@@ -598,7 +590,7 @@ func TestNightResolveResolver_PoisonOrderIsDeterministic(t *testing.T) {
 		if err := st.addPlayer(id, RoleVillager); err != nil {
 			t.Fatal(err)
 		}
-		st.RoundCtx.PoisonedPlayers[id] = true
+		markRound(st, id, PlayerRoundVarPoisoned)
 	}
 
 	r := NewNightResolveResolver()

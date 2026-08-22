@@ -137,7 +137,7 @@ func TestPlayerView_AllowedSkillsGateAction(t *testing.T) {
 	}
 
 	// 出局玩家没有可用技能
-	e.state.applyEffect(NewEffect(EventKill, "", "g"))
+	e.state.applyEffect(NewSetAliveEffect("g", false))
 	if got := e.PlayerView("g").AllowedSkills; len(got) != 0 {
 		t.Errorf("已出局玩家不应有可用技能，实际 %v", got)
 	}
@@ -176,7 +176,7 @@ func TestPlayerView_DeadWitchCannotSeeKillTarget(t *testing.T) {
 	if v.Self.Alive {
 		t.Fatal("前置条件：女巫此时应已出局")
 	}
-	if !v.Self.HasAntidote {
+	if v.RoleInfo[RoleInfoAntidote] == "" {
 		t.Fatal("前置条件：女巫的解药未使用")
 	}
 	if v.RoleInfo[RoleInfoKillTarget] != "" {
@@ -199,7 +199,7 @@ func TestPlayerView_SelfDoesNotLeakProtection(t *testing.T) {
 	g.end(PhaseNightWolf)
 
 	// 前置：守护确实生效了（上帝视角看得到）
-	if !g.info("v1").Protected {
+	if g.info("v1").RoundVar(PlayerRoundVarProtected) == "" {
 		t.Fatal("前置条件：v1 应处于被守护状态")
 	}
 
@@ -231,8 +231,8 @@ func TestAudienceOf(t *testing.T) {
 		{"查验只给预言家", NewEffect(EventCheck, "s", "w1"), []string{"s"}, 1},
 		{"守护只给守卫", NewEffect(EventProtect, "g", "v1"), []string{"g"}, 1},
 		{"解药只给女巫", NewEffect(EventSave, "wi", "v1"), []string{"wi"}, 1},
-		{"内部效果不给任何人", NewEffect(EventSetNightKill, "", "v1"), nil, 0},
-		{"消耗解药不给任何人", NewEffect(EventUseAntidote, "wi", ""), nil, 0},
+		{"内部效果不给任何人", NewSetAliveEffect("v1", false), nil, 0},
+		{"消耗解药不给任何人", NewSetPlayerVarEffect("wi", VarWitchAntidote, ""), nil, 0},
 		{"触发效果不给任何人", NewAbilityTriggerEffect("h", PhaseNightHunter), nil, 0},
 		{"被否决的用毒只给女巫本人", canceledEffect(
 			NewEffect(EventPoison, "wi", "v1")), []string{"wi"}, 1},
@@ -304,7 +304,7 @@ func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 func TestAudienceOf_UnknownActorGetsNobody(t *testing.T) {
 	e := newViewGame(t)
 
-	canceled := NewEffect(EventPoison, "查无此人", "v1")
+	canceled := NewSetAliveEffect("v1", false)
 	canceled.Cancel("no poison")
 	if got, known := e.AudienceOf(canceled.ToEvent()); len(got) != 0 || !known {
 		t.Errorf("被否决效果的 source 不在场上，受众应为空，实际 (%v, %v)", got, known)

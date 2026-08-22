@@ -66,13 +66,70 @@ const (
 
 	roundVarKeyKey   = "round_var_key"
 	roundVarValueKey = "round_var_value"
+
+	playerRoundVarKeyKey   = "player_round_var_key"
+	playerRoundVarValueKey = "player_round_var_value"
+
+	aliveKey = "alive"
 )
+
+// NewSetAliveEffect 声明「把某个玩家的存活状态改成某值」。
+//
+// 这是引擎唯一的生死原语。狼刀、毒杀、放逐、开枪此前各自是一个会改
+// 存活状态的事件类型，于是「有哪些死法」这件狼人杀的规则被写进了引擎；
+// 换一套规则（决斗致死、殉情）就得再加一个事件类型、再加一条分支。
+//
+// 现在死法由规则自己命名：产出一个自己的事件（KILL / SHOOT / 殉情）
+// 作为「发生了什么」的说法，再产出一个 SET_ALIVE 真正改状态。
+// 两个效果，两件事——前者给受众与效果流看，后者给状态机看。
+func NewSetAliveEffect(playerID string, alive bool) *Effect {
+	return NewEffect(EventSetAlive, "", playerID).
+		WithData(aliveKey, alive)
+}
+
+// SetsAlive 这个效果是否在改存活状态，以及改成什么。
+//
+// 想拦下一次死亡的扩展需要它：白痴被投票放逐时翻牌不出局，靠的是把
+// 那条致死的原语否决掉。拦原语而不是拦「放逐」这个说法，好处是**与死因
+// 无关**——同一段代码能挡住狼刀、毒杀、枪口和任何第三方规则的死法，
+// 因为它们最终都要走这一条。
+func (e *Effect) SetsAlive() (alive, ok bool) {
+	if e == nil || e.Type != EventSetAlive {
+		return false, false
+	}
+	return aliveOf(e)
+}
+
+// aliveOf 从效果里读出要写的存活状态。
+func aliveOf(e *Effect) (alive, ok bool) {
+	alive, ok = e.Data[aliveKey].(bool)
+	return alive, ok
+}
+
+// NewSetPlayerRoundVarEffect 声明「把某个玩家本回合的某项状态改成某值」。
+//
+// 三种作用域的第三种：PlayerVar 跟着玩家走一整局，RoundVar 每回合清零
+// 且不属于任何人，这个则是「某个玩家在本回合的标记」——今晚谁被守了、
+// 谁被救了、谁被毒了都是这一类，它们此前是 RoundContext 上三张
+// map[string]bool，第三方角色改不了也读不到。
+// 值传空串即删除该项。
+func NewSetPlayerRoundVarEffect(playerID, key, value string) *Effect {
+	return NewEffect(EventSetPlayerRoundVar, "", playerID).
+		WithData(playerRoundVarKeyKey, key).
+		WithData(playerRoundVarValueKey, value)
+}
+
+// playerRoundVarOf 从效果里读出要写的键值。
+func playerRoundVarOf(e *Effect) (key, value string) {
+	key, _ = e.Data[playerRoundVarKeyKey].(string)
+	value, _ = e.Data[playerRoundVarValueKey].(string)
+	return key, value
+}
 
 // NewSetPlayerVarEffect 声明「把某个玩家的某项自定义状态改成某值」。
 //
-// 这是第三方角色存放自身状态的正路。白痴的「翻过牌了」、骑士的
-// 「决斗用掉了」这类东西，与女巫的药、守卫的守护记录是同一件事，
-// 只是引擎为内置角色写死了字段、为第三方留了这个通用口子。
+// 这是角色存放自身状态的正路。白痴的「翻过牌了」、骑士的「决斗用掉了」、
+// 女巫的两瓶药、守卫的守护记录，全都是同一件事，走的也是同一条路。
 //
 // 走这条路的好处是自动获得整套设施：状态随快照走、效果流能回放、
 // Resolver 因此可以保持无状态——而无状态正是 Resolver 接口要求的。
@@ -93,8 +150,8 @@ func playerVarOf(e *Effect) (key, value string) {
 // NewSetRoundVarEffect 声明「把本回合的某项自定义状态改成某值」。
 //
 // 与 NewSetPlayerVarEffect 的分工：那个跟着玩家走一整局（白痴翻过牌了），
-// 这个每回合自动清零（今晚谁被标记了）。内置的刀口、被守、被救、被毒
-// 都属于后者，只是它们在 RoundContext 上有专门的字段。
+// 这个每回合自动清零，且不属于任何玩家（今晚的刀口是谁）。
+// 「某个玩家在本回合的标记」是第三种，用 NewSetPlayerRoundVarEffect。
 // 值传空串即删除该项。
 func NewSetRoundVarEffect(key, value string) *Effect {
 	return NewEffect(EventSetRoundVar, "", "").

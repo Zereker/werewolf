@@ -17,9 +17,11 @@ func TestRoleInfo_ThirdPartyRoleCanShowItsOwnInfo(t *testing.T) {
 		return map[string]string{roleInfoSpareCard: "SEER"}
 	})
 
-	e := MustNewEngine(nil, WithRoleInfo(roleThief, provider))
+	e := MustNewEngine(nil,
+		WithRoleInfo(roleThief, provider),
+		WithRoleSetup(roleThief, sideSetup(CampGood, RoleCategoryGod)))
 	mustAdd(t, e, "w1", RoleWerewolf)
-	if err := e.AddCustomPlayer("th", roleThief, CampGood, RoleCategoryGod); err != nil {
+	if err := e.AddPlayer("th", roleThief); err != nil {
 		t.Fatal(err)
 	}
 	mustAdd(t, e, "v1", RoleVillager)
@@ -40,7 +42,7 @@ func TestRoleInfo_ThirdPartyRoleCanShowItsOwnInfo(t *testing.T) {
 
 // TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo 自定义狼队角色在上帝视角里也该有队友。
 //
-// 队友此前按**角色**判（case RoleWerewolf），于是经 AddCustomPlayer 加进来的
+// 队友此前按**角色**判（case RoleWerewolf），于是自定义的狼队角色
 // 狼王在 PhaseInfo 这一份名单里拿不到队友——而 PlayerView 与 WolfTeammates
 // 那两条路都是对的，只有主持人照着组织流程的这一份漏了。
 func TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo(t *testing.T) {
@@ -52,9 +54,9 @@ func TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo(t *testing.T) {
 	wolfPhase.Steps = append(wolfPhase.Steps,
 		PhaseStep{Role: roleWolfKing2, Skill: SkillKill})
 
-	e := MustNewEngine(cfg)
+	e := MustNewEngine(cfg, WithRoleSetup(roleWolfKing2, sideSetup(CampEvil, RoleCategoryWolf)))
 	mustAdd(t, e, "w1", RoleWerewolf)
-	if err := e.AddCustomPlayer("wk", roleWolfKing2, CampEvil, RoleCategoryWolf); err != nil {
+	if err := e.AddPlayer("wk", roleWolfKing2); err != nil {
 		t.Fatal(err)
 	}
 	mustAdd(t, e, "s", RoleSeer)

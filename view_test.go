@@ -40,14 +40,16 @@ func TestGameView_ReadsThrough(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	st.applyEffect(NewEffect(EventKill, "", "v2"))
+	st.applyEffect(NewSetAliveEffect("v2", false))
 
-	// LastProtectedTarget 问的是「上一回合」，因此守护要发生在第 1 回合，
+	// lastProtected 问的是「上一回合」，因此守护要发生在第 1 回合，
 	// 再把状态推到第 2 回合去读
 	st.Round = 1
-	st.applyEffect(NewEffect(EventSetLastProtected, "g", "v1"))
+	for _, ef := range markProtected(newStateView(st), "g", "v1") {
+		st.applyEffect(ef)
+	}
 	st.Round = 2
-	st.applyEffect(NewEffect(EventSetNightKill, "", "v1"))
+	setKill(st, "v1")
 
 	view := newStateView(st)
 
@@ -57,18 +59,18 @@ func TestGameView_ReadsThrough(t *testing.T) {
 	if got := view.AlivePlayerIDsByRole(RoleWerewolf); len(got) != 1 || got[0] != "w1" {
 		t.Errorf("狼人列表: 期望 [w1]，实际 %v", got)
 	}
-	if got := view.LastProtectedTarget("g"); got != "v1" {
+	if got := lastProtected(view, "g"); got != "v1" {
 		t.Errorf("守卫上回合目标: 期望 v1，实际 %q", got)
 	}
-	if got := view.LastProtectedTarget("查无此人"); got != "" {
+	if got := lastProtected(view, "查无此人"); got != "" {
 		t.Errorf("不存在的玩家应返回空，实际 %q", got)
 	}
 	// 再过一回合，那次守护就不再是「上一回合」了
 	st.Round = 3
-	if got := view.LastProtectedTarget("g"); got != "" {
+	if got := lastProtected(view, "g"); got != "" {
 		t.Errorf("隔了一回合应返回空，实际 %q", got)
 	}
-	if got := view.RoundContext().KillTarget; got != "v1" {
+	if got := nightKillTarget(view); got != "v1" {
 		t.Errorf("刀口: 期望 v1，实际 %q", got)
 	}
 	if _, ok := view.Player("查无此人"); ok {
@@ -83,18 +85,17 @@ func TestGameView_RoundContextIsCopy(t *testing.T) {
 	if err := st.addPlayer("v1", RoleVillager); err != nil {
 		t.Fatal(err)
 	}
-	st.applyEffect(NewEffect(EventSetNightKill, "", "v1"))
+	setKill(st, "v1")
 
 	view := newStateView(st)
 	rc := view.RoundContext()
-	rc.KillTarget = "被篡改"
-	rc.ProtectedPlayers["v1"] = true
+	rc.Vars[RoundVarKillTarget] = "被篡改"
+	rc.Vars["凭空多出来的"] = "1"
 
-	if got := view.RoundContext().KillTarget; got != "v1" {
+	if got := nightKillTarget(view); got != "v1" {
 		t.Errorf("改动副本影响到了引擎状态: %q", got)
 	}
-	fresh := view.RoundContext()
-	if fresh.IsProtected("v1") {
+	if fresh := view.RoundContext(); fresh.Vars["凭空多出来的"] != "" {
 		t.Error("改动副本的 map 影响到了引擎状态")
 	}
 }

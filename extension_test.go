@@ -15,7 +15,21 @@ const (
 	roleWolfKing  = RoleType(1000)
 	skillWolfClaw = SkillType(1000)
 	phaseWolfKing = PhaseType(1000)
+
+	// 狼王的枪：开局一发，打出去就没了。存在 PlayerVar 里、由
+	// RoleSetup 发放，走的是与女巫的药完全相同的两条路。
+	varWolfKingGun = "wolfking.gun"
 )
+
+// wolfKingSetup 狼王的初始状态：狼人阵营的狼，开局带一发子弹。
+//
+// 阵营与类别写在角色自己身上，而不是入座时的两个参数——引擎不认识狼王，
+// 也就没有办法替它推导；写在这里，每一处入座都不会填错。
+func wolfKingSetup(playerID string, role RoleType) map[string]string {
+	out := CampVars(CampEvil, RoleCategoryWolf)
+	out[varWolfKingGun] = VarPresent
+	return out
+}
 
 // wolfKingResolver 狼王的开枪结算。第三方实现，只依赖导出的 GameView。
 type wolfKingResolver struct{}
@@ -23,11 +37,22 @@ type wolfKingResolver struct{}
 func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
 	for _, use := range uses {
-		if use.Skill == skillWolfClaw && use.TargetID != "" {
-			effects = append(effects,
-				NewEffect(EventShoot, use.PlayerID, use.TargetID))
-			break // 一枪
+		if use.Skill != skillWolfClaw || use.TargetID == "" {
+			continue
 		}
+		// 枪只有一发。子弹是入座时发的（wolfKingSetup），用掉即清空——
+		// 与女巫的药同一条路：状态在 PlayerVar 里，改动经 Effect 表达。
+		if view.PlayerVar(use.PlayerID, varWolfKingGun) == "" {
+			continue
+		}
+		// SHOOT 是狼王给「发生了什么」起的名字，内核不认得它；
+		// 真正让人出局的是旁边那条 SET_ALIVE。内置角色的狼刀、
+		// 投票放逐走的也是同一条路，第三方在这件事上没有额外负担。
+		effects = append(effects,
+			NewEffect(EventShoot, use.PlayerID, use.TargetID),
+			NewSetAliveEffect(use.TargetID, false),
+			NewSetPlayerVarEffect(use.PlayerID, varWolfKingGun, ""))
+		break
 	}
 	return effects
 }
@@ -70,6 +95,7 @@ func newWolfKingGame(t *testing.T) *Engine {
 
 	// 2. 构造时注册狼王阶段的解析器，并装饰投票解析器
 	engine, err := NewEngine(cfg,
+		WithRoleSetup(roleWolfKing, RoleSetupFunc(wolfKingSetup)),
 		WithResolver(phaseWolfKing, &wolfKingResolver{}),
 		WithResolver(PhaseVote,
 			&voteWithWolfKing{inner: NewVoteResolver()}))
@@ -78,8 +104,7 @@ func newWolfKingGame(t *testing.T) *Engine {
 	}
 
 	// 3. 狼王的阵营与类别推导不出来，显式给出
-	if err := engine.AddCustomPlayer("wk", roleWolfKing,
-		CampEvil, RoleCategoryWolf); err != nil {
+	if err := engine.AddPlayer("wk", roleWolfKing); err != nil {
 		t.Fatal(err)
 	}
 	for id, role := range map[string]RoleType{
@@ -162,13 +187,13 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 	engine := newWolfKingGame(t)
 
 	// 内置狼人出局，狼王还在 —— 狼人阵营未灭，游戏继续
-	engine.state.applyEffect(NewEffect(EventKill, "", "w1"))
+	engine.state.applyEffect(NewSetAliveEffect("w1", false))
 	if over, _ := checkVictory(engine); over {
 		t.Error("狼王仍在场，狼人阵营不应判为全灭")
 	}
 
 	// 狼王也出局 —— 好人获胜
-	engine.state.applyEffect(NewEffect(EventKill, "", "wk"))
+	engine.state.applyEffect(NewSetAliveEffect("wk", false))
 	over, winner := checkVictory(engine)
 	if !over || winner != CampGood {
 		t.Errorf("狼人阵营全灭应判好人胜利，实际 over=%v winner=%v", over, winner)
@@ -261,16 +286,18 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 // TestExtension_CustomWolfCampRoleIsPartOfTheTeam 自定义的狼队角色要真的算进狼队。
 //
 // 狼队的判定此前写死 WEREWOLF，而狼王、白狼王、狼美人经
-// AddCustomPlayer 加进来时 Camp 是 EVIL、Role 不是 WEREWOLF：
+// 它的 Camp 是 EVIL 而 Role 不是 WEREWOLF：
 // 他们看不到队友、不被真狼看到、夜里也发不出话——自定义狼队角色实际不可用。
 func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	const roleWolfKing = RoleType(1000)
 
-	engine := MustNewEngine(nil)
+	engine := MustNewEngine(nil, WithRoleSetup(roleWolfKing, RoleSetupFunc(
+		func(string, RoleType) map[string]string {
+			return CampVars(CampEvil, RoleCategoryWolf)
+		})))
 	mustAdd(t, engine, "w1", RoleWerewolf)
-	if err := engine.AddCustomPlayer("wk", roleWolfKing,
-		CampEvil, RoleCategoryWolf); err != nil {
-		t.Fatalf("AddCustomPlayer 失败: %v", err)
+	if err := engine.AddPlayer("wk", roleWolfKing); err != nil {
+		t.Fatalf("AddPlayer 失败: %v", err)
 	}
 	mustAdd(t, engine, "s", RoleSeer)
 	mustAdd(t, engine, "v1", RoleVillager)

@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -96,8 +97,16 @@ func randomConfig(rng *rand.Rand) *GameConfig {
 	return cfg
 }
 
-// randomBoard 随机出一副合法的板子：至少一狼、至少一好人。
-func randomBoard(rng *rand.Rand, withGuard bool) []RoleType {
+// randomBoard 随机出一副能真的开局的板子。
+//
+// 「合法」不只是「至少一狼、至少一好人」：屠城模式下狼人不比好人少的
+// 板子第一次结算就是狼人胜，Start 会直接拒掉（见
+// TestEngine_Start_RejectsInvalidBoard）。补平人数是刻意的——不补的话
+// 5000 局里有 8% 根本没开局，而统计里看不出来，「跑了 5000 局」就成了
+// 一句不准确的话。
+//
+// extraEvil 是板子之外还会加进来的狼（狼王），一并计进人数。
+func randomBoard(rng *rand.Rand, withGuard bool, extraEvil int) []RoleType {
 	gods := []RoleType{RoleSeer, RoleWitch, RoleHunter}
 	if withGuard {
 		gods = append(gods, RoleGuard)
@@ -113,6 +122,17 @@ func randomBoard(rng *rand.Rand, withGuard bool) []RoleType {
 		}
 	}
 	for i := 0; i < 1+rng.Intn(5); i++ { // 1~5 民，保证好人不为空
+		roles = append(roles, RoleVillager)
+	}
+
+	// 补平：好人必须严格多于狼人，否则屠城模式下开局即判负
+	evil := extraEvil
+	for _, r := range roles {
+		if r == RoleWerewolf {
+			evil++
+		}
+	}
+	for len(roles)+extraEvil-evil <= evil {
 		roles = append(roles, RoleVillager)
 	}
 
@@ -137,6 +157,7 @@ func withWolfKing(cfg *GameConfig) []EngineOption {
 		NextPhase: cfg.startPhase(),
 	}
 	return []EngineOption{
+		WithRoleSetup(roleWolfKing, RoleSetupFunc(wolfKingSetup)),
 		WithResolver(phaseWolfKing, &wolfKingResolver{}),
 		WithResolver(PhaseVote, &voteWithWolfKing{inner: NewVoteResolver()}),
 		WithResolver(PhaseNightResolve, &nightResolveWithWolfKing{inner: NewNightResolveResolver()}),
@@ -186,29 +207,41 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 	}
 
 	e := MustNewEngine(cfg, opts...)
-	roles := randomBoard(rng, hasGuardPhase)
+	extraEvil := 0
+	if withCustom {
+		extraEvil = 1 // 狼王也是狼
+	}
+	roles := randomBoard(rng, hasGuardPhase, extraEvil)
 	if withCustom {
 		roles = append(roles, roleWolfKing)
 		rng.Shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
 	}
 
 	ids := make([]string, 0, len(roles))
-	identity := map[string][2]int32{}
+	type who struct {
+		role RoleType
+		camp Camp
+	}
+	identity := map[string]who{}
 	for i, r := range roles {
 		id := fmt.Sprintf("p%02d", i)
-		// 狼王的阵营与类别推导不出来，得显式给出
-		camp, category := CampOf(r), CategoryOf(r)
-		if r == roleWolfKing {
-			camp, category = CampEvil, RoleCategoryWolf
-		}
-		if err := e.AddCustomPlayer(id, r, camp, category); err != nil {
-			t.Fatalf("seed=%d AddCustomPlayer: %v", seed, err)
+		// 阵营与类别写在角色自己的 setup 里，入座不需要再给一遍——
+		// 狼王的那一份见 wolfKingSetup
+		if err := e.AddPlayer(id, r); err != nil {
+			t.Fatalf("seed=%d AddPlayer: %v", seed, err)
 		}
 		ids = append(ids, id)
-		identity[id] = [2]int32{int32(r), int32(camp)}
+		p, _ := e.PlayerInfo(id)
+		identity[id] = who{role: r, camp: campOf(p)}
 	}
 	if err := e.Start(); err != nil {
-		t.Fatalf("seed=%d Start: %v", seed, err)
+		// 开局就已分出胜负的板子（屠城模式下狼人不比好人少）会被 Start
+		// 拒掉。这不是缺陷，是那条校验在起作用——但要记一笔，否则
+		// 「跑了 5000 局」里有多少局根本没开局就说不清了。
+		if !errors.Is(err, ErrInvalidBoard) {
+			t.Fatalf("seed=%d Start: %v", seed, err)
+		}
+		return append(tags, "开局即判负，未成局")
 	}
 
 	dead := map[string]bool{}
@@ -306,11 +339,14 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		// 女巫用掉的那瓶解药会一夜又一夜地把同一个人救回来——
 		// 一次性道具变成了永久道具，规则当场失效。
 		if e.Round() > lastRound {
-			if rc := e.RoundContext(); rc != nil {
-				if rc.KillTarget != "" || len(rc.ProtectedPlayers) > 0 ||
-					len(rc.SavedPlayers) > 0 || len(rc.PoisonedPlayers) > 0 {
-					t.Fatalf("seed=%d step=%d 进入第 %d 回合，上一回合的记录还在: %+v",
-						seed, step, e.Round(), rc)
+			if rc := e.RoundContext(); rc != nil && len(rc.Vars) > 0 {
+				t.Fatalf("seed=%d step=%d 进入第 %d 回合，上一回合的记录还在: %v",
+					seed, step, e.Round(), rc.Vars)
+			}
+			for _, id := range ids {
+				if p, ok := e.PlayerInfo(id); ok && len(p.RoundVars) > 0 {
+					t.Fatalf("seed=%d step=%d 进入第 %d 回合，%s 身上的标记还在: %v",
+						seed, step, e.Round(), id, p.RoundVars)
 				}
 			}
 		}
@@ -325,7 +361,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 			if !p.Alive {
 				dead[id] = true
 			}
-			if got := ([2]int32{int32(p.Role), int32(p.Camp)}); got != identity[id] {
+			if got := (who{role: p.Role, camp: campOf(p)}); got != identity[id] {
 				t.Fatalf("seed=%d step=%d %s 身份变了", seed, step, id)
 			}
 		}
@@ -340,19 +376,19 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 				}
 				// 只允许看到狼队友的身份
 				other, _ := e.PlayerInfo(p.ID)
-				if self.Camp != CampEvil || other.Camp != CampEvil {
+				if campOf(self) != CampEvil || campOf(other) != CampEvil {
 					t.Fatalf("seed=%d step=%d %s(%v) 看到了 %s(%v) 的身份",
-						seed, step, id, self.Camp, p.ID, other.Camp)
+						seed, step, id, campOf(self), p.ID, campOf(other))
 				}
 			}
 			// 刀口只有活着且解药在手的女巫能看到
 			if v.RoleInfo[RoleInfoKillTarget] != "" {
-				if !self.Alive || self.Role != RoleWitch || !self.HasAntidote {
+				if !self.Alive || self.Role != RoleWitch || self.Var(VarWitchAntidote) == "" {
 					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.RoleInfo[RoleInfoKillTarget])
 				}
 			}
 			// 好人不该有狼队友
-			if self.Camp != CampEvil && len(v.Teammates) > 0 {
+			if campOf(self) != CampEvil && len(v.Teammates) > 0 {
 				t.Fatalf("seed=%d step=%d 好人 %s 拿到了队友 %v", seed, step, id, v.Teammates)
 			}
 		}
@@ -392,7 +428,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		for _, id := range ids {
 			a, _ := e.PlayerInfo(id)
 			b, _ := replayed.PlayerInfo(id)
-			if a.Alive != b.Alive || a.HasAntidote != b.HasAntidote || a.HasPoison != b.HasPoison {
+			if a.Alive != b.Alive || !sameVars(a.Vars, b.Vars) {
 				t.Fatalf("seed=%d step=%d 回放的 %s 状态不同: %+v vs %+v", seed, step, id, a, b)
 			}
 		}

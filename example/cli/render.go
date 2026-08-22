@@ -153,12 +153,15 @@ func describe(ef *werewolf.Effect) string {
 
 		// 内部效果只会出现在效果流里，不会发给任何玩家。
 		// log 看的是原始流水，把它们也译出来才读得懂。
-		werewolf.EventSetNightKill:     "记下今晚的刀口",
-		werewolf.EventClearNightKill:   "刀口作废",
-		werewolf.EventSetLastProtected: "记下本回合的守护目标",
-		werewolf.EventUseAntidote:      "消耗解药",
-		werewolf.EventUsePoison:        "消耗毒药",
-		werewolf.EventAbilityTriggered: "死亡技能待结算",
+		//
+		// 这几条是内核的状态原语，与角色无关：谁死了、谁身上多了个标记。
+		// 「记下今晚的刀口」「消耗解药」这类说法此前也是事件类型，
+		// 现在它们只是原语里的一个键名，读法见 varLabel。
+		werewolf.EventSetAlive:          "存活状态变更",
+		werewolf.EventSetPlayerVar:      "改玩家状态",
+		werewolf.EventSetPlayerRoundVar: "本回合标记",
+		werewolf.EventSetRoundVar:       "改本回合状态",
+		werewolf.EventAbilityTriggered:  "死亡技能待结算",
 	}[ef.Type]
 	if verb == "" {
 		verb = ef.Type.String()
@@ -247,11 +250,43 @@ func aliveWord(alive bool) string {
 	return "已出局"
 }
 
-func haveWord(has bool) string {
-	if has {
-		return "还在"
+// roleInfoKeyLabels 认识的 RoleInfo 键的中文说法。
+//
+// 引擎不认识任何具体角色，这份对照表是**主持台**的事，不是库的事：
+// 扩展角色自己定的键不在表里，会原样打出来，不会被吞掉。
+var roleInfoKeyLabels = map[string]string{
+	werewolf.RoleInfoAntidote:   "解药",
+	werewolf.RoleInfoPoison:     "毒药",
+	werewolf.RoleInfoKillTarget: "今晚被刀的是",
+}
+
+// roleInfoLines 把角色专属信息渲染成若干行，键序稳定。
+func roleInfoLines(info map[string]string) []string {
+	if len(info) == 0 {
+		return nil
 	}
-	return "已用"
+
+	keys := make([]string, 0, len(info))
+	for k := range info {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	lines := make([]string, 0, len(keys))
+	for _, k := range keys {
+		label, ok := roleInfoKeyLabels[k]
+		if !ok {
+			label = k
+		}
+		// 存量这类布尔状态只在「有」的时候出现在 RoleInfo 里，
+		// 值本身（"1"）没有信息量，打标签就够了。
+		if info[k] == werewolf.VarPresent {
+			lines = append(lines, label)
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", label, info[k]))
+	}
+	return lines
 }
 
 func revealed(r werewolf.RoleType) string {

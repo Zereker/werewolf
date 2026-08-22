@@ -41,6 +41,7 @@ package werewolf
 // 当前该表为空——R1–R11 全部通过。新发现偏差时在此登记，修复后删除。
 
 import (
+	"maps"
 	"os"
 	"testing"
 )
@@ -86,6 +87,15 @@ func villagers(ids ...string) []seat {
 type ruleGame struct {
 	t *testing.T
 	e *Engine
+}
+
+// sameVars 比较两份自定义状态是否完全一致。
+//
+// 女巫的药 v2 起并入 Vars，因此「状态有没有带上」这件事不再是逐字段比，
+// 而是整张表比——漏掉一个键就是漏掉一条规则，与漏掉 LastProtectedRound
+// 那次是同一类错误。
+func sameVars(a, b map[string]string) bool {
+	return maps.Equal(a, b)
 }
 
 // newRuleGame 按座位表创建并开局。cfg 为 nil 时使用默认配置。
@@ -315,7 +325,7 @@ func TestRule_R2_WitchSeesKillOnlyWhileAntidoteHeld(t *testing.T) {
 	g.end(PhaseNightResolve)
 	g.end(PhaseDay)
 
-	if g.info("wi").HasAntidote {
+	if g.info("wi").Var(VarWitchAntidote) != "" {
 		t.Fatal("第一夜救人后解药应当已消耗")
 	}
 	g.assertAlive("v1", true, "第一夜被救")
@@ -378,10 +388,10 @@ func TestRule_R3_WitchCannotUseBothPotionsInOneNight(t *testing.T) {
 
 			after := g.info("wi")
 			potionsUsed := 0
-			if !after.HasAntidote {
+			if after.Var(VarWitchAntidote) == "" {
 				potionsUsed++
 			}
-			if !after.HasPoison {
+			if after.Var(VarWitchPoison) == "" {
 				potionsUsed++
 			}
 			if potionsUsed > 1 {
@@ -704,7 +714,7 @@ func TestRule_R7_GuardPlusAntidoteKillsTarget(t *testing.T) {
 	g.endAny()
 
 	g.assertAlive("v1", false, "同守同救")
-	if g.info("wi").HasAntidote {
+	if g.info("wi").Var(VarWitchAntidote) != "" {
 		t.Error("同守同救时解药仍应被消耗")
 	}
 }
@@ -1078,19 +1088,22 @@ func TestRule_R7_GuardSaveTogetherDiesDisabled(t *testing.T) {
 
 // TestRule_R10_SideWipeIgnoresEvilCategories 屠边只数好人阵营的神职与平民。
 //
-// AddCustomPlayer 允许把狼队成员标成神职（隐狼、狼美人这类角色本来就是
-// 「狼阵营的神」）。屠边的字面表述是「淘汰所有平民或神職人員」，指的是
-// 好人阵营那一半。把狼队的神一起计进总数，一名活着的隐狼就能让
-// 「好人的神已经死光」这个事实永远判不出来，狼队赢不了本该赢下的局。
+// 隐狼、狼美人这类角色本来就是「狼阵营的神」。屠边的字面表述是
+// 「淘汰所有平民或神職人員」，指的是好人阵营那一半。把狼队的神一起计进
+// 总数，一名活着的隐狼就能让「好人的神已经死光」这个事实永远判不出来，
+// 狼队赢不了本该赢下的局。
 func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	requireRule(t, "R10.屠边只数好人")
 
-	e := MustNewEngine(nil)
+	// 隐狼是一个自己的角色，不是「换了阵营的狼人」——阵营与类别写在
+	// 它的 setup 里，与内置角色走同一张表
+	const roleHiddenWolf = RoleType(1010)
+
+	e := MustNewEngine(nil, WithRoleSetup(roleHiddenWolf,
+		sideSetup(CampEvil, RoleCategoryGod)))
 	mustAdd(t, e, "w1", RoleWerewolf)
-	// 隐狼：狼阵营，但角色类别是神职
-	if err := e.AddCustomPlayer("hidden", RoleWerewolf,
-		CampEvil, RoleCategoryGod); err != nil {
-		t.Fatalf("AddCustomPlayer 失败: %v", err)
+	if err := e.AddPlayer("hidden", roleHiddenWolf); err != nil {
+		t.Fatalf("AddPlayer 失败: %v", err)
 	}
 	mustAdd(t, e, "s", RoleSeer)
 	mustAdd(t, e, "v1", RoleVillager)
@@ -1176,41 +1189,55 @@ func TestRule_R10_MissingCategoryDoesNotEndGame(t *testing.T) {
 	})
 }
 
-// TestRule_R10_CategoryOf 角色类别的默认映射。
-func TestRule_R10_CategoryOf(t *testing.T) {
+// TestRule_R10_RoleCategories 六个内置角色的阵营与类别。
+//
+// 它们此前由 CampOf / CategoryOf 两个 switch 推导，而那两个函数住在内核里，
+// 也就是内核知道「预言家是好人的神」。现在它们只是 builtinRoleSetup 表里的
+// 一行初始状态，与女巫的两瓶药同一条路。
+func TestRule_R10_RoleCategories(t *testing.T) {
 	cases := []struct {
-		role RoleType
-		want RoleCategory
+		role     RoleType
+		camp     Camp
+		category RoleCategory
 	}{
-		{RoleWerewolf, RoleCategoryWolf},
-		{RoleSeer, RoleCategoryGod},
-		{RoleWitch, RoleCategoryGod},
-		{RoleHunter, RoleCategoryGod},
-		{RoleGuard, RoleCategoryGod},
-		{RoleVillager, RoleCategoryVillager},
-		{RoleGod, RoleCategoryUnknown},
+		{RoleWerewolf, CampEvil, RoleCategoryWolf},
+		{RoleSeer, CampGood, RoleCategoryGod},
+		{RoleWitch, CampGood, RoleCategoryGod},
+		{RoleHunter, CampGood, RoleCategoryGod},
+		{RoleGuard, CampGood, RoleCategoryGod},
+		{RoleVillager, CampGood, RoleCategoryVillager},
 	}
 	for _, tc := range cases {
-		if got := CategoryOf(tc.role); got != tc.want {
-			t.Errorf("CategoryOf(%v): 期望 %v，实际 %v", tc.role, tc.want, got)
+		setup, ok := builtinRoleSetup[tc.role]
+		if !ok {
+			t.Errorf("%v 没有登记初始状态", tc.role)
+			continue
+		}
+		vars := setup.Setup("p", tc.role)
+		if got := Camp(vars[VarCamp]); got != tc.camp {
+			t.Errorf("%v 的阵营: 期望 %v，实际 %v", tc.role, tc.camp, got)
+		}
+		if got := RoleCategory(vars[VarCategory]); got != tc.category {
+			t.Errorf("%v 的类别: 期望 %v，实际 %v", tc.role, tc.category, got)
 		}
 	}
 
-	// AddPlayer 应自动填充类别，且可被覆盖（供自定义角色使用）
+	// 入座之后读得到
 	g := newRuleGame(t, nil, seats(wolf("w1"), seer("s"), villagers("v1", "v2"))...)
-	if got := g.info("s").Category; got != RoleCategoryGod {
+	if got := categoryOf(g.info("s")); got != RoleCategoryGod {
 		t.Errorf("预言家类别: 期望 GOD，实际 %v", got)
 	}
-	// 扩展角色用 AddCustomPlayer 显式指定阵营与类别：
-	// 隐狼是「好人牌面的狼」，阵营与类别都无法从角色推导
+
+	// 没有登记的角色不属于任何阵营——这是刻意的：内核没有默认阵营可给，
+	// 而「悄悄算作好人」比「不算」更难查
+	const roleUnregistered = RoleType(1011)
 	e2 := MustNewEngine(nil)
-	if err := e2.AddCustomPlayer("hidden", RoleVillager,
-		CampEvil, RoleCategoryWolf); err != nil {
-		t.Fatalf("AddCustomPlayer 失败: %v", err)
+	if err := e2.AddPlayer("x", roleUnregistered); err != nil {
+		t.Fatalf("AddPlayer 失败: %v", err)
 	}
-	hidden, _ := e2.PlayerInfo("hidden")
-	if hidden.Camp != CampEvil || hidden.Category != RoleCategoryWolf {
-		t.Errorf("自定义玩家: 期望 EVIL/WOLF，实际 %v/%v", hidden.Camp, hidden.Category)
+	x, _ := e2.PlayerInfo("x")
+	if got := campOf(x); got != CampUnspecified {
+		t.Errorf("没登记的角色不该有阵营，实际 %v", got)
 	}
 }
 

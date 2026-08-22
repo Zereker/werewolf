@@ -112,17 +112,18 @@ func tally(view GameView) census {
 	}
 
 	for _, p := range view.AllPlayers() {
-		good := p.Camp == CampGood
+		camp, category := campOf(p), categoryOf(p)
+		good := camp == CampGood
 		if good {
-			c.total[p.Category]++
+			c.total[category]++
 		}
 		if !p.Alive {
 			continue
 		}
 		if good {
-			c.alive[p.Category]++
+			c.alive[category]++
 			c.goodAlive++
-		} else if p.Camp == CampEvil {
+		} else if camp == CampEvil {
 			c.evilAlive++
 		}
 	}

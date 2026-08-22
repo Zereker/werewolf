@@ -122,7 +122,7 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 		WithData("votes", result.MaxVote).
 		WithData("voters", result.Voters[result.Winner]).
 		WithData("allVotes", result.Votes)
-	effects = append(effects, effect)
+	effects = append(effects, effect, NewSetAliveEffect(result.Winner, false))
 
 	// 被投票出局的猎人可以开枪
 	effects = append(effects,
@@ -169,15 +169,17 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView, config *GameCon
 		protect := NewEffect(EventProtect, use.PlayerID, use.TargetID)
 
 		switch {
-		case !config.GuardCanRepeat && view.LastProtectedTarget(use.PlayerID) == use.TargetID:
+		case !config.GuardCanRepeat && lastProtected(view, use.PlayerID) == use.TargetID:
 			// 连守限制：视图只给「上回合守了谁」，是否允许由规则配置决定
 			protect.Cancel("cannot protect same target consecutively")
 		case use.PlayerID == use.TargetID && !config.GuardCanProtectSelf:
 			protect.Cancel("guard cannot protect self")
 		default:
-			// 守护生效，记下本回合的目标供下回合判断连守
+			// PROTECT 是「发生了什么」的说法，下面两条才真正改状态：
+			// 标记今晚被守的人，并记下本回合的守护供下回合判断连守。
 			effects = append(effects,
-				NewEffect(EventSetLastProtected, use.PlayerID, use.TargetID))
+				NewSetPlayerRoundVarEffect(use.TargetID, PlayerRoundVarProtected, VarPresent))
+			effects = append(effects, markProtected(view, use.PlayerID, use.TargetID)...)
 		}
 
 		effects = append(effects, protect)
@@ -211,8 +213,8 @@ func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 	//   - 狼人不知道守卫守了谁，刀是照砍的
 	//   - 女巫看到的是「狼刀目标」，她同样不知道守卫的动作
 	// 若在此处因守护而不记录刀口，「同守同救」这一局面根本无法构成。
-	setKillEffect := NewEffect(EventSetNightKill, "", result.Winner)
-	effects = append(effects, setKillEffect)
+	effects = append(effects,
+		NewSetRoundVarEffect(RoundVarKillTarget, result.Winner))
 
 	return effects
 }
@@ -227,7 +229,7 @@ func NewWitchResolver() *WitchResolver {
 
 func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
 	effects := make([]*Effect, 0)
-	killTarget := view.RoundContext().KillTarget
+	killTarget := nightKillTarget(view)
 
 	// 同一玩家的同一技能只取首次提交
 	type skillKey struct {
@@ -300,10 +302,13 @@ func resolveAntidote(use *SkillUse, view GameView, config *GameConfig, killTarge
 		save.Cancel("target is not dying")
 	default:
 		// 救的是被杀的人，消耗解药。是否真的救回由 NightResolveResolver
-		// 综合「是否同时被守卫守护」判定（同守同救可能依然死亡）
+		// 综合「是否同时被守卫守护」判定（同守同救可能依然死亡）。
+		//
+		// SAVE 是说法，下面两条是状态：药少一瓶，目标带上「今晚被救」的标记。
 		return []*Effect{
-			NewEffect(EventUseAntidote, use.PlayerID, ""),
 			save,
+			NewSetPlayerVarEffect(use.PlayerID, VarWitchAntidote, ""),
+			NewSetPlayerRoundVarEffect(use.TargetID, PlayerRoundVarSaved, VarPresent),
 		}, true
 	}
 
@@ -322,9 +327,12 @@ func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool)
 	case use.PlayerID == use.TargetID:
 		poison.Cancel("witch cannot poison self")
 	default:
-		// 消耗毒药并标记目标，实际死亡在 NightResolveResolver 结算
+		// 消耗毒药并标记目标，实际死亡在 NightResolveResolver 结算。
+		// 这里刻意不产出 POISON：中毒要到天亮才公布，此刻发出去
+		// 等于当场告诉全场谁被毒了。
 		return []*Effect{
-			NewEffect(EventUsePoison, use.PlayerID, use.TargetID),
+			NewSetPlayerVarEffect(use.PlayerID, VarWitchPoison, ""),
+			NewSetPlayerRoundVarEffect(use.TargetID, PlayerRoundVarPoisoned, VarPresent),
 		}, true
 	}
 
@@ -352,8 +360,8 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 		// 只报阵营，不报具体角色
 		if target, ok := view.Player(use.TargetID); ok {
 			check.
-				WithData("camp", target.Camp).
-				WithData("isGood", target.Camp == CampGood)
+				WithData("camp", campOf(target)).
+				WithData("isGood", campOf(target) == CampGood)
 		}
 		effects = append(effects, check)
 	})
@@ -381,11 +389,9 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 	//	被守       -> SameGuardKillIsEmpty 决定守护是否生效
 	//	被救       -> 救回
 	//	都没有      -> 死亡
-	rc := view.RoundContext()
-	if rc.KillTarget != "" {
-		killTarget := rc.KillTarget
-		protected := rc.IsProtected(killTarget)
-		saved := rc.IsSaved(killTarget)
+	if killTarget := nightKillTarget(view); killTarget != "" {
+		protected := isProtected(view, killTarget)
+		saved := isSaved(view, killTarget)
 
 		var dies bool
 		var reason string
@@ -409,31 +415,35 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 			if reason != "" {
 				killEffect.WithData("reason", reason)
 			}
-			effects = append(effects, killEffect)
+			effects = append(effects, killEffect, NewSetAliveEffect(killTarget, false))
 
 			// 「除殉情或被毒殺外」是对死因的排除。同一晚既被刀又被毒的猎人
 			// 身上有毒，即便这里走的是刀口这条通道，也不能开枪。
-			if !rc.IsPoisoned(killTarget) {
+			if !isPoisoned(view, killTarget) {
 				effects = append(effects,
 					hunterTrigger(view, killTarget, PhaseNightHunter)...)
 			}
 		} else {
 			// 刀口未生效，清除击杀目标
-			clearKillEffect := NewEffect(EventClearNightKill, "", "").
-				WithData("reason", reason)
-			effects = append(effects, clearKillEffect)
+			effects = append(effects,
+				NewSetRoundVarEffect(RoundVarKillTarget, "").WithData("reason", reason))
 		}
 	}
 
-	// 处理女巫毒杀（毒杀的玩家已在 WitchResolver 中标记到 RoundContext）
+	// 处理女巫毒杀（毒杀的玩家已在 WitchResolver 中标记）
 	//
 	// 规则「除殉情或被毒殺外，以任何其他方式被淘汰時可以…開槍」：
 	// 被毒死的猎人不触发开枪，这正是毒药相对于狼刀的战术价值所在。
-	// 按 ID 排序遍历：map 的遍历顺序是随机的，同一个局面每次结算
-	// 产出的效果顺序都不一样，效果流的回放与比对就没了确定性
-	for _, playerID := range sortedKeys(rc.PoisonedPlayers) {
-		poisonKillEffect := NewEffect(EventPoison, "", playerID)
-		effects = append(effects, poisonKillEffect)
+	//
+	// 走 AllPlayers 而不是遍历一张 map：它按 ID 排序，同一个局面每次
+	// 结算产出的效果顺序都一样，效果流的回放与比对才有确定性。
+	for _, p := range view.AllPlayers() {
+		if !isPoisoned(view, p.ID) {
+			continue
+		}
+		effects = append(effects,
+			NewEffect(EventPoison, "", p.ID),
+			NewSetAliveEffect(p.ID, false))
 	}
 
 	return effects
@@ -455,7 +465,8 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameCo
 		case SkillShoot:
 			if use.TargetID != "" {
 				effects = append(effects,
-					NewEffect(EventShoot, use.PlayerID, use.TargetID))
+					NewEffect(EventShoot, use.PlayerID, use.TargetID),
+					NewSetAliveEffect(use.TargetID, false))
 				// 枪口下的另一名猎人同样可以回枪：规则排除的只有
 				// 殉情与毒杀，被枪打死属于「其他方式」。
 				// 死亡触发的入队分散在狼刀、投票、开枪三条通道上，
@@ -496,14 +507,16 @@ const (
 )
 
 // witchHas 该女巫是否还持有指定的药。
-// 非女巫一律返回 false。
+// 非女巫一律返回 false——「谁有资格用药」是规则，由这里判定，
+// 而不是由状态的写入点判定。
 func witchHas(view GameView, playerID string, kind potionKind) bool {
 	p, ok := view.Player(playerID)
 	if !ok || p.Role != RoleWitch {
 		return false
 	}
-	if kind == potionAntidote {
-		return p.HasAntidote
+	key := VarWitchAntidote
+	if kind == potionPoison {
+		key = VarWitchPoison
 	}
-	return p.HasPoison
+	return view.PlayerVar(playerID, key) != ""
 }

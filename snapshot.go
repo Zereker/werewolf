@@ -8,7 +8,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 6
+const SnapshotVersion = 9
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -35,30 +35,25 @@ type Snapshot struct {
 
 // PlayerSnapshot 单个玩家的快照
 type PlayerSnapshot struct {
-	ID       string       `json:"id"`
-	Role     RoleType     `json:"role"`
-	Camp     Camp         `json:"camp"`
-	Category RoleCategory `json:"category"`
-	Alive    bool         `json:"alive"`
+	ID    string   `json:"id"`
+	Role  RoleType `json:"role"`
+	Alive bool     `json:"alive"`
 
-	HasAntidote bool `json:"has_antidote"`
-	HasPoison   bool `json:"has_poison"`
+	// RoundVars 这名玩家在本回合的标记，每回合清零。今晚谁被守了、
+	// 被救了、被毒了都在这里——它们此前是 RoundCtxSnapshot 上三个
+	// []string，v8 起并入玩家自身，与规则包自己定的标记同一条路。
+	RoundVars map[string]string `json:"round_vars,omitempty"`
 
-	LastProtectedTarget string `json:"last_protected_target,omitempty"`
-	LastProtectedRound  int    `json:"last_protected_round,omitempty"`
-
-	// Vars 第三方角色的自定义状态。存这一项是这个机制成立的前提：
-	// 带不上它，扩展的状态就只能藏在 Resolver 里，那正是要解决的问题。
+	// Vars 角色私有的状态。女巫的药也在其中（键见 VarWitchAntidote）——
+	// 它们此前是这里两个具名 bool 字段，v7 起并入 Vars，与第三方角色
+	// 同一条路。存这一项是整个机制成立的前提：带不上它，角色的状态
+	// 就只能藏在 Resolver 里，那正是要解决的问题。
 	Vars map[string]string `json:"vars,omitempty"`
 }
 
 // RoundCtxSnapshot 回合上下文的快照
 type RoundCtxSnapshot struct {
-	KillTarget       string                   `json:"kill_target,omitempty"`
-	ProtectedPlayers []string                 `json:"protected_players,omitempty"`
-	SavedPlayers     []string                 `json:"saved_players,omitempty"`
-	PoisonedPlayers  []string                 `json:"poisoned_players,omitempty"`
-	PendingTriggers  []PendingTriggerSnapshot `json:"pending_triggers,omitempty"`
+	PendingTriggers []PendingTriggerSnapshot `json:"pending_triggers,omitempty"`
 
 	// Vars 第三方角色的回合级自定义状态
 	Vars map[string]string `json:"vars,omitempty"`
@@ -231,16 +226,11 @@ func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 	out := make([]PlayerSnapshot, 0, len(s.players))
 	for _, p := range s.players {
 		out = append(out, PlayerSnapshot{
-			ID:                  p.ID,
-			Role:                p.Role,
-			Camp:                p.Camp,
-			Category:            p.Category,
-			Alive:               p.Alive,
-			HasAntidote:         p.HasAntidote,
-			HasPoison:           p.HasPoison,
-			LastProtectedTarget: p.LastProtectedTarget,
-			LastProtectedRound:  p.LastProtectedRound,
-			Vars:                copyVars(p.Vars),
+			ID:        p.ID,
+			Role:      p.Role,
+			Alive:     p.Alive,
+			RoundVars: copyVars(p.RoundVars),
+			Vars:      copyVars(p.Vars),
 		})
 	}
 	sortPlayerSnapshots(out)
@@ -254,31 +244,22 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 	}
 
 	return RoundCtxSnapshot{
-		KillTarget:       s.RoundCtx.KillTarget,
-		ProtectedPlayers: sortedKeys(s.RoundCtx.ProtectedPlayers),
-		SavedPlayers:     sortedKeys(s.RoundCtx.SavedPlayers),
-		PoisonedPlayers:  sortedKeys(s.RoundCtx.PoisonedPlayers),
-		PendingTriggers:  snapshotTriggers(s.RoundCtx.PendingTriggers),
-		Vars:             copyVars(s.RoundCtx.Vars),
+		PendingTriggers: snapshotTriggers(s.RoundCtx.PendingTriggers),
+		Vars:            copyVars(s.RoundCtx.Vars),
 	}
 }
 
 // restorePlayer 按快照写入一名玩家。
 //
-// 不走 AddPlayer：恢复时要原样还原快照里的存活状态与药剂，
-// 而 AddPlayer 会按「新玩家」的规则重新初始化。
+// 不走 AddPlayer：恢复时要原样还原快照里的存活状态与 Vars，
+// 而 AddPlayer 会经 RoleSetup 重新发一遍初始状态——用掉的药会回来。
 func (s *gameState) restorePlayer(p PlayerSnapshot) {
 	s.players[p.ID] = &PlayerState{
-		ID:                  p.ID,
-		Role:                p.Role,
-		Camp:                p.Camp,
-		Category:            p.Category,
-		Alive:               p.Alive,
-		HasAntidote:         p.HasAntidote,
-		HasPoison:           p.HasPoison,
-		LastProtectedTarget: p.LastProtectedTarget,
-		LastProtectedRound:  p.LastProtectedRound,
-		Vars:                copyVars(p.Vars),
+		ID:        p.ID,
+		Role:      p.Role,
+		Alive:     p.Alive,
+		RoundVars: copyVars(p.RoundVars),
+		Vars:      copyVars(p.Vars),
 	}
 }
 
@@ -300,44 +281,12 @@ func (s *gameState) restoreProgress(phase PhaseType, round int, rc RoundCtxSnaps
 	s.Phase = phase
 	s.Round = round
 	s.RoundCtx = &RoundContext{
-		KillTarget:       rc.KillTarget,
-		ProtectedPlayers: keySet(rc.ProtectedPlayers),
-		SavedPlayers:     keySet(rc.SavedPlayers),
-		PoisonedPlayers:  keySet(rc.PoisonedPlayers),
-		PendingTriggers:  restoreTriggers(rc.PendingTriggers),
-		Vars:             copyVars(rc.Vars),
+		PendingTriggers: restoreTriggers(rc.PendingTriggers),
+		Vars:            copyVars(rc.Vars),
 	}
 }
 
 // ==================== 小工具 ====================
-
-// sortedKeys 把集合导出为有序切片。
-// 排序是为了让同一局面导出的快照字节一致，便于比对与幂等写入。
-func sortedKeys(m map[string]bool) []string {
-	if len(m) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(m))
-	for k, v := range m {
-		if v {
-			out = append(out, k)
-		}
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	sort.Strings(out)
-	return out
-}
-
-// keySet 把切片还原为集合
-func keySet(ids []string) map[string]bool {
-	m := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		m[id] = true
-	}
-	return m
-}
 
 // sortedStrings 原地排序并返回，用于让面向调用方的列表输出稳定
 func sortedStrings(in []string) []string {

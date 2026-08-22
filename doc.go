@@ -31,13 +31,21 @@
 // 这条约束由签名保证而非靠约定——状态的每一次改变都经由同一个写入点，
 // 快照、回放、审计这些能力才成立。
 //
+// 状态机认得的只有四条原语：改存活（NewSetAliveEffect）、写三种作用域的
+// 变量、排队一个死亡触发。「狼刀」「放逐」「开枪」「守护」「解药」这些是
+// 规则给「发生了什么」起的名字，状态机不认得——一个 KILL 效果单独发出去，
+// 谁都不会死。规则要让人出局，就在它旁边产出一条 SET_ALIVE。
+//
+// 这样分是为了让规则可换：一套新规则不必来改状态机，就能表达自己的
+// 死法、标记与道具。狼人杀在这件事上没有特权，它自己也是这么写的。
+//
 // 阶段之间怎么流转由 GameConfig.Phases 声明；猎人开枪这类「死亡时触发」
 // 的能力由 Resolver 产出 NewAbilityTriggerEffect，引擎会排队并自动流转
 // 过去，它不需要认识任何具体角色。
 //
 // # 谁能知道什么
 //
-// 狼人杀真正难的部分是信息边界，所以引擎把它收在库内，分成两半：
+// 这类游戏真正难的部分是信息边界，所以库把它收进来，分成两半：
 //
 //	Engine.PlayerView(id)     某个玩家有权知道的一切，可以原样发给他
 //	Engine.AudienceOf(event)  一件事该发给哪些玩家
@@ -46,6 +54,14 @@
 // 上帝视角：调用方作为主持人需要它们来组织流程，但它们的内容
 // 不可以整体转发给玩家。
 //
+// 具体的划分由规则给，不由内核给：一件事该告诉谁（AudienceProvider）、
+// 谁和谁是一边的（TeammateProvider）、发言谁能听到（SpeechProvider），
+// 三个都能整个换掉。「同伴」允许不对称——血染钟楼的恶魔认得爪牙，
+// 反过来不成立。
+//
+// 内核在这一层只守一条底线，且不可配置：**自己的状态原语永远不外发**。
+// 它们是状态机的记账，推给玩家等于把上帝视角直接发出去。
+//
 // # 扩展新角色
 //
 // 内置的六个角色只是一套默认板子，不是能力上限。加入狼王、白痴、骑士
@@ -53,19 +69,32 @@
 //
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }        // 声明阶段
 //	engine, _ := werewolf.NewEngine(cfg,
-//		werewolf.WithResolver(myPhase, myResolver))           // 注册解析器
-//	engine.AddCustomPlayer("p1", myRole, camp, category)      // 阵营与类别
+//		werewolf.WithResolver(myPhase, myResolver),           // 注册行为
+//		werewolf.WithRoleSetup(myRole, mySetup))              // 注册初始状态
+//	engine.AddPlayer("p1", myRole)                            // 入座，与内置角色同一个入口
 //
-// 角色自身的状态走 Var：跟着玩家走一整局的用 PlayerVar（白痴翻没翻牌），
-// 每回合清零的用 RoundVar（今晚谁被标记了）。读用 GameView.PlayerVar /
-// RoundVar，写用 NewSetPlayerVarEffect / NewSetRoundVarEffect。
+// 阵营与角色类别写在角色自己的 setup 里（werewolf.CampVars），不是入座时
+// 的参数：引擎不认识你的角色，也就没有办法替它推导；写在角色身上，
+// 每一处入座都不会填错。
+//
+// 状态一律走 Var，一共三种作用域：跟着玩家走一整局的用 PlayerVar
+// （白痴翻没翻牌、女巫的药），本回合有效且不属于任何人的用 RoundVar
+// （今晚的刀口），「本回合标记了某个玩家」的用 PlayerRoundVar
+// （今晚谁被守了、被救了、被毒了）。读用 GameView 上的同名方法，
+// 写用 NewSetPlayerVarEffect / NewSetRoundVarEffect /
+// NewSetPlayerRoundVarEffect。
 // 它们随快照走、回放能重建，因此 Resolver 可以保持无状态——
-// 而无状态正是这个接口的要求。内置角色的药剂、守护记录、刀口、被守被救
-// 都是同一件事，只是它们在 PlayerState / RoundContext 上有专门的字段。
+// 而无状态正是这个接口的要求。内置女巫的两瓶药就存在 PlayerVar 里
+// （VarWitchAntidote / VarWitchPoison），与第三方角色同一条路。
 //
-// 角色额外让玩家看到什么（女巫的刀口、盗贼的底牌）由 RoleInfoProvider
-// 回答，用 WithRoleInfo 注册，结果出现在 PlayerView.RoleInfo 与
-// RolePhaseInfo.RoleInfo。内置女巫走的就是这条路，没有特权。
+// 状态的初始值由 RoleSetup 在入座时发放，用 WithRoleSetup 注册。
+// 女巫开局的两瓶药走的就是这条路，注册一个空的 setup 她就空手上桌——
+// 引擎里再没有第二条给内置角色发状态的暗道。
+//
+// 角色额外让玩家看到什么（女巫的刀口与药剂存量、盗贼的底牌）由
+// RoleInfoProvider 回答，用 WithRoleInfo 注册，结果出现在 PlayerView.RoleInfo
+// 与 RolePhaseInfo.RoleInfo。存储（Vars）与投射（RoleInfo）分开是刻意的：
+// 存储只有一种，谁都能写；给玩家看成什么样由角色自己决定。
 //
 // 胜负条件由 VictoryChecker 决定，可用 WithVictoryChecker 换掉。
 // 第三方阵营（丘比特的情侣）有自己的胜利条件，判定写死在引擎里的话

@@ -75,13 +75,6 @@ func (v *PhaseType) UnmarshalJSON(b []byte) error {
 	return err
 }
 
-func (v Camp) MarshalJSON() ([]byte, error) { return marshalEnum(v, campNames) }
-func (v *Camp) UnmarshalJSON(b []byte) error {
-	x, err := unmarshalEnum(b, "Camp", campNames)
-	*v = x
-	return err
-}
-
 func (v RoleType) MarshalJSON() ([]byte, error) { return marshalEnum(v, roleTypeNames) }
 func (v *RoleType) UnmarshalJSON(b []byte) error {
 	x, err := unmarshalEnum(b, "RoleType", roleTypeNames)
@@ -107,21 +100,5 @@ func (v ErrorCode) MarshalJSON() ([]byte, error) { return marshalEnum(v, errorCo
 func (v *ErrorCode) UnmarshalJSON(b []byte) error {
 	x, err := unmarshalEnum(b, "ErrorCode", errorCodeNames)
 	*v = x
-	return err
-}
-
-// roleCategoryNames 角色类别的名字。与其他枚举不同，它的 String 是手写的
-// switch，这里补一张表让 JSON 走同一套路径。
-var roleCategoryNames = map[RoleCategory]string{
-	RoleCategoryUnknown:  "UNKNOWN",
-	RoleCategoryWolf:     "WOLF",
-	RoleCategoryGod:      "GOD",
-	RoleCategoryVillager: "VILLAGER",
-}
-
-func (c RoleCategory) MarshalJSON() ([]byte, error) { return marshalEnum(c, roleCategoryNames) }
-func (c *RoleCategory) UnmarshalJSON(b []byte) error {
-	x, err := unmarshalEnum(b, "RoleCategory", roleCategoryNames)
-	*c = x
 	return err
 }

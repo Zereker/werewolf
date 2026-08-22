@@ -63,7 +63,7 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 	// 关键事件都要在
 	want := []EventType{
 		EventProtect,
-		EventSetNightKill,
+		EventSetRoundVar,
 		EventSave,
 		EventCheck,
 		EventEliminate,

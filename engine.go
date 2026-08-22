@@ -26,6 +26,17 @@ type Engine struct {
 	// 读取路径也是同一条——内置角色在这件事上没有特权。
 	roleInfo map[RoleType]RoleInfoProvider
 
+	// roleSetup 各角色的初始状态。同上：女巫开局两瓶药与第三方角色
+	// 开局带什么，走的是同一张表、同一条写入路径。
+	roleSetup map[RoleType]RoleSetup
+
+	// 信息边界的三个问题，全部由规则回答（见 boundary.go）：
+	// 一件事该告诉谁、谁和谁是一边的、发言谁能听到。内核只保证
+	// 自己的状态原语永远不外发。
+	audience  AudienceProvider
+	teammates TeammateProvider
+	speech    SpeechProvider
+
 	// 当前阶段收集的技能使用
 	pendingUses []*SkillUse
 
@@ -60,6 +71,10 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 		metrics:         NewNopMetrics(),
 		victory:         DefaultVictoryChecker{Mode: config.VictoryMode},
 		roleInfo:        make(map[RoleType]RoleInfoProvider, len(builtinRoleInfo)),
+		roleSetup:       make(map[RoleType]RoleSetup, len(builtinRoleSetup)),
+		audience:        builtinAudience,
+		teammates:       builtinTeammates,
+		speech:          builtinSpeech,
 		pendingUses:     make([]*SkillUse, 0),
 		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
@@ -67,6 +82,9 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 	}
 	for role, p := range builtinRoleInfo {
 		e.roleInfo[role] = p
+	}
+	for role, su := range builtinRoleSetup {
+		e.roleSetup[role] = su
 	}
 	if err := e.applyOptions(opts); err != nil {
 		return nil, err
@@ -85,16 +103,17 @@ func MustNewEngine(config *GameConfig, opts ...EngineOption) *Engine {
 	return engine
 }
 
-// addPlayer 添加玩家。阵营与角色类别由角色推导。
+// AddPlayer 让一名玩家入座。
 //
 // 只能在 Start 之前调用。返回错误：游戏已开始、ID 为空、ID 已存在、
 // 角色不能作为玩家身份。
+//
+// 阵营、角色类别这些**不是参数**：它们是规则的分法，由该角色的
+// RoleSetup 在入座时作为初始状态发放（见 WithRoleSetup）。这里此前
+// 还有一个 AddCustomPlayer，多两个参数专供扩展角色显式给出阵营与类别——
+// 于是「这个角色属于哪一边」这件事的答案，取决于调用方在每一处入座
+// 时记得填对，而不是写在角色自己身上。
 func (e *Engine) AddPlayer(id string, role RoleType) error {
-	return e.AddCustomPlayer(id, role, CampOf(role), CategoryOf(role))
-}
-
-// addCustomPlayer 添加玩家并显式指定阵营与角色类别，供扩展角色使用。
-func (e *Engine) AddCustomPlayer(id string, role RoleType, camp Camp, category RoleCategory) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -103,10 +122,29 @@ func (e *Engine) AddCustomPlayer(id string, role RoleType, camp Camp, category R
 		return ErrGameAlreadyStarted
 	}
 
-	if err := e.state.addCustomPlayer(id, role, camp, category); err != nil {
+	vars := e.setupFor(id, role)
+	if err := e.seatPlayer(id, role, vars); err != nil {
 		return err
 	}
-	e.effectLog = append(e.effectLog, newPlayerAddedEffect(id, role, camp, category))
+	e.effectLog = append(e.effectLog, newPlayerAddedEffect(id, role, vars))
+	return nil
+}
+
+// seatPlayer 让一名玩家带着给定的初始状态入座。调用前需持有 e.mu。
+//
+// 正常入座与回放入座共用这一条路径，区别只在 vars 从哪儿来：
+// 正常入座问 RoleSetup，回放读效果流里记着的那一份。
+//
+// 初始状态记进效果流、而不是在回放时重新问一遍 RoleSetup，是刻意的：
+// 「女巫带着两瓶药入座」本来就是发生过的事，效果流记的就是这个。
+// 重新问的话，回放方少传一个 WithRoleSetup，重建出来的角色就悄悄
+// 空着手——解析器漏传有 validateResolvers 拦，这里拦不住，因为
+// 「这个角色没有初始状态」与「你忘了传」在签名上无法区分。
+func (e *Engine) seatPlayer(id string, role RoleType, vars map[string]string) error {
+	if err := e.state.addPlayer(id, role); err != nil {
+		return err
+	}
+	e.state.setPlayerVars(id, vars)
 	return nil
 }
 
@@ -133,14 +171,16 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 		return nil, nil, ErrGameAlreadyStarted
 	}
 
-	// 校验板子：缺任一阵营的局面从第一次结算起就已分出胜负，
-	// 与其让它「开局即结束」，不如在这里直接拒绝
-	good, evil := e.state.countCamps()
-	if evil == 0 {
-		return nil, nil, ErrNoWerewolf
-	}
-	if good == 0 {
-		return nil, nil, ErrNoGoodPlayer
+	// 校验板子：开局就已分出胜负的局面，与其让它「开局即结束」，
+	// 不如在这里直接拒绝。
+	//
+	// 这一条此前写成「必须有狼人、必须有好人」——那是狼人杀的说法，
+	// 内核不认识阵营。改成问胜负判定器：既然它是「这一刻分出胜负了吗」
+	// 的唯一权威，开局前问它一次就够了，而且顺带覆盖了原来漏掉的情况
+	// （屠城模式下 2 狼对 2 好人，第一次结算即狼人胜）。
+	if over, winner := e.victory.CheckVictory(newStateView(e.state)); over {
+		return nil, nil, WrapError(CodeInvalidBoard,
+			"board is already decided before the game starts: winner=%v", winner)
 	}
 
 	// 每个阶段都必须有解析器，否则推进到那里时技能会被静默丢弃。
@@ -354,11 +394,14 @@ func (e *Engine) IsGameOver() bool {
 	return e.state.Phase == PhaseEnd
 }
 
-// NightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）
+// NightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）。
+//
+// 这是狼人杀规则包提供的便利读法，内核只知道有一个叫
+// RoundVarKillTarget 的回合变量，不知道它是什么意思。
 func (e *Engine) NightKillTarget() string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.state.RoundCtx.KillTarget
+	return e.state.roundVar(RoundVarKillTarget)
 }
 
 // RoundContext 获取回合上下文的只读副本
@@ -370,17 +413,12 @@ func (e *Engine) RoundContext() *RoundContext {
 
 // WolfTeammates 获取狼队队友（不含自己），非狼队成员返回 nil。
 //
-// 按阵营判定，狼王、狼美人这类自定义狼队角色同样适用。
+// 这是狼人杀规则包的便利读法，与 PlayerView.Teammates、PhaseInfo 里的
+// 那一份共用同一个 TeammateProvider——换掉 provider，三处一起变。
 func (e *Engine) WolfTeammates(playerID string) []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-
-	player, ok := e.state.getPlayer(playerID)
-	if !ok || player.Camp != CampEvil {
-		return nil
-	}
-
-	return e.state.getWolfTeammates(playerID)
+	return e.teammatesOf(playerID)
 }
 
 // applyEffects 逐个应用效果，返回清理后的效果与需要对外发布的事件。

@@ -9,6 +9,198 @@
 > 公开的 tag 只有 `v1.0.0` 与 `v1.2.0`。`v1.0.0` 到 `v1.2.0` 之间的全部改动
 > 都归入 `v1.2.0` 一节——对使用者而言，中间没有可取用的版本。
 
+## 未发布（v2 开发中）
+
+v2 的方向是把内核与狼人杀规则拆开（见下面「路线」一节）。这一节记录
+朝那个方向走出的每一步；`go.mod` 的 `/v2` 后缀会在真正发版前一次性改掉。
+
+### 阵营与角色类别下放到规则包
+
+**破坏性变更**：`Engine.AddCustomPlayer` 删除，入座只剩 `AddPlayer(id, role)`；
+`PlayerState` / `PlayerInfo` / `PlayerSnapshot` 上的 `Camp` 与 `Category`
+字段删除；`CampOf` / `CategoryOf` 删除；`ErrNoWerewolf` / `ErrNoGoodPlayer`
+删除，改为 `ErrBoardAlreadyDecided`；`Camp` 的底层从 `int32` 改为 `string`；
+`RoleCategory` 同理；**快照版本 8 → 9**。
+
+内核此前知道「一局游戏分好人与狼人两边、好人还分神职与平民」。那是狼人杀
+的分法：阿瓦隆是正义与邪恶，血染钟楼还有单独结算的旅行者。
+
+现在阵营与类别只是玩家身上的两项状态（`VarCamp` / `VarCategory`），由角色的
+`RoleSetup` 在入座时发放——与女巫的两瓶药同一份存储、同一条写入路径。
+
+- **`Camp` 变成内核的不透明标签**，底层是字符串，只留一个 `CampUnspecified`
+  空值。`CampGood` / `CampEvil` 是狼人杀定义的两个（`wolfcamp.go`），
+  和第三方定义的「情侣阵营」没有身份差别——「自定义取值从 1000 起」这类
+  避让约定对它不再需要。
+- **入座只剩一个入口。** `AddCustomPlayer` 多两个参数专供扩展角色显式给出
+  阵营与类别，于是「这个角色属于哪一边」的答案取决于调用方在**每一处入座**
+  时记得填对。现在它写在角色自己身上，填不错也漏不掉。
+- **`Start` 的板子校验改成问胜负判定器。** 它此前写成「必须有狼人、必须有
+  好人」，而内核不认识阵营。判定器本来就是「这一刻分出胜负了吗」的唯一权威，
+  开局前问一次即可——顺带覆盖了原来漏掉的情况：**屠城模式下 2 狼对 2 好人，
+  第一次结算就是狼人胜，旧校验放它过关**。
+- 没有登记 `RoleSetup` 的角色不属于任何阵营，也就不参与胜负计数。这是刻意的：
+  内核没有默认阵营可给，而「悄悄算作好人」比「不算」更难查。
+- `enumjson.go` 少了两个类型的编号对照表——字符串枚举的名字本身就是值。
+
+顺带修掉随机对局里一个会被忽略的损失：新的板子校验会拒掉 8% 的随机板子
+（屠城模式下狼人不比好人少），而统计里看不出来，「跑了 5000 局」就成了一句
+不准确的话。生成器现在补平人数，5000 局全部成局。
+
+变异验证：内置角色不发阵营 → 148 条用例红；`Start` 不再校验板子 → 2 条红；
+入座不发初始状态 → 145 条红。
+
+覆盖率 94.4% → 94.8%。
+
+### 信息边界也交给规则
+
+**破坏性变更**：`GameView.AlivePlayers()` 现在保证按 ID 排序（此前是 map
+遍历顺序，无序）。
+
+内核此前认得三件狼人杀的事，全在「谁能知道什么」这一层：
+
+| 内核里写着 | 它其实是 |
+|---|---|
+| `AudienceOf` 的类型表 | 查验只给预言家、狼刀全场可见 |
+| `PlayerView.Teammates` | 同阵营互相可见，而「阵营」只有好人与狼人两值 |
+| `MessageReceivers` | 夜里只有狼队能说话，白天全体能听 |
+
+换一套规则这三样全不成立：阿瓦隆的梅林看得到坏人但坏人不知道他是谁，
+血染钟楼的恶魔与爪牙互见是**单向**的，谁能在什么时候说话更是每套规则
+自己的事。
+
+现在三个问题都由规则回答：`AudienceProvider` / `TeammateProvider` /
+`SpeechProvider`，对应 `WithAudience` / `WithTeammates` / `WithSpeech`。
+狼人杀的那三份实现收进 `wolfboundary.go`，没有特权，可以整个换掉。
+「同伴」允许**不对称**，内核不检查两边是否一致——它根本不知道阵营这个概念。
+
+**内核在这一层只保留一条判断，且不可配置：自己的状态原语永远不外发。**
+`SET_ALIVE` 这类效果是状态机的记账，推给玩家等于把上帝视角直接发出去。
+一个「什么都给全场」的 provider 也打不开这个口子，
+`TestAudienceOf_KernelPrimitivesAreNeverPublic` 守的就是这一条。
+
+顺带修掉一个确定性隐患：`GameView.AlivePlayers()` 无序而 `AllPlayers()`
+有序。这份名单会流进规则产出的效果里（发言受众、结算顺序），不排序的话
+同一个局面两次结算的效果流不同，回放与逐字节比对就失去确定性。
+
+三处队友判定（`PlayerView`、`PhaseInfo`、`WolfTeammates`）现在共用同一个
+provider。上一版刚修过「狼王在 `PhaseInfo` 里拿不到队友」——那正是同一个
+判定写了三遍、漏改一处的结果，现在结构上不会再有。
+
+变异验证：拿掉内核对状态原语的拦截 → 3 条用例红（含随机对局）；
+`PhaseInfo` 绕开 provider → `TestWithTeammates_Replaceable` 红；
+发言范围写死回内核 → `TestWithSpeech_Replaceable` 红。
+
+### 内核只剩四条状态原语
+
+**破坏性变更**：`RoundContext` 上的 `KillTarget` / `ProtectedPlayers` /
+`SavedPlayers` / `PoisonedPlayers` 四个字段与 `IsProtected` / `IsSaved` /
+`IsPoisoned` 三个方法删除；`PlayerState` 的 `LastProtectedTarget` /
+`LastProtectedRound`、`PlayerInfo.Protected`、`GameView.LastProtectedTarget`
+删除；事件类型 `SET_NIGHT_KILL` / `CLEAR_NIGHT_KILL` / `SET_LAST_PROTECTED` /
+`USE_ANTIDOTE` / `USE_POISON` 删除（编号 100..104 留空不再复用）；
+**快照版本 7 → 8**。
+
+`applyEffect` 是全局唯一的状态写入点，此前它认得十来种效果类型：
+
+| 分支 | 它其实是 |
+|---|---|
+| `KILL` / `POISON` / `ELIMINATE` / `SHOOT` | 狼人杀有这四种死法 |
+| `PROTECT` / `SAVE` | 今晚可以标记「被守」「被救」 |
+| `SET_NIGHT_KILL` / `CLEAR_NIGHT_KILL` | 有一个叫「刀口」的东西 |
+| `SET_LAST_PROTECTED` | 守卫不能连守 |
+| `USE_ANTIDOTE` / `USE_POISON` | 女巫有两瓶药 |
+
+每一条都是狼人杀的规则。换一套规则（阿瓦隆没有夜里的刀口，血染钟楼的
+标记有十几种），它们一条都用不上；而新规则要表达自己的状态变更，
+又只能回头来改这个 switch——这正是「加一个角色不该改引擎」在**规则**
+这一层的同一个问题。
+
+现在状态机只认四条原语：
+
+- `NewSetAliveEffect(id, alive)` —— 唯一的生死原语
+- `NewSetPlayerVarEffect(id, k, v)` —— 跟着玩家走一整局
+- `NewSetRoundVarEffect(k, v)` —— 本回合有效，不属于任何人
+- `NewSetPlayerRoundVarEffect(id, k, v)` —— **新增**，本回合标记了某个玩家
+- （外加 `NewAbilityTriggerEffect`，排队一个死亡触发）
+
+规则自己命名发生了什么，再产出原语真正改状态。**两个效果，两件事**：
+前者给受众与效果流看，后者给状态机看。一个 `KILL` 效果单独发出去，
+现在谁都不会死——`TestApplyEffect_RuleEventsDoNotTouchState` 就是这句话的
+可执行说法。
+
+狼人杀那一层随之收进 `nightstate.go`：刀口、被守、被救、被毒、守卫的
+守护记录全都变成键名（`RoundVarKillTarget`、`PlayerRoundVarProtected` 等），
+连守判定（`lastProtected`）也从内核搬进规则——「守卫不能连守」是狼人杀的
+规则，不是状态机的事。
+
+第三方角色在这件事上没有额外负担，也没有特权：`extension_test.go` 的狼王
+开枪现在也要自己产出 `SET_ALIVE`，与内置的狼刀、投票放逐走的是同一条路。
+改的时候它当场没打死人，测试直接红了。
+
+**`example/extension` 又撞出一个缺口**：白痴否决的是 `ELIMINATE`，而人是被
+旁边那条 `SET_ALIVE` 打死的——跑起来白痴当场出局。补了 `Effect.SetsAlive()`，
+让扩展能认出致死的原语。改完之后白痴的拦截**与死因无关**了：同一段代码
+挡得住狼刀、毒杀、枪口和任何第三方规则的死法，因为它们最终都走这一条。
+这比原来只认识 `ELIMINATE` 更强，不是妥协。
+
+变异验证：回合边界不清玩家标记 → 随机对局 `seed=0 step=6` 报错；
+`SET_ALIVE` 不改状态 → 35 条用例红；把 `KILL` 重新接回状态机 →
+`TestApplyEffect_RuleEventsDoNotTouchState` 红。
+
+覆盖率 92.9% → 94.1%。
+
+### 第五个扩展点：角色的初始状态
+
+**破坏性变更**：`PlayerState` / `PlayerInfo` / `PlayerSnapshot` / `SelfInfo`
+上的 `HasAntidote` 与 `HasPoison` 四处具名字段全部删除，女巫的药并入 `Vars`；
+**快照版本 6 → 7**，不兼容旧存档。
+
+v1.4.0 的说明里写着「引擎里已经没有第三方做不到、内置角色能做的事了」，
+这句话当时就不准确。引擎里还剩最后一处因具体角色而分叉的逻辑：
+
+```go
+// state.go，addCustomPlayer 内
+if role == RoleWitch {
+    player.HasAntidote = true
+    player.HasPoison = true
+}
+```
+
+它的代价不是这三行本身，而是第三方角色**没有任何办法**给自己发初始状态——
+骑士开局带一次决斗、摄梦人开局带两条命，都得改引擎才能表达。
+
+- **新增 `WithRoleSetup(role, setup)`**，与 `WithResolver`、`WithVictoryChecker`、
+  `WithRoleInfo` 同构。入座时问一次，返回的键值写进该玩家的 `Vars`。
+  签名里刻意没有 `GameView`：入座发生在开局之前，初始状态只能由角色本身决定，
+  不能取决于谁先入座、场上还有谁。需要看局面的初始化（丘比特连情侣、盗贼选底牌）
+  是一个阶段，用 `Resolver` 做。
+- **女巫的两瓶药走同一张表**（`builtinRoleSetup`），并从 `PlayerState` 的两个
+  bool 字段搬进 `Vars`（键为 `VarWitchAntidote` / `VarWitchPoison`）。
+  注册一个空的 setup，她就真的空手上桌、解药也用不出来——引擎里再没有
+  第二条给内置角色发状态的暗道，测试里也确实是这么验的。
+- **药剂存量改由 `RoleInfo` 投射**（`RoleInfoAntidote` / `RoleInfoPoison`），
+  `SelfInfo` 上那两个具名字段删除。存储与投射从此是两件事：存储只有 `Vars`
+  一种、谁都能写；给玩家看成什么样由角色的 `RoleInfoProvider` 决定。
+  这与上一版把 `KillTarget` 改成 `RoleInfo` 是同一个动作，只是当时只做了投射，
+  没做存储。
+- **初始状态记进效果流**的入座那一条上，而不是回放时重新问一遍 `RoleSetup`。
+  「女巫带着两瓶药入座」本来就是发生过的事，效果流记的就是这个。反过来做的话，
+  回放方少传一个 `WithRoleSetup`，重建出来的角色就悄悄空着手——解析器漏传有
+  `validateResolvers` 拦得住，这里拦不住，因为「这个角色本来就没有初始状态」
+  与「你忘了传」在签名上无法区分。
+- **新增 `PlayerInfo.Var(key)`**，省掉 nil map 判断。
+- **随机对局覆盖到了这条路**：`extension_test.go` 的狼王现在开局带一发子弹
+  （`varWolfKingGun`，经 `WithRoleSetup` 发放，开枪时用 `NewSetPlayerVarEffect`
+  清掉），5000 局里 1484 局带着它跑。加这一发子弹时，`newWolfKingGame` 忘了
+  注册 setup，狼王当场开不出枪——初始状态是真的参与规则判定，不是视图上
+  多显示一行。
+- `example/cli` 里主持台不再认识女巫：`if v.Self.Role == RoleWitch` 换成
+  遍历 `RoleInfo`，认识的键给个中文说法，扩展角色自己定的键原样打出来。
+
+变异验证：去掉入座时的状态发放，6 条新测试里 6 条报错；去掉效果流里的
+初始状态记录，`TestRoleSetup_SurvivesReplayWithoutTheOption` 单独报错。
+
 ## v1.4.0 — 2026-08-22
 
 这一版把扩展性补齐：加一个角色，不需要改引擎里任何一行。四个扩展点
@@ -78,6 +270,11 @@ v2 要做的是把它们分开：内核不认识任何角色、技能、阶段�
 **这会改模块路径**：Go 的模块规则要求 v2 及以上带 `/v2` 后缀，
 即 `github.com/Zereker/werewolf/v2`。发版 workflow 里有一道闸专门拦这个，
 不改 `go.mod` 就发不出去。
+
+第一步已经走了：角色的初始状态（见「未发布」一节）。挑它开头是因为它是
+整个拆分的最小完整实例——一个内置角色的状态从引擎字段变成规则包写进内核
+变量、再经通用投射出去。先把这一刀切干净，「类型化的外投放哪儿」这个问题
+就在动包结构之前有了答案，比先搬文件再发现投射没地方放便宜得多。
 
 ## v1.3.0 — 2026-08-22
 

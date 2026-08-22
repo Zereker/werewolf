@@ -48,6 +48,12 @@ func mustAddTo(t *testing.T, s *gameState, id string, role RoleType) {
 	if err := s.addPlayer(id, role); err != nil {
 		t.Fatalf("addPlayer(%q, %v): %v", id, role, err)
 	}
+	// 初始状态由 RoleSetup 发放，而那张表在 Engine 上——直接拿裸
+	// gameState 驱动解析器的测试得自己补这一步，否则女巫手里没有药。
+	// 这里刻意只发内置的：测第三方角色请经 Engine 走 WithRoleSetup。
+	if setup, ok := builtinRoleSetup[role]; ok {
+		s.setPlayerVars(id, setup.Setup(id, role))
+	}
 }
 
 // checkVictory 按引擎当前的判定器算一次胜负。
@@ -72,4 +78,34 @@ func witchKill(ri *RolePhaseInfo) string {
 		}
 	}
 	return ""
+}
+
+// ==================== 回合状态的读写（狼人杀规则层） ====================
+//
+// 刀口、被守、被救、被毒此前是 RoundContext 上的字段与三张 map，
+// 测试直接读写它们即可。现在它们只是内核三种作用域里的键名，
+// 铺前置与断言都走通用原语——下面这几个只是省掉重复的样板。
+
+func setKill(s *gameState, target string) {
+	s.applyEffect(NewSetRoundVarEffect(RoundVarKillTarget, target))
+}
+
+func killTargetOf(s *gameState) string {
+	return s.roundVar(RoundVarKillTarget)
+}
+
+func markRound(s *gameState, playerID, key string) {
+	s.applyEffect(NewSetPlayerRoundVarEffect(playerID, key, VarPresent))
+}
+
+func protectedIn(s *gameState, playerID string) bool {
+	return s.playerRoundVar(playerID, PlayerRoundVarProtected) != ""
+}
+
+func savedIn(s *gameState, playerID string) bool {
+	return s.playerRoundVar(playerID, PlayerRoundVarSaved) != ""
+}
+
+func poisonedIn(s *gameState, playerID string) bool {
+	return s.playerRoundVar(playerID, PlayerRoundVarPoisoned) != ""
 }

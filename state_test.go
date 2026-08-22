@@ -33,8 +33,8 @@ func TestAddPlayer(t *testing.T) {
 	if player.Role != RoleWerewolf {
 		t.Errorf("expected Role=WEREWOLF, got %v", player.Role)
 	}
-	if player.Camp != CampEvil {
-		t.Errorf("expected Camp=EVIL, got %v", player.Camp)
+	if got := player.Vars[VarCamp]; got != string(CampEvil) {
+		t.Errorf("expected Camp=EVIL, got %v", got)
 	}
 	if !player.Alive {
 		t.Error("expected Alive=true")
@@ -66,71 +66,84 @@ func TestGetPlayer_NotExists(t *testing.T) {
 	}
 }
 
-func TestApplyEffect_Kill(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
+// TestApplyEffect_KernelPrimitives 内核的状态原语。
+//
+// applyEffect 此前认得十来种效果类型——狼刀、毒杀、放逐、开枪各是一种死法，
+// PROTECT / SAVE 各标记一件事。那等于把「一局狼人杀会发生什么」写进了状态机：
+// 换一套规则它们一条都用不上，而新规则要表达自己的状态变更又只能来改这里。
+func TestApplyEffect_KernelPrimitives(t *testing.T) {
+	t.Run("SET_ALIVE 改存活", func(t *testing.T) {
+		state := newState()
+		mustAddTo(t, state, "p1", RoleVillager)
 
-	effect := NewEffect(EventKill, "wolf", "p1")
-	state.applyEffect(effect)
+		state.applyEffect(NewSetAliveEffect("p1", false))
+		if p, _ := state.getPlayer("p1"); p.Alive {
+			t.Error("SET_ALIVE(false) 之后应当已出局")
+		}
+		state.applyEffect(NewSetAliveEffect("p1", true))
+		if p, _ := state.getPlayer("p1"); !p.Alive {
+			t.Error("SET_ALIVE(true) 之后应当复活")
+		}
+	})
 
-	player, _ := state.getPlayer("p1")
-	if player.Alive {
-		t.Error("expected player to be dead after Kill effect")
-	}
+	t.Run("SET_PLAYER_ROUND_VAR 标记本回合", func(t *testing.T) {
+		state := newState()
+		mustAddTo(t, state, "p1", RoleVillager)
+
+		state.applyEffect(NewSetPlayerRoundVarEffect("p1", PlayerRoundVarProtected, VarPresent))
+		if !protectedIn(state, "p1") {
+			t.Error("标记之后应当读得到")
+		}
+		state.applyEffect(NewSetPlayerRoundVarEffect("p1", PlayerRoundVarProtected, ""))
+		if protectedIn(state, "p1") {
+			t.Error("空值应当等同删除")
+		}
+	})
+
+	t.Run("回合边界清掉标记", func(t *testing.T) {
+		state := newState()
+		mustAddTo(t, state, "p1", RoleVillager)
+
+		state.applyEffect(NewSetPlayerRoundVarEffect("p1", PlayerRoundVarSaved, VarPresent))
+		setKill(state, "p1")
+		state.resetRoundState()
+
+		if savedIn(state, "p1") {
+			t.Error("玩家身上的回合标记应当随回合清掉")
+		}
+		if got := killTargetOf(state); got != "" {
+			t.Errorf("回合变量应当随回合清掉，实际 %q", got)
+		}
+	})
 }
 
-func TestApplyEffect_Poison(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
+// TestApplyEffect_RuleEventsDoNotTouchState 规则的事件不改状态。
+//
+// 这是「内核不认识狼人杀」的可执行说法：KILL / POISON / ELIMINATE / SHOOT /
+// PROTECT / SAVE 现在只是规则给「发生了什么」起的名字，给受众与效果流看。
+// 真正改状态的是它们旁边那条原语——所以单独发一个 KILL，谁都不会死。
+func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
+	for _, typ := range []EventType{
+		EventKill, EventPoison, EventEliminate, EventShoot,
+		EventProtect, EventSave, EventCheck, EventVoteTied,
+	} {
+		state := newState()
+		mustAddTo(t, state, "p1", RoleVillager)
 
-	effect := NewEffect(EventPoison, "witch", "p1")
-	state.applyEffect(effect)
+		// 入座已经发过初始状态（阵营与类别），比的是「有没有再动过」
+		before := copyVars(state.players["p1"].Vars)
 
-	player, _ := state.getPlayer("p1")
-	if player.Alive {
-		t.Error("expected player to be dead after Poison effect")
-	}
-}
+		state.applyEffect(NewEffect(typ, "src", "p1"))
 
-func TestApplyEffect_Eliminate(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
-
-	effect := NewEffect(EventEliminate, "", "p1")
-	state.applyEffect(effect)
-
-	player, _ := state.getPlayer("p1")
-	if player.Alive {
-		t.Error("expected player to be dead after Eliminate effect")
-	}
-}
-
-func TestApplyEffect_Protect(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
-
-	effect := NewEffect(EventProtect, "guard", "p1")
-	state.applyEffect(effect)
-
-	// 使用 NightContext 检查保护状态
-	if !state.RoundCtx.IsProtected("p1") {
-		t.Error("expected player to be protected after Protect effect")
-	}
-}
-
-func TestApplyEffect_Save(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
-
-	state.applyEffect(NewEffect(EventSave, "witch", "p1"))
-
-	// 解药只记录「被救过」，生死由夜晚结算阶段综合守护与解药判定
-	if !state.RoundCtx.IsSaved("p1") {
-		t.Error("expected p1 to be marked as saved")
-	}
-	player, _ := state.getPlayer("p1")
-	if !player.Alive {
-		t.Error("expected p1 to still be alive")
+		p, _ := state.getPlayer("p1")
+		switch {
+		case !p.Alive:
+			t.Errorf("%v 不该由内核改存活状态", typ)
+		case len(p.RoundVars) != 0:
+			t.Errorf("%v 不该由内核写回合标记，实际 %v", typ, p.RoundVars)
+		case !sameVars(p.Vars, before):
+			t.Errorf("%v 不该由内核改玩家状态，入座时 %v，现在 %v", typ, before, p.Vars)
+		}
 	}
 }
 
@@ -179,21 +192,21 @@ func TestResetRoundState(t *testing.T) {
 	mustAddTo(t, state, "p2", RoleVillager)
 
 	// 使用 NightContext 设置保护状态
-	state.RoundCtx.ProtectedPlayers["p1"] = true
-	state.RoundCtx.ProtectedPlayers["p2"] = true
-	state.RoundCtx.KillTarget = "p1"
+	markRound(state, "p1", PlayerRoundVarProtected)
+	markRound(state, "p2", PlayerRoundVarProtected)
+	setKill(state, "p1")
 
 	state.resetRoundState()
 
 	// NightContext 应该被重置
-	if state.RoundCtx.IsProtected("p1") {
+	if protectedIn(state, "p1") {
 		t.Error("expected p1 not protected after reset")
 	}
-	if state.RoundCtx.IsProtected("p2") {
+	if protectedIn(state, "p2") {
 		t.Error("expected p2 not protected after reset")
 	}
-	if state.RoundCtx.KillTarget != "" {
-		t.Errorf("expected empty KillTarget after reset, got %s", state.RoundCtx.KillTarget)
+	if killTargetOf(state) != "" {
+		t.Errorf("expected empty KillTarget after reset, got %s", killTargetOf(state))
 	}
 }
 
@@ -215,8 +228,8 @@ func TestNextPhase_ToDay(t *testing.T) {
 func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 	state := newState()
 	mustAddTo(t, state, "p1", RoleVillager)
-	state.RoundCtx.ProtectedPlayers["p1"] = true
-	state.RoundCtx.KillTarget = "p1"
+	markRound(state, "p1", PlayerRoundVarProtected)
+	setKill(state, "p1")
 	state.Phase = PhaseVote
 	state.Round = 1
 
@@ -230,10 +243,10 @@ func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 		t.Errorf("expected Round=2, got %d", state.Round)
 	}
 	// NightContext 应该被重置
-	if state.RoundCtx.IsProtected("p1") {
+	if protectedIn(state, "p1") {
 		t.Error("expected NightContext to be reset")
 	}
-	if state.RoundCtx.KillTarget != "" {
+	if killTargetOf(state) != "" {
 		t.Error("expected KillTarget to be reset")
 	}
 }

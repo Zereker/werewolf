@@ -143,8 +143,8 @@ func TestWrapError_MatchesSentinel(t *testing.T) {
 	}
 
 	// 同一错误码下的具体哨兵，也要能被该类的通用哨兵认出
-	if !errors.Is(ErrNoWerewolf, ErrInvalidBoard) {
-		t.Error("ErrNoWerewolf 应当属于 ErrInvalidBoard 这一类")
+	if !errors.Is(ErrBoardAlreadyDecided, ErrInvalidBoard) {
+		t.Error("ErrBoardAlreadyDecided 应当属于 ErrInvalidBoard 这一类")
 	}
 
 	// 快照版本不符

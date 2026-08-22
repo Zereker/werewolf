@@ -3,19 +3,25 @@ package werewolf
 import ()
 
 // 效果流中用于重建局面的几个键
+//
+// 这里此前还有 camp 与 category：它们曾是内核状态的一部分，于是入座那一条
+// 效果要单独记。现在它们只是玩家身上的两项状态，跟着 vars 一起走。
 const (
-	roleKey     = "role"
-	campKey     = "camp"
-	categoryKey = "category"
-	phaseKey    = "phase"
+	roleKey  = "role"
+	phaseKey = "phase"
+	varsKey  = "vars"
 )
 
-// newPlayerAddedEffect 记录一名玩家入座
-func newPlayerAddedEffect(id string, role RoleType, camp Camp, category RoleCategory) *Effect {
-	return NewEffect(EventPlayerAdded, "", id).
-		WithData(roleKey, role).
-		WithData(campKey, camp).
-		WithData(categoryKey, category)
+// newPlayerAddedEffect 记录一名玩家入座，连同该角色的初始状态。
+//
+// 记下 vars 而不是在回放时重新问一遍 RoleSetup，理由见 Engine.seatPlayer。
+func newPlayerAddedEffect(id string, role RoleType, vars map[string]string) *Effect {
+	effect := NewEffect(EventPlayerAdded, "", id).
+		WithData(roleKey, role)
+	if len(vars) > 0 {
+		effect = effect.WithData(varsKey, copyVars(vars))
+	}
+	return effect
 }
 
 // newPhaseChangedEffect 记录一次阶段流转
@@ -61,6 +67,7 @@ func (e *Engine) EffectLog() []*Effect {
 // 需要那部分请用 Snapshot。
 //
 // 自定义角色的解析器必须经 opts 传入，理由同 RestoreEngine。
+// 初始状态不用：它记在效果流里的入座那一条上（见 Engine.seatPlayer）。
 func ReplayEngine(config *GameConfig, log []*Effect, opts ...EngineOption) (*Engine, error) {
 	engine, err := NewEngine(config, opts...)
 	if err != nil {
@@ -94,9 +101,10 @@ func (e *Engine) replayEffect(effect *Effect) error {
 	switch effect.Type {
 	case EventPlayerAdded:
 		role, _ := effect.Data[roleKey].(RoleType)
-		camp, _ := effect.Data[campKey].(Camp)
-		category, _ := effect.Data[categoryKey].(RoleCategory)
-		if err := e.state.addCustomPlayer(effect.TargetID, role, camp, category); err != nil {
+		// 入座要连初始状态一起发。少了这一步，回放出来的女巫手里
+		// 没有药、狼人不属于任何阵营，而分叉要到用药或判胜负时才暴露。
+		vars, _ := effect.Data[varsKey].(map[string]string)
+		if err := e.seatPlayer(effect.TargetID, role, vars); err != nil {
 			return err
 		}
 
