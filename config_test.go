@@ -206,3 +206,66 @@ func TestStartPhase_Configurable(t *testing.T) {
 		t.Errorf("期望从 DAY 开局，实际 %v", got)
 	}
 }
+
+// TestValidate_RejectsMissingNextPhase 漏填 NextPhase 与悬空的 NextPhase 后果相同。
+//
+// 想表达「到此结束」有 PHASE_TYPE_END，留空只可能是漏填。
+// 而 nextSubPhase 对 UNSPECIFIED 的处理是直接进 END——游戏在那里
+// 静默收场，连 GAME_ENDED 都不会发。
+func TestValidate_RejectsMissingNextPhase(t *testing.T) {
+	cfg := DefaultGameConfig()
+	cfg.Phases[pb.PhaseType(77)] = &PhaseConfig{Type: pb.PhaseType(77)}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("漏填 NextPhase 应当被拒")
+	}
+}
+
+// TestValidate_RejectsUnknownVictoryMode 越界的胜负判定方式不该被 default 分支吞掉。
+func TestValidate_RejectsUnknownVictoryMode(t *testing.T) {
+	cfg := DefaultGameConfig()
+	cfg.VictoryMode = VictoryMode(99)
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("越界的 VictoryMode 应当被拒")
+	}
+	if got := VictoryMode(99).String(); got != "UNKNOWN" {
+		t.Errorf("String(): 期望 UNKNOWN，实际 %s", got)
+	}
+}
+
+// TestValidate_RejectsAllRolesOverlap UNSPECIFIED（全体）与具体角色声明同一技能是重复。
+//
+// 去重此前只比 {Role, Skill} 这个键，而 UNSPECIFIED 表示「所有角色」，
+// 于是 AllowedSkills 会返回重复项、PhaseReadiness 会重复计数——
+// 正是这段校验声称要拦下的问题的另一半。
+func TestValidate_RejectsAllRolesOverlap(t *testing.T) {
+	cfg := DefaultGameConfig()
+	vote := cfg.Phases[pb.PhaseType_PHASE_TYPE_VOTE]
+	vote.Steps = append(vote.Steps, PhaseStep{
+		Role:  pb.RoleType_ROLE_TYPE_WEREWOLF,
+		Skill: pb.SkillType_SKILL_TYPE_VOTE,
+	})
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("全体步骤与具体角色步骤声明同一技能，应当被拒")
+	}
+}
+
+// TestGameConfig_PhaseTimeout 建议超时要有一条送到调用方手上的路径。
+func TestGameConfig_PhaseTimeout(t *testing.T) {
+	cfg := DefaultGameConfig()
+
+	if got := cfg.PhaseTimeout(pb.PhaseType_PHASE_TYPE_DAY); got != DayPhaseTimeout {
+		t.Errorf("DAY: 期望 %v，实际 %v", DayPhaseTimeout, got)
+	}
+	// 未配置的阶段退回 DefaultTimeout
+	if got := cfg.PhaseTimeout(pb.PhaseType(999)); got != cfg.DefaultTimeout {
+		t.Errorf("未知阶段: 期望 %v，实际 %v", cfg.DefaultTimeout, got)
+	}
+	// DefaultTimeout 也没配时退回常量
+	bare := &GameConfig{Phases: cfg.Phases}
+	if got := bare.PhaseTimeout(pb.PhaseType(999)); got != DefaultPhaseTimeout {
+		t.Errorf("兜底: 期望 %v，实际 %v", DefaultPhaseTimeout, got)
+	}
+}

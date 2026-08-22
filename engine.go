@@ -273,16 +273,20 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	// 2. 应用效果，收集对外可见的事件
 	for _, effect := range out.effects {
+		e.vetTrigger(effect)
 		e.state.applyEffect(effect)
+
+		e.logger.Debug("effect applied",
+			EventField(effect.Type),
+			PlayerField(effect.SourceID),
+			TargetField(effect.TargetID),
+			F("canceled", effect.Canceled))
+		e.metrics.IncEffectApplied(effect.Type)
+
 		if isInternalEvent(effect.Type) {
 			continue
 		}
 		out.events = append(out.events, effect.ToEvent())
-		e.logger.Debug("effect applied",
-			EventField(effect.Type),
-			PlayerField(effect.SourceID),
-			TargetField(effect.TargetID))
-		e.metrics.IncEffectApplied(effect.Type)
 	}
 	e.effectLog = append(e.effectLog, out.effects...)
 
@@ -408,17 +412,47 @@ func (e *Engine) RoundContext() *RoundContext {
 	return e.state.RoundContext()
 }
 
-// getWolfTeammates 获取狼人队友
+// WolfTeammates 获取狼队队友（不含自己），非狼队成员返回 nil。
+//
+// 按阵营判定，狼王、狼美人这类自定义狼队角色同样适用。
 func (e *Engine) WolfTeammates(playerID string) []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
 	player, ok := e.state.getPlayer(playerID)
-	if !ok || player.Role != pb.RoleType_ROLE_TYPE_WEREWOLF {
+	if !ok || player.Camp != pb.Camp_CAMP_EVIL {
 		return nil
 	}
 
 	return e.state.getWolfTeammates(playerID)
+}
+
+// vetTrigger 否决指向未配置阶段的死亡技能触发。
+//
+// 死亡技能的流转是运行期才成形的一条边：Resolver 产出
+// NewAbilityTriggerEffect 指定去哪个阶段，calculateNextPhase 无条件照办。
+// 配置里若没有那个阶段（比如板子有猎人却删掉了猎人阶段），
+// 引擎会流转到一个没有配置、没有解析器的阶段，玩家提交什么都不允许，
+// 下一次推进直接进 END——游戏在第一夜无声收场，连 GAME_ENDED 都没有。
+// GameConfig.Validate 看不见这条边，只能在这里拦。
+//
+// 调用前需持有 e.mu。
+func (e *Engine) vetTrigger(effect *Effect) {
+	if effect.Canceled || effect.Type != pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED {
+		return
+	}
+	phase, ok := effect.triggerPhase()
+	if !ok {
+		effect.Cancel("ability trigger carries no target phase")
+		e.logger.Error("ability trigger carries no target phase",
+			PlayerField(effect.SourceID))
+		return
+	}
+	if e.phase.phaseConfig(phase) == nil {
+		effect.Cancel("target phase is not present in the game config")
+		e.logger.Error("ability trigger points to an unconfigured phase",
+			PlayerField(effect.SourceID), PhaseField(phase))
+	}
 }
 
 // calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。

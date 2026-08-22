@@ -36,7 +36,7 @@ type PlayerView struct {
 	// 不该自己行动时为空——这也是判断「轮到我了吗」的依据。
 	AllowedSkills []pb.SkillType
 
-	// Teammates 狼人可见：其余狼队友的 ID。非狼人恒为空。
+	// Teammates 狼队可见：其余狼队友的 ID。好人阵营恒为空。
 	Teammates []string
 
 	// KillTarget 女巫可见：今晚狼人的击杀目标。
@@ -106,9 +106,9 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
 	}
 
-	// 狼人互相可见
+	// 狼队互相可见（按阵营，狼王这类自定义狼队角色同样适用）
 	revealed := map[string]bool{playerID: true}
-	if self.Role == pb.RoleType_ROLE_TYPE_WEREWOLF {
+	if self.Camp == pb.Camp_CAMP_EVIL {
 		view.Teammates = e.state.getWolfTeammates(playerID)
 		for _, id := range view.Teammates {
 			revealed[id] = true

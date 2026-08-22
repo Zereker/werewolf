@@ -66,8 +66,15 @@ func (e *Effect) Cancel(reason string) {
 	e.Reason = reason
 }
 
-// WithData 添加附加数据
+// WithData 添加附加数据。
+//
+// Data 为 nil 时就地建好：Effect 是导出类型、字段全导出，
+// 第三方 Resolver 用字面量构造它是被文档鼓励的写法，
+// 不该在这里撞上一个「assignment to entry in nil map」。
 func (e *Effect) WithData(key string, value interface{}) *Effect {
+	if e.Data == nil {
+		e.Data = make(map[string]interface{}, 1)
+	}
 	e.Data[key] = value
 	return e
 }

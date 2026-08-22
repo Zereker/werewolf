@@ -121,8 +121,8 @@ func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigge
 
 	switch {
 	case triggerActive:
-		// 死亡技能阶段：行动者只有触发者本人
-		ri.PlayerIDs = []string{trigger.PlayerID}
+		// 死亡技能阶段：行动者只有触发者本人，且只在他的角色与本步骤相符时
+		ri.PlayerIDs = e.triggerActorFor(role, trigger)
 	case role == pb.RoleType_ROLE_TYPE_UNSPECIFIED:
 		// UNSPECIFIED 表示所有存活玩家（如投票）
 		ri.PlayerIDs = e.state.getAlivePlayerIDs()
@@ -132,7 +132,7 @@ func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigge
 
 	switch role {
 	case pb.RoleType_ROLE_TYPE_WEREWOLF:
-		// 狼人需要知道队友才能协商
+		// 狼人需要知道队友才能协商（getWolfTeammates 按阵营给全狼队）
 		ri.Teammates = make(map[string][]string, len(ri.PlayerIDs))
 		for _, id := range ri.PlayerIDs {
 			ri.Teammates[id] = e.state.getWolfTeammates(id)

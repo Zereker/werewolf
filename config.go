@@ -17,7 +17,15 @@ const (
 	VotePhaseTimeout    = 30 * time.Second // 投票阶段超时
 	NightPhaseTimeout   = 15 * time.Second // 夜晚子阶段超时
 	WolfPhaseTimeout    = 30 * time.Second // 狼人阶段超时（需要协商）
+
+	// HunterPhaseTimeout 猎人开枪阶段超时。
+	// 与夜晚子阶段同为 15 秒，但白天的开枪阶段也用它——开枪是一个
+	// 即时决定，不需要白天那 60 秒的发言时间，与「白天」无关。
+	HunterPhaseTimeout = 15 * time.Second
 )
+
+// hunterShootGroup 猎人「开枪 / 不开枪」这一对互斥备选的组名。
+const hunterShootGroup = "hunter-shoot"
 
 // VictoryMode 胜负判定方式
 type VictoryMode int
@@ -31,6 +39,18 @@ const (
 	// 不区分神职与平民，适合无神职或角色板子简单的场合。
 	VictoryModeTownWipe
 )
+
+// String 实现 fmt.Stringer，让日志与错误信息里出现的是名字而不是 0/1。
+func (m VictoryMode) String() string {
+	switch m {
+	case VictoryModeSideWipe:
+		return "SIDE_WIPE"
+	case VictoryModeTownWipe:
+		return "TOWN_WIPE"
+	default:
+		return "UNKNOWN"
+	}
+}
 
 // GameConfig 游戏配置
 type GameConfig struct {
@@ -51,8 +71,25 @@ type GameConfig struct {
 	// 阶段配置
 	Phases map[pb.PhaseType]*PhaseConfig
 
-	// 超时配置（建议值，引擎不据此计时，详见超时常量的说明）
+	// DefaultTimeout 未给出 PhaseConfig.Timeout 时的建议超时。
+	// 建议值，引擎不据此计时，详见超时常量的说明；
+	// 用 GameConfig.PhaseTimeout(phase) 取某个阶段的最终建议值。
 	DefaultTimeout time.Duration
+}
+
+// PhaseTimeout 某个阶段的建议超时。
+//
+// 阶段自己没配就用 DefaultTimeout，DefaultTimeout 也没配就用
+// DefaultPhaseTimeout。这两个字段此前只写不读——调用方要拿引擎实际
+// 在用的建议值，只能自己再造一份配置比对。
+func (c *GameConfig) PhaseTimeout(phase pb.PhaseType) time.Duration {
+	if pc := c.Phases[phase]; pc != nil && pc.Timeout > 0 {
+		return pc.Timeout
+	}
+	if c.DefaultTimeout > 0 {
+		return c.DefaultTimeout
+	}
+	return DefaultPhaseTimeout
 }
 
 // PhaseConfig 阶段配置
@@ -82,6 +119,17 @@ type PhaseStep struct {
 	// false：任意一人提交即算完成
 	// 仅影响就绪判断；重复提交如何取舍由各阶段的 Resolver 决定。
 	Multiple bool
+
+	// Group 互斥备选组。同一阶段内 Group 相同且非空的若干步骤是
+	// 「几选一」的关系，行动者提交了其中任意一个，整组即算完成。
+	//
+	// 猎人的「开枪」与「不开枪」就是这样一对：没有这个字段，逐步骤
+	// 独立判定会认为提交了 SKIP 的猎人仍欠着 SHOOT，一旦按文档字面
+	// 把两步都标成 Required，这个阶段就永远不会就绪。
+	//
+	// 只影响就绪判断，不影响技能校验：一个阶段允许哪些技能仍由
+	// 全部步骤共同决定。
+	Group string
 }
 
 // SkillUse 技能使用记录
@@ -158,10 +206,11 @@ func DayHunterPhase() *PhaseConfig {
 		Type: pb.PhaseType_PHASE_TYPE_DAY_HUNTER,
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
+			// 开枪与不开枪是二选一，用同一个 Group 声明出来
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Group: hunterShootGroup},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Group: hunterShootGroup},
 		},
-		Timeout:   NightPhaseTimeout,
+		Timeout:   HunterPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 猎人行动后进入下一夜
 	}
 }
@@ -237,10 +286,11 @@ func NightHunterPhase() *PhaseConfig {
 		Type: pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER,
 		Steps: []PhaseStep{
 			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
+			// 开枪与不开枪是二选一，用同一个 Group 声明出来
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Group: hunterShootGroup},
+			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Group: hunterShootGroup},
 		},
-		Timeout:   NightPhaseTimeout,
+		Timeout:   HunterPhaseTimeout,
 		NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
 	}
 }
@@ -253,14 +303,17 @@ func NightHunterPhase() *PhaseConfig {
 // 引擎会在推进到那里时静默地把游戏判为结束——这类问题必须在构造时暴露，
 // 而不是等到第三回合突然收场。
 //
-// 这里只校验配置的形状。「每个阶段是否都有 Resolver」依赖运行期注册，
-// 由 Engine.Start 校验。
+// 这里只校验配置的形状。两类问题校验不到，各有归处：
+//   - 「每个阶段是否都有 Resolver」依赖运行期注册，由 Engine.Start 校验；
+//   - 死亡技能的动态流转（Resolver 产出 NewAbilityTriggerEffect 指向的
+//     阶段）是运行期才知道的边，由引擎在入队前检查——目标阶段不在配置里
+//     的触发会被就地否决并记 Error 日志，而不是把游戏带进一个空阶段。
 func (c *GameConfig) Validate() error {
 	if c == nil {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE, "config must not be nil")
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_CONFIG, "config must not be nil")
 	}
 	if len(c.Phases) == 0 {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE, "config contains no phases")
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_CONFIG, "config contains no phases")
 	}
 
 	start := c.startPhase()
@@ -279,24 +332,65 @@ func (c *GameConfig) Validate() error {
 				"phase %v is registered under key %v", pc.Type, phaseType)
 		}
 
-		// 悬空的 NextPhase 会让游戏走到一半无声结束
-		if pc.NextPhase != pb.PhaseType_PHASE_TYPE_UNSPECIFIED &&
-			pc.NextPhase != pb.PhaseType_PHASE_TYPE_END {
+		// 悬空的 NextPhase 会让游戏走到一半无声结束。
+		//
+		// UNSPECIFIED 一并拒绝：想表达「到此结束」有 PHASE_TYPE_END，
+		// 留空只可能是漏填，而漏填的后果与悬空完全一样。
+		if pc.NextPhase == pb.PhaseType_PHASE_TYPE_UNSPECIFIED {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				"phase %v has no NextPhase (use PHASE_TYPE_END to end the game)", phaseType)
+		}
+		if pc.NextPhase != pb.PhaseType_PHASE_TYPE_END {
 			if _, ok := c.Phases[pc.NextPhase]; !ok {
 				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
 					"phase %v points to %v which is not present in config", phaseType, pc.NextPhase)
 			}
 		}
 
-		// 同一阶段内重复声明会让 AllowedSkills 返回重复项
-		seen := make(map[[2]int32]bool, len(pc.Steps))
-		for _, step := range pc.Steps {
-			key := [2]int32{int32(step.Role), int32(step.Skill)}
-			if seen[key] {
-				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
-					"phase %v declares %v/%v twice", phaseType, step.Role, step.Skill)
-			}
-			seen[key] = true
+		if err := validateSteps(phaseType, pc.Steps); err != nil {
+			return err
+		}
+	}
+
+	if c.VictoryMode < VictoryModeSideWipe || c.VictoryMode > VictoryModeTownWipe {
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_CONFIG,
+			"unknown victory mode %d", int(c.VictoryMode))
+	}
+
+	return nil
+}
+
+// validateSteps 校验一个阶段的步骤声明。
+//
+// 重复声明会让 AllowedSkills 返回重复项、PhaseReadiness 重复计数
+// 「还差谁行动」。ROLE_TYPE_UNSPECIFIED 表示「所有角色」，因此它与任何
+// 具体角色声明同一个技能都构成重复——键相同的那半只是同一个问题里
+// 比较显眼的一半。
+func validateSteps(phaseType pb.PhaseType, steps []PhaseStep) error {
+	type stepKey struct {
+		role  pb.RoleType
+		skill pb.SkillType
+	}
+
+	seen := make(map[stepKey]bool, len(steps))
+	allRoles := make(map[pb.SkillType]bool, len(steps))
+	for _, step := range steps {
+		key := stepKey{role: step.Role, skill: step.Skill}
+		if seen[key] {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				"phase %v declares %v/%v twice", phaseType, step.Role, step.Skill)
+		}
+		seen[key] = true
+		if step.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+			allRoles[step.Skill] = true
+		}
+	}
+
+	for _, step := range steps {
+		if step.Role != pb.RoleType_ROLE_TYPE_UNSPECIFIED && allRoles[step.Skill] {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				"phase %v declares %v for all roles and for %v separately",
+				phaseType, step.Skill, step.Role)
 		}
 	}
 

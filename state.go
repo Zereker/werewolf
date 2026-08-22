@@ -321,6 +321,11 @@ func (s *gameState) getAlivePlayerIDs() []string {
 // 不会报错也不会改变状态。扩展时请复用已有类型，或让 Resolver 自己把
 // 语义拆解成引擎认识的效果。
 func (s *gameState) applyEffect(effect *Effect) {
+	// 第三方 Resolver 返回的切片里可能混进 nil，不值得为此让整局崩掉
+	if effect == nil {
+		return
+	}
+
 	// 被取消的效果不改变状态，但仍会出现在 EndPhase 的返回值里，
 	// 好让调用方知道「某人试了但没成」以及原因
 	if effect.Canceled {
@@ -414,22 +419,39 @@ func (s *gameState) nextPhase(phase pb.PhaseType) {
 	}
 }
 
-// getWolfTeammates 获取狼人队友（不包括自己）
-// 只有狼人才能查询队友，非狼人返回空列表
+// getWolfTeammates 获取狼队队友（不包括自己），按 ID 排序。
+//
+// 按阵营而不是按角色判定：狼王、白狼王、狼美人这些角色经
+// AddCustomPlayer 加进来时 Camp 是 EVIL、Role 却不是 WEREWOLF，
+// 按角色判会让他们既看不到队友、也不被真狼看到，等于自定义狼队角色
+// 实际不可用。狼队内部视野不对称的变体（如某些板子的隐狼）需要调用方
+// 自行过滤，引擎给的是「同阵营即队友」这个默认。
+//
+// 非狼队成员返回空列表。
 func (s *gameState) getWolfTeammates(playerID string) []string {
-	// 检查请求者是否是狼人
 	player, ok := s.players[playerID]
-	if !ok || player.Role != pb.RoleType_ROLE_TYPE_WEREWOLF {
+	if !ok || player.Camp != pb.Camp_CAMP_EVIL {
 		return []string{}
 	}
 
 	result := make([]string, 0)
 	for _, p := range s.players {
-		if p.Role == pb.RoleType_ROLE_TYPE_WEREWOLF && p.ID != playerID {
+		if p.Camp == pb.Camp_CAMP_EVIL && p.ID != playerID {
 			result = append(result, p.ID)
 		}
 	}
-	return result
+	return sortedStrings(result)
+}
+
+// alivePlayerIDsByCamp 指定阵营的存活玩家 ID，按 ID 排序（包内使用）
+func (s *gameState) alivePlayerIDsByCamp(camp pb.Camp) []string {
+	result := make([]string, 0)
+	for id, p := range s.players {
+		if p.Alive && p.Camp == camp {
+			result = append(result, id)
+		}
+	}
+	return sortedStrings(result)
 }
 
 // checkVictory 按指定方式检查胜利条件。

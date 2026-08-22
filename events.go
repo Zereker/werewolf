@@ -45,13 +45,14 @@ func dispatchEvent(handlers []EventHandler, logger Logger, event *pb.Event) {
 //
 // 吞掉 panic 是为了让单个 handler 的故障不波及其他 handler，
 // 但必须留下日志——静默吞掉会让线上问题完全没有痕迹。
+// logger 为 nil 时退回空实现而不是静默返回：那正好与上一句相反。
 func recoverHandlerPanic(logger Logger, kind string, fields ...Field) {
 	r := recover()
 	if r == nil {
 		return
 	}
 	if logger == nil {
-		return
+		logger = NewNopLogger()
 	}
 	logger.Error(kind+" panicked",
 		append(fields,

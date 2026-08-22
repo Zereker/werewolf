@@ -297,6 +297,9 @@ for _, effect := range effects {
 `PhaseInfo` / `PlayerInfo` / `WolfTeammates` / `NightKillTarget`
 是**上帝视角**接口，供调用方作为主持人使用，不可整体转发给玩家。
 
+狼队的判定按**阵营**而非角色：`AddCustomPlayer` 加进来的狼王、
+狼美人同样看得到队友、夜里也能和狼队互通。
+
 ## 阶段就绪
 
 引擎不计时，但它知道谁还没行动：
