@@ -1,13 +1,13 @@
-package werewolf
+package engine
 
 import (
 	"testing"
 )
 
 func TestNewEffect(t *testing.T) {
-	effect := NewEffect(EventKill, "wolf", "victim")
+	effect := NewEffect(eventKill, "wolf", "victim")
 
-	if effect.Type != EventKill {
+	if effect.Type != eventKill {
 		t.Errorf("expected Type=KILL, got %v", effect.Type)
 	}
 	if effect.SourceID != "wolf" {
@@ -28,7 +28,7 @@ func TestNewEffect(t *testing.T) {
 }
 
 func TestEffect_Cancel(t *testing.T) {
-	effect := NewEffect(EventKill, "wolf", "victim")
+	effect := NewEffect(eventKill, "wolf", "victim")
 
 	effect.Cancel("protected by guard")
 
@@ -41,22 +41,22 @@ func TestEffect_Cancel(t *testing.T) {
 }
 
 func TestEffect_WithData(t *testing.T) {
-	effect := NewEffect(EventCheck, "seer", "target")
+	effect := NewEffect(eventCheck, "seer", "target")
 
-	result := effect.WithData("camp", CampGood)
+	result := effect.WithData("camp", campGood)
 
 	// Verify method chaining
 	if result != effect {
 		t.Error("expected WithData to return same effect")
 	}
 
-	if effect.Data["camp"] != CampGood {
+	if effect.Data["camp"] != campGood {
 		t.Errorf("expected camp=GOOD, got %v", effect.Data["camp"])
 	}
 }
 
 func TestEffect_WithData_Multiple(t *testing.T) {
-	effect := NewEffect(EventKill, "wolf", "victim")
+	effect := NewEffect(eventKill, "wolf", "victim")
 
 	effect.WithData("key1", "value1").WithData("key2", "value2")
 
@@ -69,11 +69,11 @@ func TestEffect_WithData_Multiple(t *testing.T) {
 }
 
 func TestEffect_ToEvent_Kill(t *testing.T) {
-	effect := NewEffect(EventKill, "wolf", "victim")
+	effect := NewEffect(eventKill, "wolf", "victim")
 
 	event := effect.ToEvent()
 
-	if event.Type != EventKill {
+	if event.Type != eventKill {
 		t.Errorf("expected KILL, got %v", event.Type)
 	}
 	if event.SourceID != "wolf" {
@@ -85,51 +85,51 @@ func TestEffect_ToEvent_Kill(t *testing.T) {
 }
 
 func TestEffect_ToEvent_Poison(t *testing.T) {
-	effect := NewEffect(EventPoison, "witch", "victim")
+	effect := NewEffect(eventPoison, "witch", "victim")
 
 	event := effect.ToEvent()
 
-	if event.Type != EventPoison {
+	if event.Type != eventPoison {
 		t.Errorf("expected POISON, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Protect(t *testing.T) {
-	effect := NewEffect(EventProtect, "guard", "target")
+	effect := NewEffect(eventProtect, "guard", "target")
 
 	event := effect.ToEvent()
 
-	if event.Type != EventProtect {
+	if event.Type != eventProtect {
 		t.Errorf("expected PROTECT, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Save(t *testing.T) {
-	effect := NewEffect(EventSave, "witch", "victim")
+	effect := NewEffect(eventSave, "witch", "victim")
 
 	event := effect.ToEvent()
 
-	if event.Type != EventSave {
+	if event.Type != eventSave {
 		t.Errorf("expected SAVE, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Check(t *testing.T) {
-	effect := NewEffect(EventCheck, "seer", "target")
+	effect := NewEffect(eventCheck, "seer", "target")
 
 	event := effect.ToEvent()
 
-	if event.Type != EventCheck {
+	if event.Type != eventCheck {
 		t.Errorf("expected CHECK, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Eliminate(t *testing.T) {
-	effect := NewEffect(EventEliminate, "", "target")
+	effect := NewEffect(eventEliminate, "", "target")
 
 	event := effect.ToEvent()
 
-	if event.Type != EventEliminate {
+	if event.Type != eventEliminate {
 		t.Errorf("expected ELIMINATE, got %v", event.Type)
 	}
 }
@@ -149,12 +149,12 @@ func TestEventType_AllTypes(t *testing.T) {
 		EventUnspecified,
 		EventGameStarted,
 		EventGameEnded,
-		EventKill,
-		EventProtect,
-		EventSave,
-		EventPoison,
-		EventCheck,
-		EventEliminate,
+		eventKill,
+		eventProtect,
+		eventSave,
+		eventPoison,
+		eventCheck,
+		eventEliminate,
 	}
 
 	// Verify all types are distinct
@@ -168,8 +168,8 @@ func TestEventType_AllTypes(t *testing.T) {
 }
 
 func TestEffect_ToEvent_WithData(t *testing.T) {
-	effect := NewEffect(EventCheck, "seer", "target").
-		WithData("camp", CampGood).
+	effect := NewEffect(eventCheck, "seer", "target").
+		WithData("camp", campGood).
 		WithData("isGood", true).
 		WithData("votes", 5)
 
@@ -198,7 +198,7 @@ func TestEffect_ToEvent_WithData(t *testing.T) {
 
 func TestEffect_ToEvent_WithComplexData(t *testing.T) {
 	voters := []string{"p1", "p2", "p3"}
-	effect := NewEffect(EventEliminate, "", "target").
+	effect := NewEffect(eventEliminate, "", "target").
 		WithData("voters", voters).
 		WithData("result", "tied")
 
@@ -255,8 +255,8 @@ func TestEventType_KernelPrimitivesAreTheOnlyInternalOnes(t *testing.T) {
 		internal bool
 		why      string
 	}{
-		{EventKill, false, "规则给「发生了什么」起的名字"},
-		{EventVoteTied, false, "规则给「发生了什么」起的名字"},
+		{eventKill, false, "规则给「发生了什么」起的名字"},
+		{eventVoteTied, false, "规则给「发生了什么」起的名字"},
 		{EventSetRoundVar, true, "内核的状态原语"},
 		{EventSetAlive, true, "内核的状态原语"},
 		{EventPhaseChanged, true, "内核的记账"},
@@ -298,25 +298,41 @@ func TestCustomEventReachesOnEvent(t *testing.T) {
 	const customPhase = PhaseType("CUSTOM_PHASE")
 	const customEvent = EventType("CUSTOM_EVENT")
 
-	cfg := DefaultGameConfig()
+	cfg := testConfig()
 	cfg.Phases[customPhase] = &PhaseConfig{
 		Type:      customPhase,
-		NextPhase: PhaseDay,
-		Steps:     []PhaseStep{{Role: RoleVillager, Skill: SkillSkip}},
+		NextPhase: phaseDay,
+		Steps:     []PhaseStep{{Role: roleVillager, Skill: SkillSkip}},
 	}
-	cfg.Phases[PhaseNightResolve].NextPhase = customPhase
+	cfg.Phases[phaseNightResolve].NextPhase = customPhase
 
-	g := newRuleGameWith(t, cfg,
-		[]EngineOption{WithResolver(customPhase, customEventResolver{typ: customEvent})},
-		seats(wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"))...)
+	opts := append(withNoopResolvers(),
+		WithResolver(customPhase, customEventResolver{typ: customEvent}))
+	e, err := NewEngine(cfg, opts...)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	for id, role := range map[string]RoleType{
+		"w1": roleWerewolf, "w2": roleWerewolf, "s": roleSeer,
+		"v1": roleVillager, "v2": roleVillager, "v3": roleVillager,
+	} {
+		mustAdd(t, e, id, role)
+	}
+	if err := e.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
 
 	var seen []EventType
-	g.e.OnEvent(func(ev *Event) { seen = append(seen, ev.Type) })
+	e.OnEvent(func(ev *Event) { seen = append(seen, ev.Type) })
 
-	for g.e.Phase() != customPhase {
-		g.endAny()
+	for i := 0; e.Phase() != customPhase && i < 20; i++ {
+		if _, err := e.EndPhase(); err != nil {
+			t.Fatalf("EndPhase: %v", err)
+		}
 	}
-	g.endAny()
+	if _, err := e.EndPhase(); err != nil {
+		t.Fatalf("EndPhase: %v", err)
+	}
 
 	for _, typ := range seen {
 		if typ == customEvent {

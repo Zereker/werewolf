@@ -3,6 +3,7 @@ package werewolf
 import (
 	"encoding/json"
 	"errors"
+	"github.com/Zereker/werewolf/engine"
 	"reflect"
 	"testing"
 )
@@ -41,8 +42,8 @@ func buildMidGameEngine(t *testing.T) *Engine {
 }
 
 func TestSnapshot_RoundTripThroughJSON(t *testing.T) {
-	engine := buildMidGameEngine(t)
-	snap := engine.Snapshot()
+	eng := buildMidGameEngine(t)
+	snap := eng.Snapshot()
 
 	data, err := json.Marshal(snap)
 	if err != nil {
@@ -80,11 +81,11 @@ func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 		skill  SkillType
 		target string
 	}{
-		{"", SkillUnspecified, ""}, // NIGHT_GUARD 结算（技能已在快照里）
+		{"", engine.SkillUnspecified, ""}, // NIGHT_GUARD 结算（技能已在快照里）
 		{"w1", SkillKill, "s"},
 		{"wi", SkillPoison, "w2"},
 		{"s", SkillCheck, "w2"},
-		{"", SkillUnspecified, ""}, // NIGHT_RESOLVE
+		{"", engine.SkillUnspecified, ""}, // NIGHT_RESOLVE
 	}
 
 	for i, st := range steps {
@@ -121,8 +122,8 @@ func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 }
 
 func TestSnapshot_PreservesDetailedState(t *testing.T) {
-	engine := buildMidGameEngine(t)
-	restored, err := Restore(nil, DefaultRules(), engine.Snapshot())
+	eng := buildMidGameEngine(t)
+	restored, err := Restore(nil, DefaultRules(), eng.Snapshot())
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
@@ -139,20 +140,20 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 
 	t.Run("守卫上回合目标", func(t *testing.T) {
 		// 第一夜守的是 v2，恢复后连守限制必须仍然生效
-		p, ok := restored.state.getPlayer("g")
+		p, ok := restored.PlayerInfo("g")
 		if !ok {
 			t.Fatal("守卫丢失")
 		}
-		if got := p.Vars[PlayerVarLastProtectedTarget]; got != "v2" {
+		if got := p.Var(PlayerVarLastProtectedTarget); got != "v2" {
 			t.Errorf("守卫上回合目标: 期望 v2，实际 %q", got)
 		}
 	})
 
 	t.Run("出局玩家", func(t *testing.T) {
-		if restored.state.mustAlive(t, "v3") {
+		if mustAlive(t, restored, "v3") {
 			t.Error("被放逐的 v3 不应复活")
 		}
-		if !restored.state.mustAlive(t, "v1") {
+		if !mustAlive(t, restored, "v1") {
 			t.Error("被救回的 v1 应当存活")
 		}
 	})
@@ -167,10 +168,11 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	})
 
 	t.Run("未结算技能", func(t *testing.T) {
-		if len(restored.pendingUses) != 1 {
-			t.Fatalf("待结算技能数: 期望 1，实际 %d", len(restored.pendingUses))
+		snap := restored.Snapshot()
+		if len(snap.PendingUses) != 1 {
+			t.Fatalf("待结算技能数: 期望 1，实际 %d", len(snap.PendingUses))
 		}
-		u := restored.pendingUses[0]
+		u := snap.PendingUses[0]
 		if u.PlayerID != "g" || u.Skill != SkillProtect || u.TargetID != "s" {
 			t.Errorf("待结算技能内容不符: %+v", u)
 		}
@@ -178,9 +180,9 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 }
 
 // mustAlive 测试辅助
-func (s *gameState) mustAlive(t *testing.T, id string) bool {
+func mustAlive(t *testing.T, e *Engine, id string) bool {
 	t.Helper()
-	p, ok := s.getPlayer(id)
+	p, ok := e.PlayerInfo(id)
 	if !ok {
 		t.Fatalf("玩家不存在: %s", id)
 	}
@@ -189,8 +191,8 @@ func (s *gameState) mustAlive(t *testing.T, id string) bool {
 
 // TestSnapshot_IsDeepCopy 快照必须与引擎脱钩，后续推进不能改到已导出的快照。
 func TestSnapshot_IsDeepCopy(t *testing.T) {
-	engine := buildMidGameEngine(t)
-	snap := engine.Snapshot()
+	eng := buildMidGameEngine(t)
+	snap := eng.Snapshot()
 
 	data, err := json.Marshal(snap)
 	if err != nil {
@@ -199,7 +201,7 @@ func TestSnapshot_IsDeepCopy(t *testing.T) {
 
 	// 继续推进游戏
 	for i := 0; i < 4; i++ {
-		if _, err := engine.EndPhase(); err != nil {
+		if _, err := eng.EndPhase(); err != nil {
 			break
 		}
 	}
@@ -216,14 +218,14 @@ func TestSnapshot_IsDeepCopy(t *testing.T) {
 // TestSnapshot_Deterministic 同一局面导出的快照字节必须一致，
 // 否则无法做幂等写入与快照比对（map 遍历顺序是随机的）。
 func TestSnapshot_Deterministic(t *testing.T) {
-	engine := buildMidGameEngine(t)
+	eng := buildMidGameEngine(t)
 
-	first, err := json.Marshal(engine.Snapshot())
+	first, err := json.Marshal(eng.Snapshot())
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 20; i++ {
-		next, err := json.Marshal(engine.Snapshot())
+		next, err := json.Marshal(eng.Snapshot())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,47 +239,47 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 	valid := buildMidGameEngine(t).Snapshot()
 
 	t.Run("nil 快照", func(t *testing.T) {
-		if _, err := Restore(nil, DefaultRules(), nil); err != ErrNilSnapshot {
-			t.Errorf("期望 ErrNilSnapshot，实际 %v", err)
+		if _, err := Restore(nil, DefaultRules(), nil); err != engine.ErrNilSnapshot {
+			t.Errorf("期望 engine.ErrNilSnapshot，实际 %v", err)
 		}
 	})
 
 	t.Run("版本不兼容", func(t *testing.T) {
 		bad := *valid
-		bad.Version = SnapshotVersion + 1
+		bad.Version = engine.SnapshotVersion + 1
 		_, err := Restore(nil, DefaultRules(), &bad)
-		if !HasCode(err, CodeInvalidSnapshot) {
+		if !engine.HasCode(err, engine.CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
 
 	t.Run("玩家ID为空", func(t *testing.T) {
 		bad := *valid
-		bad.Players = append([]PlayerSnapshot(nil), valid.Players...)
+		bad.Players = append([]engine.PlayerSnapshot(nil), valid.Players...)
 		bad.Players[0].ID = ""
-		if _, err := Restore(nil, DefaultRules(), &bad); err != ErrInvalidPlayerID {
-			t.Errorf("期望 ErrInvalidPlayerID，实际 %v", err)
+		if _, err := Restore(nil, DefaultRules(), &bad); err != engine.ErrInvalidPlayerID {
+			t.Errorf("期望 engine.ErrInvalidPlayerID，实际 %v", err)
 		}
 	})
 
 	t.Run("玩家ID重复", func(t *testing.T) {
 		bad := *valid
-		bad.Players = append(append([]PlayerSnapshot(nil), valid.Players...), valid.Players[0])
+		bad.Players = append(append([]engine.PlayerSnapshot(nil), valid.Players...), valid.Players[0])
 		_, err := Restore(nil, DefaultRules(), &bad)
-		if !HasCode(err, CodeInvalidSnapshot) {
+		if !engine.HasCode(err, engine.CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
 
 	t.Run("待结算技能引用不存在的玩家", func(t *testing.T) {
 		bad := *valid
-		bad.PendingUses = []SkillUseSnapshot{{
+		bad.PendingUses = []engine.SkillUseSnapshot{{
 			PlayerID: "查无此人",
 			Skill:    SkillProtect,
 			TargetID: "s",
 		}}
 		_, err := Restore(nil, DefaultRules(), &bad)
-		if !HasCode(err, CodeInvalidSnapshot) {
+		if !engine.HasCode(err, engine.CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
@@ -304,7 +306,7 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 
 		// 快照停在 NIGHT_GUARD，而该配置里没有这个阶段
 		_, err := Restore(cfg, DefaultRules(), valid)
-		if !HasCode(err, CodeInvalidSnapshot) {
+		if !engine.HasCode(err, engine.CodeInvalidSnapshot) {
 			t.Errorf("期望 INVALID_SNAPSHOT，实际 %v", err)
 		}
 	})
@@ -330,8 +332,8 @@ func TestSnapshot_EndedGame(t *testing.T) {
 	if !restored.IsGameOver() {
 		t.Error("恢复后应当仍是已结束状态")
 	}
-	if _, err := restored.EndPhase(); err != ErrGameEnded {
-		t.Errorf("已结束的对局再推进应返回 ErrGameEnded，实际 %v", err)
+	if _, err := restored.EndPhase(); err != engine.ErrGameEnded {
+		t.Errorf("已结束的对局再推进应返回 engine.ErrGameEnded，实际 %v", err)
 	}
 }
 
@@ -354,33 +356,33 @@ func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 
 	marker := &markerResolver{}
 
-	engine, err := NewWith(cfg, DefaultRules(), WithResolver(customPhase, marker))
+	eng, err := NewWith(cfg, DefaultRules(), engine.WithResolver(customPhase, marker))
 	if err != nil {
-		t.Fatalf("NewEngine 失败: %v", err)
+		t.Fatalf("engine.NewEngine 失败: %v", err)
 	}
-	mustAdd(t, engine, "w1", RoleWerewolf)
-	mustAdd(t, engine, "v1", RoleVillager)
-	mustAdd(t, engine, "v2", RoleVillager)
-	if err := engine.Start(); err != nil {
+	mustAdd(t, eng, "w1", RoleWerewolf)
+	mustAdd(t, eng, "v1", RoleVillager)
+	mustAdd(t, eng, "v2", RoleVillager)
+	if err := eng.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
 
 	// 推到自定义阶段再存档
-	for engine.Phase() != customPhase {
-		if _, err := engine.EndPhase(); err != nil {
+	for eng.Phase() != customPhase {
+		if _, err := eng.EndPhase(); err != nil {
 			t.Fatalf("推进失败: %v", err)
 		}
 	}
-	snap := engine.Snapshot()
+	snap := eng.Snapshot()
 
 	// 忘了带解析器：必须直接报错，而不是给一个会静默丢技能的引擎
 	if _, err := Restore(cfg, DefaultRules(), snap); err == nil {
 		t.Fatal("缺少自定义阶段的解析器时，恢复应当报错")
 	}
 
-	restored, err := Restore(cfg, DefaultRules(), snap, WithResolver(customPhase, marker))
+	restored, err := Restore(cfg, DefaultRules(), snap, engine.WithResolver(customPhase, marker))
 	if err != nil {
-		t.Fatalf("RestoreEngine 失败: %v", err)
+		t.Fatalf("engine.RestoreEngine 失败: %v", err)
 	}
 	if err := restored.SubmitSkillUse(&SkillUse{
 		PlayerID: "v1", Skill: SkillSkip,
@@ -402,7 +404,7 @@ type markerResolver struct{}
 func (r *markerResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	out := make([]*Effect, 0, len(uses))
 	for _, use := range uses {
-		out = append(out, NewEffect(EventSkip, use.PlayerID, ""))
+		out = append(out, engine.NewEffect(EventSkip, use.PlayerID, ""))
 	}
 	return out
 }
@@ -415,10 +417,10 @@ func (r *markerResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 	base := func() *Snapshot {
 		return &Snapshot{
-			Version: SnapshotVersion,
+			Version: engine.SnapshotVersion,
 			Phase:   PhaseNightWolf,
 			Round:   1,
-			Players: []PlayerSnapshot{
+			Players: []engine.PlayerSnapshot{
 				{ID: "w1", Role: RoleWerewolf, Alive: true,
 					Vars: map[string]string{VarCamp: string(CampEvil)}},
 				{ID: "v1", Role: RoleVillager, Alive: true,
@@ -434,12 +436,12 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 
 	snap := base()
 	snap.Players[0].Role = RoleGod
-	if _, err := Restore(nil, DefaultRules(), snap); !errors.Is(err, ErrInvalidRole) {
+	if _, err := Restore(nil, DefaultRules(), snap); !errors.Is(err, engine.ErrInvalidRole) {
 		t.Errorf("上帝不是玩家身份，恢复应当被拒，实际 %v", err)
 	}
 
 	snap = base()
-	snap.PendingUses = []SkillUseSnapshot{{
+	snap.PendingUses = []engine.SkillUseSnapshot{{
 		PlayerID: "w1",
 		Skill:    SkillKill,
 		TargetID: "查无此人",
@@ -472,19 +474,17 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 	g.endAny()
 
 	// 再加一项第三方的自定义状态
-	g.e.mu.Lock()
-	g.e.state.applyEffect(NewSetPlayerVarEffect("v3", "custom.flag", "yes"))
-	g.e.mu.Unlock()
+	g.e.Apply(engine.NewSetPlayerVarEffect("v3", "custom.flag", "yes"))
 
 	snap := g.e.Snapshot()
-	byID := make(map[string]PlayerSnapshot, len(snap.Players))
+	byID := make(map[string]engine.PlayerSnapshot, len(snap.Players))
 	for _, p := range snap.Players {
 		byID[p.ID] = p
 	}
 
-	// 逐个字段与引擎内部的真值比对
-	g.e.mu.RLock()
-	for id, want := range g.e.state.players {
+	// 逐个字段与引擎给出的真值比对
+	for _, id := range g.e.AlivePlayerIDs() {
+		want, _ := g.e.PlayerInfo(id)
 		got := byID[id]
 		switch {
 		case got.Role != want.Role:
@@ -499,7 +499,6 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 				id, got.RoundVars, want.RoundVars)
 		}
 	}
-	g.e.mu.RUnlock()
 
 	// 往返之后再导一次，必须逐字节一致
 	restored, err := Restore(nil, DefaultRules(), snap)
@@ -529,7 +528,7 @@ func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
 	}
 	cfg.Phases[PhaseNightResolve].NextPhase = customPhase
 
-	opts := []EngineOption{WithResolver(customPhase, varWritingResolver{})}
+	opts := []EngineOption{engine.WithResolver(customPhase, varWritingResolver{})}
 	g := newRuleGameWith(t, cfg, opts,
 		seats(wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"))...)
 
@@ -565,5 +564,5 @@ func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
 type varWritingResolver struct{}
 
 func (varWritingResolver) Resolve([]*SkillUse, GameView) []*Effect {
-	return []*Effect{NewSetPlayerVarEffect("v1", "custom.mark", "set")}
+	return []*Effect{engine.NewSetPlayerVarEffect("v1", "custom.mark", "set")}
 }

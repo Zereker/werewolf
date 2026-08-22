@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 	"time"
 )
@@ -94,7 +95,7 @@ func TestStandardVotePhase(t *testing.T) {
 
 	// Verify vote step
 	voteStep := phase.Steps[1]
-	if voteStep.Role != RoleUnspecified {
+	if voteStep.Role != engine.RoleUnspecified {
 		t.Errorf("expected Role=UNSPECIFIED, got %v", voteStep.Role)
 	}
 	if voteStep.Skill != SkillVote {
@@ -184,7 +185,7 @@ func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 	cfg := DefaultGameConfig()
 	delete(cfg.Phases, PhaseNightWitch) // NIGHT_WOLF 的 NextPhase 悬空
 
-	if _, err := NewEngine(cfg); err == nil {
+	if _, err := engine.NewEngine(cfg); err == nil {
 		t.Fatal("残缺配置应当在构造时被拒绝")
 	}
 }
@@ -192,13 +193,23 @@ func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 // TestStart_RejectsMissingResolver 阶段没有解析器时，技能会被静默丢弃，
 // 必须在开局前拦下。
 func TestStart_RejectsMissingResolver(t *testing.T) {
-	engine := MustNew(DefaultRules())
-	delete(engine.phase.resolvers, PhaseNightWolf)
+	// 拿掉狼人阶段的解析器：Options 里的那些只是选项，去掉一项即可
+	opts := Options(DefaultRules())
+	cfg := DefaultGameConfig()
+	cfg.Phases[PhaseType("NO_RESOLVER")] = &PhaseConfig{
+		Type:      PhaseType("NO_RESOLVER"),
+		NextPhase: PhaseNightGuard,
+	}
+	cfg.Phases[PhaseVote].NextPhase = PhaseType("NO_RESOLVER")
+	eng, err := engine.NewEngine(cfg, opts...)
+	if err != nil {
+		t.Fatalf("配置本身应当合法: %v", err)
+	}
 
-	mustAdd(t, engine, "w1", RoleWerewolf)
-	mustAdd(t, engine, "v1", RoleVillager)
+	mustAdd(t, eng, "w1", RoleWerewolf)
+	mustAdd(t, eng, "v1", RoleVillager)
 
-	if err := engine.Start(); err == nil {
+	if err := eng.Start(); err == nil {
 		t.Error("缺少解析器时 Start 应当报错")
 	}
 }
@@ -208,14 +219,14 @@ func TestStartPhase_Configurable(t *testing.T) {
 	cfg := DefaultGameConfig()
 	cfg.StartPhase = PhaseDay
 
-	engine := MustNewWith(cfg, DefaultRules())
-	mustAdd(t, engine, "w1", RoleWerewolf)
-	mustAdd(t, engine, "v1", RoleVillager)
-	if err := engine.Start(); err != nil {
+	eng := MustNewWith(cfg, DefaultRules())
+	mustAdd(t, eng, "w1", RoleWerewolf)
+	mustAdd(t, eng, "v1", RoleVillager)
+	if err := eng.Start(); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := engine.Phase(); got != PhaseDay {
+	if got := eng.Phase(); got != PhaseDay {
 		t.Errorf("期望从 DAY 开局，实际 %v", got)
 	}
 }
@@ -234,21 +245,34 @@ func TestValidate_RejectsMissingNextPhase(t *testing.T) {
 	}
 }
 
-// TestValidate_RejectsUnknownVictoryMode 越界的胜负判定方式不该被 default 分支吞掉。
+// TestValidate_RejectsUnknownVictoryMode 不认识的胜负判定方式不该被 default 分支吞掉。
 //
-// 校验从 GameConfig.Validate 搬到了 Rules.Validate，跟着 VictoryMode 一起走。
+// VictoryMode 改成字符串之后多守住一件事：**零值也要被拒**。它此前是
+// int + iota，零值恰好是屠边——「没填」与「选了屠边」在结构体里长得
+// 一模一样，填错了也发现不了。
 func TestValidate_RejectsUnknownVictoryMode(t *testing.T) {
-	rules := DefaultRules()
-	rules.VictoryMode = VictoryMode(99)
+	for name, mode := range map[string]VictoryMode{
+		"不认识的取值": VictoryMode("不存在的判定方式"),
+		"零值":     VictoryMode(""),
+	} {
+		t.Run(name, func(t *testing.T) {
+			rules := DefaultRules()
+			rules.VictoryMode = mode
 
-	if err := rules.Validate(); err == nil {
-		t.Fatal("越界的 VictoryMode 应当被拒")
+			if err := rules.Validate(); err == nil {
+				t.Fatal("应当被拒")
+			}
+			if _, err := New(rules); err == nil {
+				t.Fatal("应当让组装失败")
+			}
+		})
 	}
-	if _, err := New(rules); err == nil {
-		t.Fatal("越界的 VictoryMode 应当让组装失败")
+
+	if got := VictoryMode("").String(); got != "UNSPECIFIED" {
+		t.Errorf("零值的 String(): 期望 UNSPECIFIED，实际 %s", got)
 	}
-	if got := VictoryMode(99).String(); got != "UNKNOWN" {
-		t.Errorf("String(): 期望 UNKNOWN，实际 %s", got)
+	if got := VictoryModeTownWipe.String(); got != "TOWN_WIPE" {
+		t.Errorf("String(): 期望 TOWN_WIPE，实际 %s", got)
 	}
 }
 
@@ -283,8 +307,8 @@ func TestGameConfig_PhaseTimeout(t *testing.T) {
 	}
 	// DefaultTimeout 也没配时退回常量
 	bare := &GameConfig{Phases: cfg.Phases}
-	if got := bare.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != DefaultPhaseTimeout {
-		t.Errorf("兜底: 期望 %v，实际 %v", DefaultPhaseTimeout, got)
+	if got := bare.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != engine.DefaultPhaseTimeout {
+		t.Errorf("兜底: 期望 %v，实际 %v", engine.DefaultPhaseTimeout, got)
 	}
 }
 

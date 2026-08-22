@@ -46,30 +46,30 @@ go get github.com/Zereker/werewolf
 ## Quick start
 
 ```go
-engine, _ := werewolf.New(werewolf.DefaultRules()) // the default 9-player board
+g, _ := werewolf.New(werewolf.DefaultRules()) // the default 9-player board
 
 for id, role := range map[string]werewolf.RoleType{
     "w1": werewolf.RoleWerewolf, "w2": werewolf.RoleWerewolf,
     "s": werewolf.RoleSeer, "wi": werewolf.RoleWitch, "g": werewolf.RoleGuard,
     "v1": werewolf.RoleVillager, "v2": werewolf.RoleVillager,
 } {
-    engine.AddPlayer(id, role)
+    g.AddPlayer(id, role)
 }
-engine.Start()
+g.Start()
 
 // The wolves pick a target
-engine.SubmitSkillUse(&werewolf.SkillUse{
+g.SubmitSkillUse(&werewolf.SkillUse{
     PlayerID: "w1", Skill: werewolf.SkillKill, TargetID: "v1",
 })
-effects, _ := engine.EndPhase() // resolve, then advance
+effects, _ := g.EndPhase() // resolve, then advance
 
 // What may this player be told? Send it as-is; no filtering needed.
-view := engine.PlayerView("wi")
+view := g.PlayerView("wi")
 fmt.Println(view.RoleInfo[werewolf.RoleInfoKillTarget]) // "v1" — she still has the antidote
 
 // Who should hear about a given event?
 for _, e := range effects {
-    audience, known := engine.AudienceOf(e.ToEvent())
+    audience, known := g.AudienceOf(e.ToEvent())
     _ = audience // known == false means "the engine has no opinion; you route it"
 }
 ```
@@ -80,8 +80,8 @@ for _, e := range effects {
 |---|---|
 | **Information boundary** | `PlayerView` is safe to send verbatim. `AudienceOf` answers "who should hear this". God-view interfaces are named separately and documented as non-forwardable. |
 | **Determinism** | Same board, same inputs, byte-identical snapshots. Enforced by 5000 randomized games per test run. |
-| **Save / restore** | `Snapshot()` / `RestoreEngine()`, versioned, refuses formats it cannot read. |
-| **Replay** | Every state change flows through one write point, so the effect log is a complete history. `ReplayEngine()` rebuilds a game from it. |
+| **Save / restore** | `Snapshot()` / `Restore()`, versioned, refuses formats it cannot read. |
+| **Replay** | Every state change flows through one write point, so the effect log is a complete history. `Replay()` rebuilds a game from it. |
 | **Configurable rules** | Witch self-save, guard repeat-protect, guard+antidote interaction, side-wipe vs. town-wipe victory — all switches, not forks. |
 | **Zero dependencies** | `go.mod` has no `require` block. |
 
@@ -139,10 +139,34 @@ major version 2 and above, which would change every user's import path. Paying
 the breakage once and staying on the v1 line is the better trade for a library
 with no known importers yet.
 
-What is left is the physical split into two packages — `werewolf` and
-`werewolf/engine` — so that "the rules only use public API" is enforced by the
-compiler rather than by discipline. That is a sub-package, which also needs no
-`/vN` suffix.
+The two layers are two packages:
+
+| Package | What it is |
+|---|---|
+| `github.com/Zereker/werewolf` | The Werewolf rules: roles, phases, resolvers, victory |
+| `github.com/Zereker/werewolf/engine` | The kernel: players, a phase ring, four state primitives, the information boundary |
+
+**"The rules only use public API" is enforced by the compiler**, not by
+discipline — the rules package sits outside the kernel, and every door it uses
+is a door you can use too. To check, read
+[`engine/types.go`](engine/types.go): the kernel's whole vocabulary is five
+non-empty values — `START`, `END`, `GOD`, `SKIP`, `ANNOUNCE` — plus a zero value
+per type. There is no witch and no werewolf; those live in the root package's
+[`vocab.go`](vocab.go).
+
+**Playing a game needs the root package only.** It re-exports a small, deliberate
+slice of the kernel — about twenty names ([`alias.go`](alias.go)) — under a single
+admission rule: a name is there only if the root package's own exported API uses
+it (`SkillUse`, `GameView`, `Effect`, `Snapshot`, the vocabulary types and their
+kernel-owned values). They are plain aliases: `werewolf.Effect` and
+`engine.Effect` are the same type.
+
+**Changing the rules means writing the `engine.` prefix.** Custom resolvers, a
+different victory checker, logging and metrics, branching on error codes, taking
+a snapshot apart — those names live in the kernel. That is not an oversight; it
+is how the boundary stays visible at the call site. The rules package writes it
+that way itself (see `resolver.go`, `rolesetup.go`). The kernel's own API is
+documented in [engine/README.md](engine/README.md).
 
 ## Testing
 

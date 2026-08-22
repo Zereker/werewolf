@@ -1,13 +1,14 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 )
 
 // 本文件是给「按脚本推进一局游戏」的测试用的辅助函数。
 //
 // 这些包装存在的理由只有一个：**建局与推进出错时必须当场终止**。
-// 早期测试大量写成 engine.Start() / engine.AddPlayer(...) 而不看返回值，
+// 早期测试大量写成 eng.Start() / eng.AddPlayer(...) 而不看返回值，
 // 一旦这些调用开始返回错误（板子不合法、重复 ID、配置残缺），测试不会
 // 在出错处停下，而是带着一个没开局的引擎继续往下跑——最后要么在某个
 // 无关的断言上失败、要么直接在空切片上取下标 panic，两种都极难定位。
@@ -41,37 +42,25 @@ func mustSubmit(t *testing.T, e *Engine, use *SkillUse) {
 	}
 }
 
-// mustAddTo 直接向状态添加玩家，失败即终止。
-// 供不经 Engine、直接测试 Resolver 与状态的单元测试使用。
-func mustAddTo(t *testing.T, s *gameState, id string, role RoleType) {
-	t.Helper()
-	if err := s.addPlayer(id, role); err != nil {
-		t.Fatalf("addPlayer(%q, %v): %v", id, role, err)
-	}
-	// 初始状态由 RoleSetup 发放，而那张表在 Engine 上——直接拿裸
-	// gameState 驱动解析器的测试得自己补这一步，否则女巫手里没有药。
-	// 这里刻意只发内置的：测第三方角色请经 Engine 走 WithRoleSetup。
-	if setup, ok := builtinRoleSetup[role]; ok {
-		s.setPlayerVars(id, setup.Setup(id, role))
-	}
+// checkVictory 按默认规则算一次胜负。
+//
+// 拆包之后测试拿不到引擎内部装的那个判定器了，改成显式构造一个同样的——
+// 这反而更实在：测的是「这个局面按屠边规则算下来是什么结果」，
+// 而不是「引擎里那个对象说了什么」。
+func checkVictory(e *Engine) (bool, Camp) {
+	return checkVictoryWith(e, DefaultRules())
 }
 
-// checkVictory 按引擎当前的判定器算一次胜负。
-//
-// 胜负判定从 gameState 上的方法改成了可替换的 VictoryChecker，
-// 测试里问「现在分出胜负了吗」得走同一条路——否则测的就不是引擎在用的
-// 那一套了。
-func checkVictory(e *Engine) (bool, Camp) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.victory.CheckVictory(newStateView(e.state))
+// checkVictoryWith 按给定规则算一次胜负。
+func checkVictoryWith(e *Engine, rules Rules) (bool, Camp) {
+	return DefaultVictoryChecker{Mode: rules.VictoryMode}.CheckVictory(e.View())
 }
 
 // witchKill 从 RolePhaseInfo 里取出女巫可见的刀口。
 //
 // 刀口从 RolePhaseInfo 的一等字段变成了角色自己填的 RoleInfo——
 // 内置角色在信息这件事上不再比第三方角色多一等待遇。
-func witchKill(ri *RolePhaseInfo) string {
+func witchKill(ri *engine.RolePhaseInfo) string {
 	for _, info := range ri.RoleInfo {
 		if t := info[RoleInfoKillTarget]; t != "" {
 			return t
@@ -80,32 +69,75 @@ func witchKill(ri *RolePhaseInfo) string {
 	return ""
 }
 
-// ==================== 回合状态的读写（狼人杀规则层） ====================
+// ==================== 解析器的单元测试辅助 ====================
 //
-// 刀口、被守、被救、被毒此前是 RoundContext 上的字段与三张 map，
-// 测试直接读写它们即可。现在它们只是内核三种作用域里的键名，
-// 铺前置与断言都走通用原语——下面这几个只是省掉重复的样板。
+// 解析器收的是 GameView，而规则包在内核之外，拿不到内核的内部状态。
+// engine.Board 是内核给规则包留的入口：手工摆一副局面，转成视图喂给
+// 解析器，再把产出的效果折回去看局面变成了什么样——走的是与引擎完全
+// 相同的那个写入点。
 
-func setKill(s *gameState, target string) {
-	s.applyEffect(NewSetRoundVarEffect(RoundVarKillTarget, target))
+// board 一副手工摆出来的局面。
+type board = engine.Board
+
+// newBoard 摆一副局面。
+func newBoard(seats ...engine.PlayerInfo) board {
+	return board{Round: 1, Players: seats}
 }
 
-func killTargetOf(s *gameState) string {
-	return s.roundVar(RoundVarKillTarget)
+// seatOf 拼一名玩家。vars 是键值交替的可变参数。
+func seatOf(id string, role RoleType, vars ...string) engine.PlayerInfo {
+	out := engine.Seat(id, role, true, vars...)
+	if setup, ok := builtinRoleSetup[role]; ok {
+		// 内置角色的初始状态（阵营、类别、女巫的药）由 RoleSetup 发，
+		// 直接摆局面时得自己补上，否则女巫手里没有药
+		for k, v := range setup.Setup(id, role) {
+			if out.Vars == nil {
+				out.Vars = map[string]string{}
+			}
+			if _, exists := out.Vars[k]; !exists {
+				out.Vars[k] = v
+			}
+		}
+	}
+	return out
 }
 
-func markRound(s *gameState, playerID, key string) {
-	s.applyEffect(NewSetPlayerRoundVarEffect(playerID, key, VarPresent))
+// withKill 记下今晚的刀口。
+func withKill(b board, target string) board {
+	b.RoundVars = map[string]string{RoundVarKillTarget: target}
+	return b
 }
 
-func protectedIn(s *gameState, playerID string) bool {
-	return s.playerRoundVar(playerID, PlayerRoundVarProtected) != ""
+// markSeat 给某名玩家加上本回合的标记。
+func markSeat(b board, id string, keys ...string) board {
+	for i, p := range b.Players {
+		if p.ID == id {
+			b.Players[i] = engine.Mark(p, keys...)
+		}
+	}
+	return b
 }
 
-func savedIn(s *gameState, playerID string) bool {
-	return s.playerRoundVar(playerID, PlayerRoundVarSaved) != ""
+// roundVarOfBoard 读某名玩家本回合的一项标记。
+func roundVarOfBoard(b board, id, key string) string {
+	if p, ok := b.Player(id); ok {
+		return p.RoundVar(key)
+	}
+	return ""
 }
 
-func poisonedIn(s *gameState, playerID string) bool {
-	return s.playerRoundVar(playerID, PlayerRoundVarPoisoned) != ""
+// protectedInEngine 这名玩家今晚被守了吗（从引擎读）。
+func protectedInEngine(e *Engine, id string) bool {
+	p, ok := e.PlayerInfo(id)
+	return ok && p.RoundVar(PlayerRoundVarProtected) != ""
+}
+
+// mustSeat 取出一名玩家，不存在即终止。
+func mustSeat(t *testing.T, b board, id string) engine.PlayerInfo {
+	t.Helper()
+	p, ok := b.Player(id)
+	if !ok {
+		t.Fatalf("玩家不存在: %s", id)
+	}
+	return p
 }

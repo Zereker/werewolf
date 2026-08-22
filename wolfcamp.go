@@ -12,24 +12,22 @@
 
 package werewolf
 
+import "github.com/Zereker/werewolf/engine"
+
 // 狼人杀的两个阵营。
 const (
 	CampGood Camp = "GOOD" // 好人
 	CampEvil Camp = "EVIL" // 狼人
 )
 
-// RoleCategory 角色类别。
+// RoleCategory 角色在阵营之内的细分。
 //
 // 屠边判定需要区分「神职」与「平民」，而阵营只有好人/狼人两值，
 // 表达不了这个维度，故单列一个类别。
+//
+// 它整个属于狼人杀：内核只认「这名玩家站哪一边」（engine.VarCamp），
+// 不认得神职与平民。
 type RoleCategory string
-
-const (
-	RoleCategoryUnknown  RoleCategory = ""         // 未知（上帝等系统角色，或没有登记类别的扩展角色）
-	RoleCategoryWolf     RoleCategory = "WOLF"     // 狼人阵营
-	RoleCategoryGod      RoleCategory = "GOD"      // 神职：预言家、女巫、猎人、守卫
-	RoleCategoryVillager RoleCategory = "VILLAGER" // 平民
-)
 
 // String 实现 fmt.Stringer。
 func (c RoleCategory) String() string {
@@ -39,22 +37,24 @@ func (c RoleCategory) String() string {
 	return string(c)
 }
 
-// 阵营与类别在 Vars 里的键名。
-//
-// 与女巫的药同一份存储、同一条写入路径——「这名玩家站哪一边」和
-// 「他手上还有没有解药」在内核眼里是同一类东西。
+// VarCategory 角色类别在玩家 Vars 里的键名。规则包自己定的，内核不认。
+const VarCategory = "category"
+
+// 狼人杀的三种角色类别。
 const (
-	VarCamp     = "camp"
-	VarCategory = "category"
+	RoleCategoryUnknown  RoleCategory = ""         // 没有登记类别的角色
+	RoleCategoryWolf     RoleCategory = "WOLF"     // 狼人阵营
+	RoleCategoryGod      RoleCategory = "GOD"      // 神职：预言家、女巫、猎人、守卫
+	RoleCategoryVillager RoleCategory = "VILLAGER" // 平民
 )
 
 // campOf 这名玩家属于哪一边，没有登记则为 CampUnspecified。
-func campOf(p PlayerInfo) Camp {
+func campOf(p engine.PlayerInfo) Camp {
 	return Camp(p.Var(VarCamp))
 }
 
 // categoryOf 这名玩家是什么类别，没有登记则为 RoleCategoryUnknown。
-func categoryOf(p PlayerInfo) RoleCategory {
+func categoryOf(p engine.PlayerInfo) RoleCategory {
 	return RoleCategory(p.Var(VarCategory))
 }
 
@@ -68,7 +68,7 @@ func categoryOf(p PlayerInfo) RoleCategory {
 //		}))
 func campVars(camp Camp, category RoleCategory) map[string]string {
 	out := make(map[string]string, 2)
-	if camp != CampUnspecified {
+	if camp != engine.CampUnspecified {
 		out[VarCamp] = string(camp)
 	}
 	if category != RoleCategoryUnknown {

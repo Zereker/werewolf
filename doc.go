@@ -15,34 +15,49 @@
 //
 // 内核不认识任何角色、阵营或死法。它知道的只有：玩家、阶段、效果、
 // 四条状态原语，以及「有些事只该给某些人看」。狼人杀的六个角色、
-// 九个阶段、屠边屠城，全部由公开的扩展点组装出来——与第三方角色
+// 九个阶段的默认板子、屠边屠城，全部由公开的扩展点组装出来——与第三方角色
 // 走的是同一批入口，没有特权。
 //
 // 这是 dogfooding 的最强形式：内置角色如果能用公开 API 完整表达，
 // 扩展性就被证明了；如果不能，缺什么当场暴露。这几版补上的
 // WithRoleSetup、WithAudience、WithTeammates 都是这么找出来的。
 //
-// 接线的方向是「规则组装内核」，不是「内核认得规则」：NewEngine 造出来的
-// 是一台什么都不认识的状态机——没有解析器、不会判出胜负、不认得任何角色、
-// 不划分信息边界。狼人杀的那一整套由 werewolf.Options 经公开选项装上去，
-// 与第三方注册自定义角色走的是同一批入口（见 TestBareEngine_KnowsNothing）。
+// 两层是两个包：
 //
-// 两层目前仍在同一个包里，往后会分成 werewolf 与 werewolf/engine 两个包，
-// 让「规则只用公开 API」这件事由编译器保证而不是靠自觉。那是子包，
-// 不影响 import 路径。
+//	github.com/Zereker/werewolf         这个包，狼人杀规则
+//	github.com/Zereker/werewolf/engine  内核
+//
+// 接线的方向是「规则组装内核」，不是「内核认得规则」：engine.NewEngine
+// 造出来的是一台什么都不认识的状态机——没有解析器、不会判出胜负、
+// 不认得任何角色、不划分信息边界。狼人杀的那一整套由 Options 经公开选项
+// 装上去，与第三方注册自定义角色走的是同一批入口。
+//
+// 这件事由**编译器**保证，不靠自觉：本包在内核之外，它能用的东西
+// 使用者也能用。想验证的话，看 engine/types.go——内核的词汇表只有五个
+// 非空取值：START、END、GOD、SKIP、ANNOUNCE，外加各类型的空零值。
+// 「女巫」「狼人」一个都没有。
+//
+// 开一局只 import 本包就够：内核的一小部分名字在本包再导出了一遍
+// （见 alias.go，二十来个），收录规则是「本包自己的导出 API 用得到的
+// 才留」。它们是纯别名，werewolf.Effect 与 engine.Effect 是同一个类型。
+//
+// 一旦要**改**规则——自己写解析器、换胜负判定、接日志与指标、按错误码
+// 分支、拆快照——那些名字在内核包，调用点上就会出现 engine. 这个前缀。
+// 这不是遗漏，是想让边界在代码里看得见；本包自己的 resolver.go、
+// rolesetup.go 就是这么写的。
 //
 // # 起手
 //
-//	engine, err := werewolf.New(werewolf.DefaultRules())
-//	engine.AddPlayer("w1", werewolf.RoleWerewolf)
-//	engine.AddPlayer("s", werewolf.RoleSeer)
+//	g, err := werewolf.New(werewolf.DefaultRules())
+//	g.AddPlayer("w1", werewolf.RoleWerewolf)
+//	g.AddPlayer("s", werewolf.RoleSeer)
 //	// ... 其余玩家
-//	engine.Start()
+//	g.Start()
 //
-//	engine.SubmitSkillUse(&werewolf.SkillUse{
+//	g.SubmitSkillUse(&werewolf.SkillUse{
 //		PlayerID: "w1", Skill: werewolf.SkillKill, TargetID: "s",
 //	})
-//	effects, err := engine.EndPhase()   // 结算并流转到下一阶段
+//	effects, err := g.EndPhase()   // 结算并流转到下一阶段
 //
 // 完整可运行的例子见 example/，其中 example/cli 是一个能真的从头玩完
 // 一局的命令行主持台。
@@ -95,10 +110,10 @@
 // 不需要 fork 这个库：
 //
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }        // 声明阶段
-//	engine, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
-//		werewolf.WithResolver(myPhase, myResolver),           // 注册行为
-//		werewolf.WithRoleSetup(myRole, mySetup))              // 注册初始状态
-//	engine.AddPlayer("p1", myRole)                            // 入座，与内置角色同一个入口
+//	g, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
+//		engine.WithResolver(myPhase, myResolver),             // 注册行为
+//		engine.WithRoleSetup(myRole, mySetup))                // 注册初始状态
+//	g.AddPlayer("p1", myRole)                            // 入座，与内置角色同一个入口
 //
 // 阵营与角色类别写在角色自己的 setup 里（werewolf.CampVars），不是入座时
 // 的参数：引擎不认识你的角色，也就没有办法替它推导；写在角色身上，
@@ -145,7 +160,7 @@
 //   - 不计时。PhaseConfig.Timeout 只是建议值，什么时候调 EndPhase
 //     完全由调用方决定；未就绪也不会被拒绝。
 //   - 不联网、不做房间、不做匹配。
-//   - 不做存储。Snapshot 导出局面、RestoreEngine 重建，存到哪是使用者的事。
+//   - 不做存储。Snapshot 导出局面、Restore 重建，存到哪是使用者的事。
 //   - 不起 goroutine、不做回调调度。事件处理器在调用方的 goroutine 上同步执行。
 //   - 不决定桌面规则。出局者是否翻牌、遗言怎么给，引擎不替调用方做主。
 //

@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"reflect"
 	"testing"
 )
@@ -47,9 +48,9 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 	var added, started int
 	for _, ef := range log {
 		switch ef.Type {
-		case EventPlayerAdded:
+		case engine.EventPlayerAdded:
 			added++
-		case EventGameStarted:
+		case engine.EventGameStarted:
 			started++
 		}
 	}
@@ -63,13 +64,13 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 	// 关键事件都要在
 	want := []EventType{
 		EventProtect,
-		EventSetRoundVar,
+		engine.EventSetRoundVar,
 		EventSave,
 		EventCheck,
 		EventEliminate,
-		EventAbilityTriggered,
+		engine.EventAbilityTriggered,
 		EventShoot,
-		EventPhaseChanged,
+		engine.EventPhaseChanged,
 	}
 	for _, typ := range want {
 		found := false
@@ -152,14 +153,14 @@ func TestReplayEngine_Rejects(t *testing.T) {
 	})
 
 	t.Run("开局效果缺少阶段", func(t *testing.T) {
-		bad := []*Effect{NewEffect(EventGameStarted, "", "")}
+		bad := []*Effect{engine.NewEffect(engine.EventGameStarted, "", "")}
 		if _, err := Replay(nil, DefaultRules(), bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
 	})
 
 	t.Run("流转效果缺少阶段", func(t *testing.T) {
-		bad := []*Effect{NewEffect(EventPhaseChanged, "", "")}
+		bad := []*Effect{engine.NewEffect(engine.EventPhaseChanged, "", "")}
 		if _, err := Replay(nil, DefaultRules(), bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
@@ -210,7 +211,7 @@ func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
 
 	replayed, err := Replay(nil, DefaultRules(), g.e.EffectLog())
 	if err != nil {
-		t.Fatalf("ReplayEngine 失败: %v", err)
+		t.Fatalf("engine.ReplayEngine 失败: %v", err)
 	}
 
 	origin := g.e.RoundContext().PendingTriggers

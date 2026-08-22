@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 )
 
@@ -9,7 +10,7 @@ func TestWithLoggerAndMetrics(t *testing.T) {
 	rec := &recordingLogger{}
 	counter := &countingMetrics{}
 
-	g := newRuleGameWith(t, nil, []EngineOption{WithLogger(rec), WithMetrics(counter)},
+	g := newRuleGameWith(t, nil, []EngineOption{engine.WithLogger(rec), engine.WithMetrics(counter)},
 		seats(wolf("w1"), villagers("v1", "v2", "v3"))...)
 
 	g.end(PhaseNightWolf)
@@ -32,7 +33,7 @@ func TestWithLoggerAndMetrics(t *testing.T) {
 
 // TestWithNilOption nil 选项与 nil 日志/指标都不该让构造失败。
 func TestWithNilOption(t *testing.T) {
-	if _, err := NewEngine(nil, nil, WithLogger(nil), WithMetrics(nil)); err != nil {
+	if _, err := engine.NewEngine(DefaultGameConfig(), nil, engine.WithLogger(nil), engine.WithMetrics(nil)); err != nil {
 		t.Errorf("nil 选项应当被忽略，实际 %v", err)
 	}
 }

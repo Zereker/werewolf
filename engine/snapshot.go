@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"sort"
@@ -16,7 +16,7 @@ const SnapshotVersion = 10
 // 而快照是写进存储的格式，字段名必须稳定。两者之间的转换集中在本文件，
 // 增减字段时这里会显式报错，不会悄悄丢数据。
 //
-// 快照**不包含** GameConfig、Logger、Metrics 与回调：
+// 快照**不包含** Config、Logger、Metrics 与回调：
 // 这些由调用方在恢复时提供，规则配置本身也应由调用方掌握版本。
 //
 // 枚举以**名字**序列化（"NIGHT_GUARD" 而不是 21）。存档是要给人看、
@@ -48,7 +48,7 @@ type PlayerSnapshot struct {
 	// []string，v8 起并入玩家自身，与规则包自己定的标记同一条路。
 	RoundVars map[string]string `json:"round_vars,omitempty"`
 
-	// Vars 角色私有的状态。女巫的药也在其中（键见 VarWitchAntidote）——
+	// Vars 角色私有的状态（狼人杀的女巫药剂就在其中）——
 	// 它们此前是这里两个具名 bool 字段，v7 起并入 Vars，与第三方角色
 	// 同一条路。存这一项是整个机制成立的前提：带不上它，角色的状态
 	// 就只能藏在 Resolver 里，那正是要解决的问题。
@@ -121,7 +121,7 @@ func (e *Engine) Snapshot() *Snapshot {
 //
 // 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中、
 // 有阶段缺少解析器。
-func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*Engine, error) {
+func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engine, error) {
 	if snap == nil {
 		return nil, ErrNilSnapshot
 	}

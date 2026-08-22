@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import ()
 
@@ -38,7 +38,7 @@ type PlayerView struct {
 	//
 	// 由 TeammateProvider 回答（见 WithTeammates），内核不认识阵营。
 	// 狼人杀的默认实现是「同为狼人阵营的其余玩家」——按阵营而不是按角色，
-	// 否则 AddCustomPlayer 加进来的狼王在队友名单里就是空的。
+	// 否则规则包自定义的同阵营角色在队友名单里就是空的。
 	Teammates []string `json:"teammates,omitempty"`
 
 	// RoleInfo 角色专属信息：这个角色额外让他看到的东西。
@@ -62,13 +62,15 @@ type SelfInfo struct {
 	Role  RoleType `json:"role"`
 	Alive bool     `json:"alive"`
 
-	// Camp / Category 这名玩家站哪一边、是什么类别。
+	// Camp 这名玩家站哪一边。
 	//
-	// 内核不认识它们，这两个字段是狼人杀规则包从 Vars 里读出来填的
-	// （键见 VarCamp / VarCategory）——玩家知道自己是好人还是狼人，
-	// 是狼人杀的规矩，不是所有规则都这样。
-	Camp     Camp         `json:"camp,omitempty"`
-	Category RoleCategory `json:"category,omitempty"`
+	// 一个**不透明**标签，取自 Vars 里的标准键 VarCamp。内核只负责搬运：
+	// 它不知道 "EVIL" 是什么意思，也不知道这名玩家该不该知道自己的阵营——
+	// 那由规则在发放初始状态时决定。
+	//
+	// 阵营之内的细分（狼人杀的神职/平民）不在这里：那是规则自己的键，
+	// 从 Vars 读。
+	Camp Camp `json:"camp,omitempty"`
 }
 
 // PublicPlayerInfo 一名玩家对外公开的信息
@@ -104,11 +106,10 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		Round:    e.state.Round,
 		Phase:    e.state.Phase,
 		Self: SelfInfo{
-			ID:       self.ID,
-			Role:     self.Role,
-			Camp:     campOf(self),
-			Category: categoryOf(self),
-			Alive:    self.Alive,
+			ID:    self.ID,
+			Role:  self.Role,
+			Camp:  Camp(self.Var(VarCamp)),
+			Alive: self.Alive,
 		},
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
 	}

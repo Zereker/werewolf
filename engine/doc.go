@@ -1,0 +1,71 @@
+// Package engine 是社会推理游戏的规则内核。
+//
+// 它不知道狼人杀是什么。它知道的是：有一批玩家，有一个阶段环，
+// 每个阶段结束时问一下那个阶段的解析器「发生了什么」，然后把结果
+// 折进状态。以及最难的那件事——谁有权知道什么。
+//
+// 一套具体的规则（角色、技能、死法、胜负、信息边界）由规则包提供，
+// 全部经公开的构造选项装上来。github.com/Zereker/werewolf 是第一个
+// 这样的规则包，它没有走任何后门，这件事可以查：本包的非测试源码里，
+// RoleType 的取值一共两个（RoleUnspecified、RoleGod），PhaseType 三个、
+// SkillType 三个，全在 types.go 里。「女巫」「狼人」一个都没有。
+//
+// # 状态机认得的全部东西
+//
+//	SubmitSkillUse  ->  Resolver.Resolve  ->  []*Effect  ->  applyEffect
+//	   收集技能           裁决（纯函数）        状态变更的描述     唯一的写入点
+//
+// Resolver 拿到的是只读的 GameView，只能通过返回 Effect 表达状态变更。
+// 这条约束由签名保证而非靠约定——状态的每一次改变都经由同一个写入点，
+// 快照、回放、审计这些能力才成立。
+//
+// 状态机认得四条原语：
+//
+//	NewSetAliveEffect           改存活
+//	NewSetPlayerVarEffect       写玩家的状态（跟着他走一整局）
+//	NewSetRoundVarEffect        写本回合的状态（不属于任何人）
+//	NewSetPlayerRoundVarEffect  写某个玩家在本回合的标记
+//
+// 外加一条 NewAbilityTriggerEffect，把一个死亡触发排进队列。
+//
+// 「狼刀」「放逐」「开枪」这些是规则给「发生了什么」起的名字，
+// 状态机不认得——一个 KILL 效果单独发出去，谁都不会死。规则要让人出局，
+// 就在它旁边产出一条 SET_ALIVE。两个效果，两件事：前者给受众与效果流看，
+// 后者给状态机看。
+//
+// # 谁能知道什么
+//
+//	Engine.PlayerView(id)     某个玩家有权知道的一切，可以原样发给他
+//	Engine.AudienceOf(event)  一件事该发给哪些玩家
+//
+// 具体的划分由规则给：AudienceProvider（一件事该告诉谁）、
+// TeammateProvider（谁和谁是一边的，允许不对称）、
+// SpeechProvider（发言谁能听到）。
+//
+// 内核在这一层只守一条底线，且不可配置：**自己的状态原语永远不外发**。
+// 它们是状态机的记账，推给玩家等于把上帝视角直接发出去。
+//
+// # 写一个规则包
+//
+//	cfg := &engine.Config{StartPhase: myFirstPhase, Phases: ...}
+//	e, err := engine.NewEngine(cfg,
+//		engine.WithResolver(myPhase, myResolver),   // 这个阶段怎么结算
+//		engine.WithRoleSetup(myRole, mySetup),      // 这个角色带着什么入座
+//		engine.WithVictoryChecker(myChecker),       // 怎么算赢
+//		engine.WithAudience(myAudience),            // 一件事该告诉谁
+//		engine.WithTeammates(myTeammates),          // 谁和谁是一边的
+//		engine.WithSpeech(mySpeech))                // 发言谁能听到
+//
+// 不给这些的话，造出来的引擎能推进阶段，但永远不会分出胜负、
+// 也不认得任何角色——那正是「内核什么都不知道」的意思。
+//
+// 单元测试自己的解析器用 Board：手工摆一副局面，转成 GameView 喂给
+// 解析器，再用 Board.Apply 把产出的效果折回去看局面变成了什么样。
+//
+// # 边界：内核不做什么
+//
+//   - 不计时。PhaseConfig.Timeout 只是建议值。
+//   - 不联网、不做房间、不做匹配。
+//   - 不做存储。Snapshot 导出局面、RestoreEngine 重建，存到哪是使用者的事。
+//   - 不知道任何游戏的规则。那是规则包的事。
+package engine

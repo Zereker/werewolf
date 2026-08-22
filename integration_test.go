@@ -41,10 +41,8 @@ func TestFullGame_WolvesWin(t *testing.T) {
 		t.Error("expected game to be over (wolves win)")
 	}
 
-	winner := CampEvil
-	_, actualWinner := checkVictory(g.e)
-	if actualWinner != winner {
-		t.Errorf("expected EVIL wins, got %v", actualWinner)
+	if got := g.e.Winner(); got != CampEvil {
+		t.Errorf("expected EVIL wins, got %v", got)
 	}
 }
 
@@ -392,7 +390,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	g.end(PhaseNightWolf)
 
 	// 阶段2：狼人阶段——狼人可以查询队友
-	teammates := g.e.WolfTeammates("wolf1")
+	teammates := g.e.Teammates("wolf1")
 	if len(teammates) != 1 || teammates[0] != "wolf2" {
 		t.Errorf("wolf1 should have wolf2 as teammate, got %v", teammates)
 	}
@@ -403,7 +401,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	g.end(PhaseNightWitch)
 
 	// 阶段3：女巫阶段——女巫可以查询被杀者
-	if killTarget := g.e.NightKillTarget(); killTarget != "v1" {
+	if killTarget := NightKillTarget(g.e); killTarget != "v1" {
 		t.Errorf("expected NightKillTarget=v1, got %s", killTarget)
 	}
 
@@ -431,7 +429,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	g.assertAlive("v1", true, "expected v1 to be saved by witch")
 
 	// 验证状态：seer 被保护（使用 NightContext）
-	if !protectedIn(g.e.state, "seer") {
+	if !protectedInEngine(g.e, "seer") {
 		t.Error("expected seer to be protected by guard")
 	}
 }
@@ -451,7 +449,7 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	g.end(PhaseNightWitch)
 
 	// 女巫阶段：平票导致无击杀，NightKillTarget 应为空
-	if killTarget := g.e.NightKillTarget(); killTarget != "" {
+	if killTarget := NightKillTarget(g.e); killTarget != "" {
 		t.Errorf("expected empty NightKillTarget for tie vote, got %s", killTarget)
 	}
 
@@ -485,7 +483,7 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 
 	// 女巫阶段：刀口照常记录（女巫不知道守卫守了谁），
 	// 守护是否抵消由 NIGHT_RESOLVE 判定
-	if killTarget := g.e.NightKillTarget(); killTarget != "victim" {
+	if killTarget := NightKillTarget(g.e); killTarget != "victim" {
 		t.Errorf("expected NightKillTarget=victim (protection resolves later), got %s", killTarget)
 	}
 

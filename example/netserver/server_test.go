@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Zereker/werewolf"
+	"github.com/Zereker/werewolf/engine"
 )
 
 // 这些测试是这个示例存在的理由。命令行主持台碰不到的那半边——
@@ -70,7 +71,7 @@ func (c *testClient) await(what string, ok func(serverMsg) bool) serverMsg {
 	}
 }
 
-func (c *testClient) awaitView() *werewolf.PlayerView {
+func (c *testClient) awaitView() *engine.PlayerView {
 	c.t.Helper()
 	return c.await("view", func(m serverMsg) bool { return m.Type == "view" }).View
 }
@@ -116,7 +117,7 @@ func TestServer_PushesViewOnJoin(t *testing.T) {
 func TestServer_EachConnectionGetsItsOwnView(t *testing.T) {
 	srv := newTestServer(t, time.Hour)
 
-	views := make(map[string]*werewolf.PlayerView)
+	views := make(map[string]*engine.PlayerView)
 	for _, id := range srv.room.seats {
 		c := dial(t, srv.addr(), id)
 		views[id] = c.awaitView()
@@ -128,7 +129,7 @@ func TestServer_EachConnectionGetsItsOwnView(t *testing.T) {
 		}
 		// 除了自己和狼队友，谁的身份都不该出现
 		for _, p := range v.Players {
-			if p.ID == id || p.Role == werewolf.RoleUnspecified {
+			if p.ID == id || p.Role == engine.RoleUnspecified {
 				continue
 			}
 			if v.Self.Camp != werewolf.CampEvil {
@@ -155,7 +156,7 @@ func TestServer_EventsGoOnlyToTheirAudience(t *testing.T) {
 	other := seatOf(t, srv, werewolf.RoleVillager)
 
 	// 推到预言家阶段
-	for srv.room.engine.Phase() != werewolf.PhaseNightSeer {
+	for srv.room.eng.Phase() != werewolf.PhaseNightSeer {
 		srv.room.cmds <- command{kind: "view", player: seer} // 借道排队，确保串行
 		advance(t, srv)
 	}
@@ -183,7 +184,7 @@ func TestServer_ChatIsRoutedByPhase(t *testing.T) {
 		clients[id].awaitView()
 	}
 
-	for srv.room.engine.Phase() != werewolf.PhaseNightWolf {
+	for srv.room.eng.Phase() != werewolf.PhaseNightWolf {
 		advance(t, srv)
 	}
 
@@ -281,9 +282,9 @@ func TestServer_ConcurrentClients(t *testing.T) {
 // advance 让房间推进一个阶段，并等它真的走完。
 func advance(t *testing.T, srv *server) {
 	t.Helper()
-	before := srv.room.engine.Phase()
+	before := srv.room.eng.Phase()
 	srv.room.do(command{kind: "advance"})
-	if got := srv.room.engine.Phase(); got == before {
+	if got := srv.room.eng.Phase(); got == before {
 		t.Fatalf("阶段没有推进，仍在 %v", before)
 	}
 }
@@ -291,7 +292,7 @@ func advance(t *testing.T, srv *server) {
 func seatOf(t *testing.T, srv *server, role werewolf.RoleType) string {
 	t.Helper()
 	for _, id := range srv.room.seats {
-		if p, ok := srv.room.engine.PlayerInfo(id); ok && p.Role == role {
+		if p, ok := srv.room.eng.PlayerInfo(id); ok && p.Role == role {
 			return id
 		}
 	}

@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"errors"
@@ -131,10 +131,10 @@ func TestCodeOf_ThroughWrappedError(t *testing.T) {
 // 实际返回的是 WrapError 出来的富文本错误，errors.Is 比对永远落空，
 // 而读 errors.go 的人会理所当然地以为它们能用。
 func TestWrapError_MatchesSentinel(t *testing.T) {
-	engine := MustNew(DefaultRules())
-	mustAdd(t, engine, "w1", RoleWerewolf)
+	engine := newTestEngine(t)
+	mustAdd(t, engine, "w1", roleWerewolf)
 
-	err := engine.AddPlayer("w1", RoleVillager)
+	err := engine.AddPlayer("w1", roleVillager)
 	if !errors.Is(err, ErrPlayerExists) {
 		t.Errorf("重复加玩家应当命中 ErrPlayerExists，实际 %v", err)
 	}
@@ -149,7 +149,7 @@ func TestWrapError_MatchesSentinel(t *testing.T) {
 
 	// 快照版本不符
 	snap := &Snapshot{Version: SnapshotVersion + 1}
-	if _, err := Restore(nil, DefaultRules(), snap); !errors.Is(err, ErrInvalidSnapshot) {
+	if _, err := RestoreEngine(testConfig(), snap); !errors.Is(err, ErrInvalidSnapshot) {
 		t.Errorf("版本不符应当命中 ErrInvalidSnapshot，实际 %v", err)
 	}
 }

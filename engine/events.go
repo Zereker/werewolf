@@ -3,7 +3,7 @@
 // 回调一律在释放引擎锁之后执行，handler 列表在锁内快照——既不会死锁
 // （回调里可以安全调用 Engine 方法），也不会与 OnEvent 的并发注册竞争。
 
-package werewolf
+package engine
 
 import (
 	"fmt"

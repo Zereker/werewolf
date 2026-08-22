@@ -14,6 +14,7 @@ import (
 	"log"
 
 	"github.com/Zereker/werewolf"
+	"github.com/Zereker/werewolf/engine"
 )
 
 func main() {
@@ -57,34 +58,34 @@ func basicGameSetup() {
 	rules.SameGuardKillIsEmpty = true // 同守同杀为空刀
 
 	// 2. 组装一局（日志可选，用构造选项给出）
-	engine := werewolf.MustNew(rules,
-		werewolf.WithLogger(&SimpleLogger{}))
+	eng := werewolf.MustNew(rules,
+		engine.WithLogger(&SimpleLogger{}))
 
 	// 3. 添加玩家
 	// 6人局配置: 2狼人 + 1女巫 + 1预言家 + 1守卫 + 1村民
-	seat(engine, "player1", werewolf.RoleWerewolf)
-	seat(engine, "player2", werewolf.RoleWerewolf)
-	seat(engine, "player3", werewolf.RoleWitch)
-	seat(engine, "player4", werewolf.RoleSeer)
-	seat(engine, "player5", werewolf.RoleGuard)
-	seat(engine, "player6", werewolf.RoleVillager)
+	seat(eng, "player1", werewolf.RoleWerewolf)
+	seat(eng, "player2", werewolf.RoleWerewolf)
+	seat(eng, "player3", werewolf.RoleWitch)
+	seat(eng, "player4", werewolf.RoleSeer)
+	seat(eng, "player5", werewolf.RoleGuard)
+	seat(eng, "player6", werewolf.RoleVillager)
 
 	// 4. 注册事件处理器（可选）
-	engine.OnEvent(func(event *werewolf.Event) {
+	eng.OnEvent(func(event *engine.Event) {
 		fmt.Printf("  [事件] 类型: %s, 目标: %s\n", event.Type, event.TargetID)
 	})
 
 	// 5. 开始游戏
-	if err := engine.Start(); err != nil {
+	if err := eng.Start(); err != nil {
 		log.Fatalf("启动游戏失败: %v", err)
 	}
 
 	// 6. 查询当前状态
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
-	fmt.Printf("  当前回合: %d\n", engine.Round())
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	fmt.Printf("  当前回合: %d\n", eng.Round())
 
 	// 7. 获取阶段信息
-	phaseInfo := engine.PhaseInfo()
+	phaseInfo := eng.PhaseInfo()
 	fmt.Printf("  需要行动的角色: %v\n", phaseInfo.ActiveRoles)
 }
 
@@ -92,25 +93,25 @@ func basicGameSetup() {
 func godNarratorDemo() {
 	fmt.Println("【示例2: 上帝（主持人）引导游戏】")
 
-	engine := werewolf.MustNew(werewolf.DefaultRules())
+	eng := werewolf.MustNew(werewolf.DefaultRules())
 
 	// 添加玩家
-	seat(engine, "wolf1", werewolf.RoleWerewolf)
-	seat(engine, "wolf2", werewolf.RoleWerewolf)
-	seat(engine, "witch", werewolf.RoleWitch)
-	seat(engine, "seer", werewolf.RoleSeer)
-	seat(engine, "guard", werewolf.RoleGuard)
-	seat(engine, "villager", werewolf.RoleVillager)
+	seat(eng, "wolf1", werewolf.RoleWerewolf)
+	seat(eng, "wolf2", werewolf.RoleWerewolf)
+	seat(eng, "witch", werewolf.RoleWitch)
+	seat(eng, "seer", werewolf.RoleSeer)
+	seat(eng, "guard", werewolf.RoleGuard)
+	seat(eng, "villager", werewolf.RoleVillager)
 
 	// 开始游戏
-	begin(engine)
+	begin(eng)
 
 	fmt.Println("\n  === 第一夜开始 ===")
-	fmt.Printf("  回合: %d\n", engine.Round())
+	fmt.Printf("  回合: %d\n", eng.Round())
 
 	// 上帝根据阶段信息生成公告
 	announcePhase := func() {
-		info := engine.PhaseInfo()
+		info := eng.PhaseInfo()
 
 		// 检查是否需要上帝公告
 		if info.NeedsGodAnnouncement() {
@@ -144,50 +145,50 @@ func godNarratorDemo() {
 
 	// === 守卫阶段 ===
 	announcePhase()
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    werewolf.SkillProtect,
 		TargetID: "seer",
 	})
-	step(engine)
+	step(eng)
 
 	// === 狼人阶段 ===
 	announcePhase()
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillKill,
 		TargetID: "villager",
 	})
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    werewolf.SkillKill,
 		TargetID: "villager",
 	})
-	step(engine)
+	step(eng)
 
 	// === 女巫阶段 ===
 	announcePhase()
 	// 女巫选择不使用药水
-	step(engine)
+	step(eng)
 
 	// === 预言家阶段 ===
 	announcePhase()
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    werewolf.SkillCheck,
 		TargetID: "wolf1",
 	})
-	step(engine)
+	step(eng)
 
 	// === 夜晚结算阶段 ===
 	fmt.Printf("\n  [上帝] 夜晚结算中...\n")
-	step(engine)
+	step(eng)
 
 	// === 白天阶段 ===
 	fmt.Printf("\n  [上帝] 天亮了！")
 
 	// 宣布昨晚死亡情况
-	villagerInfo, _ := engine.PlayerInfo("villager")
+	villagerInfo, _ := eng.PlayerInfo("villager")
 	if !villagerInfo.Alive {
 		fmt.Printf(" 昨晚 villager 死亡。\n")
 	} else {
@@ -196,11 +197,11 @@ func godNarratorDemo() {
 
 	// 白天发言走 SendMessage，不占技能步骤，因此 RoleInfos 里没有对应条目；
 	// 存活名单直接问引擎要
-	fmt.Printf("  → 所有玩家请发言: %v\n", engine.AlivePlayerIDs())
+	fmt.Printf("  → 所有玩家请发言: %v\n", eng.AlivePlayerIDs())
 }
 
 // getGodAnnouncement 根据阶段生成上帝公告
-func getGodAnnouncement(phase werewolf.PhaseType, info *werewolf.PhaseInfo) string {
+func getGodAnnouncement(phase werewolf.PhaseType, info *engine.PhaseInfo) string {
 	switch phase {
 	case werewolf.PhaseNightGuard:
 		return "天黑请闭眼。守卫请睁眼，请选择今晚要守护的玩家。"
@@ -239,21 +240,21 @@ func fullGameFlow() {
 	fmt.Println("【示例3: 完整游戏流程】")
 
 	// 创建引擎和玩家
-	engine := werewolf.MustNew(werewolf.DefaultRules())
+	eng := werewolf.MustNew(werewolf.DefaultRules())
 
 	// 添加玩家
-	seat(engine, "wolf1", werewolf.RoleWerewolf)
-	seat(engine, "wolf2", werewolf.RoleWerewolf)
-	seat(engine, "witch", werewolf.RoleWitch)
-	seat(engine, "seer", werewolf.RoleSeer)
-	seat(engine, "guard", werewolf.RoleGuard)
-	seat(engine, "villager", werewolf.RoleVillager)
+	seat(eng, "wolf1", werewolf.RoleWerewolf)
+	seat(eng, "wolf2", werewolf.RoleWerewolf)
+	seat(eng, "witch", werewolf.RoleWitch)
+	seat(eng, "seer", werewolf.RoleSeer)
+	seat(eng, "guard", werewolf.RoleGuard)
+	seat(eng, "villager", werewolf.RoleVillager)
 	// 第二名平民：默认按屠边判定，平民全灭游戏会在夜晚结算就结束，
 	// 演示走不到白天
-	seat(engine, "villager2", werewolf.RoleVillager)
+	seat(eng, "villager2", werewolf.RoleVillager)
 
 	// 注册事件处理器
-	engine.OnEvent(func(event *werewolf.Event) {
+	eng.OnEvent(func(event *engine.Event) {
 		switch event.Type {
 		case werewolf.EventKill:
 			fmt.Printf("  [击杀] %s 被狼人杀死\n", event.TargetID)
@@ -267,13 +268,13 @@ func fullGameFlow() {
 			fmt.Printf("  [查验] %s 查验了 %s\n", event.SourceID, event.TargetID)
 		case werewolf.EventEliminate:
 			fmt.Printf("  [投票] %s 被投票出局\n", event.TargetID)
-		case werewolf.EventGameEnded:
+		case engine.EventGameEnded:
 			fmt.Printf("  [游戏结束] 获胜方: %s\n", event.Data["winner"])
 		}
 	})
 
 	// 开始游戏
-	if err := engine.Start(); err != nil {
+	if err := eng.Start(); err != nil {
 		log.Fatalf("启动游戏失败: %v", err)
 	}
 
@@ -283,10 +284,10 @@ func fullGameFlow() {
 	fmt.Println("\n  --- 第一夜 ---")
 
 	// 守卫阶段 (NIGHT_GUARD)
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
 
 	// 守卫保护村民
-	err := engine.SubmitSkillUse(&werewolf.SkillUse{
+	err := eng.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    werewolf.SkillProtect,
 		// 守的不是狼刀目标：守护叠加女巫解药即「同守同救」，
@@ -298,127 +299,127 @@ func fullGameFlow() {
 	}
 
 	// 结束守卫阶段，进入狼人阶段
-	step(engine)
+	step(eng)
 
 	// 狼人阶段 (NIGHT_WOLF)
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
 
 	// 狼人获取队友信息
-	teammates := engine.WolfTeammates("wolf1")
+	teammates := eng.Teammates("wolf1")
 	fmt.Printf("  wolf1 的狼队友: %v\n", teammates)
 
 	// 两只狼都投票杀村民
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillKill,
 		TargetID: "villager",
 	})
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    werewolf.SkillKill,
 		TargetID: "villager",
 	})
 
 	// 结束狼人阶段，进入女巫阶段
-	step(engine)
+	step(eng)
 
 	// 女巫阶段 (NIGHT_WITCH)
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
 
 	// 女巫查看谁被杀
-	killTarget := engine.NightKillTarget()
+	killTarget := werewolf.NightKillTarget(eng)
 	fmt.Printf("  女巫得知: %s 今晚被狼人杀害\n", killTarget)
 
 	// 女巫使用解药救人
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "witch",
 		Skill:    werewolf.SkillAntidote,
 		TargetID: killTarget,
 	})
 
 	// 结束女巫阶段，进入预言家阶段
-	step(engine)
+	step(eng)
 
 	// 预言家阶段 (NIGHT_SEER)
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
 
 	// 预言家查验 wolf1
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    werewolf.SkillCheck,
 		TargetID: "wolf1",
 	})
 
 	// 结束预言家阶段，进入夜晚结算
-	step(engine)
+	step(eng)
 
 	// 夜晚结算阶段 (NIGHT_RESOLVE)
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
-	step(engine)
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
+	step(eng)
 
 	// ==================== 白天 ====================
 	fmt.Println("\n  --- 白天 ---")
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
 
 	// 白天发言走消息通道，由引擎按阶段路由给该听到的人
-	if err := engine.SendMessage("seer", "我是预言家，wolf1 是狼人！"); err != nil {
+	if err := eng.SendMessage("seer", "我是预言家，wolf1 是狼人！"); err != nil {
 		log.Printf("发言失败: %v", err)
 	}
 
 	// 结束白天，进入投票
-	step(engine)
+	step(eng)
 
 	// ==================== 投票 ====================
 	fmt.Println("\n  --- 投票 ---")
-	fmt.Printf("  当前阶段: %s\n", engine.Phase())
+	fmt.Printf("  当前阶段: %s\n", eng.Phase())
 
 	// 所有好人投票 wolf1
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "witch",
 		Skill:    werewolf.SkillVote,
 		TargetID: "wolf1",
 	})
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "seer",
 		Skill:    werewolf.SkillVote,
 		TargetID: "wolf1",
 	})
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "guard",
 		Skill:    werewolf.SkillVote,
 		TargetID: "wolf1",
 	})
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "villager",
 		Skill:    werewolf.SkillVote,
 		TargetID: "wolf1",
 	})
 
 	// 狼人投票预言家
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillVote,
 		TargetID: "seer",
 	})
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf2",
 		Skill:    werewolf.SkillVote,
 		TargetID: "seer",
 	})
 
 	// 结束投票
-	step(engine)
+	step(eng)
 
 	// 检查 wolf1 是否被投票出局
-	wolf1Info, _ := engine.PlayerInfo("wolf1")
+	wolf1Info, _ := eng.PlayerInfo("wolf1")
 	fmt.Printf("  wolf1 存活状态: %v\n", wolf1Info.Alive)
 
 	// 检查游戏是否结束
-	if engine.IsGameOver() {
+	if eng.IsGameOver() {
 		fmt.Println("  游戏已结束！")
 	} else {
 		fmt.Printf("  游戏继续，当前阶段: %s, 回合: %d\n",
-			engine.Phase(), engine.Round())
+			eng.Phase(), eng.Round())
 	}
 }
 
@@ -426,85 +427,85 @@ func fullGameFlow() {
 func messagingDemo() {
 	fmt.Println("【示例4: 消息系统演示】")
 
-	engine := werewolf.MustNew(werewolf.DefaultRules())
+	eng := werewolf.MustNew(werewolf.DefaultRules())
 
 	// 添加玩家（需要足够多的好人防止游戏过早结束）
-	seat(engine, "wolf1", werewolf.RoleWerewolf)
-	seat(engine, "wolf2", werewolf.RoleWerewolf)
-	seat(engine, "villager1", werewolf.RoleVillager)
-	seat(engine, "villager2", werewolf.RoleVillager)
-	seat(engine, "villager3", werewolf.RoleVillager)
-	seat(engine, "villager4", werewolf.RoleVillager)
+	seat(eng, "wolf1", werewolf.RoleWerewolf)
+	seat(eng, "wolf2", werewolf.RoleWerewolf)
+	seat(eng, "villager1", werewolf.RoleVillager)
+	seat(eng, "villager2", werewolf.RoleVillager)
+	seat(eng, "villager3", werewolf.RoleVillager)
+	seat(eng, "villager4", werewolf.RoleVillager)
 
 	// 注册消息处理器
-	engine.OnMessage(func(msg *werewolf.Message, receiverIDs []string) {
+	eng.OnMessage(func(msg *engine.Message, receiverIDs []string) {
 		fmt.Printf("  [消息] 发送者: %s, 内容: %s\n", msg.SenderID, msg.Content)
 		fmt.Printf("         接收者: %v\n", receiverIDs)
 	})
 
 	// 开始游戏
-	begin(engine)
+	begin(eng)
 
 	// 进入狼人阶段
-	step(engine) // 跳过守卫阶段
+	step(eng) // 跳过守卫阶段
 
-	fmt.Printf("\n  当前阶段: %s (狼人交流阶段)\n", engine.Phase())
+	fmt.Printf("\n  当前阶段: %s (狼人交流阶段)\n", eng.Phase())
 
 	// 狼人之间交流（只有狼人能收到）
-	err := engine.SendMessage("wolf1", "杀 villager1 吧")
+	err := eng.SendMessage("wolf1", "杀 villager1 吧")
 	if err != nil {
 		fmt.Printf("  发送消息失败: %v\n", err)
 	}
 
 	// 非狼人在狼人阶段发言会失败
-	err = engine.SendMessage("villager1", "我想说话")
+	err = eng.SendMessage("villager1", "我想说话")
 	if err != nil {
 		fmt.Printf("  村民发言失败: %v\n", err)
 	}
 
 	// 查看消息接收者
-	receivers := engine.MessageReceivers("wolf1")
+	receivers := eng.MessageReceivers("wolf1")
 	fmt.Printf("\n  wolf1 消息可发送给: %v\n", receivers)
 
 	// 跳到白天
-	act(engine, &werewolf.SkillUse{
+	act(eng, &werewolf.SkillUse{
 		PlayerID: "wolf1",
 		Skill:    werewolf.SkillKill,
 		TargetID: "villager1",
 	})
-	step(engine) // 狼人阶段结束
-	step(engine) // 女巫阶段结束
-	step(engine) // 预言家阶段结束
-	step(engine) // 夜晚结算结束
+	step(eng) // 狼人阶段结束
+	step(eng) // 女巫阶段结束
+	step(eng) // 预言家阶段结束
+	step(eng) // 夜晚结算结束
 
-	fmt.Printf("\n  当前阶段: %s (白天发言阶段)\n", engine.Phase())
+	fmt.Printf("\n  当前阶段: %s (白天发言阶段)\n", eng.Phase())
 
 	// 白天所有存活玩家都能收到消息
-	err = engine.SendMessage("wolf2", "我是好人")
+	err = eng.SendMessage("wolf2", "我是好人")
 	if err != nil {
 		fmt.Printf("  发送消息失败: %v\n", err)
 	}
 
-	receivers = engine.MessageReceivers("wolf2")
+	receivers = eng.MessageReceivers("wolf2")
 	fmt.Printf("\n  白天消息接收者: %v\n", receivers)
 }
 
 // SimpleLogger 简单日志实现
 type SimpleLogger struct{}
 
-func (l *SimpleLogger) Debug(msg string, fields ...werewolf.Field) {
+func (l *SimpleLogger) Debug(msg string, fields ...engine.Field) {
 	// 调试信息可以忽略或打印
 }
 
-func (l *SimpleLogger) Info(msg string, fields ...werewolf.Field) {
+func (l *SimpleLogger) Info(msg string, fields ...engine.Field) {
 	fmt.Printf("  [INFO] %s\n", msg)
 }
 
-func (l *SimpleLogger) Warn(msg string, fields ...werewolf.Field) {
+func (l *SimpleLogger) Warn(msg string, fields ...engine.Field) {
 	fmt.Printf("  [WARN] %s\n", msg)
 }
 
-func (l *SimpleLogger) Error(msg string, fields ...werewolf.Field) {
+func (l *SimpleLogger) Error(msg string, fields ...engine.Field) {
 	fmt.Printf("  [ERROR] %s\n", msg)
 }
 

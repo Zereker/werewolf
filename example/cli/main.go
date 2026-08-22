@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Zereker/werewolf"
+	"github.com/Zereker/werewolf/engine"
 )
 
 func main() {
@@ -44,8 +45,15 @@ func main() {
 
 // table 一张牌桌：引擎，加上库刻意不管、必须由使用者自己拿主意的东西。
 type table struct {
-	engine *werewolf.Engine
-	seats  []string // 座位顺序，用于稳定的展示
+	eng   *werewolf.Engine
+	seats []string // 座位顺序，用于稳定的展示
+
+	// rng 发牌与 auto 托管共用的随机源。
+	//
+	// 共用是为了让 -seed 真的能复现一整局：此前只有发牌用了它，
+	// 托管挑技能与目标走的是全局 rand，同一个种子跑两次结果不一样，
+	// 拿它复现一个 bug 是复现不出来的。
+	rng *rand.Rand
 
 	// deadline 本阶段的建议截止时间。
 	//
@@ -67,27 +75,27 @@ func newTable(seed int64) *table {
 	roles := append([]werewolf.RoleType(nil), defaultBoard...)
 	rng.Shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
 
-	engine := werewolf.MustNew(werewolf.DefaultRules())
+	eng := werewolf.MustNew(werewolf.DefaultRules())
 	seats := make([]string, 0, len(roles))
 	for i, role := range roles {
 		id := fmt.Sprintf("%d号", i+1)
-		if err := engine.AddPlayer(id, role); err != nil {
+		if err := eng.AddPlayer(id, role); err != nil {
 			fatal("入座失败: %v", err)
 		}
 		seats = append(seats, id)
 	}
-	if err := engine.Start(); err != nil {
+	if err := eng.Start(); err != nil {
 		fatal("开局失败: %v", err)
 	}
 
-	t := &table{engine: engine, seats: seats}
+	t := &table{eng: eng, seats: seats, rng: rng}
 	t.armTimer()
 	return t
 }
 
 // armTimer 按引擎给出的建议超时定一个本阶段的截止时间。
 func (t *table) armTimer() {
-	t.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(t.engine.Phase()))
+	t.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(t.eng.Phase()))
 }
 
 // ==================== 主循环 ====================
@@ -118,7 +126,7 @@ func (t *table) repl(in *os.File) {
 }
 
 func (t *table) prompt() string {
-	return fmt.Sprintf("[第%d回合 %s] > ", t.engine.Round(), shortPhase(t.engine.Phase()))
+	return fmt.Sprintf("[第%d回合 %s] > ", t.eng.Round(), shortPhase(t.eng.Phase()))
 }
 
 func (t *table) dispatch(line string) (quit bool) {
@@ -163,7 +171,7 @@ func (t *table) dispatch(line string) (quit bool) {
 // ==================== 只读的几个视角 ====================
 
 func (t *table) status() {
-	e := t.engine
+	e := t.eng
 	fmt.Printf("  回合 %d，阶段 %s\n", e.Round(), shortPhase(e.Phase()))
 
 	if e.IsGameOver() {
@@ -194,7 +202,7 @@ func (t *table) status() {
 // godView 上帝视角：本阶段该谁行动、狼队名单、女巫可见的刀口。
 // 这些内容不可以整体转发给玩家。
 func (t *table) godView() {
-	info := t.engine.PhaseInfo()
+	info := t.eng.PhaseInfo()
 
 	if info.NeedsGodAnnouncement() {
 		fmt.Printf("  [公告] %s\n", announce(info.Phase))
@@ -229,7 +237,7 @@ func (t *table) godView() {
 // Optional 是该催一催的依据。主持人两份都要看——只看前者的话，
 // 默认配置下守卫、女巫、预言家、猎人一整局都不会被叫到。
 func (t *table) who() {
-	r := t.engine.PhaseReadiness()
+	r := t.eng.PhaseReadiness()
 
 	for _, p := range r.Pending {
 		fmt.Printf("  必须等: %s(%s) 的 %s\n", p.PlayerID, shortRole(p.Role), shortSkill(p.Skill))
@@ -252,7 +260,7 @@ func (t *table) playerView(args []string) {
 		warn("用法: view <玩家>")
 		return
 	}
-	v := t.engine.PlayerView(args[0])
+	v := t.eng.PlayerView(args[0])
 	if v == nil {
 		warn("没有这个玩家: %s", args[0])
 		return
@@ -281,7 +289,7 @@ func (t *table) playerView(args []string) {
 }
 
 func (t *table) showLog() {
-	for i, ef := range t.engine.EffectLog() {
+	for i, ef := range t.eng.EffectLog() {
 		fmt.Printf("  %3d %s\n", i, describe(ef))
 	}
 }
@@ -303,7 +311,7 @@ func (t *table) act(args []string) {
 		target = args[2]
 	}
 
-	err := t.engine.SubmitSkillUse(&werewolf.SkillUse{
+	err := t.eng.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: args[0], Skill: skill, TargetID: target,
 	})
 	if err != nil {
@@ -322,8 +330,8 @@ func (t *table) say(args []string) {
 	sender, text := args[0], strings.Join(args[1:], " ")
 
 	// 谁能听到由引擎按阶段决定：狼人夜里只有狼队互通，白天全场可闻
-	receivers := t.engine.MessageReceivers(sender)
-	if err := t.engine.SendMessage(sender, text); err != nil {
+	receivers := t.eng.MessageReceivers(sender)
+	if err := t.eng.SendMessage(sender, text); err != nil {
 		warn("%s 现在发不了言: %s", sender, reason(err))
 		return
 	}
@@ -331,27 +339,27 @@ func (t *table) say(args []string) {
 }
 
 func (t *table) end() {
-	if t.engine.IsGameOver() {
+	if t.eng.IsGameOver() {
 		warn("游戏已经结束了")
 		return
 	}
-	if r := t.engine.PhaseReadiness(); !r.Ready {
+	if r := t.eng.PhaseReadiness(); !r.Ready {
 		// 引擎不会因为没就绪而拒绝推进，是否等下去是主持人的判断
 		fmt.Printf("  （还差 %d 项必需行动，按主持人意愿强行推进）\n", len(r.Pending))
 	}
 
-	from := t.engine.Phase()
-	effects, err := t.engine.EndPhase()
+	from := t.eng.Phase()
+	effects, err := t.eng.EndPhase()
 	if err != nil {
 		warn("推进失败: %s", reason(err))
 		return
 	}
 
-	fmt.Printf("  %s 结束 -> %s\n", shortPhase(from), shortPhase(t.engine.Phase()))
+	fmt.Printf("  %s 结束 -> %s\n", shortPhase(from), shortPhase(t.eng.Phase()))
 	t.deliver(effects)
 	t.armTimer()
 
-	if t.engine.IsGameOver() {
+	if t.eng.IsGameOver() {
 		t.reveal()
 	}
 }
@@ -363,7 +371,7 @@ func (t *table) end() {
 func (t *table) deliver(effects []*werewolf.Effect) {
 	for _, ef := range effects {
 		// EndPhase 给的是内部的 Effect，AudienceOf 问的是对外的事件
-		audience, known := t.engine.AudienceOf(ef.ToEvent())
+		audience, known := t.eng.AudienceOf(ef.ToEvent())
 		if !known {
 			// 第三方角色自定义的事件类型，引擎无从判断可见性
 			fmt.Printf("  [?] %s（引擎不认得这个类型，需自行路由）\n", describe(ef))
@@ -384,7 +392,7 @@ func (t *table) deliver(effects []*werewolf.Effect) {
 func (t *table) reveal() {
 	fmt.Println("  === 游戏结束，翻牌 ===")
 	for _, id := range t.seats {
-		p, _ := t.engine.PlayerInfo(id)
+		p, _ := t.eng.PlayerInfo(id)
 		fmt.Printf("  %s: %s %s\n", id, shortRole(p.Role), aliveWord(p.Alive))
 	}
 }
@@ -395,27 +403,27 @@ func (t *table) reveal() {
 // 而 PhaseReadiness 给的是「还欠哪一次行动」——想让每个人都动一动，
 // 前者才是问对了问题。
 func (t *table) auto() {
-	if t.engine.IsGameOver() {
+	if t.eng.IsGameOver() {
 		warn("游戏已经结束了")
 		return
 	}
 
-	alive := t.engine.AlivePlayerIDs()
-	info := t.engine.PhaseInfo()
+	alive := t.eng.AlivePlayerIDs()
+	info := t.eng.PhaseInfo()
 	for _, role := range info.ActiveRoles {
 		ri := info.RoleInfos[role]
 		if ri == nil || len(ri.AllowedSkills) == 0 {
 			continue
 		}
 		for _, id := range ri.PlayerIDs {
-			skill := ri.AllowedSkills[rand.Intn(len(ri.AllowedSkills))] //nolint:gosec // 演示用
+			skill := ri.AllowedSkills[t.rng.Intn(len(ri.AllowedSkills))]
 			target := ""
 			if skill != werewolf.SkillSkip {
-				target = alive[rand.Intn(len(alive))] //nolint:gosec // 演示用
+				target = alive[t.rng.Intn(len(alive))]
 			}
 			// 提交失败是正常的：随机挑的目标可能不合规（女巫救了没被刀的人、
 			// 守卫连守同一个人）。规则由引擎裁决，这里不预判。
-			_ = t.engine.SubmitSkillUse(&werewolf.SkillUse{
+			_ = t.eng.SubmitSkillUse(&werewolf.SkillUse{
 				PlayerID: id, Skill: skill, TargetID: target,
 			})
 		}
@@ -431,10 +439,10 @@ func (t *table) run(args []string) {
 			limit = v
 		}
 	}
-	for i := 0; i < limit && !t.engine.IsGameOver(); i++ {
+	for i := 0; i < limit && !t.eng.IsGameOver(); i++ {
 		t.auto()
 	}
-	if !t.engine.IsGameOver() {
+	if !t.eng.IsGameOver() {
 		warn("跑了 %d 个阶段还没结束，停下来了", limit)
 	}
 }
@@ -450,7 +458,7 @@ func (t *table) save(args []string) {
 		warn("用法: save <文件>")
 		return
 	}
-	data, err := marshalSnapshot(t.engine.Snapshot())
+	data, err := marshalSnapshot(t.eng.Snapshot())
 	if err != nil {
 		warn("导出失败: %v", err)
 		return
@@ -478,14 +486,14 @@ func (t *table) load(args []string) {
 		return
 	}
 	// 恢复时必须给回同一套规则配置：快照只记局面，不记规则
-	engine, err := werewolf.RestoreEngine(nil, snap)
+	eng, err := engine.RestoreEngine(nil, snap)
 	if err != nil {
 		warn("恢复失败: %s", reason(err))
 		return
 	}
-	t.engine = engine
+	t.eng = eng
 	t.armTimer()
-	fmt.Printf("  已从 %s 恢复：第%d回合 %s\n", args[0], engine.Round(), shortPhase(engine.Phase()))
+	fmt.Printf("  已从 %s 恢复：第%d回合 %s\n", args[0], eng.Round(), shortPhase(eng.Phase()))
 }
 
 func fatal(format string, args ...any) {

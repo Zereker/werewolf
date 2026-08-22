@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"encoding/json"
@@ -44,7 +44,7 @@ const triggerPhaseKey = "trigger_phase"
 
 // NewAbilityTriggerEffect 声明「某玩家的死亡技能待结算」。
 //
-// 死亡触发是一整类能力（猎人开枪、狼王自爆、白痴翻牌），
+// 死亡触发是一整类能力（出局时开枪、自爆、翻牌），
 // 引擎不认识其中任何一个具体角色，只认识「谁、去哪个阶段」。
 func NewAbilityTriggerEffect(playerID string, phase PhaseType) *Effect {
 	return NewEffect(EventAbilityTriggered, playerID, "").

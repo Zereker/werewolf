@@ -1,8 +1,7 @@
-.idea
-.env
-
-# go test -coverprofile 的产物（README 与 CI 都会生成）
-coverage.out
 
 # Claude Code 的 agent worktree，属于工具产物
+# go test -coverprofile 的产物（README 与 CI 都会生成）
 .claude/worktrees/
+.env
+.idea
+coverage.out

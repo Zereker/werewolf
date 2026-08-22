@@ -3,7 +3,7 @@
 // 发言不走技能通道——它不产生状态变更，也就没有 Effect。
 // 谁能听到由当前阶段决定：狼人阶段只有狼人互通，白天全场可闻。
 
-package werewolf
+package engine
 
 import (
 	"time"

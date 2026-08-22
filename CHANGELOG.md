@@ -9,6 +9,154 @@
 > 公开的 tag 只有 `v1.0.0` 与 `v1.2.0`。`v1.0.0` 到 `v1.2.0` 之间的全部改动
 > 都归入 `v1.2.0` 一节——对使用者而言，中间没有可取用的版本。
 
+## 未发布
+
+### 根包的再导出砍成一个刻意的小集合
+
+**破坏性变更**：根包 `werewolf` 此前把内核的公开 API 整个再导出了一遍
+（`alias.go` 约 250 行，一百多个名字）。现在只留二十来个。被移除的那些
+仍然存在，位置变了：`import "github.com/Zereker/werewolf/engine"`。
+
+收录规则只有一条：**根包自己的导出 API 用得到的名字，才留在根包**。
+
+| 留下 | 去内核取 |
+|---|---|
+| `PhaseType` `RoleType` `SkillType` `EventType` `Camp` | `Event` `Message` `PlayerView` `PlayerInfo` `PhaseInfo` `PhaseReadiness` … |
+| `PhaseStart` `PhaseEnd` `RoleGod` `SkillSkip` `SkillAnnounce` `VarCamp` `VarPresent` | `NewEngine` `MustNewEngine` `RestoreEngine` `ReplayEngine` |
+| `GameConfig` `PhaseConfig` `PhaseStep` | 八个 `With*` 选项与 `Resolver` `RoleSetup` `AudienceProvider` 等扩展点类型 |
+| `Engine` `EngineOption` `SkillUse` `GameView` `Effect` `Snapshot` | 六个 `New*Effect` 构造函数 |
+| | `Logger` `Metrics` `Field` 与字段助手 |
+| | 全部错误码、哨兵错误、`WrapError` / `CodeOf` / `HasCode` |
+| | `Board` `NewGameView` `Seat` `Mark`（解析器单测） |
+| | 快照子结构与 `SnapshotVersion` |
+
+理由：那份完整镜像等于宣称「两层拆分与使用者无关」，可它恰恰是这个库
+最想说的事。砍完之后，**开一局狼人杀仍然只 import 根包**，而一旦要改
+规则——自己写解析器、换胜负判定、接日志、按错误码分支——调用点上就会
+出现 `engine.` 这个前缀。边界因此在代码里看得见，不只在文档里。
+
+规则包自己带头这么写：`resolver.go`、`rolesetup.go`、`victory.go`、
+`wolfboundary.go` 全部改成显式的 `engine.` 调用。三个 example 同理。
+
+没有任何行为变化：全部是别名的增删与调用点的限定符。验证方式是把两个
+确定性示例（`example`、`example/extension`）改前改后的输出逐字节比对，
+完全一致；`make check` 与 5000 局随机对局照常通过，覆盖率仍是 94.6%。
+
+### 修掉 example/cli 的 `-seed` 复现不了一整局
+
+比对示例输出时发现的：`-seed` 只喂给了发牌，托管（`auto`）挑技能与目标
+走的是全局 `rand`。同一个种子跑两次结果不一样——拿它复现一个 bug 是
+复现不出来的。现在牌桌持有那个随机源，发牌与托管共用，同种子逐字节可复现
+（连跑三次比对确认）。
+
+### 内核有了自己的 README
+
+新增 [`engine/README.md`](engine/README.md)：内核是什么、唯一的写入点、
+四条状态原语、信息边界、八个扩展点、怎么用 `Board` 单测自己的解析器、
+内核不做什么。附一套两页纸的完整规则（红蓝公投）作为可运行的最小例子——
+文中的两段代码都是先跑通再抄进来的。
+
+顺带修掉几处不实的说法：README 与 `doc.go` 里「把 grep 指向 `engine/`，
+那里没有一个『女巫』『狼人』这样的取值」是查不实的——测试夹具与注释里
+就有。换成能查的说法：内核的词汇表只有五个非空取值（`START` `END`
+`GOD` `SKIP` `ANNOUNCE`），全在 `engine/types.go` 里。`WithRoleSetup`
+的文档示例还停留在整数枚举时代（`RoleType = 1001`），一并改掉。README
+里那段存档恢复的示例引用了一个从未定义的 `config` 变量，编译不过——
+现在它把配置留在手上再传回去，正好把「配置必须与保存时一致」演示出来。
+README 的两段完整示例这次是真的跑过的。
+
+### 清掉三笔为兼容留下的折中
+
+拆包时有几处是为了「不破坏刚发的 v1.5.0」才留的折中。这个库目前没有已知的
+引用者，那个顾虑不成立，清掉：
+
+- **`RoleCategory` 移出内核。** 当初留在内核是为了不删 `SelfInfo.Category`——
+  我当时就写明了「这是个折中，不是纯粹解」。神职/平民是狼人杀为了屠边判定
+  才需要的细分，内核只该认「这名玩家站哪一边」（`VarCamp`）。现在
+  `RoleCategory` 与 `VarCategory` 整个属于规则包，`SelfInfo.Category` 删除。
+- **`GameConfig` 在内核里改名 `Config`。** 它配的是阶段机，不是「一局游戏」，
+  名不副实。根包仍叫 `GameConfig`（那边还有一个 `Rules` 要区分），
+  是同一个类型的别名。
+- **`VictoryMode` 改成字符串。** 其余枚举上一版全改了，只剩它是 `int + iota`。
+  顺带修掉一个真问题：**零值恰好是屠边**，「没填」与「选了屠边」在结构体里
+  长得一模一样，填错了也发现不了。现在零值是空串，`Rules.Validate` 会拦下来，
+  测试也跟着补了这一条。
+
+### 内核与规则物理拆成两个包
+
+**破坏性变更**：`Engine.WolfTeammates(id)` 更名为 `Engine.Teammates(id)`；
+`Engine.NightKillTarget()` 从方法变成包级函数 `werewolf.NightKillTarget(e)`；
+`NewEngine(nil, ...)` 不再回退默认配置而是报错；`GameConfig.StartPhase`
+成为必填项；`PhaseStep` 增加 `AllowDeadTarget`；快照格式未变。
+
+上一版做到的是**逻辑**分离——内核不装任何狼人杀默认值，规则经公开选项
+装上去。但那件事当时靠自觉：`Options()` 用的还是同包内的未导出符号，
+「规则只用公开 API」没有任何东西强制。
+
+现在是两个包：
+
+| 包 | 是什么 | 行数 |
+|---|---|---|
+| `github.com/Zereker/werewolf/engine` | 内核 | ~2500 |
+| `github.com/Zereker/werewolf` | 狼人杀规则 | ~1900 |
+
+**由编译器保证。** 想验证的话把 grep 指向 `engine/`：非测试代码里
+没有一个 `WEREWOLF`、`NIGHT_WITCH` 这样的取值，也没有一句话认得
+「女巫能不能自救」。
+
+`go get` 的路径不变——子包不需要 `/vN` 后缀，那只跟主版本走。
+
+#### 使用者基本不受影响
+
+内核的公开 API 在根包全部再导出了一遍（`alias.go`）：`werewolf.Effect`
+与 `engine.Effect` 是**同一个类型**，不需要转换，也不必 import 两个包。
+写自己的规则包时直接 import `werewolf/engine`。
+
+拆包只动了两个名字，都是因为它们是狼人杀的说法却挂在内核类型上：
+
+- `Engine.WolfTeammates(id)` → `Engine.Teammates(id)`。它本来就走
+  `TeammateProvider`，与「狼」无关，名字是旧的。
+- `Engine.NightKillTarget()` → `werewolf.NightKillTarget(e)`。
+  `Engine` 住在内核里，本包没有办法给别人的类型加方法。
+  等价写法：`e.RoundVar(werewolf.RoundVarKillTarget)`。
+
+曾想过让规则包套一层自己的 `Engine` 好把这两个留成方法。没有那么做：
+两个同名类型互相不能赋值，使用者迟早会在 `RestoreEngine` 的返回值上
+撞到，那比改两个调用点糟糕得多。
+
+#### 拆的过程中补上的内核 API
+
+不是为了让测试编译过——每一个都是规则包作者真的会撞到的需求：
+
+- **`Board` / `NewGameView` / `Board.Apply`**：手工摆一副局面，转成
+  `GameView` 喂给自己的解析器，再把产出的效果折回去看局面变成了什么样。
+  没有它，规则的解析器就只能整局跑起来才测得动——那测的是集成，
+  不是这个解析器本身。
+- **`Engine.Apply(effects...)`**：直接施加效果，绕开阶段结算。宿主真的
+  会遇到「玩家掉线判死」「管理员踢人」这类不属于任何阶段的状态变更。
+  它走的仍是同一个写入点，因此存档与回放不会失真。
+- **`Engine.View()`**：当前局面的只读视图。宿主想自己算一次什么时用它。
+- **`Engine.Winner()`**：这局的赢家。谁赢是结束那一刻定下的事实，
+  此后不再变——之后换掉判定器也不会改写已经结束的这一局。
+- **`Engine.RoundVar(key)`**：读本回合的一项状态。规则用它提供自己的
+  便利读法。
+
+#### 内核补齐的两处
+
+- **`PhaseStep.AllowDeadTarget`。** 「解药可以指向已出局的玩家」此前是
+  内核校验里的一句 `use.Skill != SkillAntidote`——内核认得解药。
+  现在它是规则声明出来的数据。
+- **`GameConfig.StartPhase` 必填。** 留空此前会退回 `NIGHT_GUARD`，
+  而那是狼人杀的第一个阶段。内核没有资格替任何规则挑一个默认值，
+  `NewEngine(nil)` 同理，现在直接报错。
+
+#### 覆盖率的统计口径
+
+拆包之后 `go test -cover ./engine` 只有 39.2%——内核大部分代码由规则包的
+测试驱动，而那是另一个包了。这是**统计口径的假象**，不是覆盖真的掉了。
+CI 与 `make test-cover` 现在都按两个库包合并统计（`-coverpkg`），
+数字是 **94.5%**，与拆包前一致。示例不计入：它们是使用者，不是被测对象。
+
 ## v1.5.0 — 2026-08-22
 
 这一版把**通用内核**与**狼人杀规则**分开了：引擎的代码路径里没有一处认得
@@ -379,22 +527,6 @@ if role == RoleWitch {
 - `example/netserver`：TCP 长连接的服务端，库的第二个真实使用者。命令行主持台
   碰不到的那半边——事件推送、每条连接一份视图、并发、断线重连、超时真的触发——
   由它来压，七条端到端测试全在 `-race` 下跑。
-
-## 路线：把两层物理拆成两个包
-
-到 v1.5.0 为止，内核与狼人杀规则在**逻辑上**已经分开：内核什么都不认识，
-规则经公开选项装上去（`TestBareEngine_KnowsNothing` 守着这一条）。
-
-还差的是物理拆分——`werewolf`（规则）与 `werewolf/engine`（内核）两个包。
-现在 `Options()` 还在用 `builtinAudience` 这些未导出符号，也就是说
-「规则只用公开 API」目前靠自觉；拆成两个包之后由编译器保证。
-
-这是 dogfooding 的最强形式：内置六角色如果能用公开 API 完整表达，扩展性就
-被证明了；如果不能，缺什么当场暴露。这几版补上的 `WithRoleSetup`、
-`WithAudience`、`WithTeammates` 都是这么找出来的。
-
-**这一步不需要换模块路径**：`werewolf/engine` 是子包，`/vN` 后缀只跟主版本
-走，不跟包结构走。
 
 ## v1.3.0 — 2026-08-22
 

@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ import (
 // 断言出任何能改状态的东西。
 func TestGameView_IsReadOnly(t *testing.T) {
 	st := newState()
-	if err := st.addPlayer("v1", RoleVillager); err != nil {
+	if err := st.addPlayer("v1", roleVillager); err != nil {
 		t.Fatal(err)
 	}
 	view := newStateView(st)
@@ -31,10 +31,10 @@ func TestGameView_IsReadOnly(t *testing.T) {
 func TestGameView_ReadsThrough(t *testing.T) {
 	st := newState()
 	for id, role := range map[string]RoleType{
-		"w1": RoleWerewolf,
-		"g":  RoleGuard,
-		"v1": RoleVillager,
-		"v2": RoleVillager,
+		"w1": roleWerewolf,
+		"g":  roleGuard,
+		"v1": roleVillager,
+		"v2": roleVillager,
 	} {
 		if err := st.addPlayer(id, role); err != nil {
 			t.Fatal(err)
@@ -42,36 +42,26 @@ func TestGameView_ReadsThrough(t *testing.T) {
 	}
 	st.applyEffect(NewSetAliveEffect("v2", false))
 
-	// lastProtected 问的是「上一回合」，因此守护要发生在第 1 回合，
-	// 再把状态推到第 2 回合去读
-	st.Round = 1
-	for _, ef := range markProtected(newStateView(st), "g", "v1") {
-		st.applyEffect(ef)
-	}
 	st.Round = 2
-	setKill(st, "v1")
+	setRoundVar(st, testKillTarget, "v1")
+	st.applyEffect(NewSetPlayerVarEffect("g", testVarStock, "v1"))
 
 	view := newStateView(st)
 
 	if got := len(view.AlivePlayers()); got != 3 {
 		t.Errorf("存活玩家数: 期望 3，实际 %d", got)
 	}
-	if got := view.AlivePlayerIDsByRole(RoleWerewolf); len(got) != 1 || got[0] != "w1" {
+	if got := view.AlivePlayerIDsByRole(roleWerewolf); len(got) != 1 || got[0] != "w1" {
 		t.Errorf("狼人列表: 期望 [w1]，实际 %v", got)
 	}
-	if got := lastProtected(view, "g"); got != "v1" {
-		t.Errorf("守卫上回合目标: 期望 v1，实际 %q", got)
+	if got := view.PlayerVar("g", testVarStock); got != "v1" {
+		t.Errorf("玩家状态: 期望 v1，实际 %q", got)
 	}
-	if got := lastProtected(view, "查无此人"); got != "" {
+	if got := view.PlayerVar("查无此人", testVarStock); got != "" {
 		t.Errorf("不存在的玩家应返回空，实际 %q", got)
 	}
-	// 再过一回合，那次守护就不再是「上一回合」了
-	st.Round = 3
-	if got := lastProtected(view, "g"); got != "" {
-		t.Errorf("隔了一回合应返回空，实际 %q", got)
-	}
-	if got := nightKillTarget(view); got != "v1" {
-		t.Errorf("刀口: 期望 v1，实际 %q", got)
+	if got := view.RoundVar(testKillTarget); got != "v1" {
+		t.Errorf("回合状态: 期望 v1，实际 %q", got)
 	}
 	if _, ok := view.Player("查无此人"); ok {
 		t.Error("不存在的玩家应返回 false")
@@ -82,17 +72,17 @@ func TestGameView_ReadsThrough(t *testing.T) {
 // 改它不会影响引擎状态。
 func TestGameView_RoundContextIsCopy(t *testing.T) {
 	st := newState()
-	if err := st.addPlayer("v1", RoleVillager); err != nil {
+	if err := st.addPlayer("v1", roleVillager); err != nil {
 		t.Fatal(err)
 	}
-	setKill(st, "v1")
+	setRoundVar(st, testKillTarget, "v1")
 
 	view := newStateView(st)
 	rc := view.RoundContext()
-	rc.Vars[RoundVarKillTarget] = "被篡改"
+	rc.Vars[testKillTarget] = "被篡改"
 	rc.Vars["凭空多出来的"] = "1"
 
-	if got := nightKillTarget(view); got != "v1" {
+	if got := view.RoundVar(testKillTarget); got != "v1" {
 		t.Errorf("改动副本影响到了引擎状态: %q", got)
 	}
 	if fresh := view.RoundContext(); fresh.Vars["凭空多出来的"] != "" {

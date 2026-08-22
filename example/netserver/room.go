@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Zereker/werewolf"
+	"github.com/Zereker/werewolf/engine"
 )
 
 // command 房间收到的一条指令。
@@ -38,9 +39,9 @@ type command struct {
 
 // room 一局游戏。
 type room struct {
-	name   string
-	engine *werewolf.Engine
-	seats  []string
+	name  string
+	eng   *werewolf.Engine
+	seats []string
 
 	// conns 玩家 ID -> 他当前的连接。
 	//
@@ -70,15 +71,15 @@ func newRoom(name string, tick time.Duration) (*room, error) {
 		cmds:  make(chan command, 64),
 	}
 
-	engine, err := werewolf.New(werewolf.DefaultRules(), werewolf.WithLogger(roomLogger{room: name}))
+	eng, err := werewolf.New(werewolf.DefaultRules(), engine.WithLogger(roomLogger{room: name}))
 	if err != nil {
 		return nil, err
 	}
-	r.engine = engine
+	r.eng = eng
 
 	for i, role := range board {
 		id := fmt.Sprintf("p%d", i+1)
-		if err := engine.AddPlayer(id, role); err != nil {
+		if err := eng.AddPlayer(id, role); err != nil {
 			return nil, err
 		}
 		r.seats = append(r.seats, id)
@@ -87,10 +88,10 @@ func newRoom(name string, tick time.Duration) (*room, error) {
 	// 事件与消息都走推送。这是服务端与命令行主持台最大的区别：
 	// 主持台是回合制地「拉」（看 EndPhase 的返回值），
 	// 服务端必须「推」，而推给谁由 AudienceOf 决定。
-	engine.OnEvent(r.onEvent)
-	engine.OnMessage(r.onMessage)
+	eng.OnEvent(r.onEvent)
+	eng.OnMessage(r.onMessage)
 
-	if err := engine.Start(); err != nil {
+	if err := eng.Start(); err != nil {
 		return nil, err
 	}
 	r.armDeadline()
@@ -170,7 +171,7 @@ func (r *room) detach(player string, c *conn) {
 }
 
 func (r *room) act(player string, skill werewolf.SkillType, target string) {
-	err := r.engine.SubmitSkillUse(&werewolf.SkillUse{
+	err := r.eng.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: player, Skill: skill, TargetID: target,
 	})
 	if err != nil {
@@ -181,13 +182,13 @@ func (r *room) act(player string, skill werewolf.SkillType, target string) {
 	r.pushView(player)
 
 	// 必需行动都齐了就立刻推进，不必干等到超时
-	if r.engine.PhaseReadiness().Ready {
+	if r.eng.PhaseReadiness().Ready {
 		r.advance()
 	}
 }
 
 func (r *room) say(player, text string) {
-	if err := r.engine.SendMessage(player, text); err != nil {
+	if err := r.eng.SendMessage(player, text); err != nil {
 		r.sendTo(player, serverMsg{Type: "error", Message: err.Error()})
 	}
 }
@@ -203,7 +204,7 @@ func (r *room) advance() {
 	if r.over {
 		return
 	}
-	if _, err := r.engine.EndPhase(); err != nil {
+	if _, err := r.eng.EndPhase(); err != nil {
 		log.Printf("[%s] 推进失败: %v", r.name, err)
 		return
 	}
@@ -218,19 +219,19 @@ func (r *room) advance() {
 }
 
 func (r *room) armDeadline() {
-	if r.engine.IsGameOver() {
+	if r.eng.IsGameOver() {
 		r.over = true
 		r.deadline = time.Time{}
 		return
 	}
-	r.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(r.engine.Phase()))
+	r.deadline = time.Now().Add(werewolf.DefaultGameConfig().PhaseTimeout(r.eng.Phase()))
 }
 
 func (r *room) phaseMsg() serverMsg {
 	m := serverMsg{
 		Type:  "phase",
-		Phase: r.engine.Phase().String(),
-		Round: r.engine.Round(),
+		Phase: r.eng.Phase().String(),
+		Round: r.eng.Round(),
 	}
 	if !r.deadline.IsZero() {
 		m.Deadline = r.deadline.UnixMilli()
@@ -242,8 +243,8 @@ func (r *room) phaseMsg() serverMsg {
 //
 // 在房间的 goroutine 上被调用（EndPhase 就在这条 goroutine 上），
 // 因此这里读引擎是安全的。
-func (r *room) onEvent(ev *werewolf.Event) {
-	audience, known := r.engine.AudienceOf(ev)
+func (r *room) onEvent(ev *engine.Event) {
+	audience, known := r.eng.AudienceOf(ev)
 	if !known {
 		// 第三方角色自定义的事件类型，引擎无从判断可见性
 		log.Printf("[%s] 引擎不认得事件类型 %v，未路由", r.name, ev.Type)
@@ -255,14 +256,14 @@ func (r *room) onEvent(ev *werewolf.Event) {
 }
 
 // onMessage 玩家发言，按引擎给出的接收者路由。
-func (r *room) onMessage(msg *werewolf.Message, receivers []string) {
+func (r *room) onMessage(msg *engine.Message, receivers []string) {
 	for _, id := range receivers {
 		r.sendTo(id, serverMsg{Type: "chat", From: msg.SenderID, Text: msg.Content})
 	}
 }
 
 func (r *room) pushView(player string) {
-	r.sendTo(player, serverMsg{Type: "view", View: r.engine.PlayerView(player)})
+	r.sendTo(player, serverMsg{Type: "view", View: r.eng.PlayerView(player)})
 }
 
 func (r *room) sendTo(player string, m serverMsg) {
@@ -274,18 +275,18 @@ func (r *room) sendTo(player string, m serverMsg) {
 // roomLogger 把引擎日志带上房间名。
 type roomLogger struct{ room string }
 
-func (l roomLogger) Debug(string, ...werewolf.Field) {}
-func (l roomLogger) Info(msg string, f ...werewolf.Field) {
+func (l roomLogger) Debug(string, ...engine.Field) {}
+func (l roomLogger) Info(msg string, f ...engine.Field) {
 	log.Printf("[%s] %s%s", l.room, msg, fields(f))
 }
-func (l roomLogger) Warn(msg string, f ...werewolf.Field) {
+func (l roomLogger) Warn(msg string, f ...engine.Field) {
 	log.Printf("[%s] WARN %s%s", l.room, msg, fields(f))
 }
-func (l roomLogger) Error(msg string, f ...werewolf.Field) {
+func (l roomLogger) Error(msg string, f ...engine.Field) {
 	log.Printf("[%s] ERROR %s%s", l.room, msg, fields(f))
 }
 
-func fields(f []werewolf.Field) string {
+func fields(f []engine.Field) string {
 	out := ""
 	for _, x := range f {
 		out += fmt.Sprintf(" %s=%v", x.Key, x.Value)

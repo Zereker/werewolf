@@ -10,7 +10,11 @@
 
 package werewolf
 
-import "strconv"
+import (
+	"strconv"
+
+	"github.com/Zereker/werewolf/engine"
+)
 
 // 狼人杀在回合级状态里用到的键名。
 //
@@ -79,7 +83,17 @@ func lastProtected(view GameView, guardID string) string {
 // markProtected 记下「本回合守卫守了谁」，供下回合判断连守。
 func markProtected(view GameView, guardID, targetID string) []*Effect {
 	return []*Effect{
-		NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedTarget, targetID),
-		NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
+		engine.NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedTarget, targetID),
+		engine.NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
 	}
+}
+
+// NightKillTarget 今晚被狼人选中的刀口，没有则为空。
+//
+// 拆包之后它是包级函数而不是 Engine 的方法：Engine 住在内核里，
+// 而「刀口」是狼人杀的概念，本包没有办法给别人的类型加方法。
+//
+// 等价写法：e.RoundVar(werewolf.RoundVarKillTarget)。
+func NightKillTarget(e *Engine) string {
+	return e.RoundVar(RoundVarKillTarget)
 }

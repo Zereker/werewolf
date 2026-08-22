@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"sort"
@@ -6,20 +6,20 @@ import (
 
 // RoundContext 回合上下文（每个回合重新创建）
 // 用于管理回合内各阶段之间共享的临时状态
-// 包含夜晚和白天的相关状态（如猎人触发可能发生在投票阶段）
+// 本回合内有效的状态，跨回合自动清零。
 type RoundContext struct {
 	// PendingTriggers 待结算的死亡技能，先进先出。
 	//
-	// 此前这里是 HunterTriggered / TriggeredHunterID 两个猎人专属字段，
-	// 每加一个死亡触发角色（狼王、白痴）就要再加两个字段、
+	// 此前这里是两个「某个具体角色专属」的字段，
+	// 每加一个死亡触发角色就要再加两个字段、
 	// 并在引擎的阶段流转里多一个分支。改成队列后引擎不认识任何具体角色。
 	PendingTriggers []PendingTrigger
 
 	// Vars 本回合的自定义状态，每回合自动清空，不属于任何玩家。
 	//
-	// 今晚的刀口就存在这里（键见 RoundVarKillTarget）。它此前是上面一个
-	// 叫 KillTarget 的字段，与被守、被救、被毒三张 map 一起，把「狼人杀
-	// 有哪些回合状态」写进了内核——换一套规则，这四样一个都用不上。
+	// 狼人杀的「今晚刀口」就存在这里。它此前是上面一个
+	// 叫 KillTarget 的字段，与另外三张 map 一起，把「某一套规则有哪些
+	// 回合状态」写进了内核——换一套规则，那四样一个都用不上。
 	//
 	// 三种作用域：PlayerState.Vars 跟着玩家走一整局，这里每回合清零，
 	// PlayerState.RoundVars 是「某个玩家在本回合的标记」。
@@ -46,17 +46,16 @@ type PlayerState struct {
 
 	// Vars 角色私有的、会影响规则判定的状态。
 	//
-	// 女巫的两瓶药就存在这里（键见 VarWitchAntidote / VarWitchPoison），
-	// 与第三方角色的状态同一条路。此前它们是上面两个 bool 字段，
-	// 于是第三方的「女巫类」角色改不动自己的药，也没有任何办法给
-	// 自己发初始状态——那正是「加一个角色不该改引擎」要消灭的东西。
+	// 规则把角色私有的状态放在这里：狼人杀的女巫两瓶药、骑士的一次决斗，
+	// 都是同一件事。此前内核为内置角色写了专门的 bool 字段，于是第三方
+	// 角色改不动自己的状态，也没有任何办法给自己发初始状态——
+	// 那正是「加一个角色不该改引擎」要消灭的东西。
 	//
 	// 初始值由 RoleSetup 发放（见 WithRoleSetup），此后走
 	// EventSetPlayerVar 改、GameView.PlayerVar 读，随快照走、回放能重建。
 	//
-	// 守卫的守护记录也在这里（PlayerVarLastProtectedTarget /
-	// PlayerVarLastProtectedRound）：「不能连守」是狼人杀的规则，
-	// 判定由规则包自己做（见 lastProtected），内核只管存。
+	// 需要跨回合的记录也在这里（狼人杀的「守卫上回合守了谁」就是）：
+	// 判定由规则自己做，内核只管存。
 	Vars map[string]string
 
 	// RoundVars 这名玩家在本回合的标记，每回合自动清空。
@@ -131,7 +130,7 @@ func (s *gameState) addPlayer(id string, role RoleType) error {
 // setPlayerVars 批量写入一名玩家的自定义状态，供入座时发放初始状态。
 //
 // 空值按删除处理，与 EventSetPlayerVar 的写入点保持一致——否则
-// 「发一个开局就用掉解药的女巫」写出来的空串会留在快照里。
+// 规则写出来的空串会留在快照里。
 func (s *gameState) setPlayerVars(id string, vars map[string]string) {
 	if len(vars) == 0 {
 		return
@@ -185,11 +184,11 @@ type PlayerInfo struct {
 	// RoundVars 这名玩家在本回合的标记，每回合清零。
 	//
 	// 此前这里是一个叫 Protected 的 bool——「今晚是否被守卫守护」是
-	// 狼人杀的概念，内核不该认得。现在它只是一个键
-	// （PlayerRoundVarProtected），与被救、被毒以及扩展自己定的标记同列。
+	// 狼人杀的概念，内核不该认得。现在它只是规则自己定的一个键，
+	// 与其余标记同列。
 	RoundVars map[string]string `json:"round_vars,omitempty"`
 
-	// Vars 角色私有的状态，女巫的药也在其中（键见 VarWitchAntidote）。
+	// Vars 角色私有的状态，规则自己定键名。
 	//
 	// 刻意只出现在这里（上帝视角），不出现在面向玩家的 SelfInfo 上：
 	// 往里放什么由角色决定，默认把它交给玩家等于让每个角色自己去想
@@ -201,7 +200,7 @@ type PlayerInfo struct {
 // Var 返回该玩家的一项自定义状态，没有则为空串。
 //
 // 只是省掉 nil map 的判断——PlayerInfo 是副本，直接读 Vars 也一样。
-// 女巫是否还有解药就是 p.Var(VarWitchAntidote) != ""。
+// 「这名玩家还有没有某件东西」就是 p.Var(key) != ""。
 func (p PlayerInfo) Var(key string) string {
 	return p.Vars[key]
 }
@@ -263,6 +262,27 @@ func (s *gameState) getAlivePlayerIDs() []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+// clone 复制一份状态，供 Engine.View 使用。
+//
+// 视图必须与引擎脱钩：拿到视图之后引擎继续推进，那一份不该跟着变——
+// 否则「这一刻的局面」这个说法就不成立了。
+func (s *gameState) clone() *gameState {
+	out := newState()
+	out.Phase = s.Phase
+	out.Round = s.Round
+	out.RoundCtx = &RoundContext{
+		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
+		Vars:            copyVars(s.RoundCtx.Vars),
+	}
+	for id, p := range s.players {
+		out.players[id] = &PlayerState{
+			ID: p.ID, Role: p.Role, Alive: p.Alive,
+			Vars: copyVars(p.Vars), RoundVars: copyVars(p.RoundVars),
+		}
+	}
+	return out
 }
 
 // applyEffect 应用效果

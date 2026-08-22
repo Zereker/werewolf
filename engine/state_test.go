@@ -1,4 +1,4 @@
-package werewolf
+package engine
 
 import (
 	"testing"
@@ -21,7 +21,7 @@ func TestNewState(t *testing.T) {
 func TestAddPlayer(t *testing.T) {
 	state := newState()
 
-	mustAddTo(t, state, "p1", RoleWerewolf)
+	mustAddTo(t, state, "p1", roleWerewolf)
 
 	player, ok := state.getPlayer("p1")
 	if !ok {
@@ -30,11 +30,13 @@ func TestAddPlayer(t *testing.T) {
 	if player.ID != "p1" {
 		t.Errorf("expected ID=p1, got %s", player.ID)
 	}
-	if player.Role != RoleWerewolf {
+	if player.Role != roleWerewolf {
 		t.Errorf("expected Role=WEREWOLF, got %v", player.Role)
 	}
-	if got := player.Vars[VarCamp]; got != string(CampEvil) {
-		t.Errorf("expected Camp=EVIL, got %v", got)
+	// 内核入座只记 ID、角色、存活。阵营、道具这些初始状态由规则的
+	// RoleSetup 发放（见 Engine.AddPlayer），裸 gameState 不经过那一步。
+	if len(player.Vars) != 0 {
+		t.Errorf("内核入座不该发放任何状态，实际 %v", player.Vars)
 	}
 	if !player.Alive {
 		t.Error("expected Alive=true")
@@ -43,7 +45,7 @@ func TestAddPlayer(t *testing.T) {
 
 func TestGetPlayer_Exists(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", RoleSeer)
+	mustAddTo(t, state, "p1", roleSeer)
 
 	player, ok := state.getPlayer("p1")
 	if !ok {
@@ -74,7 +76,7 @@ func TestGetPlayer_NotExists(t *testing.T) {
 func TestApplyEffect_KernelPrimitives(t *testing.T) {
 	t.Run("SET_ALIVE 改存活", func(t *testing.T) {
 		state := newState()
-		mustAddTo(t, state, "p1", RoleVillager)
+		mustAddTo(t, state, "p1", roleVillager)
 
 		state.applyEffect(NewSetAliveEffect("p1", false))
 		if p, _ := state.getPlayer("p1"); p.Alive {
@@ -88,30 +90,30 @@ func TestApplyEffect_KernelPrimitives(t *testing.T) {
 
 	t.Run("SET_PLAYER_ROUND_VAR 标记本回合", func(t *testing.T) {
 		state := newState()
-		mustAddTo(t, state, "p1", RoleVillager)
+		mustAddTo(t, state, "p1", roleVillager)
 
-		state.applyEffect(NewSetPlayerRoundVarEffect("p1", PlayerRoundVarProtected, VarPresent))
-		if !protectedIn(state, "p1") {
+		state.applyEffect(NewSetPlayerRoundVarEffect("p1", testMarkA, VarPresent))
+		if !markedInA(state, "p1") {
 			t.Error("标记之后应当读得到")
 		}
-		state.applyEffect(NewSetPlayerRoundVarEffect("p1", PlayerRoundVarProtected, ""))
-		if protectedIn(state, "p1") {
+		state.applyEffect(NewSetPlayerRoundVarEffect("p1", testMarkA, ""))
+		if markedInA(state, "p1") {
 			t.Error("空值应当等同删除")
 		}
 	})
 
 	t.Run("回合边界清掉标记", func(t *testing.T) {
 		state := newState()
-		mustAddTo(t, state, "p1", RoleVillager)
+		mustAddTo(t, state, "p1", roleVillager)
 
-		state.applyEffect(NewSetPlayerRoundVarEffect("p1", PlayerRoundVarSaved, VarPresent))
-		setKill(state, "p1")
+		state.applyEffect(NewSetPlayerRoundVarEffect("p1", testMarkB, VarPresent))
+		setRoundVar(state, testKillTarget, "p1")
 		state.resetRoundState()
 
-		if savedIn(state, "p1") {
+		if markedInB(state, "p1") {
 			t.Error("玩家身上的回合标记应当随回合清掉")
 		}
-		if got := killTargetOf(state); got != "" {
+		if got := killTargetOfState(state); got != "" {
 			t.Errorf("回合变量应当随回合清掉，实际 %q", got)
 		}
 	})
@@ -124,11 +126,11 @@ func TestApplyEffect_KernelPrimitives(t *testing.T) {
 // 真正改状态的是它们旁边那条原语——所以单独发一个 KILL，谁都不会死。
 func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
 	for _, typ := range []EventType{
-		EventKill, EventPoison, EventEliminate, EventShoot,
-		EventProtect, EventSave, EventCheck, EventVoteTied,
+		eventKill, eventPoison, eventEliminate, eventShoot,
+		eventProtect, eventSave, eventCheck, eventVoteTied,
 	} {
 		state := newState()
-		mustAddTo(t, state, "p1", RoleVillager)
+		mustAddTo(t, state, "p1", roleVillager)
 
 		// 入座已经发过初始状态（阵营与类别），比的是「有没有再动过」
 		before := copyVars(state.players["p1"].Vars)
@@ -153,10 +155,10 @@ func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
 // Alive=true，任何一个 SAVE 效果都能把早已出局的玩家拉回场上。
 func TestApplyEffect_SaveDoesNotResurrect(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
+	mustAddTo(t, state, "p1", roleVillager)
 	state.players["p1"].Alive = false
 
-	state.applyEffect(NewEffect(EventSave, "witch", "p1"))
+	state.applyEffect(NewEffect(eventSave, "witch", "p1"))
 
 	player, _ := state.getPlayer("p1")
 	if player.Alive {
@@ -166,9 +168,9 @@ func TestApplyEffect_SaveDoesNotResurrect(t *testing.T) {
 
 func TestApplyEffect_Canceled(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
+	mustAddTo(t, state, "p1", roleVillager)
 
-	effect := NewEffect(EventKill, "wolf", "p1")
+	effect := NewEffect(eventKill, "wolf", "p1")
 	effect.Cancel("protected")
 	state.applyEffect(effect)
 
@@ -181,43 +183,43 @@ func TestApplyEffect_Canceled(t *testing.T) {
 func TestApplyEffect_InvalidTarget(t *testing.T) {
 	state := newState()
 
-	effect := NewEffect(EventKill, "wolf", "nonexistent")
+	effect := NewEffect(eventKill, "wolf", "nonexistent")
 	// Should not panic
 	state.applyEffect(effect)
 }
 
 func TestResetRoundState(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
-	mustAddTo(t, state, "p2", RoleVillager)
+	mustAddTo(t, state, "p1", roleVillager)
+	mustAddTo(t, state, "p2", roleVillager)
 
 	// 使用 NightContext 设置保护状态
-	markRound(state, "p1", PlayerRoundVarProtected)
-	markRound(state, "p2", PlayerRoundVarProtected)
-	setKill(state, "p1")
+	markRound(state, "p1", testMarkA)
+	markRound(state, "p2", testMarkA)
+	setRoundVar(state, testKillTarget, "p1")
 
 	state.resetRoundState()
 
 	// NightContext 应该被重置
-	if protectedIn(state, "p1") {
+	if markedInA(state, "p1") {
 		t.Error("expected p1 not protected after reset")
 	}
-	if protectedIn(state, "p2") {
+	if markedInA(state, "p2") {
 		t.Error("expected p2 not protected after reset")
 	}
-	if killTargetOf(state) != "" {
-		t.Errorf("expected empty KillTarget after reset, got %s", killTargetOf(state))
+	if killTargetOfState(state) != "" {
+		t.Errorf("expected empty KillTarget after reset, got %s", killTargetOfState(state))
 	}
 }
 
 func TestNextPhase_ToDay(t *testing.T) {
 	state := newState()
-	state.Phase = PhaseNight
+	state.Phase = phaseNight
 	state.Round = 1
 
-	state.nextPhase(PhaseDay, PhaseNightGuard)
+	state.nextPhase(phaseDay, phaseNightGuard)
 
-	if state.Phase != PhaseDay {
+	if state.Phase != phaseDay {
 		t.Errorf("expected Phase=DAY, got %v", state.Phase)
 	}
 	if state.Round != 1 {
@@ -227,108 +229,26 @@ func TestNextPhase_ToDay(t *testing.T) {
 
 func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 	state := newState()
-	mustAddTo(t, state, "p1", RoleVillager)
-	markRound(state, "p1", PlayerRoundVarProtected)
-	setKill(state, "p1")
-	state.Phase = PhaseVote
+	mustAddTo(t, state, "p1", roleVillager)
+	markRound(state, "p1", testMarkA)
+	setRoundVar(state, testKillTarget, "p1")
+	state.Phase = phaseVote
 	state.Round = 1
 
 	// 第二个参数是本局的起始阶段，绕回它即是新的一回合
-	state.nextPhase(PhaseNightGuard, PhaseNightGuard)
+	state.nextPhase(phaseNightGuard, phaseNightGuard)
 
-	if state.Phase != PhaseNightGuard {
+	if state.Phase != phaseNightGuard {
 		t.Errorf("expected Phase=NIGHT_GUARD, got %v", state.Phase)
 	}
 	if state.Round != 2 {
 		t.Errorf("expected Round=2, got %d", state.Round)
 	}
 	// NightContext 应该被重置
-	if protectedIn(state, "p1") {
+	if markedInA(state, "p1") {
 		t.Error("expected NightContext to be reset")
 	}
-	if killTargetOf(state) != "" {
+	if killTargetOfState(state) != "" {
 		t.Error("expected KillTarget to be reset")
-	}
-}
-
-func TestCheckVictory_AllWolvesDead(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "w1", RoleWerewolf)
-	mustAddTo(t, state, "s1", RoleSeer)
-	mustAddTo(t, state, "v1", RoleVillager)
-
-	// Kill all wolves
-	state.players["w1"].Alive = false
-
-	gameOver, winner := DefaultVictoryChecker{Mode: VictoryModeSideWipe}.CheckVictory(newStateView(state))
-	if !gameOver {
-		t.Error("expected gameOver=true when all wolves dead")
-	}
-	if winner != CampGood {
-		t.Errorf("expected GOOD wins, got %v", winner)
-	}
-}
-
-func TestCheckVictory_GoodLessOrEqual(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "w1", RoleWerewolf)
-	mustAddTo(t, state, "w2", RoleWerewolf)
-	mustAddTo(t, state, "s1", RoleSeer)
-	mustAddTo(t, state, "v1", RoleVillager)
-
-	// Kill one good player, now good(1) <= evil(2)
-	state.players["s1"].Alive = false
-
-	gameOver, winner := DefaultVictoryChecker{Mode: VictoryModeSideWipe}.CheckVictory(newStateView(state))
-	if !gameOver {
-		t.Error("expected gameOver=true when good <= evil")
-	}
-	if winner != CampEvil {
-		t.Errorf("expected EVIL wins, got %v", winner)
-	}
-}
-
-func TestCheckVictory_GameContinues(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "w1", RoleWerewolf)
-	mustAddTo(t, state, "s1", RoleSeer)
-	mustAddTo(t, state, "v1", RoleVillager)
-	mustAddTo(t, state, "v2", RoleVillager)
-
-	// good(3) > evil(1), game continues
-	gameOver, winner := DefaultVictoryChecker{Mode: VictoryModeSideWipe}.CheckVictory(newStateView(state))
-	if gameOver {
-		t.Error("expected gameOver=false when good > evil")
-	}
-	if winner != CampUnspecified {
-		t.Errorf("expected UNSPECIFIED, got %v", winner)
-	}
-}
-
-func TestCheckVictory_NoPlayers(t *testing.T) {
-	state := newState()
-
-	// No players means 0 wolves, good wins
-	gameOver, winner := DefaultVictoryChecker{Mode: VictoryModeSideWipe}.CheckVictory(newStateView(state))
-	if !gameOver {
-		t.Error("expected gameOver=true with no players")
-	}
-	if winner != CampGood {
-		t.Errorf("expected GOOD wins (0 wolves), got %v", winner)
-	}
-}
-
-func TestCheckVictory_Equal(t *testing.T) {
-	state := newState()
-	mustAddTo(t, state, "w1", RoleWerewolf)
-	mustAddTo(t, state, "v1", RoleVillager)
-
-	// 屠城模式下 good(1) == evil(1) 即狼人胜利
-	gameOver, winner := DefaultVictoryChecker{Mode: VictoryModeTownWipe}.CheckVictory(newStateView(state))
-	if !gameOver {
-		t.Error("expected gameOver=true when good == evil")
-	}
-	if winner != CampEvil {
-		t.Errorf("expected EVIL wins, got %v", winner)
 	}
 }
