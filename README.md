@@ -696,12 +696,22 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 │   ├── netserver/           # TCP 服务端（推送、并发、断线重连）
 │   └── extension/           # 自定义角色（白痴）
 └── docs/
-    └── ARCHITECTURE.md
+    ├── DESIGN.md            # 内核技术方案：该长成什么样、为什么
+    ├── ROADMAP.md           # 实现方案：按什么次序走到那儿
+    ├── ARCHITECTURE.md      # 当前实现的结构
+    ├── PRIOR-ART.md         # 与 boardgame.io 等对照实现的比较
+    └── API-SHAPE.md         # 一次 API 审计的记录
 ```
 
 ## 架构设计
 
-详见 [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+| 想知道 | 看哪份 |
+|---|---|
+| 内核**该**长成什么样、为什么这么抽象 | [DESIGN.md](docs/DESIGN.md) |
+| 按什么次序走到那儿 | [ROADMAP.md](docs/ROADMAP.md) |
+| 现在的代码是怎么组织的 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](docs/PRIOR-ART.md) |
+| 第二套规则包撞到了什么 | [avalon/SCARS.md](avalon/SCARS.md) |
 
 **设计理念：**
 - **状态机驱动** - 不是事件驱动，而是显式的阶段流转
