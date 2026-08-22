@@ -155,7 +155,7 @@ type GuardResolver struct{}
 // NewGuardResolver 创建守卫阶段解析器。
 //
 // 内置解析器都是导出的，扩展可以包装它们复用已有逻辑，
-// 再经 Engine.RegisterResolver 换上——参见 extension_test.go。
+// 再经 WithResolver 换上——参见 extension_test.go。
 func NewGuardResolver() *GuardResolver {
 	return &GuardResolver{}
 }

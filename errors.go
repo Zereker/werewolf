@@ -31,14 +31,6 @@ func (e *GameError) Error() string {
 // Unwrap 返回本错误对应的预定义哨兵，让 errors.Is 能穿透带上下文的错误。
 func (e *GameError) Unwrap() error { return e.sentinel }
 
-// NewGameError 创建游戏错误
-func NewGameError(code pb.ErrorCode, message string) *GameError {
-	return &GameError{
-		Code:    code,
-		Message: message,
-	}
-}
-
 // 预定义错误
 var (
 	ErrPlayerNotFound    = &GameError{Code: pb.ErrorCode_ERROR_CODE_PLAYER_NOT_FOUND, Message: "player not found"}

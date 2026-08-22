@@ -69,40 +69,27 @@ func (e *Engine) PhaseReadiness() PhaseReadiness {
 	trigger, hasTrigger := e.state.peekTrigger()
 	triggerActive := hasTrigger && trigger.Phase == e.state.Phase
 
-	// 互斥备选组：同组的任一技能都算完成，逐步骤独立判定会把
-	// 「猎人已明确表示不开枪」记成「还欠着开枪」
-	groupSkills := groupSkillsOf(phaseConfig.Steps)
-
-	for _, step := range phaseConfig.Steps {
-		// 上帝是系统角色，没有玩家承担
-		if !step.Required || step.Role == pb.RoleType_ROLE_TYPE_GOD {
-			continue
-		}
-
-		actors := e.actorsForStep(step.Role, triggerActive, trigger)
+	for _, req := range requirementsOf(phaseConfig.Steps) {
+		actors := e.actorsForStep(req.role, triggerActive, trigger)
 		if len(actors) == 0 {
 			// 无人能承担该步骤，视为自动满足
 			continue
 		}
 
-		accepted := groupSkills[step.Group]
-		if accepted == nil {
-			accepted = []pb.SkillType{step.Skill}
-		}
-
 		var missing []PendingAction
 		for _, id := range actors {
-			if !submittedAny(submitted[id], accepted) {
-				missing = append(missing, PendingAction{
-					PlayerID: id,
-					Role:     step.Role,
-					Skill:    step.Skill,
-				})
+			if req.satisfiedBy(submitted[id]) {
+				continue
 			}
+			missing = append(missing, PendingAction{
+				PlayerID: id,
+				Role:     req.role,
+				Skill:    req.skill,
+			})
 		}
 
 		// Multiple=false 时任意一人完成即可
-		if !step.Multiple && len(missing) < len(actors) {
+		if !req.multiple && len(missing) < len(actors) {
 			continue
 		}
 		if len(missing) > 0 {
@@ -111,39 +98,25 @@ func (e *Engine) PhaseReadiness() PhaseReadiness {
 		}
 	}
 
-	// 同一个组会被组里每个步骤各报一次，去重后调用方看到的才是
-	// 「这个人还欠一次行动」而不是「他欠了开枪又欠了不开枪」
-	out.Pending = dedupPending(out.Pending, groupOfStep(phaseConfig.Steps))
-
 	return out
 }
 
-// groupSkillsOf 归拢互斥备选组：组名 -> 该组接受的全部技能。
-func groupSkillsOf(steps []PhaseStep) map[string][]pb.SkillType {
-	out := make(map[string][]pb.SkillType)
-	for _, step := range steps {
-		if step.Group == "" {
-			continue
-		}
-		out[step.Group] = append(out[step.Group], step.Skill)
-	}
-	return out
+// requirement 一项必需行动：某个角色，提交 accepts 里任意一个技能即算完成。
+//
+// 判定的单位是「一次行动」而不是「一个步骤」。互斥备选组（猎人的开枪与
+// 不开枪）在配置里是两个步骤、在这里是一项要求——按步骤逐个判定的话，
+// 猎人明确表示不开枪之后仍会被记成欠着开枪，还得再跑一遍去重把同一个人
+// 的两条待办合并回去。
+type requirement struct {
+	role     pb.RoleType
+	skill    pb.SkillType   // 报给调用方的代表技能，取组里第一个
+	accepts  []pb.SkillType // 组里的全部技能
+	multiple bool
 }
 
-// groupOfStep 技能 -> 它所属的互斥备选组名。
-func groupOfStep(steps []PhaseStep) map[pb.SkillType]string {
-	out := make(map[pb.SkillType]string)
-	for _, step := range steps {
-		if step.Group != "" {
-			out[step.Skill] = step.Group
-		}
-	}
-	return out
-}
-
-// submittedAny 该玩家是否提交过其中任意一个技能。
-func submittedAny(done map[pb.SkillType]bool, skills []pb.SkillType) bool {
-	for _, skill := range skills {
+// satisfiedBy 该玩家提交过的技能里是否有本项要求接受的。
+func (r requirement) satisfiedBy(done map[pb.SkillType]bool) bool {
+	for _, skill := range r.accepts {
 		if done[skill] {
 			return true
 		}
@@ -151,30 +124,30 @@ func submittedAny(done map[pb.SkillType]bool, skills []pb.SkillType) bool {
 	return false
 }
 
-// dedupPending 同一玩家在同一互斥备选组里只保留一条待办。
-func dedupPending(pending []PendingAction, group map[pb.SkillType]string) []PendingAction {
-	if len(pending) == 0 {
-		return pending
-	}
+// requirementsOf 把步骤列表折成必需行动列表，保持步骤的先后顺序。
+//
+// 上帝是系统角色、没有玩家承担，非 Required 的步骤不参与就绪判定，两者都跳过。
+func requirementsOf(steps []PhaseStep) []requirement {
+	out := make([]requirement, 0, len(steps))
+	byGroup := make(map[string]int, len(steps)) // 组名 -> out 中的下标
 
-	type key struct {
-		player string
-		group  string
-	}
-	seen := make(map[key]bool, len(pending))
-	out := pending[:0]
-	for _, p := range pending {
-		g, inGroup := group[p.Skill]
-		if !inGroup {
-			out = append(out, p)
+	for _, step := range steps {
+		if !step.Required || step.Role == pb.RoleType_ROLE_TYPE_GOD {
 			continue
 		}
-		k := key{player: p.PlayerID, group: g}
-		if seen[k] {
+		if i, ok := byGroup[step.Group]; ok && step.Group != "" {
+			out[i].accepts = append(out[i].accepts, step.Skill)
 			continue
 		}
-		seen[k] = true
-		out = append(out, p)
+		if step.Group != "" {
+			byGroup[step.Group] = len(out)
+		}
+		out = append(out, requirement{
+			role:     step.Role,
+			skill:    step.Skill,
+			accepts:  []pb.SkillType{step.Skill},
+			multiple: step.Multiple,
+		})
 	}
 	return out
 }

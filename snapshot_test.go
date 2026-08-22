@@ -340,9 +340,8 @@ func TestSnapshot_EndedGame(t *testing.T) {
 
 // TestRestoreEngine_WithCustomResolver 恢复出来的引擎也要能带上自定义解析器。
 //
-// RegisterResolver 只在 START 阶段可用，而恢复出来的引擎已经在局中，
-// 于是「用了自定义角色的对局存了档就再也恢复不回来」——恢复能成功，
-// 但那个阶段的技能会被静默丢弃，一个效果都产不出来。
+// 解析器只能在构造时给出。漏掉的话恢复本身就会报错，
+// 而不是给出一个「那个阶段的技能被静默丢弃」的引擎。
 func TestRestoreEngine_WithCustomResolver(t *testing.T) {
 	const customPhase = pb.PhaseType(77)
 

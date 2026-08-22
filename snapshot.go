@@ -111,8 +111,8 @@ func (e *Engine) Snapshot() *Snapshot {
 // config 为 nil 时使用默认配置。**恢复时必须提供与保存时一致的规则配置**——
 // 快照只记录局面，不记录规则；用不同的配置恢复会得到一局规则被中途换掉的游戏。
 //
-// 自定义角色的解析器必须经 opts 传入：恢复出来的引擎已经不在 START
-// 阶段，RegisterResolver 对它无效，漏掉就会让该阶段的技能被静默丢弃。
+// 自定义角色的解析器必须经 opts 传入（WithResolver）。漏掉会让该阶段的
+// 技能被静默丢弃，所以这里会跑一遍解析器校验，缺了就直接报错。
 //
 // 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中、
 // 有阶段缺少解析器。
@@ -141,45 +141,73 @@ func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*E
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 
-	// 阶段必须能在配置里找到，否则恢复出来的引擎推进不下去。
-	// START 与 END 是流程的两端，不出现在阶段配置中，单独放行。
-	if snap.Phase != pb.PhaseType_PHASE_TYPE_START &&
-		snap.Phase != pb.PhaseType_PHASE_TYPE_END &&
-		engine.phase.phaseConfig(snap.Phase) == nil {
-		return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
-			"phase %v is not present in the supplied config", snap.Phase)
+	if err := engine.restorePhase(snap.Phase); err != nil {
+		return nil, err
+	}
+	if err := engine.restorePlayers(snap.Players); err != nil {
+		return nil, err
+	}
+	if err := engine.restorePendingUses(snap.PendingUses); err != nil {
+		return nil, err
 	}
 
-	for _, p := range snap.Players {
+	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)
+
+	return engine, nil
+}
+
+// restorePhase 校验快照里的阶段能在配置中找到。
+//
+// 找不到的话恢复出来的引擎推进不下去。START 与 END 是流程的两端，
+// 不出现在阶段配置中，单独放行。
+func (e *Engine) restorePhase(phase pb.PhaseType) error {
+	if phase == pb.PhaseType_PHASE_TYPE_START || phase == pb.PhaseType_PHASE_TYPE_END {
+		return nil
+	}
+	if e.phase.phaseConfig(phase) == nil {
+		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+			"phase %v is not present in the supplied config", phase)
+	}
+	return nil
+}
+
+// restorePlayers 按快照写入玩家。
+//
+// 校验与 AddPlayer 一致：restorePlayer 刻意不走 AddPlayer（要原样还原
+// 存活状态与药剂），但不该顺带把 AddPlayer 会拒绝的身份也放行。
+func (e *Engine) restorePlayers(players []PlayerSnapshot) error {
+	for _, p := range players {
 		if p.ID == "" {
-			return nil, ErrInvalidPlayerID
+			return ErrInvalidPlayerID
 		}
-		// 与 AddPlayer 同一条角色校验：恢复要还原快照里的存活状态与药剂，
-		// 但不该顺带放行 AddPlayer 会拒绝的身份
 		if p.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED || p.Role == pb.RoleType_ROLE_TYPE_GOD {
-			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
 				"role %v cannot be assigned to a player", p.Role)
 		}
-		if _, exists := engine.state.getPlayer(p.ID); exists {
-			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+		if _, exists := e.state.getPlayer(p.ID); exists {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 				"duplicate player %q in snapshot", p.ID)
 		}
-		engine.state.restorePlayer(p)
+		e.state.restorePlayer(p)
 	}
+	return nil
+}
 
-	// 技能引用的玩家与目标都必须存在，否则结算时会静默丢弃
-	for _, u := range snap.PendingUses {
-		if _, ok := engine.state.getPlayer(u.PlayerID); !ok {
-			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+// restorePendingUses 还原已提交但尚未结算的技能。
+// 引用的玩家与目标都必须存在，否则结算时会被静默丢弃。
+func (e *Engine) restorePendingUses(uses []SkillUseSnapshot) error {
+	for _, u := range uses {
+		if _, ok := e.state.getPlayer(u.PlayerID); !ok {
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 				"pending skill references unknown player %q", u.PlayerID)
 		}
 		if u.TargetID != "" {
-			if _, ok := engine.state.getPlayer(u.TargetID); !ok {
-				return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+			if _, ok := e.state.getPlayer(u.TargetID); !ok {
+				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 					"pending skill references unknown target %q", u.TargetID)
 			}
 		}
-		engine.pendingUses = append(engine.pendingUses, &SkillUse{
+		e.pendingUses = append(e.pendingUses, &SkillUse{
 			PlayerID: u.PlayerID,
 			Skill:    u.Skill,
 			TargetID: u.TargetID,
@@ -187,10 +215,7 @@ func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*E
 			Round:    u.Round,
 		})
 	}
-
-	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)
-
-	return engine, nil
+	return nil
 }
 
 // ==================== State 侧的转换 ====================

@@ -1,6 +1,6 @@
 // phase_info.go 阶段信息：告诉调用方本阶段该让谁行动、能用什么技能。
 //
-// 全部由阶段配置（PhaseConfig.Steps）派生，因此第三方经 RegisterResolver
+// 全部由阶段配置（PhaseConfig.Steps）派生，因此第三方经 WithResolver
 // 加入的自定义角色同样能拿到。
 
 package werewolf
@@ -119,16 +119,9 @@ func (e *Engine) buildRolePhaseInfo(role pb.RoleType, triggerActive bool, trigge
 		AllowedSkills: e.allowedSkillsFor(role),
 	}
 
-	switch {
-	case triggerActive:
-		// 死亡技能阶段：行动者只有触发者本人，且只在他的角色与本步骤相符时
-		ri.PlayerIDs = e.triggerActorFor(role, trigger)
-	case role == pb.RoleType_ROLE_TYPE_UNSPECIFIED:
-		// UNSPECIFIED 表示所有存活玩家（如投票）
-		ri.PlayerIDs = e.state.getAlivePlayerIDs()
-	default:
-		ri.PlayerIDs = e.state.getAlivePlayerIDsByRole(role)
-	}
+	// 与 PhaseReadiness 共用同一份「谁该行动」的判定：两处各写一遍的时候，
+	// 这里漏了排序，同一个局面每次调用给出的名单顺序都不一样。
+	ri.PlayerIDs = e.actorsForStep(role, triggerActive, trigger)
 
 	switch role {
 	case pb.RoleType_ROLE_TYPE_WEREWOLF:

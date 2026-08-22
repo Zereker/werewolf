@@ -59,13 +59,11 @@ func basicGameSetup() {
 	config.GuardCanRepeat = false      // 守卫不能连续守同一人
 	config.SameGuardKillIsEmpty = true // 同守同杀为空刀
 
-	// 2. 创建游戏引擎
-	engine := werewolf.MustNewEngine(config)
+	// 2. 创建游戏引擎（日志可选，用构造选项给出）
+	engine := werewolf.MustNewEngine(config,
+		werewolf.WithLogger(&SimpleLogger{}))
 
-	// 3. 设置日志（可选）
-	engine.SetLogger(&SimpleLogger{})
-
-	// 4. 添加玩家
+	// 3. 添加玩家
 	// 6人局配置: 2狼人 + 1女巫 + 1预言家 + 1守卫 + 1村民
 	seat(engine, "player1", pb.RoleType_ROLE_TYPE_WEREWOLF)
 	seat(engine, "player2", pb.RoleType_ROLE_TYPE_WEREWOLF)
@@ -74,21 +72,21 @@ func basicGameSetup() {
 	seat(engine, "player5", pb.RoleType_ROLE_TYPE_GUARD)
 	seat(engine, "player6", pb.RoleType_ROLE_TYPE_VILLAGER)
 
-	// 5. 注册事件处理器（可选）
+	// 4. 注册事件处理器（可选）
 	engine.OnEvent(func(event *pb.Event) {
 		fmt.Printf("  [事件] 类型: %s, 目标: %s\n", event.Type, event.TargetId)
 	})
 
-	// 6. 开始游戏
+	// 5. 开始游戏
 	if err := engine.Start(); err != nil {
 		log.Fatalf("启动游戏失败: %v", err)
 	}
 
-	// 7. 查询当前状态
+	// 6. 查询当前状态
 	fmt.Printf("  当前阶段: %s\n", engine.Phase())
 	fmt.Printf("  当前回合: %d\n", engine.Round())
 
-	// 8. 获取阶段信息
+	// 7. 获取阶段信息
 	phaseInfo := engine.PhaseInfo()
 	fmt.Printf("  需要行动的角色: %v\n", phaseInfo.ActiveRoles)
 }

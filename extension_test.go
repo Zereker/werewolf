@@ -70,18 +70,13 @@ func newWolfKingGame(t *testing.T) *Engine {
 		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
 	}
 
-	engine, err := NewEngine(cfg)
+	// 2. 构造时注册狼王阶段的解析器，并装饰投票解析器
+	engine, err := NewEngine(cfg,
+		WithResolver(phaseWolfKing, &wolfKingResolver{}),
+		WithResolver(pb.PhaseType_PHASE_TYPE_VOTE,
+			&voteWithWolfKing{inner: NewVoteResolver()}))
 	if err != nil {
 		t.Fatalf("配置应当合法: %v", err)
-	}
-
-	// 2. 注册狼王阶段的解析器，并装饰投票解析器
-	if err := engine.RegisterResolver(phaseWolfKing, &wolfKingResolver{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := engine.RegisterResolver(pb.PhaseType_PHASE_TYPE_VOTE,
-		&voteWithWolfKing{inner: NewVoteResolver()}); err != nil {
-		t.Fatal(err)
 	}
 
 	// 3. 狼王的阵营与类别推导不出来，显式给出
@@ -182,22 +177,24 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 	}
 }
 
-// TestExtension_RegisterResolverRejects 注册入口的边界
-func TestExtension_RegisterResolverRejects(t *testing.T) {
-	engine := MustNewEngine(nil)
-
-	if err := engine.RegisterResolver(pb.PhaseType_PHASE_TYPE_DAY, nil); err == nil {
+// TestExtension_WithResolverRejectsNil 注册入口的边界。
+//
+// 想让某阶段不产生任何效果，注册一个返回空切片的解析器；
+// 传 nil 只可能是漏了，必须在构造时就报出来。
+func TestExtension_WithResolverRejectsNil(t *testing.T) {
+	if _, err := NewEngine(nil, WithResolver(pb.PhaseType_PHASE_TYPE_DAY, nil)); err == nil {
 		t.Error("nil 解析器应当被拒绝")
 	}
+	if !panicsOnNilResolver(t) {
+		t.Error("MustNewEngine 遇到非法选项应当 panic")
+	}
+}
 
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	if err := engine.Start(); err != nil {
-		t.Fatal(err)
-	}
-	if err := engine.RegisterResolver(pb.PhaseType_PHASE_TYPE_DAY, NewDayResolver()); err != ErrGameAlreadyStarted {
-		t.Errorf("开局后注册应返回 ErrGameAlreadyStarted，实际 %v", err)
-	}
+func panicsOnNilResolver(t *testing.T) (panicked bool) {
+	t.Helper()
+	defer func() { panicked = recover() != nil }()
+	MustNewEngine(nil, WithResolver(pb.PhaseType_PHASE_TYPE_DAY, nil))
+	return false
 }
 
 func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {

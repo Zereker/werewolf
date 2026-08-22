@@ -107,55 +107,6 @@ func TestGetResolver_Nil(t *testing.T) {
 	}
 }
 
-func TestGetRequiredRoles_NightGuard(t *testing.T) {
-	config := DefaultGameConfig()
-	p := newPhaseManager(config)
-
-	roles := p.requiredRoles(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
-
-	// Should have God and Guard
-	if len(roles) != 2 {
-		t.Errorf("expected 2 unique roles, got %d", len(roles))
-	}
-
-	roleSet := make(map[pb.RoleType]bool)
-	for _, r := range roles {
-		roleSet[r] = true
-	}
-
-	if !roleSet[pb.RoleType_ROLE_TYPE_GOD] {
-		t.Error("expected God in required roles")
-	}
-	if !roleSet[pb.RoleType_ROLE_TYPE_GUARD] {
-		t.Error("expected Guard in required roles")
-	}
-}
-
-func TestGetRequiredRoles_Day(t *testing.T) {
-	config := DefaultGameConfig()
-	p := newPhaseManager(config)
-
-	roles := p.requiredRoles(pb.PhaseType_PHASE_TYPE_DAY)
-
-	// 白天只剩上帝公告：发言走 SendMessage，不占技能步骤
-	if len(roles) != 1 {
-		t.Fatalf("expected 1 role, got %d", len(roles))
-	}
-	if roles[0] != pb.RoleType_ROLE_TYPE_GOD {
-		t.Errorf("expected God, got %v", roles[0])
-	}
-}
-
-func TestGetRequiredRoles_Invalid(t *testing.T) {
-	config := DefaultGameConfig()
-	p := newPhaseManager(config)
-
-	roles := p.requiredRoles(pb.PhaseType_PHASE_TYPE_START)
-	if roles != nil {
-		t.Error("expected nil for invalid phase")
-	}
-}
-
 func TestGetAllowedSkills_Guard(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)

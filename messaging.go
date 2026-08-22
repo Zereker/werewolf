@@ -37,15 +37,15 @@ func (e *Engine) OnMessage(handler MessageHandler) {
 // 根据当前阶段自动路由到正确的接收者
 // 返回错误：玩家不存在、玩家已死亡、当前阶段不允许发言
 func (e *Engine) SendMessage(senderID, content string) error {
-	msg, receiverIDs, handlers, logger, err := e.prepareMessage(senderID, content)
+	msg, receiverIDs, handlers, err := e.prepareMessage(senderID, content)
 	if err != nil {
 		return err
 	}
 
 	// 发布在锁外：回调里可能回调 Engine
-	publishMessage(handlers, logger, msg, receiverIDs)
+	publishMessage(handlers, e.logger, msg, receiverIDs)
 
-	logger.Debug("message sent",
+	e.logger.Debug("message sent",
 		PlayerField(senderID),
 		PhaseField(msg.Phase),
 		F("receiver_count", len(receiverIDs)))
@@ -59,22 +59,22 @@ func (e *Engine) SendMessage(senderID, content string) error {
 // 提前返回的路径，日后任何人再加一条都可能漏掉解锁。EndPhase 那边
 // 是同样的写法，一份代码不该有两套标准。
 func (e *Engine) prepareMessage(senderID, content string) (
-	*Message, []string, []MessageHandler, Logger, error,
+	*Message, []string, []MessageHandler, error,
 ) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
 	sender, ok := e.state.getPlayer(senderID)
 	if !ok {
-		return nil, nil, nil, nil, ErrPlayerNotFound
+		return nil, nil, nil, ErrPlayerNotFound
 	}
 	if !sender.Alive {
-		return nil, nil, nil, nil, ErrPlayerDead
+		return nil, nil, nil, ErrPlayerDead
 	}
 
 	receiverIDs := e.getMessageReceivers(senderID)
 	if len(receiverIDs) == 0 {
-		return nil, nil, nil, nil, ErrMessageNotAllowed
+		return nil, nil, nil, ErrMessageNotAllowed
 	}
 
 	msg := &Message{
@@ -89,7 +89,7 @@ func (e *Engine) prepareMessage(senderID, content string) (
 	handlers := make([]MessageHandler, len(e.messageHandlers))
 	copy(handlers, e.messageHandlers)
 
-	return msg, receiverIDs, handlers, e.logger, nil
+	return msg, receiverIDs, handlers, nil
 }
 
 // MessageReceivers 获取消息接收者列表（公开方法）

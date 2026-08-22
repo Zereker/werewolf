@@ -339,8 +339,8 @@ engine.AddCustomPlayer("wk", roleWolfKing, pb.Camp_CAMP_EVIL, werewolf.RoleCateg
 ```
 
 `WithResolver` 是构造选项，`NewEngine` / `RestoreEngine` / `ReplayEngine`
-三个入口都接受它。从存档续上一局用了自定义角色的游戏时必须用它——
-恢复出来的引擎已经在局中，`Engine.RegisterResolver` 只在开局前有效。
+三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
+都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
