@@ -15,7 +15,10 @@ type GameView interface {
 	// Player 返回玩家信息的只读副本
 	Player(id string) (PlayerInfo, bool)
 
-	// AlivePlayers 返回所有存活玩家
+	// AlivePlayers 返回所有存活玩家，按 ID 排序。
+	//
+	// 有序是规则可以依赖的：规则产出的效果顺序必须由局面唯一决定，
+	// 否则回放与快照比对失去确定性。
 	AlivePlayers() []PlayerInfo
 
 	// AllPlayers 返回全部玩家（含已出局的），按 ID 排序。

@@ -358,7 +358,7 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
-扩展能改动的五处，都由构造选项给出：
+扩展能改动的八处，都由构造选项给出：
 
 | 想加什么 | 用什么 |
 |---|---|
@@ -367,8 +367,11 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 | 角色自身的状态 | `NewSetPlayerVarEffect`（跟着玩家一整局）/ `NewSetRoundVarEffect`（每回合清零），读走 `GameView.PlayerVar` / `RoundVar` |
 | 新的胜利条件 | `WithVictoryChecker(checker)`，包一层 `DefaultVictoryChecker` 就能在内置规则之上再加一条 |
 | 角色专属信息 | `WithRoleInfo(role, provider)`，结果出现在 `PlayerView.RoleInfo` 与 `RolePhaseInfo.RoleInfo` |
+| 一件事该告诉谁 | `WithAudience(provider)`，`AudienceOf` 的判定 |
+| 谁和谁是一边的 | `WithTeammates(provider)`，允许不对称（恶魔认得爪牙，反过来不成立） |
+| 发言谁能听到 | `WithSpeech(provider)`，`MessageReceivers` 的判定 |
 
-内置角色在这五件事上**没有特权**，女巫是现成的样本：
+内置角色在这些事上**没有特权**，女巫是现成的样本：
 
 - 开局两瓶药由 `builtinRoleSetup` 发，与 `WithRoleSetup` 同一张表——注册一个
   空的 setup，她就真的空手上桌；

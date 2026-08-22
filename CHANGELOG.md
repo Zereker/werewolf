@@ -14,6 +14,45 @@
 v2 的方向是把内核与狼人杀规则拆开（见下面「路线」一节）。这一节记录
 朝那个方向走出的每一步；`go.mod` 的 `/v2` 后缀会在真正发版前一次性改掉。
 
+### 信息边界也交给规则
+
+**破坏性变更**：`GameView.AlivePlayers()` 现在保证按 ID 排序（此前是 map
+遍历顺序，无序）。
+
+内核此前认得三件狼人杀的事，全在「谁能知道什么」这一层：
+
+| 内核里写着 | 它其实是 |
+|---|---|
+| `AudienceOf` 的类型表 | 查验只给预言家、狼刀全场可见 |
+| `PlayerView.Teammates` | 同阵营互相可见，而「阵营」只有好人与狼人两值 |
+| `MessageReceivers` | 夜里只有狼队能说话，白天全体能听 |
+
+换一套规则这三样全不成立：阿瓦隆的梅林看得到坏人但坏人不知道他是谁，
+血染钟楼的恶魔与爪牙互见是**单向**的，谁能在什么时候说话更是每套规则
+自己的事。
+
+现在三个问题都由规则回答：`AudienceProvider` / `TeammateProvider` /
+`SpeechProvider`，对应 `WithAudience` / `WithTeammates` / `WithSpeech`。
+狼人杀的那三份实现收进 `wolfboundary.go`，没有特权，可以整个换掉。
+「同伴」允许**不对称**，内核不检查两边是否一致——它根本不知道阵营这个概念。
+
+**内核在这一层只保留一条判断，且不可配置：自己的状态原语永远不外发。**
+`SET_ALIVE` 这类效果是状态机的记账，推给玩家等于把上帝视角直接发出去。
+一个「什么都给全场」的 provider 也打不开这个口子，
+`TestAudienceOf_KernelPrimitivesAreNeverPublic` 守的就是这一条。
+
+顺带修掉一个确定性隐患：`GameView.AlivePlayers()` 无序而 `AllPlayers()`
+有序。这份名单会流进规则产出的效果里（发言受众、结算顺序），不排序的话
+同一个局面两次结算的效果流不同，回放与逐字节比对就失去确定性。
+
+三处队友判定（`PlayerView`、`PhaseInfo`、`WolfTeammates`）现在共用同一个
+provider。上一版刚修过「狼王在 `PhaseInfo` 里拿不到队友」——那正是同一个
+判定写了三遍、漏改一处的结果，现在结构上不会再有。
+
+变异验证：拿掉内核对状态原语的拦截 → 3 条用例红（含随机对局）；
+`PhaseInfo` 绕开 provider → `TestWithTeammates_Replaceable` 红；
+发言范围写死回内核 → `TestWithSpeech_Replaceable` 红。
+
 ### 内核只剩四条状态原语
 
 **破坏性变更**：`RoundContext` 上的 `KillTarget` / `ProtectedPlayers` /

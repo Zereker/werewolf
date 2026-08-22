@@ -30,6 +30,13 @@ type Engine struct {
 	// 开局带什么，走的是同一张表、同一条写入路径。
 	roleSetup map[RoleType]RoleSetup
 
+	// 信息边界的三个问题，全部由规则回答（见 boundary.go）：
+	// 一件事该告诉谁、谁和谁是一边的、发言谁能听到。内核只保证
+	// 自己的状态原语永远不外发。
+	audience  AudienceProvider
+	teammates TeammateProvider
+	speech    SpeechProvider
+
 	// 当前阶段收集的技能使用
 	pendingUses []*SkillUse
 
@@ -65,6 +72,9 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 		victory:         DefaultVictoryChecker{Mode: config.VictoryMode},
 		roleInfo:        make(map[RoleType]RoleInfoProvider, len(builtinRoleInfo)),
 		roleSetup:       make(map[RoleType]RoleSetup, len(builtinRoleSetup)),
+		audience:        builtinAudience,
+		teammates:       builtinTeammates,
+		speech:          builtinSpeech,
 		pendingUses:     make([]*SkillUse, 0),
 		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
@@ -400,17 +410,12 @@ func (e *Engine) RoundContext() *RoundContext {
 
 // WolfTeammates 获取狼队队友（不含自己），非狼队成员返回 nil。
 //
-// 按阵营判定，狼王、狼美人这类自定义狼队角色同样适用。
+// 这是狼人杀规则包的便利读法，与 PlayerView.Teammates、PhaseInfo 里的
+// 那一份共用同一个 TeammateProvider——换掉 provider，三处一起变。
 func (e *Engine) WolfTeammates(playerID string) []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-
-	player, ok := e.state.getPlayer(playerID)
-	if !ok || player.Camp != CampEvil {
-		return nil
-	}
-
-	return e.state.getWolfTeammates(playerID)
+	return e.teammatesOf(playerID)
 }
 
 // applyEffects 逐个应用效果，返回清理后的效果与需要对外发布的事件。

@@ -338,14 +338,19 @@ func (s *gameState) allPlayerIDs() []string {
 	return result
 }
 
-// getAlivePlayerIDs 获取所有存活玩家ID列表（包内使用）
+// getAlivePlayerIDs 获取所有存活玩家ID列表，按字典序排序（包内使用）。
+//
+// 排序不是可有可无的：这份名单会流进规则产出的效果里（发言受众、
+// 结算顺序），而 map 的遍历顺序每次都不一样——不排的话同一个局面
+// 两次结算产出的效果流不同，回放与逐字节比对就没了确定性。
 func (s *gameState) getAlivePlayerIDs() []string {
-	result := make([]string, 0)
+	result := make([]string, 0, len(s.players))
 	for id, p := range s.players {
 		if p.Alive {
 			result = append(result, id)
 		}
 	}
+	sort.Strings(result)
 	return result
 }
 
@@ -481,41 +486,6 @@ func (s *gameState) nextPhase(phase, roundStart PhaseType) {
 		s.Round++
 		s.resetRoundStateUnlocked()
 	}
-}
-
-// getWolfTeammates 获取狼队队友（不包括自己），按 ID 排序。
-//
-// 按阵营而不是按角色判定：狼王、白狼王、狼美人这些角色经
-// AddCustomPlayer 加进来时 Camp 是 EVIL、Role 却不是 WEREWOLF，
-// 按角色判会让他们既看不到队友、也不被真狼看到，等于自定义狼队角色
-// 实际不可用。狼队内部视野不对称的变体（如某些板子的隐狼）需要调用方
-// 自行过滤，引擎给的是「同阵营即队友」这个默认。
-//
-// 非狼队成员返回空列表。
-func (s *gameState) getWolfTeammates(playerID string) []string {
-	player, ok := s.players[playerID]
-	if !ok || player.Camp != CampEvil {
-		return []string{}
-	}
-
-	result := make([]string, 0)
-	for _, p := range s.players {
-		if p.Camp == CampEvil && p.ID != playerID {
-			result = append(result, p.ID)
-		}
-	}
-	return sortedStrings(result)
-}
-
-// alivePlayerIDsByCamp 指定阵营的存活玩家 ID，按 ID 排序（包内使用）
-func (s *gameState) alivePlayerIDsByCamp(camp Camp) []string {
-	result := make([]string, 0)
-	for id, p := range s.players {
-		if p.Alive && p.Camp == camp {
-			result = append(result, id)
-		}
-	}
-	return sortedStrings(result)
 }
 
 // lastProtectedTarget 该守卫在**上一回合**守护的目标，无则为空。

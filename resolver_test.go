@@ -530,7 +530,7 @@ func TestState_GetWolfTeammates(t *testing.T) {
 	mustAddTo(t, state, "wolf3", RoleWerewolf)
 	mustAddTo(t, state, "villager", RoleVillager)
 
-	teammates := state.getWolfTeammates("wolf1")
+	teammates := wolfTeammates("wolf1", newStateView(state))
 
 	// wolf1 的队友应该是 wolf2 和 wolf3（不包括自己）
 	if len(teammates) != 2 {
@@ -562,7 +562,7 @@ func TestState_GetWolfTeammates_NonWolf(t *testing.T) {
 	mustAddTo(t, state, "villager", RoleVillager)
 
 	// 非狼人查询应该返回空
-	teammates := state.getWolfTeammates("villager")
+	teammates := wolfTeammates("villager", newStateView(state))
 	if len(teammates) != 0 {
 		t.Errorf("expected 0 teammates for non-wolf, got %d", len(teammates))
 	}

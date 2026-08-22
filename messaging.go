@@ -98,32 +98,15 @@ func (e *Engine) MessageReceivers(senderID string) []string {
 	return e.getMessageReceivers(senderID)
 }
 
-// getMessageReceivers 获取消息接收者（内部方法，调用前需持有 e.mu）
+// getMessageReceivers 获取消息接收者（内部方法，调用前需持有 e.mu）。
+//
+// 「此刻谁能说话、谁能听到」是规则的事：夜里只有狼队交流是狼人杀的规矩，
+// 换一套规则完全不同。判定交给 SpeechProvider，狼人杀的那份见 wolfSpeech。
 func (e *Engine) getMessageReceivers(senderID string) []string {
-	sender, ok := e.state.getPlayer(senderID)
-	if !ok || !sender.Alive {
+	if e.speech == nil {
 		return nil
 	}
-
-	switch e.state.Phase {
-	case PhaseNightWolf:
-		// 狼人阶段：只有狼队内部能交流。
-		// 按阵营判定，理由同 getWolfTeammates——按角色判会让狼王这类
-		// 自定义狼队角色在夜里发不出话。
-		if sender.Camp != CampEvil {
-			return nil
-		}
-		// 返回所有存活的狼队成员（包括自己，方便处理）
-		return e.state.alivePlayerIDsByCamp(CampEvil)
-
-	case PhaseDay:
-		// 白天阶段：所有存活玩家都能听到
-		return sortedStrings(e.state.getAlivePlayerIDs())
-
-	default:
-		// 其他阶段不允许发言
-		return nil
-	}
+	return e.speech.Receivers(senderID, newStateView(e.state))
 }
 
 // publishMessage 在锁外发布消息。

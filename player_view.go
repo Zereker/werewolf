@@ -34,7 +34,11 @@ type PlayerView struct {
 	// 不该自己行动时为空切片——这也是判断「轮到我了吗」的依据。
 	AllowedSkills []SkillType `json:"allowed_skills"`
 
-	// Teammates 狼队可见：其余狼队友的 ID。好人阵营恒为空。
+	// Teammates 这名玩家被告知与他同一边的人，他们的身份对他公开。
+	//
+	// 由 TeammateProvider 回答（见 WithTeammates），内核不认识阵营。
+	// 狼人杀的默认实现是「同为狼人阵营的其余玩家」——按阵营而不是按角色，
+	// 否则 AddCustomPlayer 加进来的狼王在队友名单里就是空的。
 	Teammates []string `json:"teammates,omitempty"`
 
 	// RoleInfo 角色专属信息：这个角色额外让他看到的东西。
@@ -103,13 +107,12 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
 	}
 
-	// 狼队互相可见（按阵营，狼王这类自定义狼队角色同样适用）
+	// 同伴互相可见。「谁和谁是一边的」由规则回答（见 TeammateProvider），
+	// 内核不认识阵营——血染钟楼那种单向可见也因此能表达。
 	revealed := map[string]bool{playerID: true}
-	if self.Camp == CampEvil {
-		view.Teammates = e.state.getWolfTeammates(playerID)
-		for _, id := range view.Teammates {
-			revealed[id] = true
-		}
+	view.Teammates = e.teammatesOf(playerID)
+	for _, id := range view.Teammates {
+		revealed[id] = true
 	}
 
 	view.Players = e.publicPlayers(revealed)
@@ -163,73 +166,34 @@ func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []Skil
 // AudienceOf 返回一件事应该发给哪些玩家。
 //
 // 这是配套 PlayerView 的另一半：视图解决「玩家该看到什么状态」，
-// 这里解决「发生的事该告诉谁」。引擎给出默认的可见性划分，
-// 调用方可以据此路由，而不必自己去记「查验结果只能给预言家」。
+// 这里解决「发生的事该告诉谁」。调用方可以据此路由，而不必自己去记
+// 「查验结果只能给预言家」。
 //
 // 参数是对外的 Event 而不是内部的 Effect：这个问题问的是「外面的人
 // 该看到什么」，而 OnEvent 推给调用方的正是 Event。手里拿着 Effect
 // （EndPhase 的返回值）时用 Effect.ToEvent() 转一下。
 //
-// 引擎内部事件（SET_NIGHT_KILL 等）返回空——它们不该出现在任何玩家面前。
+// 内核的状态原语（SET_ALIVE 等）一律返回空，且这一条不可配置——
+// 它们是状态机的记账，不该出现在任何玩家面前。其余交给
+// AudienceProvider 回答，狼人杀的那份见 wolfAudience，可整个换掉。
 //
-// 第二个返回值表示引擎是否认得这个事件类型。第三方 Resolver 可以产出
-// 自定义类型的事件，引擎对它们的可见性无从判断，此时返回 (nil, false)：
-// 调用方需要自己路由，而不该把「引擎不知道」当成「不给任何人看」。
+// 第二个返回值表示「认不认得这个事件类型」。第三方 Resolver 可以产出
+// 自定义类型的事件，规则对它们的可见性无从判断，此时返回 (nil, false)：
+// 调用方需要自己路由，而不该把「不知道」当成「不给任何人看」。
 func (e *Engine) AudienceOf(event *Event) ([]string, bool) {
 	if event == nil {
 		return nil, false
 	}
-	effect := event
-	if isInternalEvent(effect.Type) {
-		// 内部事件是引擎的状态变更，不给任何玩家看——这是明确的判断
+	if isInternalEvent(event.Type) {
+		// 内核的状态原语，不给任何玩家看——这是明确的判断
 		return nil, true
 	}
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	// 被否决的行动只有行动者本人需要知道，且必须先于类型划分判断。
-	//
-	// 「女巫想毒人但今晚已用过解药」产出的是一条 source=女巫 的 POISON，
-	// 与结算阶段那条 source="" 的「某人毒发身亡」是同一个类型。
-	// 只按类型分桶，前者会被当成公开死讯广播给全场，女巫当场暴露。
-	if effect.Canceled {
-		return e.actorAudience(effect.SourceID), true
-	}
-
-	switch effect.Type {
-	// 公开事件：死亡、出局、投票结果全场可见
-	case EventKill,
-		EventPoison,
-		EventEliminate,
-		EventShoot,
-		EventVoteTied,
-		EventGameStarted,
-		EventGameEnded:
-		return e.state.allPlayerIDs(), true
-
-	// 私密事件：只有行动者本人知道
-	case EventCheck,
-		EventProtect,
-		EventSave,
-		EventSkip:
-		return e.actorAudience(effect.SourceID), true
-
-	default:
-		// 未知的外部类型：可能是第三方角色自定的事件
+	if e.audience == nil {
 		return nil, false
 	}
-}
-
-// actorAudience 只发给行动者本人。行动者为空或不在场上时无人可发——
-// 让调用方拿到一个不在这局游戏里的 ID，只会变成一次投递失败。
-// 调用前需持有 e.mu。
-func (e *Engine) actorAudience(sourceID string) []string {
-	if sourceID == "" {
-		return nil
-	}
-	if _, ok := e.state.getPlayer(sourceID); !ok {
-		return nil
-	}
-	return []string{sourceID}
+	return e.audience.Audience(event, newStateView(e.state))
 }
