@@ -307,11 +307,14 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		// 女巫用掉的那瓶解药会一夜又一夜地把同一个人救回来——
 		// 一次性道具变成了永久道具，规则当场失效。
 		if e.Round() > lastRound {
-			if rc := e.RoundContext(); rc != nil {
-				if rc.KillTarget != "" || len(rc.ProtectedPlayers) > 0 ||
-					len(rc.SavedPlayers) > 0 || len(rc.PoisonedPlayers) > 0 {
-					t.Fatalf("seed=%d step=%d 进入第 %d 回合，上一回合的记录还在: %+v",
-						seed, step, e.Round(), rc)
+			if rc := e.RoundContext(); rc != nil && len(rc.Vars) > 0 {
+				t.Fatalf("seed=%d step=%d 进入第 %d 回合，上一回合的记录还在: %v",
+					seed, step, e.Round(), rc.Vars)
+			}
+			for _, id := range ids {
+				if p, ok := e.PlayerInfo(id); ok && len(p.RoundVars) > 0 {
+					t.Fatalf("seed=%d step=%d 进入第 %d 回合，%s 身上的标记还在: %v",
+						seed, step, e.Round(), id, p.RoundVars)
 				}
 			}
 		}

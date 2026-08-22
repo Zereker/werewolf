@@ -153,12 +153,15 @@ func describe(ef *werewolf.Effect) string {
 
 		// 内部效果只会出现在效果流里，不会发给任何玩家。
 		// log 看的是原始流水，把它们也译出来才读得懂。
-		werewolf.EventSetNightKill:     "记下今晚的刀口",
-		werewolf.EventClearNightKill:   "刀口作废",
-		werewolf.EventSetLastProtected: "记下本回合的守护目标",
-		werewolf.EventUseAntidote:      "消耗解药",
-		werewolf.EventUsePoison:        "消耗毒药",
-		werewolf.EventAbilityTriggered: "死亡技能待结算",
+		//
+		// 这几条是内核的状态原语，与角色无关：谁死了、谁身上多了个标记。
+		// 「记下今晚的刀口」「消耗解药」这类说法此前也是事件类型，
+		// 现在它们只是原语里的一个键名，读法见 varLabel。
+		werewolf.EventSetAlive:          "存活状态变更",
+		werewolf.EventSetPlayerVar:      "改玩家状态",
+		werewolf.EventSetPlayerRoundVar: "本回合标记",
+		werewolf.EventSetRoundVar:       "改本回合状态",
+		werewolf.EventAbilityTriggered:  "死亡技能待结算",
 	}[ef.Type]
 	if verb == "" {
 		verb = ef.Type.String()

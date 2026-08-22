@@ -8,11 +8,6 @@ import (
 // 用于管理回合内各阶段之间共享的临时状态
 // 包含夜晚和白天的相关状态（如猎人触发可能发生在投票阶段）
 type RoundContext struct {
-	KillTarget       string          // 狼人击杀目标（女巫可查询）
-	ProtectedPlayers map[string]bool // 被守卫保护的玩家
-	SavedPlayers     map[string]bool // 被女巫救的玩家
-	PoisonedPlayers  map[string]bool // 被女巫毒的玩家
-
 	// PendingTriggers 待结算的死亡技能，先进先出。
 	//
 	// 此前这里是 HunterTriggered / TriggeredHunterID 两个猎人专属字段，
@@ -20,16 +15,14 @@ type RoundContext struct {
 	// 并在引擎的阶段流转里多一个分支。改成队列后引擎不认识任何具体角色。
 	PendingTriggers []PendingTrigger
 
-	// Vars 第三方角色的回合级自定义状态，每回合自动清空。
+	// Vars 本回合的自定义状态，每回合自动清空，不属于任何玩家。
 	//
-	// 上面那四个字段——刀口、被守、被救、被毒——与这里是同一件事：
-	// 「本回合有效、会影响规则判定的状态」。引擎为内置角色把它们写成了
-	// 字段，第三方改不了，于是回合级的扩展状态无处可放。
+	// 今晚的刀口就存在这里（键见 RoundVarKillTarget）。它此前是上面一个
+	// 叫 KillTarget 的字段，与被守、被救、被毒三张 map 一起，把「狼人杀
+	// 有哪些回合状态」写进了内核——换一套规则，这四样一个都用不上。
 	//
-	// PendingTriggers 的注释里已经记着同一个教训（猎人专属字段改成队列），
-	// 但当时只泛化了死亡触发那一项。这里补上其余。
-	//
-	// 与 PlayerState.Vars 的分工：那个跟着玩家走一整局，这个每回合清零。
+	// 三种作用域：PlayerState.Vars 跟着玩家走一整局，这里每回合清零，
+	// PlayerState.RoundVars 是「某个玩家在本回合的标记」。
 	// 写走 NewSetRoundVarEffect，读走 GameView.RoundVar。
 	Vars map[string]string
 }
@@ -42,35 +35,7 @@ type PendingTrigger struct {
 
 // newRoundContext 创建新的回合上下文
 func newRoundContext() *RoundContext {
-	return &RoundContext{
-		ProtectedPlayers: make(map[string]bool),
-		SavedPlayers:     make(map[string]bool),
-		PoisonedPlayers:  make(map[string]bool),
-	}
-}
-
-// IsProtected 检查玩家是否被保护
-func (rc *RoundContext) IsProtected(playerID string) bool {
-	if rc == nil {
-		return false
-	}
-	return rc.ProtectedPlayers[playerID]
-}
-
-// IsSaved 检查玩家是否被救
-func (rc *RoundContext) IsSaved(playerID string) bool {
-	if rc == nil {
-		return false
-	}
-	return rc.SavedPlayers[playerID]
-}
-
-// IsPoisoned 检查玩家是否被毒
-func (rc *RoundContext) IsPoisoned(playerID string) bool {
-	if rc == nil {
-		return false
-	}
-	return rc.PoisonedPlayers[playerID]
+	return &RoundContext{}
 }
 
 // RoleCategory 角色类别
@@ -130,14 +95,6 @@ type PlayerState struct {
 	Category RoleCategory // 角色类别（神职/平民/狼人），用于屠边判定
 	Alive    bool
 
-	// 守卫连续保护限制。
-	//
-	// 只记「哪一回合守了谁」，不记「最后一次成功守护的目标」——
-	// 后者不会因为守卫弃权而失效，一旦命中就把那个目标永久锁死。
-	// 是否构成连守由 gameState.lastProtectedTarget 按回合号判定。
-	LastProtectedTarget string // 最近一次生效守护的目标
-	LastProtectedRound  int    // 那次守护发生在第几回合，0 表示从未守护
-
 	// Vars 角色私有的、会影响规则判定的状态。
 	//
 	// 女巫的两瓶药就存在这里（键见 VarWitchAntidote / VarWitchPoison），
@@ -148,9 +105,18 @@ type PlayerState struct {
 	// 初始值由 RoleSetup 发放（见 WithRoleSetup），此后走
 	// EventSetPlayerVar 改、GameView.PlayerVar 读，随快照走、回放能重建。
 	//
-	// 上面的守护记录还是字段：它由引擎的回合号参与判定（见
-	// lastProtectedTarget），不是纯粹的角色私有状态。
+	// 守卫的守护记录也在这里（PlayerVarLastProtectedTarget /
+	// PlayerVarLastProtectedRound）：「不能连守」是狼人杀的规则，
+	// 判定由规则包自己做（见 lastProtected），内核只管存。
 	Vars map[string]string
+
+	// RoundVars 这名玩家在本回合的标记，每回合自动清空。
+	//
+	// 今晚谁被守了、谁被救了、谁被毒了都是这一类，此前是 RoundContext
+	// 上三张 map[string]bool——第三方角色既改不了也读不到，而「本回合
+	// 标记了某人」是任何一套社会推理规则都会用到的形状。
+	// 写走 NewSetPlayerRoundVarEffect，读走 GameView.PlayerRoundVar。
+	RoundVars map[string]string
 }
 
 // gameState 游戏状态。
@@ -297,12 +263,18 @@ func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 // 含 Protected 这类只有上帝该知道的信息，不可整体转发给玩家——
 // 要发给玩家的内容用 Engine.PlayerView。
 type PlayerInfo struct {
-	ID        string       `json:"id"`
-	Role      RoleType     `json:"role"`
-	Camp      Camp         `json:"camp"`
-	Category  RoleCategory `json:"category"`
-	Alive     bool         `json:"alive"`
-	Protected bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
+	ID       string       `json:"id"`
+	Role     RoleType     `json:"role"`
+	Camp     Camp         `json:"camp"`
+	Category RoleCategory `json:"category"`
+	Alive    bool         `json:"alive"`
+
+	// RoundVars 这名玩家在本回合的标记，每回合清零。
+	//
+	// 此前这里是一个叫 Protected 的 bool——「今晚是否被守卫守护」是
+	// 狼人杀的概念，内核不该认得。现在它只是一个键
+	// （PlayerRoundVarProtected），与被救、被毒以及扩展自己定的标记同列。
+	RoundVars map[string]string `json:"round_vars,omitempty"`
 
 	// Vars 角色私有的状态，女巫的药也在其中（键见 VarWitchAntidote）。
 	//
@@ -321,6 +293,11 @@ func (p PlayerInfo) Var(key string) string {
 	return p.Vars[key]
 }
 
+// RoundVar 返回该玩家在本回合的一项标记，没有则为空串。
+func (p PlayerInfo) RoundVar(key string) string {
+	return p.RoundVars[key]
+}
+
 // PlayerInfo 获取玩家信息的只读副本
 func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	p, ok := s.players[id]
@@ -334,7 +311,7 @@ func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 		Camp:      p.Camp,
 		Category:  p.Category,
 		Alive:     p.Alive,
-		Protected: s.RoundCtx.IsProtected(id), // 从 RoundContext 获取
+		RoundVars: copyVars(p.RoundVars),
 		Vars:      copyVars(p.Vars),
 	}, true
 }
@@ -396,55 +373,42 @@ func (s *gameState) applyEffect(effect *Effect) {
 	}
 
 	switch effect.Type {
-	// 各种死亡：狼刀、毒杀、放逐、开枪
-	case EventKill,
-		EventPoison,
-		EventEliminate,
-		EventShoot:
-		if target, ok := s.players[effect.TargetID]; ok {
-			target.Alive = false
-		}
-
-	case EventProtect:
-		if _, ok := s.players[effect.TargetID]; ok {
-			s.RoundCtx.ProtectedPlayers[effect.TargetID] = true
-		}
-
-	case EventSave:
-		// 只记录「被救过」，不改存活状态。
-		// 死亡统一在夜晚结算阶段发生，此刻目标还活着；
-		// 若在这里置 Alive=true，就成了一个能让任意玩家复活的原语。
-		if _, ok := s.players[effect.TargetID]; ok {
-			s.RoundCtx.SavedPlayers[effect.TargetID] = true
-		}
-
-	// 内部状态变更
-	case EventSetNightKill:
-		s.RoundCtx.KillTarget = effect.TargetID
-	case EventClearNightKill:
-		s.RoundCtx.KillTarget = ""
-	case EventSetLastProtected:
-		if guard, ok := s.players[effect.SourceID]; ok {
-			guard.LastProtectedTarget = effect.TargetID
-			guard.LastProtectedRound = s.Round
-		}
-	// 药剂不按角色设限：这里是状态的写入点，谁有资格用药是规则问题，
-	// 由 Resolver 判定（内置的 WitchResolver 会查 Role）。在这里再写死
-	// 一遍角色，等于第三方的「女巫类」角色改不动自己的状态。
+	// —— 以下是内核的全部状态原语 ——
 	//
-	// 消耗写的是 Vars，与 EventSetPlayerVar 同一份存储——留着这两个
-	// 事件类型是因为效果流需要「用了药」这个词，不是因为药有特殊待遇。
-	case EventUseAntidote:
-		if witch, ok := s.players[effect.SourceID]; ok {
-			delete(witch.Vars, VarWitchAntidote)
+	// 引擎此前还认得 KILL / POISON / ELIMINATE / SHOOT（各种死法）、
+	// PROTECT / SAVE（今晚的标记）、SET_NIGHT_KILL / CLEAR_NIGHT_KILL、
+	// SET_LAST_PROTECTED、USE_ANTIDOTE / USE_POISON——十来条分支，
+	// 每一条都是狼人杀的规则。换一套规则，它们一条都用不上，而新规则
+	// 要表达自己的状态变更又只能来改这个 switch。
+	//
+	// 现在规则自己命名发生了什么（KILL、SHOOT、殉情、决斗），再产出
+	// 下面这几个原语之一来真正改状态。两个效果，两件事：前者给受众与
+	// 效果流看，后者给状态机看。
+	case EventSetAlive:
+		if alive, ok := aliveOf(effect); ok {
+			if target, found := s.players[effect.TargetID]; found {
+				target.Alive = alive
+			}
 		}
-	case EventUsePoison:
-		if witch, ok := s.players[effect.SourceID]; ok {
-			delete(witch.Vars, VarWitchPoison)
-			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
+
+	case EventSetPlayerRoundVar:
+		// 某个玩家在本回合的标记，每回合清零。值为空即删除。
+		if p, ok := s.players[effect.TargetID]; ok {
+			key, value := playerRoundVarOf(effect)
+			if key != "" {
+				if value == "" {
+					delete(p.RoundVars, key)
+				} else {
+					if p.RoundVars == nil {
+						p.RoundVars = make(map[string]string, 1)
+					}
+					p.RoundVars[key] = value
+				}
+			}
 		}
+
 	case EventSetPlayerVar:
-		// 第三方角色的自定义状态。值为空即删除，免得快照里堆一堆空串。
+		// 跟着玩家走一整局的状态。值为空即删除，免得快照里堆一堆空串。
 		if p, ok := s.players[effect.TargetID]; ok {
 			key, value := playerVarOf(effect)
 			if key != "" {
@@ -460,7 +424,7 @@ func (s *gameState) applyEffect(effect *Effect) {
 		}
 
 	case EventSetRoundVar:
-		// 回合级的自定义状态。值为空即删除。
+		// 本回合的状态，不属于任何玩家。值为空即删除。
 		key, value := roundVarOf(effect)
 		if key != "" {
 			if value == "" {
@@ -489,8 +453,13 @@ func (s *gameState) resetRoundState() {
 
 // resetRoundStateUnlocked 内部方法，不获取锁
 func (s *gameState) resetRoundStateUnlocked() {
-	// 创建新的回合上下文
 	s.RoundCtx = newRoundContext()
+	// 玩家身上的回合级标记同属本回合，一起清掉——漏掉这一步，
+	// 上一夜的「被守」「被毒」会一直累积下去，与回合边界写死成
+	// NIGHT_GUARD 那次是同一类错误。
+	for _, p := range s.players {
+		p.RoundVars = nil
+	}
 }
 
 // startAt 把状态置到开局：指定阶段、第一回合、干净的回合上下文
@@ -554,13 +523,6 @@ func (s *gameState) alivePlayerIDsByCamp(camp Camp) []string {
 // 连守判定问的是「上一晚是不是守的同一个人」，而不是「上一次守的是谁」：
 // 守卫空守一晚就打断了连续性，被判连守而取消的那一次也从来没生效过。
 // 两者都不会写进 LastProtectedRound，因此按回合号一比就都对了。
-func (s *gameState) lastProtectedTarget(guardID string) string {
-	p, ok := s.players[guardID]
-	if !ok || p.LastProtectedRound != s.Round-1 {
-		return ""
-	}
-	return p.LastProtectedTarget
-}
 
 // roundVar 读本回合的自定义状态，没有则为空串。
 func (s *gameState) roundVar(key string) string {
@@ -568,6 +530,15 @@ func (s *gameState) roundVar(key string) string {
 		return ""
 	}
 	return s.RoundCtx.Vars[key]
+}
+
+// playerRoundVar 读某个玩家在本回合的一项标记，没有则为空串。
+func (s *gameState) playerRoundVar(playerID, key string) string {
+	p, ok := s.players[playerID]
+	if !ok {
+		return ""
+	}
+	return p.RoundVars[key]
 }
 
 // playerVar 读某个玩家的自定义状态，没有则为空串。
@@ -623,23 +594,7 @@ func (s *gameState) RoundContext() *RoundContext {
 
 	// 返回副本以避免外部修改
 	return &RoundContext{
-		KillTarget:       s.RoundCtx.KillTarget,
-		ProtectedPlayers: copyStringBoolMap(s.RoundCtx.ProtectedPlayers),
-		SavedPlayers:     copyStringBoolMap(s.RoundCtx.SavedPlayers),
-		PoisonedPlayers:  copyStringBoolMap(s.RoundCtx.PoisonedPlayers),
-		PendingTriggers:  append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
-		Vars:             copyVars(s.RoundCtx.Vars),
+		PendingTriggers: append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
+		Vars:            copyVars(s.RoundCtx.Vars),
 	}
-}
-
-// copyStringBoolMap 复制 map[string]bool
-func copyStringBoolMap(m map[string]bool) map[string]bool {
-	if m == nil {
-		return nil
-	}
-	result := make(map[string]bool, len(m))
-	for k, v := range m {
-		result[k] = v
-	}
-	return result
 }

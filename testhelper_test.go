@@ -79,3 +79,33 @@ func witchKill(ri *RolePhaseInfo) string {
 	}
 	return ""
 }
+
+// ==================== 回合状态的读写（狼人杀规则层） ====================
+//
+// 刀口、被守、被救、被毒此前是 RoundContext 上的字段与三张 map，
+// 测试直接读写它们即可。现在它们只是内核三种作用域里的键名，
+// 铺前置与断言都走通用原语——下面这几个只是省掉重复的样板。
+
+func setKill(s *gameState, target string) {
+	s.applyEffect(NewSetRoundVarEffect(RoundVarKillTarget, target))
+}
+
+func killTargetOf(s *gameState) string {
+	return s.roundVar(RoundVarKillTarget)
+}
+
+func markRound(s *gameState, playerID, key string) {
+	s.applyEffect(NewSetPlayerRoundVarEffect(playerID, key, VarPresent))
+}
+
+func protectedIn(s *gameState, playerID string) bool {
+	return s.playerRoundVar(playerID, PlayerRoundVarProtected) != ""
+}
+
+func savedIn(s *gameState, playerID string) bool {
+	return s.playerRoundVar(playerID, PlayerRoundVarSaved) != ""
+}
+
+func poisonedIn(s *gameState, playerID string) bool {
+	return s.playerRoundVar(playerID, PlayerRoundVarPoisoned) != ""
+}

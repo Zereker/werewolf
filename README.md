@@ -78,8 +78,7 @@ func main() {
 	next(engine) // NIGHT_WOLF -> NIGHT_WITCH
 
 	// 女巫此刻可以看到刀口（解药还在手上）
-	info := engine.PhaseInfo()
-	fmt.Printf("女巫看到的刀口: %s\n", info.RoleInfos[werewolf.RoleWitch].KillTarget)
+	fmt.Printf("女巫看到的刀口: %s\n", witchSees(engine))
 	next(engine) // NIGHT_WITCH -> NIGHT_SEER
 
 	must(engine.SubmitSkillUse(&werewolf.SkillUse{
@@ -523,9 +522,24 @@ func main() {
 	}
 
 	restored.EndPhase() // 结算狼刀
-	fmt.Printf("恢复后阶段=%v，女巫看到的刀口=%s\n",
-		restored.Phase(),
-		restored.PhaseInfo().RoleInfos[werewolf.RoleWitch].KillTarget)
+	fmt.Printf("恢复后阶段=%v，女巫看到的刀口=%s\n", restored.Phase(), witchSees(restored))
+}
+
+// witchSees 上帝视角下女巫看到的刀口。
+//
+// 角色专属信息一律经 RoleInfo 出来，键名由角色自己定——引擎不认识女巫，
+// 也就没有一个叫 KillTarget 的具名字段。
+func witchSees(e *werewolf.Engine) string {
+	ri, ok := e.PhaseInfo().RoleInfos[werewolf.RoleWitch]
+	if !ok {
+		return ""
+	}
+	for _, info := range ri.RoleInfo {
+		if t := info[werewolf.RoleInfoKillTarget]; t != "" {
+			return t
+		}
+	}
+	return ""
 }
 ```
 

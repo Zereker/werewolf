@@ -30,9 +30,9 @@ const (
 // 引擎里，而不是这个结构体的字段里——住在字段里的话，快照带不上它，
 // 效果流也重建不出它，恢复出来的对局是错的。
 //
-// 引擎给第三方的存放处是 PlayerVar：读走 GameView.PlayerVar，
-// 写走 NewSetPlayerVarEffect。内置角色的药剂与守护记录是同一件事，
-// 只是它们在 PlayerState 上有专门的字段。
+// 引擎给角色的存放处是 PlayerVar：读走 GameView.PlayerVar，
+// 写走 NewSetPlayerVarEffect。女巫的药、守卫的守护记录走的是同一条路，
+// 内置角色在这件事上没有特权。
 type idiotRule struct {
 	inner werewolf.Resolver
 }
@@ -46,6 +46,13 @@ func newIdiotRule(inner werewolf.Resolver) *idiotRule {
 
 // Resolve 先把已翻牌白痴的票剔掉，再让内置解析器数票；
 // 如果数出来要放逐的正好是个还没翻牌的白痴，就把这次放逐拦下来。
+//
+// 「拦下来」拦的是那条致死的原语（SET_ALIVE），不是 ELIMINATE 这个说法。
+// 这一点值得记：状态机只认原语，ELIMINATE 只是投票规则给「发生了什么」
+// 起的名字，光否决它人照样会死。反过来，拦原语与死因无关——同一段代码
+// 能挡住狼刀、毒杀、枪口和任何第三方规则的死法，因为它们最终都要走
+// 这一条。ELIMINATE 也一并否决，是为了让效果流与受众看到「投出来的
+// 是他，但他没死」。
 func (r *idiotRule) Resolve(
 	uses []*werewolf.SkillUse, view werewolf.GameView, cfg *werewolf.GameConfig,
 ) []*werewolf.Effect {
@@ -62,26 +69,43 @@ func (r *idiotRule) Resolve(
 
 	effects := r.inner.Resolve(kept, view, cfg)
 
-	out := make([]*werewolf.Effect, 0, len(effects)+2)
+	// 先看这一批里有没有「还没翻牌的白痴要死了」。判断依据是那条致死的
+	// 原语，与内置解析器把它叫作什么无关。
+	saved := make(map[string]bool)
 	for _, ef := range effects {
-		if ef.Type != werewolf.EventEliminate || ef.Canceled {
-			out = append(out, ef)
+		if ef.Canceled {
+			continue
+		}
+		if alive, ok := ef.SetsAlive(); !ok || alive {
 			continue
 		}
 		p, ok := view.Player(ef.TargetID)
 		if !ok || p.Role != roleIdiot || revealed(view, ef.TargetID) {
-			out = append(out, ef) // 不是白痴，或者已经翻过牌了：照常出局
+			continue // 不是白痴，或者已经翻过牌了：照常出局
+		}
+		saved[ef.TargetID] = true
+	}
+
+	out := make([]*werewolf.Effect, 0, len(effects)+2*len(saved))
+	revealedAt := make(map[string]bool, len(saved))
+	for _, ef := range effects {
+		if !saved[ef.TargetID] || ef.Canceled {
+			out = append(out, ef)
 			continue
 		}
 
-		// 是个还没翻牌的白痴：把放逐否决掉，改成翻牌。
-		//
 		// 用 Cancel 而不是干脆不产出这个效果——被否决的效果仍会出现在
 		// EndPhase 的返回值与效果流里，调用方（和回放）因此知道
 		// 「投出来的是他，但他没死，原因是这个」。
 		ef.Cancel("白痴翻牌，不出局")
+		out = append(out, ef)
+
+		// 翻牌只发一次，哪怕这一批里既有 ELIMINATE 又有 SET_ALIVE
+		if revealedAt[ef.TargetID] {
+			continue
+		}
+		revealedAt[ef.TargetID] = true
 		out = append(out,
-			ef,
 			werewolf.NewEffect(eventRevealed, ef.TargetID, "").WithData("role", "IDIOT"),
 			// 状态交给引擎保管：随快照走，回放能重建，这个 Resolver 保持无状态
 			werewolf.NewSetPlayerVarEffect(ef.TargetID, varRevealed, "1"),

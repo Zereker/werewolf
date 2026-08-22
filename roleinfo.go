@@ -97,7 +97,7 @@ func builtinWitchInfo(playerID string, view GameView) map[string]string {
 	}
 
 	if self.Alive && info[RoleInfoAntidote] != "" {
-		if target := view.RoundContext().KillTarget; target != "" {
+		if target := nightKillTarget(view); target != "" {
 			info[RoleInfoKillTarget] = target
 		}
 	}

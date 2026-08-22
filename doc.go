@@ -31,6 +31,14 @@
 // 这条约束由签名保证而非靠约定——状态的每一次改变都经由同一个写入点，
 // 快照、回放、审计这些能力才成立。
 //
+// 状态机认得的只有四条原语：改存活（NewSetAliveEffect）、写三种作用域的
+// 变量、排队一个死亡触发。「狼刀」「放逐」「开枪」「守护」「解药」这些是
+// 规则给「发生了什么」起的名字，状态机不认得——一个 KILL 效果单独发出去，
+// 谁都不会死。规则要让人出局，就在它旁边产出一条 SET_ALIVE。
+//
+// 这样分是为了让规则可换：一套新规则不必来改状态机，就能表达自己的
+// 死法、标记与道具。狼人杀在这件事上没有特权，它自己也是这么写的。
+//
 // 阶段之间怎么流转由 GameConfig.Phases 声明；猎人开枪这类「死亡时触发」
 // 的能力由 Resolver 产出 NewAbilityTriggerEffect，引擎会排队并自动流转
 // 过去，它不需要认识任何具体角色。
@@ -56,9 +64,12 @@
 //		werewolf.WithResolver(myPhase, myResolver))           // 注册解析器
 //	engine.AddCustomPlayer("p1", myRole, camp, category)      // 阵营与类别
 //
-// 角色自身的状态走 Var：跟着玩家走一整局的用 PlayerVar（白痴翻没翻牌），
-// 每回合清零的用 RoundVar（今晚谁被标记了）。读用 GameView.PlayerVar /
-// RoundVar，写用 NewSetPlayerVarEffect / NewSetRoundVarEffect。
+// 状态一律走 Var，一共三种作用域：跟着玩家走一整局的用 PlayerVar
+// （白痴翻没翻牌、女巫的药），本回合有效且不属于任何人的用 RoundVar
+// （今晚的刀口），「本回合标记了某个玩家」的用 PlayerRoundVar
+// （今晚谁被守了、被救了、被毒了）。读用 GameView 上的同名方法，
+// 写用 NewSetPlayerVarEffect / NewSetRoundVarEffect /
+// NewSetPlayerRoundVarEffect。
 // 它们随快照走、回放能重建，因此 Resolver 可以保持无状态——
 // 而无状态正是这个接口的要求。内置女巫的两瓶药就存在 PlayerVar 里
 // （VarWitchAntidote / VarWitchPoison），与第三方角色同一条路。

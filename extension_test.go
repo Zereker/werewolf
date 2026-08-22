@@ -40,8 +40,12 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView, config *Game
 		if view.PlayerVar(use.PlayerID, varWolfKingGun) == "" {
 			continue
 		}
+		// SHOOT 是狼王给「发生了什么」起的名字，内核不认得它；
+		// 真正让人出局的是旁边那条 SET_ALIVE。内置角色的狼刀、
+		// 投票放逐走的也是同一条路，第三方在这件事上没有额外负担。
 		effects = append(effects,
 			NewEffect(EventShoot, use.PlayerID, use.TargetID),
+			NewSetAliveEffect(use.TargetID, false),
 			NewSetPlayerVarEffect(use.PlayerID, varWolfKingGun, ""))
 		break
 	}
@@ -179,13 +183,13 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 	engine := newWolfKingGame(t)
 
 	// 内置狼人出局，狼王还在 —— 狼人阵营未灭，游戏继续
-	engine.state.applyEffect(NewEffect(EventKill, "", "w1"))
+	engine.state.applyEffect(NewSetAliveEffect("w1", false))
 	if over, _ := checkVictory(engine); over {
 		t.Error("狼王仍在场，狼人阵营不应判为全灭")
 	}
 
 	// 狼王也出局 —— 好人获胜
-	engine.state.applyEffect(NewEffect(EventKill, "", "wk"))
+	engine.state.applyEffect(NewSetAliveEffect("wk", false))
 	over, winner := checkVictory(engine)
 	if !over || winner != CampGood {
 		t.Errorf("狼人阵营全灭应判好人胜利，实际 over=%v winner=%v", over, winner)

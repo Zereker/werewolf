@@ -381,11 +381,14 @@ func (e *Engine) IsGameOver() bool {
 	return e.state.Phase == PhaseEnd
 }
 
-// NightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）
+// NightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）。
+//
+// 这是狼人杀规则包提供的便利读法，内核只知道有一个叫
+// RoundVarKillTarget 的回合变量，不知道它是什么意思。
 func (e *Engine) NightKillTarget() string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.state.RoundCtx.KillTarget
+	return e.state.roundVar(RoundVarKillTarget)
 }
 
 // RoundContext 获取回合上下文的只读副本

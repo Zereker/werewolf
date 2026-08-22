@@ -255,7 +255,7 @@ func TestEventType_CustomRangeIsExternal(t *testing.T) {
 	}{
 		{EventKill, false, "引擎的外部事件"},
 		{EventVoteTied, false, "引擎的外部事件"},
-		{EventSetNightKill, true, "引擎的内部状态变更"},
+		{EventSetRoundVar, true, "内核的状态原语"},
 		{EventPhaseChanged, true, "引擎的内部状态变更"},
 		{EventType(999), true, "内部段的上界之内"},
 		{EventType(1000), false, "第三方的地盘"},
@@ -285,7 +285,7 @@ func TestAudienceOf_CustomEventIsUnknownNotHidden(t *testing.T) {
 	}
 
 	// 对照：引擎自己的内部事件是「明确不给任何人看」
-	internal := NewEffect(EventSetNightKill, "", "v1")
+	internal := NewSetAliveEffect("v1", false)
 	if _, known := e.AudienceOf(internal.ToEvent()); !known {
 		t.Error("引擎应当明确判定自己的内部事件不外发")
 	}

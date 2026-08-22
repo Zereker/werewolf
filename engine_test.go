@@ -239,9 +239,10 @@ func TestEngine_EndPhase(t *testing.T) {
 		t.Errorf("expected no error, got %v", err)
 	}
 
-	// Should have 2 effects: SET_LAST_PROTECTED + PROTECT
-	if len(effects) != 2 {
-		t.Errorf("expected 2 effects, got %d", len(effects))
+	// PROTECT 是说法，另外三条是状态：今晚谁被守了，以及守卫这一回合
+	// 守的是谁（供下回合判断连守）
+	if len(effects) != 4 {
+		t.Errorf("expected 4 effects, got %d: %v", len(effects), effects)
 	}
 
 	// 检查包含 PROTECT effect
@@ -945,8 +946,8 @@ func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	if got := g.e.Round(); got != 2 {
 		t.Errorf("绕回起始阶段应当进入第 2 回合，实际 %d", got)
 	}
-	if got := g.e.RoundContext().SavedPlayers; len(got) != 0 {
-		t.Errorf("回合上下文应当已重置，实际还留着 SavedPlayers=%v", got)
+	if got := g.info("v1").RoundVars; len(got) != 0 {
+		t.Errorf("回合标记应当已重置，实际还留着 %v", got)
 	}
 
 	// 第二夜再刀 v1，女巫的解药已经用完，这一刀必须命中

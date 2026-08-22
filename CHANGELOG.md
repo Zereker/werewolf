@@ -14,6 +14,65 @@
 v2 的方向是把内核与狼人杀规则拆开（见下面「路线」一节）。这一节记录
 朝那个方向走出的每一步；`go.mod` 的 `/v2` 后缀会在真正发版前一次性改掉。
 
+### 内核只剩四条状态原语
+
+**破坏性变更**：`RoundContext` 上的 `KillTarget` / `ProtectedPlayers` /
+`SavedPlayers` / `PoisonedPlayers` 四个字段与 `IsProtected` / `IsSaved` /
+`IsPoisoned` 三个方法删除；`PlayerState` 的 `LastProtectedTarget` /
+`LastProtectedRound`、`PlayerInfo.Protected`、`GameView.LastProtectedTarget`
+删除；事件类型 `SET_NIGHT_KILL` / `CLEAR_NIGHT_KILL` / `SET_LAST_PROTECTED` /
+`USE_ANTIDOTE` / `USE_POISON` 删除（编号 100..104 留空不再复用）；
+**快照版本 7 → 8**。
+
+`applyEffect` 是全局唯一的状态写入点，此前它认得十来种效果类型：
+
+| 分支 | 它其实是 |
+|---|---|
+| `KILL` / `POISON` / `ELIMINATE` / `SHOOT` | 狼人杀有这四种死法 |
+| `PROTECT` / `SAVE` | 今晚可以标记「被守」「被救」 |
+| `SET_NIGHT_KILL` / `CLEAR_NIGHT_KILL` | 有一个叫「刀口」的东西 |
+| `SET_LAST_PROTECTED` | 守卫不能连守 |
+| `USE_ANTIDOTE` / `USE_POISON` | 女巫有两瓶药 |
+
+每一条都是狼人杀的规则。换一套规则（阿瓦隆没有夜里的刀口，血染钟楼的
+标记有十几种），它们一条都用不上；而新规则要表达自己的状态变更，
+又只能回头来改这个 switch——这正是「加一个角色不该改引擎」在**规则**
+这一层的同一个问题。
+
+现在状态机只认四条原语：
+
+- `NewSetAliveEffect(id, alive)` —— 唯一的生死原语
+- `NewSetPlayerVarEffect(id, k, v)` —— 跟着玩家走一整局
+- `NewSetRoundVarEffect(k, v)` —— 本回合有效，不属于任何人
+- `NewSetPlayerRoundVarEffect(id, k, v)` —— **新增**，本回合标记了某个玩家
+- （外加 `NewAbilityTriggerEffect`，排队一个死亡触发）
+
+规则自己命名发生了什么，再产出原语真正改状态。**两个效果，两件事**：
+前者给受众与效果流看，后者给状态机看。一个 `KILL` 效果单独发出去，
+现在谁都不会死——`TestApplyEffect_RuleEventsDoNotTouchState` 就是这句话的
+可执行说法。
+
+狼人杀那一层随之收进 `nightstate.go`：刀口、被守、被救、被毒、守卫的
+守护记录全都变成键名（`RoundVarKillTarget`、`PlayerRoundVarProtected` 等），
+连守判定（`lastProtected`）也从内核搬进规则——「守卫不能连守」是狼人杀的
+规则，不是状态机的事。
+
+第三方角色在这件事上没有额外负担，也没有特权：`extension_test.go` 的狼王
+开枪现在也要自己产出 `SET_ALIVE`，与内置的狼刀、投票放逐走的是同一条路。
+改的时候它当场没打死人，测试直接红了。
+
+**`example/extension` 又撞出一个缺口**：白痴否决的是 `ELIMINATE`，而人是被
+旁边那条 `SET_ALIVE` 打死的——跑起来白痴当场出局。补了 `Effect.SetsAlive()`，
+让扩展能认出致死的原语。改完之后白痴的拦截**与死因无关**了：同一段代码
+挡得住狼刀、毒杀、枪口和任何第三方规则的死法，因为它们最终都走这一条。
+这比原来只认识 `ELIMINATE` 更强，不是妥协。
+
+变异验证：回合边界不清玩家标记 → 随机对局 `seed=0 step=6` 报错；
+`SET_ALIVE` 不改状态 → 35 条用例红；把 `KILL` 重新接回状态机 →
+`TestApplyEffect_RuleEventsDoNotTouchState` 红。
+
+覆盖率 92.9% → 94.1%。
+
 ### 第五个扩展点：角色的初始状态
 
 **破坏性变更**：`PlayerState` / `PlayerInfo` / `PlayerSnapshot` / `SelfInfo`

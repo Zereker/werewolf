@@ -143,8 +143,8 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 		if !ok {
 			t.Fatal("守卫丢失")
 		}
-		if p.LastProtectedTarget != "v2" {
-			t.Errorf("守卫上回合目标: 期望 v2，实际 %q", p.LastProtectedTarget)
+		if got := p.Vars[PlayerVarLastProtectedTarget]; got != "v2" {
+			t.Errorf("守卫上回合目标: 期望 v2，实际 %q", got)
 		}
 	})
 
@@ -493,11 +493,9 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 		case !sameVars(got.Vars, want.Vars):
 			t.Errorf("%s 的自定义状态没带上（女巫的药也在这里）: 快照 %v，实际 %v",
 				id, got.Vars, want.Vars)
-		case got.LastProtectedTarget != want.LastProtectedTarget:
-			t.Errorf("%s 的守护目标没带上", id)
-		case got.LastProtectedRound != want.LastProtectedRound:
-			t.Errorf("%s 的守护回合没带上: 快照 %d，实际 %d",
-				id, got.LastProtectedRound, want.LastProtectedRound)
+		case !sameVars(got.RoundVars, want.RoundVars):
+			t.Errorf("%s 的回合标记没带上: 快照 %v，实际 %v",
+				id, got.RoundVars, want.RoundVars)
 		}
 	}
 	g.e.mu.RUnlock()

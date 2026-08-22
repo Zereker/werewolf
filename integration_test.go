@@ -431,7 +431,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	g.assertAlive("v1", true, "expected v1 to be saved by witch")
 
 	// 验证状态：seer 被保护（使用 NightContext）
-	if !g.e.state.RoundCtx.IsProtected("seer") {
+	if !protectedIn(g.e.state, "seer") {
 		t.Error("expected seer to be protected by guard")
 	}
 }
