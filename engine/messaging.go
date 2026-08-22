@@ -66,7 +66,14 @@ func (e *Engine) prepareMessage(senderID, content string) (
 	if !ok {
 		return nil, nil, nil, ErrPlayerNotFound
 	}
-	if !sender.Alive {
+	// 存活是**默认**的发言资格，不是法律。
+	//
+	// 此前这里直接拒掉出局的玩家，SpeechProvider 无从否决——而「死人能不能
+	// 说话」是规则的判断：血染钟楼的死人照常参与讨论，狼人杀有遗言阶段。
+	//
+	// 现在的分工：规则装了 SpeechProvider，就由它说了算（返回空名单即
+	// 「此刻他说不了话」）；没装的话，内核退回默认——死人不说话。
+	if e.speech == nil && !sender.Alive {
 		return nil, nil, nil, ErrPlayerDead
 	}
 

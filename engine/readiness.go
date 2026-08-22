@@ -205,12 +205,19 @@ func (e *Engine) actorsForStep(role RoleType, triggerActive bool, trigger Pendin
 //
 // 与 triggerActorFor 同一个道理：点名不等于「他要替所有角色行动」。
 // 步骤声明了具体角色的，只有角色相符的人算数；声明 RoleUnspecified 的，
-// 点到的人都算。已出局的人不算——除非是触发队列那条路。
+// 点到的人都算。
+//
+// **不按存活过滤**：规则点名谁，谁就能行动。此前这里会把已出局的人剔掉，
+// 而那是内核在替规则做判断——同一个内核，却允许**自己的**触发队列让死人
+// 行动（猎人被刀之后开枪），不允许**规则的**点名这么做，自相矛盾。
+//
+// 挡掉的是真实存在的玩法：血染钟楼的死人保留一张「幽灵票」，狼人杀的
+// 遗言阶段同理。存活与否是规则的判断，点名就是规则在判断。
 func (e *Engine) namedActorsFor(role RoleType, ids []string) []string {
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
 		p, ok := e.state.getPlayer(id)
-		if !ok || !p.Alive {
+		if !ok {
 			continue
 		}
 		if role != RoleUnspecified && p.Role != role {

@@ -120,6 +120,21 @@ function IsPlayerActive(_G, ctx, playerID): boolean {
 
 ---
 
+## 出局：三个来源分歧，而分歧有规律
+
+|  | 有没有一等的「出局」 |
+|---|---|
+| boardgame.io | **没有**。游戏自己在 `G` 里记，在轮转里跳过（`playOrderPos` 的 `next` 函数里跳） |
+| OpenSpiel | **没有**。`current_player()` 由 state 算，死人自然轮不到 |
+| PettingZoo AEC | **有**。`terminations` 每个 agent 一份，`agents` 列表会缩短 |
+
+分歧对应的是**框架需要它干什么**：PettingZoo 的 API 是循环问每个 agent，
+框架必须知道什么时候不再问；另两个不需要，因为「谁能行动」本来就从状态算。
+
+我们补上 `SetActors` 之后变成了后者。于是问题从「要不要 `Alive`」变成
+「它还该不该说了算」——答案是不该，见 [SCARS.md](../avalon/SCARS.md) 疤 6。
+`Alive` 保留为**默认**，规则点名时由规则负责。
+
 ## 存疑的一处：`Round` 到底要不要
 
 boardgame.io **没有回合这个概念**，只有 turn（谁在行动）与 phase（游戏的段落）。
