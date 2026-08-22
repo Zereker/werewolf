@@ -11,6 +11,43 @@
 
 ## 未发布
 
+### 信息边界：两条泄漏路只有一条有人看守
+
+内核在信息边界上只守一条底线，且不可配置：**自己的状态原语永远不外发**。
+这条底线有两条可能泄漏的路，此前只有第一条有测试盯着：
+
+- `AudienceOf`：即使规则装了一个「什么都给全场」的 `AudienceProvider`
+  也必须被拦住（`TestAudienceOf_KernelPrimitivesAreNeverPublic` 盯着）；
+- **`OnEvent`：完全没测。** 宿主拿到什么就转发什么是最自然的写法
+  ——`example/netserver` 就是这么推的——状态原语要是混进这一路，等于把
+  上帝视角直接推给所有人。
+
+新增内核测试 `TestBoundary_StatePrimitivesNeverReachPlayers`，用一个最坏
+情况的 provider（什么都给全场）同时盯住两条路，并带一条普通规则事件作对照，
+避免测试本身空转。查下来实现本来就是对的（`applyEffects` 不为内部效果造事件），
+现在这件事有据可依。
+
+### 信息边界：那份「哪些是状态原语」的表没人守着
+
+判断依据是 `kernelPrimitives` 这张**手工维护**的表。手工维护的表有一个固定
+的坏结局：有人加了第八个内核事件类型、忘了往表里添一行，于是这条事件默认
+按「外部事件」处理交给 `AudienceProvider` 决定——一个粗心的 provider 就能
+把状态机的记账推给所有玩家。而 `kernelPrimitives` 是未导出的，规则包和使用者
+都看不见它，出了事也无从排查。
+
+新增 `TestKernelEventTypes_AreAllClassified`：把 `event.go` 当作真值，
+用 `go/ast` 解析出全部 `EventXxx` 声明，要求每一个都明确落在
+`kernelPrimitives`（永不外发）或 `publicKernelEvents`（该让玩家看见）里。
+新增一个事件类型而不分类，它就变红——你必须回答「这条该不该让玩家看见」。
+
+变异验证（四种分别拆）：从表里删掉 `SET_ALIVE`、让 `AudienceOf` 不再先拦
+内部事件、让 `applyEffects` 把原语也推给 `OnEvent`、新增一个内核事件类型
+而不分类——四种都让对应的测试变红。
+
+顺带查了 `AudienceOf` 返回 `known=false`（引擎认不得的第三方事件类型）时
+三个 example 怎么处理：CLI 打到主持台控制台、netserver 记日志后丢弃，
+都不发给任何玩家。别人照抄样板不会抄出泄漏。
+
 ### 修复：效果流是历史，但外部改得动
 
 **这是一个真实缺陷，不是收紧。** `EndPhase()` 返回的与 `EffectLog()` 返回的，
