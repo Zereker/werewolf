@@ -83,7 +83,30 @@ type PhaseConfig struct {
 	// Validate 会检查至少有一个阶段声明了它——一个都没有的话回合数永远
 	// 停在 1、回合状态永不重置，那是个必然出错的配置，应当在建局时就被
 	// 拒绝，而不是跑到半局才让人发现。
+	//
+	// 它**只管计数**。回合级变量什么时候清空是另一件事，
+	// 由下面的 ClearsRoundVars 声明——两者常常标在相邻的两个阶段上，
+	// 但它们是两件事。
 	EndsRound bool
+
+	// ClearsRoundVars **进入**这个阶段之前，回合级变量全部清空。
+	//
+	// 读法是「这个阶段从干净的局面开始」——与 EndsRound 相反，它说的是
+	// 自己开始时的样子，不是自己结束时的效果。
+	//
+	// 「回合数」与「变量寿命」此前焊在一起：EndsRound 一次做两件事。
+	// 狼人杀里它们恰好重合（夜间标记活到下一个夜晚，而那正是一回合），
+	// 所以一直看不出问题。阿瓦隆里不重合：
+	//
+	//	队伍标记活到「下一次提名开始」   一轮任务里可能提名五次
+	//	回合数跟着「第几轮任务」走       否则报给玩家的数没有意义
+	//
+	// 于是阿瓦隆只能在提名解析器里手工清一遍——那是内核少给了一档寿命，
+	// 规则替它补。现在两件事各自声明，每个阶段只说关于自己的事。
+	//
+	// Validate 会检查至少有一个阶段声明了它：一个都没有的话回合级变量
+	// 永不清空，狼人杀里女巫用掉的那瓶解药会一夜又一夜救同一个人。
+	ClearsRoundVars bool
 }
 
 // PhaseStep 阶段步骤。步骤的先后由切片顺序决定。
@@ -189,8 +212,11 @@ func (c *Config) Validate() error {
 	}
 	if !c.hasRoundBoundary() {
 		return WrapError(CodeInvalidConfig,
-			"no phase declares EndsRound: the round would never advance and "+
-				"round-scoped state would never reset")
+			"no phase declares EndsRound: the round would never advance")
+	}
+	if !c.hasVarReset() {
+		return WrapError(CodeInvalidConfig,
+			"no phase declares ClearsRoundVars: round-scoped state would never reset")
 	}
 	if _, ok := c.Phases[c.StartPhase]; !ok {
 		return WrapError(CodeInvalidPhase,
@@ -298,6 +324,12 @@ func (c *Config) endsRound(phase PhaseType) bool {
 	return pc != nil && pc.EndsRound
 }
 
+// clearsRoundVars 进入这个阶段之前要不要清空回合级变量。
+func (c *Config) clearsRoundVars(phase PhaseType) bool {
+	pc := c.Phases[phase]
+	return pc != nil && pc.ClearsRoundVars
+}
+
 // hasRoundBoundary 配置里有没有阶段声明自己是回合的终点。
 //
 // 一个都没有的话，回合数永远停在 1、回合级状态永不重置——狼人杀里这意味着
@@ -309,6 +341,20 @@ func (c *Config) endsRound(phase PhaseType) bool {
 func (c *Config) hasRoundBoundary() bool {
 	for _, pc := range c.Phases {
 		if pc != nil && pc.EndsRound {
+			return true
+		}
+	}
+	return false
+}
+
+// hasVarReset 配置里有没有阶段声明自己从干净的局面开始。
+//
+// 一个都没有的话回合级变量永不清空——狼人杀里女巫用掉的那瓶解药会一夜又
+// 一夜救同一个人，一次性道具变成永久道具。与 hasRoundBoundary 一样，
+// 这是把决定权交给规则之后**换来的**：内核自己焊死的时候没法检查。
+func (c *Config) hasVarReset() bool {
+	for _, pc := range c.Phases {
+		if pc != nil && pc.ClearsRoundVars {
 			return true
 		}
 	}

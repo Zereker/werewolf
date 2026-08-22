@@ -291,8 +291,9 @@ func TestRestoreEngine_Rejects(t *testing.T) {
 			StartPhase: PhaseDay,
 			Phases: map[PhaseType]*PhaseConfig{
 				PhaseDay: {
-					Type:      PhaseDay,
-					NextPhase: PhaseVote,
+					Type:            PhaseDay,
+					NextPhase:       PhaseVote,
+					ClearsRoundVars: true,
 				},
 				PhaseVote: {
 					Type:      PhaseVote,

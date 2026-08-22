@@ -141,6 +141,14 @@ func DayHunterPhase() *PhaseConfig {
 func NightGuardPhase() *PhaseConfig {
 	return &PhaseConfig{
 		Type: PhaseNightGuard,
+
+		// 每一夜从干净的局面开始：上一夜的「被守」「被救」「被毒」「刀口」
+		// 到此为止。
+		//
+		// 此前这件事焊在 EndsRound 里（投票结算完既加回合数又清变量）。
+		// 拆开是因为它们本就是两件事——狼人杀里恰好重合，阿瓦隆里不重合：
+		// 那边队伍标记活到下一次提名，而回合数跟着第几轮任务走。
+		ClearsRoundVars: true,
 		Steps: []PhaseStep{
 			{Role: RoleGod, Skill: SkillAnnounce},
 			{Role: RoleGuard, Skill: SkillProtect},

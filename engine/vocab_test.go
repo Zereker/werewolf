@@ -73,7 +73,7 @@ func testConfig() *Config {
 	return &Config{
 		StartPhase: phaseNightGuard,
 		Phases: map[PhaseType]*PhaseConfig{
-			phaseNightGuard:   {Type: phaseNightGuard, Steps: step(roleGuard, skillProtect), NextPhase: phaseNightWolf},
+			phaseNightGuard:   {Type: phaseNightGuard, Steps: step(roleGuard, skillProtect), NextPhase: phaseNightWolf, ClearsRoundVars: true},
 			phaseNightWolf:    {Type: phaseNightWolf, Steps: step(roleWerewolf, skillKill), NextPhase: phaseNightWitch},
 			phaseNightWitch:   {Type: phaseNightWitch, Steps: []PhaseStep{{Role: roleWitch, Skill: skillAntidote, AllowDeadTarget: true}, {Role: roleWitch, Skill: skillPoison}}, NextPhase: phaseNightSeer},
 			phaseNightSeer:    {Type: phaseNightSeer, Steps: step(roleSeer, skillCheck), NextPhase: phaseNightResolve},

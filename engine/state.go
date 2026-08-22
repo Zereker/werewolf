@@ -476,10 +476,12 @@ func (s *gameState) startAt(phase PhaseType) {
 // 成立（夜→昼→夜），对别的规则不成立：阿瓦隆每提名一次就绕一圈，
 // 于是「回合」成了提名计数器。一局游戏的「一回合」是什么只有规则知道，
 // 内核不再替它决定。
-func (s *gameState) nextPhase(phase PhaseType, endsRound bool) {
+func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 	s.Phase = phase
 	if endsRound {
 		s.Round++
+	}
+	if clearVars {
 		s.resetRoundStateUnlocked()
 	}
 }

@@ -45,21 +45,10 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 		}
 	}
 
-	// 先清掉上一次提名留下的标记。
-	//
-	// 被否决的提名现在直接跳回本阶段（不再绕经任务阶段），因此不会跨过
-	// 回合边界，上一次的标记还在身上。这是「回合边界交给规则」之后规则
-	// 要自己承担的那部分：内核不再替它清，什么时候清由它说了算。
+	// 上一次提名留下的标记不用在这里清：提名阶段声明了 ClearsRoundVars，
+	// 内核在它结算完时清。此前内核只有「回合级」一档寿命，而这里要的是
+	// 「一次提名」，只好手工清一遍——那段代码现在删掉了。
 	var effects []*engine.Effect
-	chosen := map[string]bool{}
-	for _, id := range team {
-		chosen[id] = true
-	}
-	for _, id := range teamIDs(view) {
-		if !chosen[id] {
-			effects = append(effects, engine.NewSetPlayerRoundVarEffect(id, varOnTeam, ""))
-		}
-	}
 	for _, id := range team {
 		effects = append(effects,
 			engine.NewEffect(EventProposed, leader, id),

@@ -217,7 +217,7 @@ func TestNextPhase_ToDay(t *testing.T) {
 	state.Phase = phaseNight
 	state.Round = 1
 
-	state.nextPhase(phaseDay, false) // 上一个阶段没有声明 EndsRound
+	state.nextPhase(phaseDay, false, false) // 上一个阶段两样都没声明
 
 	if state.Phase != phaseDay {
 		t.Errorf("expected Phase=DAY, got %v", state.Phase)
@@ -237,7 +237,7 @@ func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 
 	// 第二个参数是「刚结算完的那个阶段是不是这一回合的终点」，
 	// 由 PhaseConfig.EndsRound 声明——内核不再从阶段环里猜
-	state.nextPhase(phaseNightGuard, true)
+	state.nextPhase(phaseNightGuard, true, true)
 
 	if state.Phase != phaseNightGuard {
 		t.Errorf("expected Phase=NIGHT_GUARD, got %v", state.Phase)

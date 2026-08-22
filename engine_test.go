@@ -951,6 +951,7 @@ func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	cfg.Phases[PhaseVote].NextPhase = PhaseNightWolf
 	cfg.Phases[PhaseDayHunter].NextPhase = PhaseNightWolf
 	delete(cfg.Phases, PhaseNightGuard)
+	cfg.Phases[PhaseNightWolf].ClearsRoundVars = true
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate 失败: %v", err)
 	}

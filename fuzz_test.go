@@ -91,6 +91,9 @@ func randomConfig(rng *rand.Rand) (*GameConfig, Rules) {
 		cfg.Phases[PhaseVote].NextPhase = PhaseNightWolf
 		cfg.Phases[PhaseDayHunter].NextPhase = PhaseNightWolf
 		delete(cfg.Phases, PhaseNightGuard)
+		// 「每夜从干净的局面开始」跟着搬到新的第一个夜间阶段——
+		// 这个声明是板子的一部分，改板子就要跟着改，和 NextPhase 一样。
+		cfg.Phases[PhaseNightWolf].ClearsRoundVars = true
 	}
 
 	if err := cfg.Validate(); err != nil {

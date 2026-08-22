@@ -132,10 +132,12 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		// 否则会把住在回合上下文里的待结算队列一起抹掉。
 		endsRound := e.config.endsRound(e.state.Phase)
 		e.state.consumeTriggerFor(e.state.Phase)
-		e.state.nextPhase(phase, endsRound && !e.state.hasPendingTrigger())
+		settled := !e.state.hasPendingTrigger()
+		e.state.nextPhase(phase, endsRound && settled,
+			settled && e.config.clearsRoundVars(phase))
 
 	case EventGameEnded:
-		e.state.nextPhase(PhaseEnd, false) // 整局结束，不是新回合
+		e.state.nextPhase(PhaseEnd, false, false) // 整局结束，不是新回合
 
 	default:
 		e.state.applyEffect(effect)
