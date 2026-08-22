@@ -345,6 +345,40 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
 完整可运行的例子见 [extension_test.go](extension_test.go)。
 
+## 命令行主持台
+
+`example/cli` 是一个能真的从头玩完一局的主持台，也是这个库的第一个真实使用者——
+超时、消息路由、存档落盘这些库刻意不管的事，都由它自己解决：
+
+```console
+$ go run ./example/cli
+狼人杀 · 命令行主持台
+9 人局：3 狼 + 预言家/女巫/守卫/猎人 + 2 民
+
+  [公告] 天黑请闭眼。守卫请睁眼，你要守护谁？
+  守卫: [6号]  可用技能 守护
+
+[第1回合 守卫] > act 6号 守 5号
+  已记下: 6号 守护 5号
+[第1回合 守卫] > end
+  守卫 结束 -> 狼人
+  [私信 [6号]] 6号 -> 5号 被守护
+[第1回合 狼人] > act 1号 刀 5号
+[第1回合 狼人] > end
+[第1回合 女巫] > view 2号
+  你是 2号，女巫，存活
+  解药 还在，毒药 还在
+  今晚被刀的是: 5号
+  你现在可以: 解药/毒药
+[第1回合 女巫] > act 2号 救 5号
+...
+  [全场] 5号 被刀，同守同救，依然死亡
+```
+
+`view <玩家>` 出来的内容可以原样发给他，`[私信]` / `[全场]` 的分发依据是
+`AudienceOf`。`run` 让它自己随机跑完一局，`save` / `load` 演示服务重启。
+也可以照脚本跑：`go run ./example/cli < example/cli/testdata/demo.txt`。
+
 ## 效果流与回放
 
 ```go
@@ -497,6 +531,7 @@ werewolf/
 ├── rules_test.go      # 以维基百科规则为基准的一致性测试
 ├── extension_test.go  # 第三方扩展契约（以狼王为例）
 ├── example/        # 可运行示例
+│   └── cli/        # 命令行主持台（真实使用者）
 └── docs/
     └── ARCHITECTURE.md
 ```

@@ -66,3 +66,8 @@ jobs:
       # 示例是给使用者照抄的，它跑不通比库本身出问题更误导人。
       - name: Run example
         run: go run ./example > /dev/null
+
+      # CLI 是这个库的第一个真实使用者，脚本跑一整局，
+      # 顺带覆盖存档与恢复
+      - name: Run CLI
+        run: go run ./example/cli -seed 7 < example/cli/testdata/demo.txt > /dev/null

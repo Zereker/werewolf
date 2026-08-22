@@ -249,9 +249,14 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	if endNow {
 		// 结束事件与其他事件走同一条构造路径：Effect -> ToEvent，
-		// 避免同一个事件有两份分别构造、日后各自漂移的实现
+		// 避免同一个事件有两份分别构造、日后各自漂移的实现。
+		//
+		// 三条出口都要给到：EndPhase 的返回值、OnEvent 的事件流、效果流。
+		// 少了返回值那一条的话，照着 EndPhase -> AudienceOf 路由的调用方
+		// 会漏掉整局最重要的一件事——谁赢了。
 		endEffect := NewEffect(EventGameEnded, "", "").
 			WithData("winner", winner)
+		out.effects = append(out.effects, endEffect)
 		e.effectLog = append(e.effectLog, endEffect)
 		out.events = append(out.events, endEffect.ToEvent())
 

@@ -1,0 +1,23 @@
+# CI 用这个脚本把 CLI 跑一遍：编译得过不代表跑得通，
+# 示例是给使用者照抄的，它崩了比库本身出问题更误导人。
+status
+info
+who
+view 1号
+act 6号 守 5号
+end
+act 1号 刀 5号
+end
+view 2号
+act 2号 救 5号
+end
+end
+end
+say 1号 我是好人
+end
+save /tmp/werewolf-demo.json
+end
+load /tmp/werewolf-demo.json
+run
+log
+quit
