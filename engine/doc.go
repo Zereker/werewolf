@@ -62,6 +62,25 @@
 // 单元测试自己的解析器用 Board：手工摆一副局面，转成 GameView 喂给
 // 解析器，再用 Board.Apply 把产出的效果折回去看局面变成了什么样。
 //
+// # 扩展点不能回头找引擎
+//
+// 七个扩展点——Resolver、VictoryChecker、AudienceProvider、
+// TeammateProvider、SpeechProvider、RoleInfoProvider、RoleSetup——
+// 全部在引擎**持锁期间**被同步调用。实现里回调 Engine 的任何方法，
+// 后果是**挂住**，不是报错：Go 的读写锁不可重入，那一局从此没有响应。
+//
+// 它们不需要回调：想知道的一切都在参数里。Resolver 与几个 provider 拿到
+// 的 GameView 就是那一刻的完整局面；RoleSetup 连 GameView 都不需要，
+// 因为入座发生在开局之前。签名是刻意收窄的——扩展点拿不到 *Engine，
+// 要绕过这条约束得自己把引擎存进结构体，那是一个有意的动作。
+//
+// 要在回调里问引擎，用 OnEvent / OnMessage 的处理器：事件与消息都在
+// **锁外**发布，处理器里调 AudienceOf、PlayerView、Snapshot 都是安全的
+// 用法。把引擎接进一个服务端正是这么做的——收到事件，问一句「这该发给
+// 谁」，再往那几条连接上写，见 example/netserver。这条性质由
+// TestCallbacks_MayCallBackIntoTheEngine 盯着，它带超时兜底：真被挪进
+// 锁内，那个测试会红，而不是让整套测试挂住。
+//
 // # 边界：内核不做什么
 //
 //   - 不计时。PhaseConfig.Timeout 只是建议值。
