@@ -412,11 +412,15 @@ func (s *gameState) startAt(phase pb.PhaseType) {
 	s.resetRoundStateUnlocked()
 }
 
-// nextPhase 切换到下一阶段
-func (s *gameState) nextPhase(phase pb.PhaseType) {
+// nextPhase 切换到下一阶段。
+//
+// roundStart 是本局的起始阶段：绕回它即是新的一回合，此时回合数加一、
+// 回合上下文重置。回合边界此前写死成 NIGHT_GUARD，而起始阶段和阶段环
+// 都是可配置的——环里不含守卫阶段时，回合数永远停在 1，回合上下文也
+// 永远不重置，上一夜的「被救」「被守」「被毒」记录会一直累积下去。
+func (s *gameState) nextPhase(phase, roundStart pb.PhaseType) {
 	s.Phase = phase
-	// 进入新的夜晚（守卫阶段）时增加回合数并重置状态
-	if phase == pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if phase == roundStart {
 		s.Round++
 		s.resetRoundStateUnlocked()
 	}

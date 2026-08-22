@@ -301,3 +301,19 @@ func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 		}
 	}
 }
+
+// TestAudienceOf_UnknownActorGetsNobody 行动者不在场上时不该给出一个投递不到的 ID。
+func TestAudienceOf_UnknownActorGetsNobody(t *testing.T) {
+	e := newViewGame(t)
+
+	canceled := NewEffect(pb.EventType_EVENT_TYPE_POISON, "查无此人", "v1")
+	canceled.Cancel("no poison")
+	if got, known := e.AudienceOf(canceled); len(got) != 0 || !known {
+		t.Errorf("被否决效果的 source 不在场上，受众应为空，实际 (%v, %v)", got, known)
+	}
+
+	private := NewEffect(pb.EventType_EVENT_TYPE_CHECK, "查无此人", "v1")
+	if got, _ := e.AudienceOf(private); len(got) != 0 {
+		t.Errorf("私密效果的 source 不在场上，受众应为空，实际 %v", got)
+	}
+}

@@ -271,7 +271,12 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 		e.logger.Debug("resolved effects", PhaseField(currentPhase), F("effect_count", len(out.effects)))
 	}
 
-	// 2. 应用效果，收集对外可见的事件
+	// 2. 应用效果，收集对外可见的事件。
+	//
+	// 第三方 Resolver 返回的切片里可能混进 nil，就地剔除而不是让整局崩掉。
+	// 判断必须在循环最前面：applyEffect 内部那道 nil 保护够不着这里的
+	// vetTrigger 与日志字段。
+	out.effects = dropNilEffects(out.effects)
 	for _, effect := range out.effects {
 		e.vetTrigger(effect)
 		e.state.applyEffect(effect)
@@ -307,7 +312,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	// 5. 流转。END 也走 nextPhase，不直接赋值 Phase——
 	//    状态的每一次改动都经同一条路径，别处才不会漏掉伴随的逻辑
-	e.state.nextPhase(nextPhase)
+	e.state.nextPhase(nextPhase, e.config.startPhase())
 
 	if endNow {
 		// 结束事件与其他事件走同一条构造路径：Effect -> ToEvent，
@@ -425,6 +430,22 @@ func (e *Engine) WolfTeammates(playerID string) []string {
 	}
 
 	return e.state.getWolfTeammates(playerID)
+}
+
+// dropNilEffects 剔除切片里的 nil，全部非 nil 时原样返回。
+func dropNilEffects(effects []*Effect) []*Effect {
+	for _, e := range effects {
+		if e == nil {
+			out := make([]*Effect, 0, len(effects))
+			for _, e := range effects {
+				if e != nil {
+					out = append(out, e)
+				}
+			}
+			return out
+		}
+	}
+	return effects
 }
 
 // vetTrigger 否决指向未配置阶段的死亡技能触发。
