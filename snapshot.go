@@ -8,7 +8,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 8
+const SnapshotVersion = 9
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -35,11 +35,9 @@ type Snapshot struct {
 
 // PlayerSnapshot 单个玩家的快照
 type PlayerSnapshot struct {
-	ID       string       `json:"id"`
-	Role     RoleType     `json:"role"`
-	Camp     Camp         `json:"camp"`
-	Category RoleCategory `json:"category"`
-	Alive    bool         `json:"alive"`
+	ID    string   `json:"id"`
+	Role  RoleType `json:"role"`
+	Alive bool     `json:"alive"`
 
 	// RoundVars 这名玩家在本回合的标记，每回合清零。今晚谁被守了、
 	// 被救了、被毒了都在这里——它们此前是 RoundCtxSnapshot 上三个
@@ -230,8 +228,6 @@ func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 		out = append(out, PlayerSnapshot{
 			ID:        p.ID,
 			Role:      p.Role,
-			Camp:      p.Camp,
-			Category:  p.Category,
 			Alive:     p.Alive,
 			RoundVars: copyVars(p.RoundVars),
 			Vars:      copyVars(p.Vars),
@@ -261,8 +257,6 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 	s.players[p.ID] = &PlayerState{
 		ID:        p.ID,
 		Role:      p.Role,
-		Camp:      p.Camp,
-		Category:  p.Category,
 		Alive:     p.Alive,
 		RoundVars: copyVars(p.RoundVars),
 		Vars:      copyVars(p.Vars),

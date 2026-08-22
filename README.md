@@ -144,12 +144,9 @@ effects, _ := engine.EndPhase()
 ### 添加玩家
 
 ```go
-// 阵营与角色类别由角色推导，只能在 Start 之前调用
+// 只能在 Start 之前调用。内置角色与扩展角色走同一个入口——
+// 阵营、类别、道具这些初始状态写在角色自己的 RoleSetup 里
 err := engine.AddPlayer("p1", werewolf.RoleWerewolf)
-
-// 扩展角色（隐狼、白痴等）阵营/类别无法从角色推导，显式指定
-err = engine.AddCustomPlayer("p2", werewolf.RoleVillager,
-    werewolf.CampEvil, werewolf.RoleCategoryWolf)
 ```
 
 以下情况会返回错误，而不是静默生效：
@@ -190,9 +187,11 @@ config := &werewolf.GameConfig{
 
 好人阵营的胜利条件与模式无关：狼人全部出局即获胜。
 
-屠边需要区分神职与平民，`PlayerState.Category` 由 `CategoryOf(role)` 自动推导
-（预言家/女巫/猎人/守卫为神职，村民为平民）。自定义角色可通过
-`State.SetPlayerCategory` 显式指定，未指定的角色不参与屠边判定。
+屠边需要区分神职与平民。类别是玩家身上的一项状态（键 `VarCategory`），
+由角色的 `RoleSetup` 在入座时发放——内置角色是 `builtinRoleSetup` 表里的
+一行（预言家/女巫/猎人/守卫为神职，村民为平民），扩展角色用
+`WithRoleSetup` + `CampVars` 登记自己的一份。没有登记的角色不属于任何
+阵营，也就不参与胜负计数。
 
 屠边判定只对开局就存在的类别生效：没有神职的板子不会因「神职全灭」在开局
 瞬间判负，平民同理。
@@ -302,8 +301,10 @@ for _, effect := range effects {
 `PhaseInfo` / `PlayerInfo` / `WolfTeammates` / `NightKillTarget`
 是**上帝视角**接口，供调用方作为主持人使用，不可整体转发给玩家。
 
-狼队的判定按**阵营**而非角色：`AddCustomPlayer` 加进来的狼王、
-狼美人同样看得到队友、夜里也能和狼队互通。
+「谁和谁是一边的」由 `TeammateProvider` 回答（`WithTeammates` 可换掉），
+狼人杀的默认实现按**阵营**而非角色：自定义的狼王、狼美人同样看得到队友、
+夜里也能和狼队互通。`PlayerView`、`PhaseInfo`、`WolfTeammates` 三处共用
+这一个判定。
 
 ## 阶段就绪
 
@@ -350,8 +351,13 @@ cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
 }
 
 engine, _ := werewolf.NewEngine(cfg,
-    werewolf.WithResolver(phaseWolfKing, &wolfKingResolver{}))
-engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCategoryWolf)
+    werewolf.WithResolver(phaseWolfKing, &wolfKingResolver{}),
+    // 阵营与类别写在角色自己身上，入座时不用再给一遍
+    werewolf.WithRoleSetup(roleWolfKing, werewolf.RoleSetupFunc(
+        func(string, werewolf.RoleType) map[string]string {
+            return werewolf.CampVars(werewolf.CampEvil, werewolf.RoleCategoryWolf)
+        })))
+engine.AddPlayer("wk", roleWolfKing)
 ```
 
 `WithResolver` 是构造选项，`NewEngine` / `RestoreEngine` / `ReplayEngine`
@@ -363,7 +369,7 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 | 想加什么 | 用什么 |
 |---|---|
 | 新角色的行为 | `WithResolver(phase, resolver)`，可包装内置解析器复用逻辑 |
-| 角色的初始状态 | `WithRoleSetup(role, setup)`，入座时发放，写进该玩家的 `Vars` |
+| 角色的初始状态 | `WithRoleSetup(role, setup)`，入座时发放，写进该玩家的 `Vars`；阵营与类别也在这里（`CampVars`） |
 | 角色自身的状态 | `NewSetPlayerVarEffect`（跟着玩家一整局）/ `NewSetRoundVarEffect`（每回合清零），读走 `GameView.PlayerVar` / `RoundVar` |
 | 新的胜利条件 | `WithVictoryChecker(checker)`，包一层 `DefaultVictoryChecker` 就能在内置规则之上再加一条 |
 | 角色专属信息 | `WithRoleInfo(role, provider)`，结果出现在 `PlayerView.RoleInfo` 与 `RolePhaseInfo.RoleInfo` |
@@ -377,7 +383,7 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
   空的 setup，她就真的空手上桌；
 - 药存在 `Vars` 里（`VarWitchAntidote` / `VarWitchPoison`），与第三方角色同一份存储；
 - 刀口与药剂存量经 `WithRoleInfo` 投射给玩家，可以被换掉；
-- 队友按**阵营**给，`AddCustomPlayer` 加进来的狼王一样拿得到。
+- 队友经 `TeammateProvider` 按**阵营**给，自定义的狼王一样拿得到。
 
 加一个角色不需要改引擎里任何一行。
 
@@ -600,8 +606,9 @@ NIGHT_GUARD → NIGHT_WOLF → NIGHT_WITCH → NIGHT_SEER → NIGHT_RESOLVE
 | Hunter（猎人） | 好人 | 神职 | 死亡时开枪带走一人（被毒杀除外） |
 | Villager（村民） | 好人 | 平民 | 无特殊技能 |
 
-「类别」用于屠边判定，由 `CategoryOf(role)` 自动推导。扩展角色（狼王、白痴、
-骑士等）暂未内置，可通过 `State.SetPlayerCategory` 指定类别后参与判定。
+「阵营」与「类别」都是玩家身上的状态，由角色的 `RoleSetup` 在入座时发放
+（见 `builtinRoleSetup`）。扩展角色（狼王、白痴、骑士等）暂未内置，
+用 `WithRoleSetup` + `CampVars` 登记之后同样参与判定。
 
 ## 项目结构
 

@@ -38,62 +38,11 @@ func newRoundContext() *RoundContext {
 	return &RoundContext{}
 }
 
-// RoleCategory 角色类别
-//
-// 屠边判定需要区分「神职」与「平民」，而 Camp 只有好人/狼人两值，
-// 表达不了这个维度，故单列一个类别。
-type RoleCategory int
-
-const (
-	RoleCategoryUnknown  RoleCategory = iota // 未知（上帝等系统角色）
-	RoleCategoryWolf                         // 狼人阵营
-	RoleCategoryGod                          // 神职：预言家、女巫、猎人、守卫
-	RoleCategoryVillager                     // 平民
-)
-
-// String 实现 fmt.Stringer
-func (c RoleCategory) String() string {
-	switch c {
-	case RoleCategoryWolf:
-		return "WOLF"
-	case RoleCategoryGod:
-		return "GOD"
-	case RoleCategoryVillager:
-		return "VILLAGER"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-// CategoryOf 由角色推导默认类别。
-//
-// 只覆盖内置的六个角色。RoleType 的底层是 int32，调用方可以用
-// 超出内置枚举的取值来定义自己的角色（建议从 1000 起，避免与后续
-// 内置角色撞号）；这类角色会落到 Unknown，需通过 AddCustomPlayer
-// 显式给出阵营与类别，否则不参与屠边判定。
-func CategoryOf(role RoleType) RoleCategory {
-	switch role {
-	case RoleWerewolf:
-		return RoleCategoryWolf
-	case RoleSeer,
-		RoleWitch,
-		RoleHunter,
-		RoleGuard:
-		return RoleCategoryGod
-	case RoleVillager:
-		return RoleCategoryVillager
-	default:
-		return RoleCategoryUnknown
-	}
-}
-
 // PlayerState 玩家状态
 type PlayerState struct {
-	ID       string
-	Role     RoleType
-	Camp     Camp
-	Category RoleCategory // 角色类别（神职/平民/狼人），用于屠边判定
-	Alive    bool
+	ID    string
+	Role  RoleType
+	Alive bool
 
 	// Vars 角色私有的、会影响规则判定的状态。
 	//
@@ -149,29 +98,13 @@ func newState() *gameState {
 	}
 }
 
-// CampOf 由角色推导阵营。
+// addPlayer 添加玩家。
 //
-// 内置的六个角色中只有狼人属于狼人阵营。扩展角色（隐狼、狼美人等）
-// 阵营与角色的对应关系不同，需用 AddCustomPlayer 显式指定。
-func CampOf(role RoleType) Camp {
-	if role == RoleWerewolf {
-		return CampEvil
-	}
-	return CampGood
-}
-
-// addPlayer 添加玩家。阵营与角色类别由角色推导。
+// 内核只记 ID、角色与存活；阵营、类别这些是规则的分法，由 RoleSetup
+// 在入座时作为初始状态发放（见 seatPlayer）。
 //
 // 返回错误：ID 为空、ID 已存在、角色不能作为玩家身份（如上帝）。
 func (s *gameState) addPlayer(id string, role RoleType) error {
-	return s.addCustomPlayer(id, role, CampOf(role), CategoryOf(role))
-}
-
-// addCustomPlayer 添加玩家并显式指定阵营与角色类别。
-//
-// 供扩展角色使用：隐狼是好人牌面的狼、白痴是不参与屠边的好人，
-// 这类角色无法从内置映射推导，需要调用方直接给出。
-func (s *gameState) addCustomPlayer(id string, role RoleType, camp Camp, category RoleCategory) error {
 	if id == "" {
 		return ErrInvalidPlayerID
 	}
@@ -186,11 +119,9 @@ func (s *gameState) addCustomPlayer(id string, role RoleType, camp Camp, categor
 	}
 
 	player := &PlayerState{
-		ID:       id,
-		Role:     role,
-		Camp:     camp,
-		Category: category,
-		Alive:    true,
+		ID:    id,
+		Role:  role,
+		Alive: true,
 	}
 
 	s.players[id] = player
@@ -224,22 +155,6 @@ func (s *gameState) setPlayerVars(id string, vars map[string]string) {
 	}
 }
 
-// countCamps 统计各阵营存活人数（包内使用）
-func (s *gameState) countCamps() (good, evil int) {
-	for _, p := range s.players {
-		if !p.Alive {
-			continue
-		}
-		switch p.Camp {
-		case CampGood:
-			good++
-		case CampEvil:
-			evil++
-		}
-	}
-	return good, evil
-}
-
 // currentPhase 当前阶段（包内使用，自带锁）
 func (s *gameState) currentPhase() PhaseType {
 	return s.Phase
@@ -263,11 +178,9 @@ func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 // 含 Protected 这类只有上帝该知道的信息，不可整体转发给玩家——
 // 要发给玩家的内容用 Engine.PlayerView。
 type PlayerInfo struct {
-	ID       string       `json:"id"`
-	Role     RoleType     `json:"role"`
-	Camp     Camp         `json:"camp"`
-	Category RoleCategory `json:"category"`
-	Alive    bool         `json:"alive"`
+	ID    string   `json:"id"`
+	Role  RoleType `json:"role"`
+	Alive bool     `json:"alive"`
 
 	// RoundVars 这名玩家在本回合的标记，每回合清零。
 	//
@@ -308,8 +221,6 @@ func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	return PlayerInfo{
 		ID:        p.ID,
 		Role:      p.Role,
-		Camp:      p.Camp,
-		Category:  p.Category,
 		Alive:     p.Alive,
 		RoundVars: copyVars(p.RoundVars),
 		Vars:      copyVars(p.Vars),

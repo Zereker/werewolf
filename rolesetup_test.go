@@ -20,7 +20,9 @@ const (
 
 // knightSetup 骑士的初始状态。第三方实现，只依赖导出 API。
 func knightSetup(playerID string, role RoleType) map[string]string {
-	return map[string]string{varKnightDuel: VarPresent}
+	out := CampVars(CampGood, RoleCategoryGod)
+	out[varKnightDuel] = VarPresent
+	return out
 }
 
 // newKnightGame 组装一局带骑士的游戏，全部通过导出 API。
@@ -45,9 +47,9 @@ func newKnightGame(t *testing.T, extra ...EngineOption) *Engine {
 			t.Fatalf("AddPlayer(%s): %v", s.id, err)
 		}
 	}
-	// 骑士是自定义角色，阵营与类别推导不出来，须显式给出
-	if err := e.AddCustomPlayer("kn", roleKnight, CampGood, RoleCategoryGod); err != nil {
-		t.Fatalf("AddCustomPlayer(kn): %v", err)
+	// 骑士与内置角色走同一个入座入口：阵营与类别写在它自己的 setup 里
+	if err := e.AddPlayer("kn", roleKnight); err != nil {
+		t.Fatalf("AddPlayer(kn): %v", err)
 	}
 	if err := e.Start(); err != nil {
 		t.Fatalf("Start(): %v", err)
@@ -93,11 +95,13 @@ func TestRoleSetup_BuiltinWitchWalksTheSamePath(t *testing.T) {
 	})
 
 	t.Run("换掉之后空手上桌", func(t *testing.T) {
+		// 只留阵营，不发药——不留阵营的话开局就判好人少一个，
+		// 与这条测试想验的事无关
 		e := newKnightGame(t, WithRoleSetup(RoleWitch,
-			RoleSetupFunc(func(string, RoleType) map[string]string { return nil })))
+			sideSetup(CampGood, RoleCategoryGod)))
 
 		wi, _ := e.PlayerInfo("wi")
-		if len(wi.Vars) != 0 {
+		if wi.Var(VarWitchAntidote) != "" || wi.Var(VarWitchPoison) != "" {
 			t.Fatalf("换掉初始状态后女巫不该有药，实际 %v", wi.Vars)
 		}
 
@@ -134,9 +138,10 @@ func TestRoleSetup_SurvivesReplayWithoutTheOption(t *testing.T) {
 	}
 
 	for id, want := range map[string]map[string]string{
-		"kn": {varKnightDuel: VarPresent},
-		"wi": {VarWitchAntidote: VarPresent, VarWitchPoison: VarPresent},
-		"v1": nil,
+		"kn": {VarCamp: string(CampGood), VarCategory: string(RoleCategoryGod), varKnightDuel: VarPresent},
+		"wi": {VarCamp: string(CampGood), VarCategory: string(RoleCategoryGod),
+			VarWitchAntidote: VarPresent, VarWitchPoison: VarPresent},
+		"v1": {VarCamp: string(CampGood), VarCategory: string(RoleCategoryVillager)},
 	} {
 		got, ok := replayed.PlayerInfo(id)
 		if !ok {

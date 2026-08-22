@@ -360,8 +360,8 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 		// 只报阵营，不报具体角色
 		if target, ok := view.Player(use.TargetID); ok {
 			check.
-				WithData("camp", target.Camp).
-				WithData("isGood", target.Camp == CampGood)
+				WithData("camp", campOf(target)).
+				WithData("isGood", campOf(target) == CampGood)
 		}
 		effects = append(effects, check)
 	})

@@ -64,17 +64,23 @@ func build(rule *idiotRule) *werewolf.Engine {
 	//    白痴不需要自己的阶段——它改的是投票的结果，所以只换投票解析器。
 	cfg := werewolf.DefaultGameConfig()
 
-	// 2. 构造时把解析器换上。
+	// 2. 构造时把解析器和白痴的初始状态一起给上。
 	//    只能在构造时给：恢复出来的引擎已经在局中，那时再注册就晚了。
-	engine, err := werewolf.NewEngine(cfg, werewolf.WithResolver(werewolf.PhaseVote, rule))
+	//
+	//    阵营与类别写在角色自己身上，不是入座时的参数——引擎不认识
+	//    「白痴」，也就没有办法替它推导。类别决定屠边怎么算：白痴算神职。
+	engine, err := werewolf.NewEngine(cfg,
+		werewolf.WithResolver(werewolf.PhaseVote, rule),
+		werewolf.WithRoleSetup(roleIdiot, werewolf.RoleSetupFunc(
+			func(string, werewolf.RoleType) map[string]string {
+				return werewolf.CampVars(werewolf.CampGood, werewolf.RoleCategoryGod)
+			})))
 	if err != nil {
 		log.Fatalf("配置不合法: %v", err)
 	}
 
-	// 3. 白痴的阵营与角色类别推导不出来（CampOf/CategoryOf 只认内置角色），
-	//    必须显式给出。类别决定屠边怎么算——白痴算神职。
-	if err := engine.AddCustomPlayer("idiot", roleIdiot,
-		werewolf.CampGood, werewolf.RoleCategoryGod); err != nil {
+	// 3. 入座。白痴与内置角色走同一个 AddPlayer，没有区别。
+	if err := engine.AddPlayer("idiot", roleIdiot); err != nil {
 		log.Fatal(err)
 	}
 	for id, role := range map[string]werewolf.RoleType{

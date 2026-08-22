@@ -21,9 +21,14 @@ const (
 	varWolfKingGun = "wolfking.gun"
 )
 
-// wolfKingSetup 狼王开局带一发子弹。第三方实现，只依赖导出 API。
+// wolfKingSetup 狼王的初始状态：狼人阵营的狼，开局带一发子弹。
+//
+// 阵营与类别写在角色自己身上，而不是入座时的两个参数——引擎不认识狼王，
+// 也就没有办法替它推导；写在这里，每一处入座都不会填错。
 func wolfKingSetup(playerID string, role RoleType) map[string]string {
-	return map[string]string{varWolfKingGun: VarPresent}
+	out := CampVars(CampEvil, RoleCategoryWolf)
+	out[varWolfKingGun] = VarPresent
+	return out
 }
 
 // wolfKingResolver 狼王的开枪结算。第三方实现，只依赖导出的 GameView。
@@ -99,8 +104,7 @@ func newWolfKingGame(t *testing.T) *Engine {
 	}
 
 	// 3. 狼王的阵营与类别推导不出来，显式给出
-	if err := engine.AddCustomPlayer("wk", roleWolfKing,
-		CampEvil, RoleCategoryWolf); err != nil {
+	if err := engine.AddPlayer("wk", roleWolfKing); err != nil {
 		t.Fatal(err)
 	}
 	for id, role := range map[string]RoleType{
@@ -282,16 +286,18 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 // TestExtension_CustomWolfCampRoleIsPartOfTheTeam 自定义的狼队角色要真的算进狼队。
 //
 // 狼队的判定此前写死 WEREWOLF，而狼王、白狼王、狼美人经
-// AddCustomPlayer 加进来时 Camp 是 EVIL、Role 不是 WEREWOLF：
+// 它的 Camp 是 EVIL 而 Role 不是 WEREWOLF：
 // 他们看不到队友、不被真狼看到、夜里也发不出话——自定义狼队角色实际不可用。
 func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	const roleWolfKing = RoleType(1000)
 
-	engine := MustNewEngine(nil)
+	engine := MustNewEngine(nil, WithRoleSetup(roleWolfKing, RoleSetupFunc(
+		func(string, RoleType) map[string]string {
+			return CampVars(CampEvil, RoleCategoryWolf)
+		})))
 	mustAdd(t, engine, "w1", RoleWerewolf)
-	if err := engine.AddCustomPlayer("wk", roleWolfKing,
-		CampEvil, RoleCategoryWolf); err != nil {
-		t.Fatalf("AddCustomPlayer 失败: %v", err)
+	if err := engine.AddPlayer("wk", roleWolfKing); err != nil {
+		t.Fatalf("AddPlayer 失败: %v", err)
 	}
 	mustAdd(t, engine, "s", RoleSeer)
 	mustAdd(t, engine, "v1", RoleVillager)

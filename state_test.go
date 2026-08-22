@@ -33,8 +33,8 @@ func TestAddPlayer(t *testing.T) {
 	if player.Role != RoleWerewolf {
 		t.Errorf("expected Role=WEREWOLF, got %v", player.Role)
 	}
-	if player.Camp != CampEvil {
-		t.Errorf("expected Camp=EVIL, got %v", player.Camp)
+	if got := player.Vars[VarCamp]; got != string(CampEvil) {
+		t.Errorf("expected Camp=EVIL, got %v", got)
 	}
 	if !player.Alive {
 		t.Error("expected Alive=true")
@@ -130,6 +130,9 @@ func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
 		state := newState()
 		mustAddTo(t, state, "p1", RoleVillager)
 
+		// 入座已经发过初始状态（阵营与类别），比的是「有没有再动过」
+		before := copyVars(state.players["p1"].Vars)
+
 		state.applyEffect(NewEffect(typ, "src", "p1"))
 
 		p, _ := state.getPlayer("p1")
@@ -138,8 +141,8 @@ func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
 			t.Errorf("%v 不该由内核改存活状态", typ)
 		case len(p.RoundVars) != 0:
 			t.Errorf("%v 不该由内核写回合标记，实际 %v", typ, p.RoundVars)
-		case len(p.Vars) != 0:
-			t.Errorf("%v 不该由内核写玩家状态，实际 %v", typ, p.Vars)
+		case !sameVars(p.Vars, before):
+			t.Errorf("%v 不该由内核改玩家状态，入座时 %v，现在 %v", typ, before, p.Vars)
 		}
 	}
 }

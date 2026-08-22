@@ -84,20 +84,39 @@ const (
 // 只需要一个非空值。内置角色统一用它，扩展没有义务照做。
 const VarPresent = "1"
 
-// builtinRoleSetup 内置角色的初始状态。
+// builtinRoleSetup 内置六个角色的初始状态。
 //
 // 做成表而不是 if：加内置角色时只需在这里加一行，第三方经
 // WithRoleSetup 注册的走同一张表、同一条写入路径，没有先后之分。
+//
+// 表里装的是阵营与类别——它们此前是内核状态的一部分，也是
+// AddCustomPlayer 上的两个参数，于是「这个角色属于哪一边」的答案取决于
+// 调用方每一处入座时记得填对。现在它写在角色自己身上。
+//
+// 没有登记的角色（含扩展角色）不属于任何阵营，也就不参与胜负计数。
+// 这是刻意的：内核没有默认阵营可给，而「悄悄算作好人」比「不算」更难查。
 var builtinRoleSetup = map[RoleType]RoleSetup{
-	RoleWitch: RoleSetupFunc(builtinWitchSetup),
+	RoleWerewolf: sideSetup(CampEvil, RoleCategoryWolf),
+	RoleSeer:     sideSetup(CampGood, RoleCategoryGod),
+	RoleHunter:   sideSetup(CampGood, RoleCategoryGod),
+	RoleGuard:    sideSetup(CampGood, RoleCategoryGod),
+	RoleVillager: sideSetup(CampGood, RoleCategoryVillager),
+	RoleWitch:    RoleSetupFunc(builtinWitchSetup),
 }
 
-// builtinWitchSetup 女巫开局有解药和毒药各一瓶。
+// sideSetup 只发阵营与类别的初始状态。
+func sideSetup(camp Camp, category RoleCategory) RoleSetup {
+	return RoleSetupFunc(func(string, RoleType) map[string]string {
+		return campVars(camp, category)
+	})
+}
+
+// builtinWitchSetup 女巫是好人阵营的神职，开局有解药和毒药各一瓶。
 func builtinWitchSetup(playerID string, role RoleType) map[string]string {
-	return map[string]string{
-		VarWitchAntidote: VarPresent,
-		VarWitchPoison:   VarPresent,
-	}
+	out := campVars(CampGood, RoleCategoryGod)
+	out[VarWitchAntidote] = VarPresent
+	out[VarWitchPoison] = VarPresent
+	return out
 }
 
 // setupFor 算出某个玩家的初始状态。调用前需持有 e.mu。

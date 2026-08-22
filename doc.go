@@ -69,8 +69,13 @@
 //
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }        // 声明阶段
 //	engine, _ := werewolf.NewEngine(cfg,
-//		werewolf.WithResolver(myPhase, myResolver))           // 注册解析器
-//	engine.AddCustomPlayer("p1", myRole, camp, category)      // 阵营与类别
+//		werewolf.WithResolver(myPhase, myResolver),           // 注册行为
+//		werewolf.WithRoleSetup(myRole, mySetup))              // 注册初始状态
+//	engine.AddPlayer("p1", myRole)                            // 入座，与内置角色同一个入口
+//
+// 阵营与角色类别写在角色自己的 setup 里（werewolf.CampVars），不是入座时
+// 的参数：引擎不认识你的角色，也就没有办法替它推导；写在角色身上，
+// 每一处入座都不会填错。
 //
 // 状态一律走 Var，一共三种作用域：跟着玩家走一整局的用 PlayerVar
 // （白痴翻没翻牌、女巫的药），本回合有效且不属于任何人的用 RoundVar

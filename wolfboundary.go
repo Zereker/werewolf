@@ -77,13 +77,13 @@ var builtinTeammates = TeammateFunc(wolfTeammates)
 // 含已出局的狼队友——夜里睁眼时死掉的队友也还认得。
 func wolfTeammates(playerID string, view GameView) []string {
 	self, ok := view.Player(playerID)
-	if !ok || self.Camp != CampEvil {
+	if !ok || campOf(self) != CampEvil {
 		return nil
 	}
 
 	out := make([]string, 0, 4)
 	for _, p := range view.AllPlayers() {
-		if p.Camp == CampEvil && p.ID != playerID {
+		if campOf(p) == CampEvil && p.ID != playerID {
 			out = append(out, p.ID)
 		}
 	}
@@ -108,13 +108,13 @@ func wolfSpeech(senderID string, view GameView) []string {
 
 	switch view.Phase() {
 	case PhaseNightWolf:
-		if sender.Camp != CampEvil {
+		if campOf(sender) != CampEvil {
 			return nil
 		}
 		// 含自己，方便调用方直接拿去广播
 		out := make([]string, 0, 4)
 		for _, p := range view.AlivePlayers() {
-			if p.Camp == CampEvil {
+			if campOf(p) == CampEvil {
 				out = append(out, p.ID)
 			}
 		}

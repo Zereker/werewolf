@@ -58,30 +58,26 @@ var phaseTypeNames = map[PhaseType]string{
 	PhaseEnd:          "END",
 }
 
-// Camp 阵营
-type Camp int32
+// Camp 一个「边」的标签，胜负判定的结果就是它。
+//
+// 内核**不预设任何取值**：好人与狼人是狼人杀的两边（见 wolfcamp.go），
+// 阿瓦隆是正义与邪恶，血染钟楼还有单独结算的旅行者。内核只知道
+// 「有若干个边，其中一个可能会赢」，具体是哪些边由规则定义。
+//
+// 底层是字符串而不是编号：这个值要出现在日志、指标、快照与
+// VictoryChecker 的返回值里，名字本身就是最稳定的表示，也省掉了
+// 一张「编号到名字」的对照表。
+type Camp string
 
-const (
-	CampUnspecified Camp = 0
-	CampGood        Camp = 1
-	CampEvil        Camp = 2
-)
+// CampUnspecified 还没分出胜负，或者这名玩家不属于任何一边。
+const CampUnspecified Camp = ""
 
 // String 实现 fmt.Stringer。
-//
-// 输出沿用枚举的全名，日志与错误信息里一眼能看出是哪一类。
 func (v Camp) String() string {
-	if s, ok := campNames[v]; ok {
-		return s
+	if v == CampUnspecified {
+		return "UNSPECIFIED"
 	}
-	return fmt.Sprintf("Camp(%d)", int32(v))
-}
-
-// campNames 全部取值到名字的映射，遍历它即可枚举所有取值。
-var campNames = map[Camp]string{
-	CampUnspecified: "UNSPECIFIED",
-	CampGood:        "GOOD",
-	CampEvil:        "EVIL",
+	return string(v)
 }
 
 // RoleType 角色类型

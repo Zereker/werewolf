@@ -96,13 +96,12 @@ var (
 	ErrMessageNotAllowed = &GameError{Code: CodeMessageNotAllowed, Message: "message not allowed in this phase"}
 
 	// 玩家与开局校验
-	ErrPlayerExists       = &GameError{Code: CodePlayerExists, Message: "player already exists"}
-	ErrInvalidPlayerID    = &GameError{Code: CodeInvalidPlayerId, Message: "player id must not be empty"}
-	ErrInvalidRole        = &GameError{Code: CodeInvalidRole, Message: "role cannot be assigned to a player"}
-	ErrGameAlreadyStarted = &GameError{Code: CodeGameAlreadyStarted, Message: "game already started"}
-	ErrInvalidBoard       = &GameError{Code: CodeInvalidBoard, Message: "invalid board"}
-	ErrNoWerewolf         = &GameError{Code: CodeInvalidBoard, Message: "board must contain at least one werewolf", sentinel: ErrInvalidBoard}
-	ErrNoGoodPlayer       = &GameError{Code: CodeInvalidBoard, Message: "board must contain at least one good player", sentinel: ErrInvalidBoard}
+	ErrPlayerExists        = &GameError{Code: CodePlayerExists, Message: "player already exists"}
+	ErrInvalidPlayerID     = &GameError{Code: CodeInvalidPlayerId, Message: "player id must not be empty"}
+	ErrInvalidRole         = &GameError{Code: CodeInvalidRole, Message: "role cannot be assigned to a player"}
+	ErrGameAlreadyStarted  = &GameError{Code: CodeGameAlreadyStarted, Message: "game already started"}
+	ErrInvalidBoard        = &GameError{Code: CodeInvalidBoard, Message: "invalid board"}
+	ErrBoardAlreadyDecided = &GameError{Code: CodeInvalidBoard, Message: "board is already decided before the game starts", sentinel: ErrInvalidBoard}
 
 	// 快照与效果流
 	ErrInvalidSnapshot  = &GameError{Code: CodeInvalidSnapshot, Message: "invalid snapshot"}
@@ -146,7 +145,7 @@ func WrapError(code ErrorCode, format string, args ...interface{}) *GameError {
 //
 // 一个码下若有多个更具体的哨兵（INVALID_BOARD 下的缺狼与缺好人），
 // 映射指向那一类的通用哨兵，具体的那几个再把它挂成自己的 sentinel，
-// 于是 errors.Is(ErrNoWerewolf, ErrInvalidBoard) 也成立。
+// 于是 errors.Is(ErrBoardAlreadyDecided, ErrInvalidBoard) 也成立。
 var sentinelByCode = map[ErrorCode]error{
 	CodePlayerNotFound:     ErrPlayerNotFound,
 	CodePlayerDead:         ErrPlayerDead,

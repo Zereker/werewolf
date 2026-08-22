@@ -420,8 +420,10 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 			Phase:   PhaseNightWolf,
 			Round:   1,
 			Players: []PlayerSnapshot{
-				{ID: "w1", Role: RoleWerewolf, Camp: CampEvil, Alive: true},
-				{ID: "v1", Role: RoleVillager, Camp: CampGood, Alive: true},
+				{ID: "w1", Role: RoleWerewolf, Alive: true,
+					Vars: map[string]string{VarCamp: string(CampEvil)}},
+				{ID: "v1", Role: RoleVillager, Alive: true,
+					Vars: map[string]string{VarCamp: string(CampGood)}},
 			},
 		}
 	}
@@ -486,8 +488,8 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 	for id, want := range g.e.state.players {
 		got := byID[id]
 		switch {
-		case got.Role != want.Role, got.Camp != want.Camp, got.Category != want.Category:
-			t.Errorf("%s 的身份没带全: %+v", id, got)
+		case got.Role != want.Role:
+			t.Errorf("%s 的角色没带上: %+v", id, got)
 		case got.Alive != want.Alive:
 			t.Errorf("%s 的存活状态没带上", id)
 		case !sameVars(got.Vars, want.Vars):

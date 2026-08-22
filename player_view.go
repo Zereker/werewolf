@@ -58,11 +58,17 @@ type PlayerView struct {
 // 被守的人一旦知道，就等于知道自己刀不死，也大幅缩小了守卫的范围。
 // 一个字段的可见性差别不该靠调用方记得清空。
 type SelfInfo struct {
-	ID       string       `json:"id"`
-	Role     RoleType     `json:"role"`
-	Camp     Camp         `json:"camp"`
-	Category RoleCategory `json:"category"`
-	Alive    bool         `json:"alive"`
+	ID    string   `json:"id"`
+	Role  RoleType `json:"role"`
+	Alive bool     `json:"alive"`
+
+	// Camp / Category 这名玩家站哪一边、是什么类别。
+	//
+	// 内核不认识它们，这两个字段是狼人杀规则包从 Vars 里读出来填的
+	// （键见 VarCamp / VarCategory）——玩家知道自己是好人还是狼人，
+	// 是狼人杀的规矩，不是所有规则都这样。
+	Camp     Camp         `json:"camp,omitempty"`
+	Category RoleCategory `json:"category,omitempty"`
 }
 
 // PublicPlayerInfo 一名玩家对外公开的信息
@@ -100,8 +106,8 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		Self: SelfInfo{
 			ID:       self.ID,
 			Role:     self.Role,
-			Camp:     self.Camp,
-			Category: self.Category,
+			Camp:     campOf(self),
+			Category: categoryOf(self),
 			Alive:    self.Alive,
 		},
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),

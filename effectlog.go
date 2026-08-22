@@ -3,22 +3,21 @@ package werewolf
 import ()
 
 // 效果流中用于重建局面的几个键
+//
+// 这里此前还有 camp 与 category：它们曾是内核状态的一部分，于是入座那一条
+// 效果要单独记。现在它们只是玩家身上的两项状态，跟着 vars 一起走。
 const (
-	roleKey     = "role"
-	campKey     = "camp"
-	categoryKey = "category"
-	phaseKey    = "phase"
-	varsKey     = "vars"
+	roleKey  = "role"
+	phaseKey = "phase"
+	varsKey  = "vars"
 )
 
 // newPlayerAddedEffect 记录一名玩家入座，连同该角色的初始状态。
 //
 // 记下 vars 而不是在回放时重新问一遍 RoleSetup，理由见 Engine.seatPlayer。
-func newPlayerAddedEffect(id string, role RoleType, camp Camp, category RoleCategory, vars map[string]string) *Effect {
+func newPlayerAddedEffect(id string, role RoleType, vars map[string]string) *Effect {
 	effect := NewEffect(EventPlayerAdded, "", id).
-		WithData(roleKey, role).
-		WithData(campKey, camp).
-		WithData(categoryKey, category)
+		WithData(roleKey, role)
 	if len(vars) > 0 {
 		effect = effect.WithData(varsKey, copyVars(vars))
 	}
@@ -102,12 +101,10 @@ func (e *Engine) replayEffect(effect *Effect) error {
 	switch effect.Type {
 	case EventPlayerAdded:
 		role, _ := effect.Data[roleKey].(RoleType)
-		camp, _ := effect.Data[campKey].(Camp)
-		category, _ := effect.Data[categoryKey].(RoleCategory)
 		// 入座要连初始状态一起发。少了这一步，回放出来的女巫手里
-		// 没有药，而分叉要到她第一次用药时才暴露。
+		// 没有药、狼人不属于任何阵营，而分叉要到用药或判胜负时才暴露。
 		vars, _ := effect.Data[varsKey].(map[string]string)
-		if err := e.seatPlayer(effect.TargetID, role, camp, category, vars); err != nil {
+		if err := e.seatPlayer(effect.TargetID, role, vars); err != nil {
 			return err
 		}
 
