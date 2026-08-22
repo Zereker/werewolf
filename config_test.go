@@ -3,8 +3,6 @@ package werewolf
 import (
 	"testing"
 	"time"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func TestDefaultGameConfig(t *testing.T) {
@@ -34,10 +32,10 @@ func TestDefaultGameConfig(t *testing.T) {
 func TestStandardDayPhase(t *testing.T) {
 	phase := StandardDayPhase()
 
-	if phase.Type != pb.PhaseType_PHASE_TYPE_DAY {
+	if phase.Type != PhaseDay {
 		t.Errorf("expected Type=DAY, got %v", phase.Type)
 	}
-	if phase.NextPhase != pb.PhaseType_PHASE_TYPE_VOTE {
+	if phase.NextPhase != PhaseVote {
 		t.Errorf("expected NextPhase=VOTE, got %v", phase.NextPhase)
 	}
 	if phase.Timeout != 60*time.Second {
@@ -49,10 +47,10 @@ func TestStandardDayPhase(t *testing.T) {
 		t.Fatalf("expected 1 step, got %d", len(phase.Steps))
 	}
 	godStep := phase.Steps[0]
-	if godStep.Role != pb.RoleType_ROLE_TYPE_GOD {
+	if godStep.Role != RoleGod {
 		t.Errorf("expected Role=GOD, got %v", godStep.Role)
 	}
-	if godStep.Skill != pb.SkillType_SKILL_TYPE_ANNOUNCE {
+	if godStep.Skill != SkillAnnounce {
 		t.Errorf("expected Skill=ANNOUNCE, got %v", godStep.Skill)
 	}
 }
@@ -60,7 +58,7 @@ func TestStandardDayPhase(t *testing.T) {
 func TestStandardVotePhase(t *testing.T) {
 	phase := StandardVotePhase()
 
-	if phase.Type != pb.PhaseType_PHASE_TYPE_VOTE {
+	if phase.Type != PhaseVote {
 		t.Errorf("expected Type=VOTE, got %v", phase.Type)
 	}
 	if len(phase.Steps) != 2 {
@@ -72,19 +70,19 @@ func TestStandardVotePhase(t *testing.T) {
 
 	// Verify god announce step
 	godStep := phase.Steps[0]
-	if godStep.Role != pb.RoleType_ROLE_TYPE_GOD {
+	if godStep.Role != RoleGod {
 		t.Errorf("expected Role=GOD, got %v", godStep.Role)
 	}
-	if godStep.Skill != pb.SkillType_SKILL_TYPE_ANNOUNCE {
+	if godStep.Skill != SkillAnnounce {
 		t.Errorf("expected Skill=ANNOUNCE, got %v", godStep.Skill)
 	}
 
 	// Verify vote step
 	voteStep := phase.Steps[1]
-	if voteStep.Role != pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+	if voteStep.Role != RoleUnspecified {
 		t.Errorf("expected Role=UNSPECIFIED, got %v", voteStep.Role)
 	}
-	if voteStep.Skill != pb.SkillType_SKILL_TYPE_VOTE {
+	if voteStep.Skill != SkillVote {
 		t.Errorf("expected Skill=VOTE, got %v", voteStep.Skill)
 	}
 }
@@ -92,22 +90,22 @@ func TestStandardVotePhase(t *testing.T) {
 func TestSkillUse_Fields(t *testing.T) {
 	use := &SkillUse{
 		PlayerID: "p1",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "p2",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT,
+		Phase:    PhaseNight,
 		Round:    1,
 	}
 
 	if use.PlayerID != "p1" {
 		t.Errorf("expected PlayerID=p1, got %s", use.PlayerID)
 	}
-	if use.Skill != pb.SkillType_SKILL_TYPE_KILL {
+	if use.Skill != SkillKill {
 		t.Errorf("expected Skill=KILL, got %v", use.Skill)
 	}
 	if use.TargetID != "p2" {
 		t.Errorf("expected TargetID=p2, got %s", use.TargetID)
 	}
-	if use.Phase != pb.PhaseType_PHASE_TYPE_NIGHT {
+	if use.Phase != PhaseNight {
 		t.Errorf("expected Phase=NIGHT, got %v", use.Phase)
 	}
 	if use.Round != 1 {
@@ -133,23 +131,23 @@ func TestGameConfig_Validate(t *testing.T) {
 		{"默认配置合法", DefaultGameConfig(), false},
 		{"nil 配置", nil, true},
 		{"没有任何阶段", mutate(func(c *GameConfig) {
-			c.Phases = map[pb.PhaseType]*PhaseConfig{}
+			c.Phases = map[PhaseType]*PhaseConfig{}
 		}), true},
 		{"起始阶段不存在", mutate(func(c *GameConfig) {
-			c.StartPhase = pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER
-			delete(c.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+			c.StartPhase = PhaseNightHunter
+			delete(c.Phases, PhaseNightHunter)
 		}), true},
 		{"NextPhase 悬空", mutate(func(c *GameConfig) {
-			delete(c.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+			delete(c.Phases, PhaseNightWitch)
 		}), true},
 		{"map 的 key 与 Type 不一致", mutate(func(c *GameConfig) {
-			c.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_SEER] = StandardDayPhase()
+			c.Phases[PhaseNightSeer] = StandardDayPhase()
 		}), true},
 		{"阶段配置为 nil", mutate(func(c *GameConfig) {
-			c.Phases[pb.PhaseType_PHASE_TYPE_DAY] = nil
+			c.Phases[PhaseDay] = nil
 		}), true},
 		{"同一阶段重复声明同一技能", mutate(func(c *GameConfig) {
-			p := c.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_SEER]
+			p := c.Phases[PhaseNightSeer]
 			p.Steps = append(p.Steps, p.Steps[len(p.Steps)-1])
 		}), true},
 	}
@@ -169,7 +167,7 @@ func TestGameConfig_Validate(t *testing.T) {
 
 func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 	cfg := DefaultGameConfig()
-	delete(cfg.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_WITCH) // NIGHT_WOLF 的 NextPhase 悬空
+	delete(cfg.Phases, PhaseNightWitch) // NIGHT_WOLF 的 NextPhase 悬空
 
 	if _, err := NewEngine(cfg); err == nil {
 		t.Fatal("残缺配置应当在构造时被拒绝")
@@ -180,10 +178,10 @@ func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 // 必须在开局前拦下。
 func TestStart_RejectsMissingResolver(t *testing.T) {
 	engine := MustNewEngine(nil)
-	delete(engine.phase.resolvers, pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	delete(engine.phase.resolvers, PhaseNightWolf)
 
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 
 	if err := engine.Start(); err == nil {
 		t.Error("缺少解析器时 Start 应当报错")
@@ -193,16 +191,16 @@ func TestStart_RejectsMissingResolver(t *testing.T) {
 // TestStartPhase_Configurable 起始阶段可配置，不再硬编码为 NIGHT_GUARD。
 func TestStartPhase_Configurable(t *testing.T) {
 	cfg := DefaultGameConfig()
-	cfg.StartPhase = pb.PhaseType_PHASE_TYPE_DAY
+	cfg.StartPhase = PhaseDay
 
 	engine := MustNewEngine(cfg)
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 	if err := engine.Start(); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_DAY {
+	if got := engine.Phase(); got != PhaseDay {
 		t.Errorf("期望从 DAY 开局，实际 %v", got)
 	}
 }
@@ -214,7 +212,7 @@ func TestStartPhase_Configurable(t *testing.T) {
 // 静默收场，连 GAME_ENDED 都不会发。
 func TestValidate_RejectsMissingNextPhase(t *testing.T) {
 	cfg := DefaultGameConfig()
-	cfg.Phases[pb.PhaseType(77)] = &PhaseConfig{Type: pb.PhaseType(77)}
+	cfg.Phases[PhaseType(77)] = &PhaseConfig{Type: PhaseType(77)}
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("漏填 NextPhase 应当被拒")
@@ -241,10 +239,10 @@ func TestValidate_RejectsUnknownVictoryMode(t *testing.T) {
 // 正是这段校验声称要拦下的问题的另一半。
 func TestValidate_RejectsAllRolesOverlap(t *testing.T) {
 	cfg := DefaultGameConfig()
-	vote := cfg.Phases[pb.PhaseType_PHASE_TYPE_VOTE]
+	vote := cfg.Phases[PhaseVote]
 	vote.Steps = append(vote.Steps, PhaseStep{
-		Role:  pb.RoleType_ROLE_TYPE_WEREWOLF,
-		Skill: pb.SkillType_SKILL_TYPE_VOTE,
+		Role:  RoleWerewolf,
+		Skill: SkillVote,
 	})
 
 	if err := cfg.Validate(); err == nil {
@@ -256,16 +254,16 @@ func TestValidate_RejectsAllRolesOverlap(t *testing.T) {
 func TestGameConfig_PhaseTimeout(t *testing.T) {
 	cfg := DefaultGameConfig()
 
-	if got := cfg.PhaseTimeout(pb.PhaseType_PHASE_TYPE_DAY); got != DayPhaseTimeout {
+	if got := cfg.PhaseTimeout(PhaseDay); got != DayPhaseTimeout {
 		t.Errorf("DAY: 期望 %v，实际 %v", DayPhaseTimeout, got)
 	}
 	// 未配置的阶段退回 DefaultTimeout
-	if got := cfg.PhaseTimeout(pb.PhaseType(999)); got != cfg.DefaultTimeout {
+	if got := cfg.PhaseTimeout(PhaseType(999)); got != cfg.DefaultTimeout {
 		t.Errorf("未知阶段: 期望 %v，实际 %v", cfg.DefaultTimeout, got)
 	}
 	// DefaultTimeout 也没配时退回常量
 	bare := &GameConfig{Phases: cfg.Phases}
-	if got := bare.PhaseTimeout(pb.PhaseType(999)); got != DefaultPhaseTimeout {
+	if got := bare.PhaseTimeout(PhaseType(999)); got != DefaultPhaseTimeout {
 		t.Errorf("兜底: 期望 %v，实际 %v", DefaultPhaseTimeout, got)
 	}
 }
@@ -273,10 +271,10 @@ func TestGameConfig_PhaseTimeout(t *testing.T) {
 // TestValidate_RejectsGroupSpanningRoles 互斥备选组是「同一个人几选一」，跨角色没有意义。
 func TestValidate_RejectsGroupSpanningRoles(t *testing.T) {
 	cfg := DefaultGameConfig()
-	day := cfg.Phases[pb.PhaseType_PHASE_TYPE_DAY]
+	day := cfg.Phases[PhaseDay]
 	day.Steps = append(day.Steps,
-		PhaseStep{Role: pb.RoleType_ROLE_TYPE_SEER, Skill: pb.SkillType_SKILL_TYPE_CHECK, Group: "x"},
-		PhaseStep{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_POISON, Group: "x"},
+		PhaseStep{Role: RoleSeer, Skill: SkillCheck, Group: "x"},
+		PhaseStep{Role: RoleWitch, Skill: SkillPoison, Group: "x"},
 	)
 
 	if err := cfg.Validate(); err == nil {

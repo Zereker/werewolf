@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // TestFuzz_Invariants 随机对局，检查一批全局不变量。
@@ -41,13 +39,13 @@ func TestFuzz_Invariants(t *testing.T) {
 
 func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 	e := MustNewEngine(nil)
-	roles := []pb.RoleType{
-		pb.RoleType_ROLE_TYPE_WEREWOLF, pb.RoleType_ROLE_TYPE_WEREWOLF,
-		pb.RoleType_ROLE_TYPE_WEREWOLF, pb.RoleType_ROLE_TYPE_SEER,
-		pb.RoleType_ROLE_TYPE_WITCH, pb.RoleType_ROLE_TYPE_GUARD,
-		pb.RoleType_ROLE_TYPE_HUNTER, pb.RoleType_ROLE_TYPE_VILLAGER,
-		pb.RoleType_ROLE_TYPE_VILLAGER, pb.RoleType_ROLE_TYPE_VILLAGER,
-		pb.RoleType_ROLE_TYPE_VILLAGER, pb.RoleType_ROLE_TYPE_VILLAGER,
+	roles := []RoleType{
+		RoleWerewolf, RoleWerewolf,
+		RoleWerewolf, RoleSeer,
+		RoleWitch, RoleGuard,
+		RoleHunter, RoleVillager,
+		RoleVillager, RoleVillager,
+		RoleVillager, RoleVillager,
 	}
 	rng.Shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
 
@@ -90,7 +88,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 		}
 
 		// 不变量 G：同一个局面反复查询，名单顺序必须稳定
-		want := map[pb.RoleType]string{}
+		want := map[RoleType]string{}
 		for role, ri := range e.PhaseInfo().RoleInfos {
 			want[role] = fmt.Sprint(ri.PlayerIDs)
 		}
@@ -144,24 +142,24 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 			v := e.PlayerView(id)
 			self, _ := e.PlayerInfo(id)
 			for _, p := range v.Players {
-				if p.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED || p.ID == id {
+				if p.Role == RoleUnspecified || p.ID == id {
 					continue
 				}
 				// 只允许看到狼队友的身份
 				other, _ := e.PlayerInfo(p.ID)
-				if self.Camp != pb.Camp_CAMP_EVIL || other.Camp != pb.Camp_CAMP_EVIL {
+				if self.Camp != CampEvil || other.Camp != CampEvil {
 					t.Fatalf("seed=%d step=%d %s(%v) 看到了 %s(%v) 的身份",
 						seed, step, id, self.Camp, p.ID, other.Camp)
 				}
 			}
 			// 刀口只有活着且解药在手的女巫能看到
 			if v.KillTarget != "" {
-				if !self.Alive || self.Role != pb.RoleType_ROLE_TYPE_WITCH || !self.HasAntidote {
+				if !self.Alive || self.Role != RoleWitch || !self.HasAntidote {
 					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.KillTarget)
 				}
 			}
 			// 好人不该有狼队友
-			if self.Camp != pb.Camp_CAMP_EVIL && len(v.Teammates) > 0 {
+			if self.Camp != CampEvil && len(v.Teammates) > 0 {
 				t.Fatalf("seed=%d step=%d 好人 %s 拿到了队友 %v", seed, step, id, v.Teammates)
 			}
 		}
@@ -181,8 +179,8 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 				t.Fatalf("seed=%d step=%d 被否决的效果发给了 %v", seed, step, aud)
 			}
 			switch ef.Type {
-			case pb.EventType_EVENT_TYPE_CHECK, pb.EventType_EVENT_TYPE_PROTECT,
-				pb.EventType_EVENT_TYPE_SAVE:
+			case EventCheck, EventProtect,
+				EventSave:
 				if len(aud) > 1 {
 					t.Fatalf("seed=%d step=%d 私密效果 %v 发给了 %v", seed, step, ef.Type, aud)
 				}

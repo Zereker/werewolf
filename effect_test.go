@@ -2,14 +2,12 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func TestNewEffect(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "victim")
+	effect := NewEffect(EventKill, "wolf", "victim")
 
-	if effect.Type != pb.EventType_EVENT_TYPE_KILL {
+	if effect.Type != EventKill {
 		t.Errorf("expected Type=EVENT_TYPE_KILL, got %v", effect.Type)
 	}
 	if effect.SourceID != "wolf" {
@@ -30,7 +28,7 @@ func TestNewEffect(t *testing.T) {
 }
 
 func TestEffect_Cancel(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "victim")
+	effect := NewEffect(EventKill, "wolf", "victim")
 
 	effect.Cancel("protected by guard")
 
@@ -43,22 +41,22 @@ func TestEffect_Cancel(t *testing.T) {
 }
 
 func TestEffect_WithData(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_CHECK, "seer", "target")
+	effect := NewEffect(EventCheck, "seer", "target")
 
-	result := effect.WithData("camp", pb.Camp_CAMP_GOOD)
+	result := effect.WithData("camp", CampGood)
 
 	// Verify method chaining
 	if result != effect {
 		t.Error("expected WithData to return same effect")
 	}
 
-	if effect.Data["camp"] != pb.Camp_CAMP_GOOD {
+	if effect.Data["camp"] != CampGood {
 		t.Errorf("expected camp=GOOD, got %v", effect.Data["camp"])
 	}
 }
 
 func TestEffect_WithData_Multiple(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "victim")
+	effect := NewEffect(EventKill, "wolf", "victim")
 
 	effect.WithData("key1", "value1").WithData("key2", "value2")
 
@@ -71,96 +69,96 @@ func TestEffect_WithData_Multiple(t *testing.T) {
 }
 
 func TestEffect_ToEvent_Kill(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_KILL, "wolf", "victim")
+	effect := NewEffect(EventKill, "wolf", "victim")
 
 	event := effect.ToEvent()
 
-	if event.Type != pb.EventType_EVENT_TYPE_KILL {
+	if event.Type != EventKill {
 		t.Errorf("expected EVENT_TYPE_KILL, got %v", event.Type)
 	}
-	if event.SourceId != "wolf" {
-		t.Errorf("expected SourceId=wolf, got %s", event.SourceId)
+	if event.SourceID != "wolf" {
+		t.Errorf("expected SourceId=wolf, got %s", event.SourceID)
 	}
-	if event.TargetId != "victim" {
-		t.Errorf("expected TargetId=victim, got %s", event.TargetId)
+	if event.TargetID != "victim" {
+		t.Errorf("expected TargetId=victim, got %s", event.TargetID)
 	}
 }
 
 func TestEffect_ToEvent_Poison(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "witch", "victim")
+	effect := NewEffect(EventPoison, "witch", "victim")
 
 	event := effect.ToEvent()
 
-	if event.Type != pb.EventType_EVENT_TYPE_POISON {
+	if event.Type != EventPoison {
 		t.Errorf("expected EVENT_TYPE_POISON, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Protect(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_PROTECT, "guard", "target")
+	effect := NewEffect(EventProtect, "guard", "target")
 
 	event := effect.ToEvent()
 
-	if event.Type != pb.EventType_EVENT_TYPE_PROTECT {
+	if event.Type != EventProtect {
 		t.Errorf("expected EVENT_TYPE_PROTECT, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Save(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_SAVE, "witch", "victim")
+	effect := NewEffect(EventSave, "witch", "victim")
 
 	event := effect.ToEvent()
 
-	if event.Type != pb.EventType_EVENT_TYPE_SAVE {
+	if event.Type != EventSave {
 		t.Errorf("expected EVENT_TYPE_SAVE, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Check(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_CHECK, "seer", "target")
+	effect := NewEffect(EventCheck, "seer", "target")
 
 	event := effect.ToEvent()
 
-	if event.Type != pb.EventType_EVENT_TYPE_CHECK {
+	if event.Type != EventCheck {
 		t.Errorf("expected EVENT_TYPE_CHECK, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Eliminate(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_ELIMINATE, "", "target")
+	effect := NewEffect(EventEliminate, "", "target")
 
 	event := effect.ToEvent()
 
-	if event.Type != pb.EventType_EVENT_TYPE_ELIMINATE {
+	if event.Type != EventEliminate {
 		t.Errorf("expected EVENT_TYPE_ELIMINATE, got %v", event.Type)
 	}
 }
 
 func TestEffect_ToEvent_Unspecified(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_UNSPECIFIED, "", "")
+	effect := NewEffect(EventUnspecified, "", "")
 
 	event := effect.ToEvent()
 
-	if event.Type != pb.EventType_EVENT_TYPE_UNSPECIFIED {
+	if event.Type != EventUnspecified {
 		t.Errorf("expected EVENT_TYPE_UNSPECIFIED, got %v", event.Type)
 	}
 }
 
 func TestEventType_AllTypes(t *testing.T) {
-	types := []pb.EventType{
-		pb.EventType_EVENT_TYPE_UNSPECIFIED,
-		pb.EventType_EVENT_TYPE_GAME_STARTED,
-		pb.EventType_EVENT_TYPE_GAME_ENDED,
-		pb.EventType_EVENT_TYPE_KILL,
-		pb.EventType_EVENT_TYPE_PROTECT,
-		pb.EventType_EVENT_TYPE_SAVE,
-		pb.EventType_EVENT_TYPE_POISON,
-		pb.EventType_EVENT_TYPE_CHECK,
-		pb.EventType_EVENT_TYPE_ELIMINATE,
+	types := []EventType{
+		EventUnspecified,
+		EventGameStarted,
+		EventGameEnded,
+		EventKill,
+		EventProtect,
+		EventSave,
+		EventPoison,
+		EventCheck,
+		EventEliminate,
 	}
 
 	// Verify all types are distinct
-	seen := make(map[pb.EventType]bool)
+	seen := make(map[EventType]bool)
 	for _, et := range types {
 		if seen[et] {
 			t.Errorf("duplicate EventType: %d", et)
@@ -170,8 +168,8 @@ func TestEventType_AllTypes(t *testing.T) {
 }
 
 func TestEffect_ToEvent_WithData(t *testing.T) {
-	effect := NewEffect(pb.EventType_EVENT_TYPE_CHECK, "seer", "target").
-		WithData("camp", pb.Camp_CAMP_GOOD).
+	effect := NewEffect(EventCheck, "seer", "target").
+		WithData("camp", CampGood).
 		WithData("isGood", true).
 		WithData("votes", 5)
 
@@ -200,7 +198,7 @@ func TestEffect_ToEvent_WithData(t *testing.T) {
 
 func TestEffect_ToEvent_WithComplexData(t *testing.T) {
 	voters := []string{"p1", "p2", "p3"}
-	effect := NewEffect(pb.EventType_EVENT_TYPE_ELIMINATE, "", "target").
+	effect := NewEffect(EventEliminate, "", "target").
 		WithData("voters", voters).
 		WithData("result", "tied")
 

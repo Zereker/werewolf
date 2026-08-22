@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // 本文件全部用例都走 rules_test.go 的 newRuleGame 建局辅助：
@@ -26,16 +24,16 @@ func TestFullGame_WolvesWin(t *testing.T) {
 		wolf("wolf1"), wolf("wolf2"), villagers("v1", "v2", "v3"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolves kill v1
-	g.mustUse("wolf1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.mustUse("wolf2", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf1", SkillKill, "v1")
+	g.mustUse("wolf2", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	// NIGHT_WITCH -> NIGHT_SEER -> NIGHT_RESOLVE -> 结算（v1 dies）
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 	g.endAny() // kill applied
 
 	// v1 出局后 good(2) <= evil(2)，狼人获胜
@@ -43,7 +41,7 @@ func TestFullGame_WolvesWin(t *testing.T) {
 		t.Error("expected game to be over (wolves win)")
 	}
 
-	winner := pb.Camp_CAMP_EVIL
+	winner := CampEvil
 	_, actualWinner := g.e.state.checkVictory(g.e.config.VictoryMode)
 	if actualWinner != winner {
 		t.Errorf("expected EVIL wins, got %v", actualWinner)
@@ -57,17 +55,17 @@ func TestFullGame_GoodWins(t *testing.T) {
 	)...)
 
 	// Night 1: NIGHT_GUARD -> NIGHT_WOLF
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills v1
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("wolf", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// Day 1: No actions
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 
 	// Vote 1: Everyone votes wolf
 	g.vote("wolf", "v2", "v3")
@@ -79,7 +77,7 @@ func TestFullGame_GoodWins(t *testing.T) {
 	}
 
 	_, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
-	if winner != pb.Camp_CAMP_GOOD {
+	if winner != CampGood {
 		t.Errorf("expected GOOD wins, got %v", winner)
 	}
 }
@@ -91,17 +89,17 @@ func TestScenario_WitchSavesVictim(t *testing.T) {
 		wolf("wolf"), witch("witch"), villagers("victim", "v2"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills victim
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf", SkillKill, "victim")
+	g.end(PhaseNightWitch)
 
 	// NIGHT_WITCH: Witch saves victim
-	g.mustUse("witch", pb.SkillType_SKILL_TYPE_ANTIDOTE, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("witch", SkillAntidote, "victim")
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// Victim should still be alive
 	g.assertAlive("victim", true, "expected victim to be saved by witch")
@@ -116,15 +114,15 @@ func TestScenario_GuardProtects(t *testing.T) {
 	)...)
 
 	// NIGHT_GUARD: Guard protects victim
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "victim")
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills victim
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("wolf", SkillKill, "victim")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// Victim should still be alive (protected)
 	g.assertAlive("victim", true, "expected victim to be protected by guard")
@@ -137,7 +135,7 @@ func TestScenario_VoteTie(t *testing.T) {
 
 	// Night 1: No kill (skip all night phases)
 	g.walkNight()
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 
 	// Vote: 2 vs 2 tie
 	g.vote("v1", "wolf", "v2")
@@ -186,17 +184,17 @@ func TestConfig_WitchCanSaveSelf_Enabled(t *testing.T) {
 		wolf("wolf"), witch("witch"), villagers("v1", "v2"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills witch
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "witch")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf", SkillKill, "witch")
+	g.end(PhaseNightWitch)
 
 	// NIGHT_WITCH: Witch saves self
-	g.mustUse("witch", pb.SkillType_SKILL_TYPE_ANTIDOTE, "witch")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("witch", SkillAntidote, "witch")
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// Witch should still be alive (self-save allowed)
 	g.assertAlive("witch", true, "expected witch to save self when WitchCanSaveSelf=true")
@@ -210,18 +208,18 @@ func TestConfig_WitchCanSaveSelf_Disabled(t *testing.T) {
 		wolf("wolf"), witch("witch"), villagers("v1", "v2"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills witch
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "witch")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf", SkillKill, "witch")
+	g.end(PhaseNightWitch)
 
 	// NIGHT_WITCH: Witch tries to save self
-	g.mustUse("witch", pb.SkillType_SKILL_TYPE_ANTIDOTE, "witch")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.mustUse("witch", SkillAntidote, "witch")
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 	// 女巫是本局唯一神职，她一死屠神即成立，结算后直接进 END 而非 DAY
-	g.end(pb.PhaseType_PHASE_TYPE_END)
+	g.end(PhaseEnd)
 
 	// Witch should be dead (self-save not allowed)
 	g.assertAlive("witch", false, "expected witch to be dead when WitchCanSaveSelf=false")
@@ -236,15 +234,15 @@ func TestConfig_SameGuardKill_Empty(t *testing.T) {
 	)...)
 
 	// NIGHT_GUARD: Guard protects victim
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "victim")
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills victim
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("wolf", SkillKill, "victim")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// Victim survives (空刀)
 	g.assertAlive("victim", true, "expected victim alive when SameGuardKillIsEmpty=true")
@@ -259,15 +257,15 @@ func TestConfig_SameGuardKill_NotEmpty(t *testing.T) {
 	)...)
 
 	// NIGHT_GUARD: Guard protects victim
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "victim")
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills victim
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("wolf", SkillKill, "victim")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// Victim dies (guard doesn't cancel kill when SameGuardKillIsEmpty=false)
 	g.assertAlive("victim", false, "expected victim dead when SameGuardKillIsEmpty=false")
@@ -293,20 +291,20 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 			wolf("wolf"), witch("witch"), villagers("victim", "v2", "v3"),
 		)...)
 
-		g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+		g.end(PhaseNightWolf)
 
 		// NIGHT_WOLF: 狼刀 victim
-		g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "victim")
-		g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+		g.mustUse("wolf", SkillKill, "victim")
+		g.end(PhaseNightWitch)
 
 		// NIGHT_WITCH: 先救 victim，再毒 wolf
-		g.mustUse("witch", pb.SkillType_SKILL_TYPE_ANTIDOTE, "victim")
-		g.mustUse("witch", pb.SkillType_SKILL_TYPE_POISON, "wolf")
+		g.mustUse("witch", SkillAntidote, "victim")
+		g.mustUse("witch", SkillPoison, "wolf")
 
 		// NIGHT_WITCH -> NIGHT_SEER -> NIGHT_RESOLVE -> DAY（放宽后狼被毒死，
 		// 好人获胜，此处直接进 END，故最后一步不断言目标阶段）
-		g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-		g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+		g.end(PhaseNightSeer)
+		g.end(PhaseNightResolve)
 		g.endAny()
 
 		return g
@@ -352,27 +350,27 @@ func TestScenario_SeerIdentifiesWolf(t *testing.T) {
 		wolf("wolf"), seer("seer"), villagers("v1", "v2", "v3"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolf kills v1
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.mustUse("wolf", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
 
 	// NIGHT_SEER: Seer checks wolf
-	g.mustUse("seer", pb.SkillType_SKILL_TYPE_CHECK, "wolf")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("seer", SkillCheck, "wolf")
+	effects := g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// Check the seer's result
-	checkEffect := findEffect(effects, pb.EventType_EVENT_TYPE_CHECK)
+	checkEffect := findEffect(effects, EventCheck)
 	if checkEffect == nil {
 		t.Fatal("expected check effect")
 	}
 	if checkEffect.Data["isGood"] != false {
 		t.Error("expected seer to identify wolf as evil")
 	}
-	if checkEffect.Data["camp"] != pb.Camp_CAMP_EVIL {
+	if checkEffect.Data["camp"] != CampEvil {
 		t.Errorf("expected camp=EVIL, got %v", checkEffect.Data["camp"])
 	}
 }
@@ -386,12 +384,12 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	)...)
 
 	// 阶段1：守卫阶段
-	if g.e.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if g.e.Phase() != PhaseNightGuard {
 		t.Errorf("expected NIGHT_GUARD, got %v", g.e.Phase())
 	}
 
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "seer")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "seer")
+	g.end(PhaseNightWolf)
 
 	// 阶段2：狼人阶段——狼人可以查询队友
 	teammates := g.e.WolfTeammates("wolf1")
@@ -400,9 +398,9 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	}
 
 	// 狼人投票击杀
-	g.mustUse("wolf1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.mustUse("wolf2", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf1", SkillKill, "v1")
+	g.mustUse("wolf2", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	// 阶段3：女巫阶段——女巫可以查询被杀者
 	if killTarget := g.e.NightKillTarget(); killTarget != "v1" {
@@ -410,15 +408,15 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	}
 
 	// 女巫使用解药救人
-	g.mustUse("witch", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.mustUse("witch", SkillAntidote, "v1")
+	g.end(PhaseNightSeer)
 
 	// 阶段4：预言家阶段
-	g.mustUse("seer", pb.SkillType_SKILL_TYPE_CHECK, "wolf1")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.mustUse("seer", SkillCheck, "wolf1")
+	effects := g.end(PhaseNightResolve)
 
 	// 验证预言家查验结果
-	checkEffect := findEffect(effects, pb.EventType_EVENT_TYPE_CHECK)
+	checkEffect := findEffect(effects, EventCheck)
 	if checkEffect == nil {
 		t.Fatal("expected check effect")
 	}
@@ -427,7 +425,7 @@ func TestSubStepMode_FullNightCycle(t *testing.T) {
 	}
 
 	// 阶段5：夜晚结算 -> 阶段6：白天
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseDay)
 
 	// 验证状态：v1 被救活
 	g.assertAlive("v1", true, "expected v1 to be saved by witch")
@@ -445,12 +443,12 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	)...)
 
 	// 守卫阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// 狼人阶段：平票（wolf1 投 v1, wolf2 投 v2）
-	g.mustUse("wolf1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.mustUse("wolf2", pb.SkillType_SKILL_TYPE_KILL, "v2")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf1", SkillKill, "v1")
+	g.mustUse("wolf2", SkillKill, "v2")
+	g.end(PhaseNightWitch)
 
 	// 女巫阶段：平票导致无击杀，NightKillTarget 应为空
 	if killTarget := g.e.NightKillTarget(); killTarget != "" {
@@ -458,9 +456,9 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 	}
 
 	// 完成剩余阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// v1 和 v2 都应该存活（没有达成共识）
 	if !g.alive("v1") || !g.alive("v2") {
@@ -478,12 +476,12 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 	)...)
 
 	// 守卫保护 victim
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "victim")
+	g.end(PhaseNightWolf)
 
 	// 狼人杀 victim（应该被守卫挡住）
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "victim")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf", SkillKill, "victim")
+	g.end(PhaseNightWitch)
 
 	// 女巫阶段：刀口照常记录（女巫不知道守卫守了谁），
 	// 守护是否抵消由 NIGHT_RESOLVE 判定
@@ -492,9 +490,9 @@ func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
 	}
 
 	// 完成剩余阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	// victim 存活
 	g.assertAlive("victim", true, "expected victim to be protected by guard")
@@ -529,22 +527,22 @@ func TestScenario_AllRolesActive(t *testing.T) {
 	)...)
 
 	// NIGHT_GUARD: Guard protects seer
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "seer")
-	effects1 := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "seer")
+	effects1 := g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: Wolves kill witch
-	g.mustUse("wolf1", pb.SkillType_SKILL_TYPE_KILL, "witch")
-	g.mustUse("wolf2", pb.SkillType_SKILL_TYPE_KILL, "witch")
-	effects2 := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf1", SkillKill, "witch")
+	g.mustUse("wolf2", SkillKill, "witch")
+	effects2 := g.end(PhaseNightWitch)
 
 	// NIGHT_WITCH: Witch poisons wolf1
-	g.mustUse("witch", pb.SkillType_SKILL_TYPE_POISON, "wolf1")
-	effects3 := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.mustUse("witch", SkillPoison, "wolf1")
+	effects3 := g.end(PhaseNightSeer)
 
 	// NIGHT_SEER: Seer checks wolf2
-	g.mustUse("seer", pb.SkillType_SKILL_TYPE_CHECK, "wolf2")
-	effects4 := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	effects5 := g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("seer", SkillCheck, "wolf2")
+	effects4 := g.end(PhaseNightResolve)
+	effects5 := g.end(PhaseDay)
 
 	// Collect all effects
 	allEffects := append(append(append(append(effects1, effects2...), effects3...), effects4...), effects5...)
@@ -557,13 +555,13 @@ func TestScenario_AllRolesActive(t *testing.T) {
 
 	for _, e := range allEffects {
 		switch e.Type {
-		case pb.EventType_EVENT_TYPE_PROTECT:
+		case EventProtect:
 			hasProtect = true
-		case pb.EventType_EVENT_TYPE_KILL:
+		case EventKill:
 			hasKill = true
-		case pb.EventType_EVENT_TYPE_POISON:
+		case EventPoison:
 			hasPoison = true
-		case pb.EventType_EVENT_TYPE_CHECK:
+		case EventCheck:
 			hasCheck = true
 			if e.Data["isGood"] != false {
 				t.Error("expected seer to see wolf2 as evil")

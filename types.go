@@ -1,0 +1,162 @@
+// types.go 游戏词汇表：阶段、阵营、角色、技能。
+//
+// 这几个枚举此前由 protobuf 生成。但这个库从来没有真的序列化过 protobuf——
+// 没有 Marshal、没有 gRPC——protobuf 在这里的全部作用就是声明枚举，
+// 代价却是一个外部依赖、一份构建期的 protoc、以及每个使用者都得
+// 多 import 一个包才能写出 RoleWerewolf 这样的名字。
+//
+// 取值刻意与原来的编号一致：快照把枚举按数值序列化，编号是写进存储的契约。
+
+package werewolf
+
+import "fmt"
+
+// PhaseType 游戏阶段
+type PhaseType int32
+
+const (
+	PhaseUnspecified  PhaseType = 0
+	PhaseStart        PhaseType = 10
+	PhaseNight        PhaseType = 20 // 夜晚（整体，用于批量模式）
+	PhaseNightGuard   PhaseType = 21 // 守卫阶段
+	PhaseNightWolf    PhaseType = 22 // 狼人阶段
+	PhaseNightWitch   PhaseType = 23 // 女巫阶段
+	PhaseNightSeer    PhaseType = 24 // 预言家阶段
+	PhaseNightResolve PhaseType = 25 // 夜晚结算阶段（处理击杀、猎人触发等）
+	PhaseNightHunter  PhaseType = 26 // 猎人阶段（被动触发）
+	PhaseDay          PhaseType = 30
+	PhaseDayHunter    PhaseType = 31 // 白天猎人阶段（被投票出局后触发）
+	PhaseVote         PhaseType = 40
+	PhaseEnd          PhaseType = 50
+)
+
+// String 实现 fmt.Stringer。
+//
+// 输出沿用枚举的全名，日志与错误信息里一眼能看出是哪一类。
+func (v PhaseType) String() string {
+	if s, ok := phaseTypeNames[v]; ok {
+		return s
+	}
+	return fmt.Sprintf("PhaseType(%d)", int32(v))
+}
+
+// phaseTypeNames 全部取值到名字的映射，遍历它即可枚举所有取值。
+var phaseTypeNames = map[PhaseType]string{
+	PhaseUnspecified:  "PHASE_TYPE_UNSPECIFIED",
+	PhaseStart:        "PHASE_TYPE_START",
+	PhaseNight:        "PHASE_TYPE_NIGHT",
+	PhaseNightGuard:   "PHASE_TYPE_NIGHT_GUARD",
+	PhaseNightWolf:    "PHASE_TYPE_NIGHT_WOLF",
+	PhaseNightWitch:   "PHASE_TYPE_NIGHT_WITCH",
+	PhaseNightSeer:    "PHASE_TYPE_NIGHT_SEER",
+	PhaseNightResolve: "PHASE_TYPE_NIGHT_RESOLVE",
+	PhaseNightHunter:  "PHASE_TYPE_NIGHT_HUNTER",
+	PhaseDay:          "PHASE_TYPE_DAY",
+	PhaseDayHunter:    "PHASE_TYPE_DAY_HUNTER",
+	PhaseVote:         "PHASE_TYPE_VOTE",
+	PhaseEnd:          "PHASE_TYPE_END",
+}
+
+// Camp 阵营
+type Camp int32
+
+const (
+	CampUnspecified Camp = 0
+	CampGood        Camp = 1
+	CampEvil        Camp = 2
+)
+
+// String 实现 fmt.Stringer。
+//
+// 输出沿用枚举的全名，日志与错误信息里一眼能看出是哪一类。
+func (v Camp) String() string {
+	if s, ok := campNames[v]; ok {
+		return s
+	}
+	return fmt.Sprintf("Camp(%d)", int32(v))
+}
+
+// campNames 全部取值到名字的映射，遍历它即可枚举所有取值。
+var campNames = map[Camp]string{
+	CampUnspecified: "CAMP_UNSPECIFIED",
+	CampGood:        "CAMP_GOOD",
+	CampEvil:        "CAMP_EVIL",
+}
+
+// RoleType 角色类型
+type RoleType int32
+
+const (
+	RoleUnspecified RoleType = 0
+	RoleGod         RoleType = 1 // 上帝（系统角色，用于发送公告）
+	RoleWerewolf    RoleType = 2
+	RoleSeer        RoleType = 3
+	RoleWitch       RoleType = 4
+	RoleHunter      RoleType = 5
+	RoleVillager    RoleType = 6
+	RoleGuard       RoleType = 7
+)
+
+// String 实现 fmt.Stringer。
+//
+// 输出沿用枚举的全名，日志与错误信息里一眼能看出是哪一类。
+func (v RoleType) String() string {
+	if s, ok := roleTypeNames[v]; ok {
+		return s
+	}
+	return fmt.Sprintf("RoleType(%d)", int32(v))
+}
+
+// roleTypeNames 全部取值到名字的映射，遍历它即可枚举所有取值。
+var roleTypeNames = map[RoleType]string{
+	RoleUnspecified: "ROLE_TYPE_UNSPECIFIED",
+	RoleGod:         "ROLE_TYPE_GOD",
+	RoleWerewolf:    "ROLE_TYPE_WEREWOLF",
+	RoleSeer:        "ROLE_TYPE_SEER",
+	RoleWitch:       "ROLE_TYPE_WITCH",
+	RoleHunter:      "ROLE_TYPE_HUNTER",
+	RoleVillager:    "ROLE_TYPE_VILLAGER",
+	RoleGuard:       "ROLE_TYPE_GUARD",
+}
+
+// SkillType 技能类型
+type SkillType int32
+
+const (
+	SkillUnspecified SkillType = 0
+	SkillKill        SkillType = 1  // 狼人击杀
+	SkillCheck       SkillType = 2  // 预言家查验
+	SkillProtect     SkillType = 3  // 守卫保护
+	SkillAntidote    SkillType = 4  // 女巫解药
+	SkillPoison      SkillType = 5  // 女巫毒药
+	SkillVote        SkillType = 6  // 投票
+	SkillSpeak       SkillType = 7  // 发言
+	SkillShoot       SkillType = 8  // 猎人开枪
+	SkillAnnounce    SkillType = 9  // 上帝公告
+	SkillSkip        SkillType = 10 // 跳过行动（主动放弃技能使用）
+)
+
+// String 实现 fmt.Stringer。
+//
+// 输出沿用枚举的全名，日志与错误信息里一眼能看出是哪一类。
+func (v SkillType) String() string {
+	if s, ok := skillTypeNames[v]; ok {
+		return s
+	}
+	return fmt.Sprintf("SkillType(%d)", int32(v))
+}
+
+// skillTypeNames 全部取值到名字的映射，遍历它即可枚举所有取值。
+var skillTypeNames = map[SkillType]string{
+	SkillUnspecified: "SKILL_TYPE_UNSPECIFIED",
+	SkillKill:        "SKILL_TYPE_KILL",
+	SkillCheck:       "SKILL_TYPE_CHECK",
+	SkillProtect:     "SKILL_TYPE_PROTECT",
+	SkillAntidote:    "SKILL_TYPE_ANTIDOTE",
+	SkillPoison:      "SKILL_TYPE_POISON",
+	SkillVote:        "SKILL_TYPE_VOTE",
+	SkillSpeak:       "SKILL_TYPE_SPEAK",
+	SkillShoot:       "SKILL_TYPE_SHOOT",
+	SkillAnnounce:    "SKILL_TYPE_ANNOUNCE",
+	SkillSkip:        "SKILL_TYPE_SKIP",
+}

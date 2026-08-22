@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func TestNewPhase(t *testing.T) {
@@ -19,24 +17,24 @@ func TestNewPhase(t *testing.T) {
 	}
 
 	// Verify resolvers are registered
-	if p.resolvers[pb.PhaseType_PHASE_TYPE_DAY] == nil {
+	if p.resolvers[PhaseDay] == nil {
 		t.Error("expected DayResolver to be registered")
 	}
-	if p.resolvers[pb.PhaseType_PHASE_TYPE_VOTE] == nil {
+	if p.resolvers[PhaseVote] == nil {
 		t.Error("expected VoteResolver to be registered")
 	}
 
 	// Verify night sub-phase resolvers are registered
-	if p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_GUARD] == nil {
+	if p.resolvers[PhaseNightGuard] == nil {
 		t.Error("expected GuardResolver to be registered")
 	}
-	if p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_WOLF] == nil {
+	if p.resolvers[PhaseNightWolf] == nil {
 		t.Error("expected WolfResolver to be registered")
 	}
-	if p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_WITCH] == nil {
+	if p.resolvers[PhaseNightWitch] == nil {
 		t.Error("expected WitchResolver to be registered")
 	}
-	if p.resolvers[pb.PhaseType_PHASE_TYPE_NIGHT_SEER] == nil {
+	if p.resolvers[PhaseNightSeer] == nil {
 		t.Error("expected SeerResolver to be registered")
 	}
 }
@@ -45,17 +43,17 @@ func TestGetPhaseConfig(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	dayConfig := p.phaseConfig(pb.PhaseType_PHASE_TYPE_DAY)
+	dayConfig := p.phaseConfig(PhaseDay)
 	if dayConfig == nil {
 		t.Fatal("expected day config")
 	}
 
-	voteConfig := p.phaseConfig(pb.PhaseType_PHASE_TYPE_VOTE)
+	voteConfig := p.phaseConfig(PhaseVote)
 	if voteConfig == nil {
 		t.Fatal("expected vote config")
 	}
 
-	guardConfig := p.phaseConfig(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	guardConfig := p.phaseConfig(PhaseNightGuard)
 	if guardConfig == nil {
 		t.Fatal("expected guard phase config")
 	}
@@ -65,12 +63,12 @@ func TestGetPhaseConfig_Invalid(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	startConfig := p.phaseConfig(pb.PhaseType_PHASE_TYPE_START)
+	startConfig := p.phaseConfig(PhaseStart)
 	if startConfig != nil {
 		t.Error("expected nil for START phase config")
 	}
 
-	endConfig := p.phaseConfig(pb.PhaseType_PHASE_TYPE_END)
+	endConfig := p.phaseConfig(PhaseEnd)
 	if endConfig != nil {
 		t.Error("expected nil for END phase config")
 	}
@@ -80,7 +78,7 @@ func TestGetResolver(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	dayResolver := p.resolver(pb.PhaseType_PHASE_TYPE_DAY)
+	dayResolver := p.resolver(PhaseDay)
 	if dayResolver == nil {
 		t.Error("expected day resolver")
 	}
@@ -88,7 +86,7 @@ func TestGetResolver(t *testing.T) {
 		t.Error("expected DayResolver type")
 	}
 
-	voteResolver := p.resolver(pb.PhaseType_PHASE_TYPE_VOTE)
+	voteResolver := p.resolver(PhaseVote)
 	if voteResolver == nil {
 		t.Error("expected vote resolver")
 	}
@@ -101,7 +99,7 @@ func TestGetResolver_Nil(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	startResolver := p.resolver(pb.PhaseType_PHASE_TYPE_START)
+	startResolver := p.resolver(PhaseStart)
 	if startResolver != nil {
 		t.Error("expected nil for START phase resolver")
 	}
@@ -111,12 +109,12 @@ func TestGetAllowedSkills_Guard(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, pb.RoleType_ROLE_TYPE_GUARD)
+	skills := p.allowedSkills(PhaseNightGuard, RoleGuard)
 
 	if len(skills) != 1 {
 		t.Errorf("expected 1 skill, got %d", len(skills))
 	}
-	if skills[0] != pb.SkillType_SKILL_TYPE_PROTECT {
+	if skills[0] != SkillProtect {
 		t.Errorf("expected PROTECT, got %v", skills[0])
 	}
 }
@@ -125,12 +123,12 @@ func TestGetAllowedSkills_Werewolf(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF, pb.RoleType_ROLE_TYPE_WEREWOLF)
+	skills := p.allowedSkills(PhaseNightWolf, RoleWerewolf)
 
 	if len(skills) != 1 {
 		t.Errorf("expected 1 skill, got %d", len(skills))
 	}
-	if skills[0] != pb.SkillType_SKILL_TYPE_KILL {
+	if skills[0] != SkillKill {
 		t.Errorf("expected KILL, got %v", skills[0])
 	}
 }
@@ -139,7 +137,7 @@ func TestGetAllowedSkills_Witch(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH, pb.RoleType_ROLE_TYPE_WITCH)
+	skills := p.allowedSkills(PhaseNightWitch, RoleWitch)
 
 	if len(skills) != 2 {
 		t.Errorf("expected 2 skills, got %d", len(skills))
@@ -148,10 +146,10 @@ func TestGetAllowedSkills_Witch(t *testing.T) {
 	hasAntidote := false
 	hasPoison := false
 	for _, s := range skills {
-		if s == pb.SkillType_SKILL_TYPE_ANTIDOTE {
+		if s == SkillAntidote {
 			hasAntidote = true
 		}
-		if s == pb.SkillType_SKILL_TYPE_POISON {
+		if s == SkillPoison {
 			hasPoison = true
 		}
 	}
@@ -168,12 +166,12 @@ func TestGetAllowedSkills_Seer(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_NIGHT_SEER, pb.RoleType_ROLE_TYPE_SEER)
+	skills := p.allowedSkills(PhaseNightSeer, RoleSeer)
 
 	if len(skills) != 1 {
 		t.Errorf("expected 1 skill, got %d", len(skills))
 	}
-	if skills[0] != pb.SkillType_SKILL_TYPE_CHECK {
+	if skills[0] != SkillCheck {
 		t.Errorf("expected CHECK, got %v", skills[0])
 	}
 }
@@ -182,7 +180,7 @@ func TestGetAllowedSkills_Villager_NightGuard(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, pb.RoleType_ROLE_TYPE_VILLAGER)
+	skills := p.allowedSkills(PhaseNightGuard, RoleVillager)
 
 	// Villager has no skills in guard phase
 	if len(skills) != 0 {
@@ -196,15 +194,15 @@ func TestGetAllowedSkills_DayHasNoPlayerSkill(t *testing.T) {
 
 	// 白天没有玩家技能——发言不是技能，走 SendMessage。
 	// 此前 DAY 阶段声明了 SPEAK，提交能通过但结算零效果，是个悬空概念。
-	roles := []pb.RoleType{
-		pb.RoleType_ROLE_TYPE_WEREWOLF,
-		pb.RoleType_ROLE_TYPE_SEER,
-		pb.RoleType_ROLE_TYPE_WITCH,
-		pb.RoleType_ROLE_TYPE_GUARD,
-		pb.RoleType_ROLE_TYPE_VILLAGER,
+	roles := []RoleType{
+		RoleWerewolf,
+		RoleSeer,
+		RoleWitch,
+		RoleGuard,
+		RoleVillager,
 	}
 	for _, role := range roles {
-		if skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_DAY, role); len(skills) != 0 {
+		if skills := p.allowedSkills(PhaseDay, role); len(skills) != 0 {
 			t.Errorf("白天不应有可提交技能，%v 得到 %v", role, skills)
 		}
 	}
@@ -215,20 +213,20 @@ func TestGetAllowedSkills_AllVote(t *testing.T) {
 	p := newPhaseManager(config)
 
 	// All roles should be able to vote
-	roles := []pb.RoleType{
-		pb.RoleType_ROLE_TYPE_WEREWOLF,
-		pb.RoleType_ROLE_TYPE_SEER,
-		pb.RoleType_ROLE_TYPE_WITCH,
-		pb.RoleType_ROLE_TYPE_GUARD,
-		pb.RoleType_ROLE_TYPE_VILLAGER,
+	roles := []RoleType{
+		RoleWerewolf,
+		RoleSeer,
+		RoleWitch,
+		RoleGuard,
+		RoleVillager,
 	}
 
 	for _, role := range roles {
-		skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_VOTE, role)
+		skills := p.allowedSkills(PhaseVote, role)
 		if len(skills) != 1 {
 			t.Errorf("expected 1 skill for %v during vote, got %d", role, len(skills))
 		}
-		if len(skills) > 0 && skills[0] != pb.SkillType_SKILL_TYPE_VOTE {
+		if len(skills) > 0 && skills[0] != SkillVote {
 			t.Errorf("expected VOTE for %v during vote, got %v", role, skills[0])
 		}
 	}
@@ -238,7 +236,7 @@ func TestGetAllowedSkills_InvalidPhase(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	skills := p.allowedSkills(pb.PhaseType_PHASE_TYPE_START, pb.RoleType_ROLE_TYPE_WEREWOLF)
+	skills := p.allowedSkills(PhaseStart, RoleWerewolf)
 	if skills == nil || len(skills) != 0 {
 		t.Errorf("expected empty non-nil slice for invalid phase, got %v", skills)
 	}
@@ -248,8 +246,8 @@ func TestNextSubPhase_StartToGuard(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	next := p.nextSubPhase(pb.PhaseType_PHASE_TYPE_START)
-	if next != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	next := p.nextSubPhase(PhaseStart)
+	if next != PhaseNightGuard {
 		t.Errorf("expected NIGHT_GUARD, got %v", next)
 	}
 }
@@ -259,28 +257,28 @@ func TestNextSubPhase_NightFlow(t *testing.T) {
 	p := newPhaseManager(config)
 
 	// Guard -> Wolf -> Witch -> Seer -> Resolve -> Day
-	next := p.nextSubPhase(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
-	if next != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+	next := p.nextSubPhase(PhaseNightGuard)
+	if next != PhaseNightWolf {
 		t.Errorf("expected NIGHT_WOLF, got %v", next)
 	}
 
-	next = p.nextSubPhase(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	if next != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
+	next = p.nextSubPhase(PhaseNightWolf)
+	if next != PhaseNightWitch {
 		t.Errorf("expected NIGHT_WITCH, got %v", next)
 	}
 
-	next = p.nextSubPhase(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	if next != pb.PhaseType_PHASE_TYPE_NIGHT_SEER {
+	next = p.nextSubPhase(PhaseNightWitch)
+	if next != PhaseNightSeer {
 		t.Errorf("expected NIGHT_SEER, got %v", next)
 	}
 
-	next = p.nextSubPhase(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	if next != pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE {
+	next = p.nextSubPhase(PhaseNightSeer)
+	if next != PhaseNightResolve {
 		t.Errorf("expected NIGHT_RESOLVE, got %v", next)
 	}
 
-	next = p.nextSubPhase(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	if next != pb.PhaseType_PHASE_TYPE_DAY {
+	next = p.nextSubPhase(PhaseNightResolve)
+	if next != PhaseDay {
 		t.Errorf("expected DAY, got %v", next)
 	}
 }
@@ -289,8 +287,8 @@ func TestNextSubPhase_DayToVote(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	next := p.nextSubPhase(pb.PhaseType_PHASE_TYPE_DAY)
-	if next != pb.PhaseType_PHASE_TYPE_VOTE {
+	next := p.nextSubPhase(PhaseDay)
+	if next != PhaseVote {
 		t.Errorf("expected VOTE, got %v", next)
 	}
 }
@@ -299,8 +297,8 @@ func TestNextSubPhase_VoteToGuard(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	next := p.nextSubPhase(pb.PhaseType_PHASE_TYPE_VOTE)
-	if next != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	next := p.nextSubPhase(PhaseVote)
+	if next != PhaseNightGuard {
 		t.Errorf("expected NIGHT_GUARD, got %v", next)
 	}
 }
@@ -309,8 +307,8 @@ func TestNextSubPhase_EndStays(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
 
-	next := p.nextSubPhase(pb.PhaseType_PHASE_TYPE_END)
-	if next != pb.PhaseType_PHASE_TYPE_END {
+	next := p.nextSubPhase(PhaseEnd)
+	if next != PhaseEnd {
 		t.Errorf("expected END, got %v", next)
 	}
 }
@@ -320,15 +318,15 @@ func TestValidateSkillUse_Valid(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	mustAddTo(t, state, "wolf", RoleWerewolf)
+	mustAddTo(t, state, "victim", RoleVillager)
+	state.Phase = PhaseNightWolf
 
 	use := &SkillUse{
 		PlayerID: "wolf",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "victim",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 	}
 
 	err := p.validateSkillUse(use, state)
@@ -342,13 +340,13 @@ func TestValidateSkillUse_PlayerNotFound(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	state.Phase = PhaseNightWolf
 
 	use := &SkillUse{
 		PlayerID: "nonexistent",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "victim",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 	}
 
 	err := p.validateSkillUse(use, state)
@@ -362,16 +360,16 @@ func TestValidateSkillUse_PlayerDead(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf", RoleWerewolf)
+	mustAddTo(t, state, "victim", RoleVillager)
 	state.players["wolf"].Alive = false
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	state.Phase = PhaseNightWolf
 
 	use := &SkillUse{
 		PlayerID: "wolf",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "victim",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 	}
 
 	err := p.validateSkillUse(use, state)
@@ -385,16 +383,16 @@ func TestValidateSkillUse_SkillNotAllowed(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	mustAddTo(t, state, "villager", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	mustAddTo(t, state, "villager", RoleVillager)
+	mustAddTo(t, state, "victim", RoleVillager)
+	state.Phase = PhaseNightWolf
 
 	// Villager tries to kill at night (not allowed)
 	use := &SkillUse{
 		PlayerID: "villager",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "victim",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 	}
 
 	err := p.validateSkillUse(use, state)
@@ -408,14 +406,14 @@ func TestValidateSkillUse_TargetNotFound(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	mustAddTo(t, state, "wolf", RoleWerewolf)
+	state.Phase = PhaseNightWolf
 
 	use := &SkillUse{
 		PlayerID: "wolf",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "nonexistent",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 	}
 
 	err := p.validateSkillUse(use, state)
@@ -429,16 +427,16 @@ func TestValidateSkillUse_TargetDead(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "wolf", RoleWerewolf)
+	mustAddTo(t, state, "victim", RoleVillager)
 	state.players["victim"].Alive = false
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	state.Phase = PhaseNightWolf
 
 	use := &SkillUse{
 		PlayerID: "wolf",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "victim",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 	}
 
 	err := p.validateSkillUse(use, state)
@@ -452,17 +450,17 @@ func TestValidateSkillUse_AntidoteOnDead(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	mustAddTo(t, state, "witch", pb.RoleType_ROLE_TYPE_WITCH)
-	mustAddTo(t, state, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAddTo(t, state, "witch", RoleWitch)
+	mustAddTo(t, state, "victim", RoleVillager)
 	state.players["victim"].Alive = false
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WITCH
+	state.Phase = PhaseNightWitch
 
 	// Antidote can be used on dead target
 	use := &SkillUse{
 		PlayerID: "witch",
-		Skill:    pb.SkillType_SKILL_TYPE_ANTIDOTE,
+		Skill:    SkillAntidote,
 		TargetID: "victim",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
+		Phase:    PhaseNightWitch,
 	}
 
 	err := p.validateSkillUse(use, state)
@@ -476,15 +474,15 @@ func TestValidateSkillUse_NoTarget(t *testing.T) {
 	p := newPhaseManager(config)
 
 	state := newState()
-	mustAddTo(t, state, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	mustAddTo(t, state, "wolf", RoleWerewolf)
+	state.Phase = PhaseNightWolf
 
 	// Empty target (wolf chooses not to kill)
 	use := &SkillUse{
 		PlayerID: "wolf",
-		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		Skill:    SkillKill,
 		TargetID: "",
-		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Phase:    PhaseNightWolf,
 	}
 
 	err := p.validateSkillUse(use, state)

@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // TestWithLoggerAndMetrics 日志与指标只能在构造时给出，且真的接上了。
@@ -14,9 +12,9 @@ func TestWithLoggerAndMetrics(t *testing.T) {
 	g := newRuleGameWith(t, nil, []EngineOption{WithLogger(rec), WithMetrics(counter)},
 		seats(wolf("w1"), villagers("v1", "v2", "v3"))...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	if counter.skills == 0 {
 		t.Error("提交技能应当被计数")
@@ -44,7 +42,7 @@ type countingMetrics struct {
 	skills, phases, effects, ended int
 }
 
-func (m *countingMetrics) IncSkillSubmitted(pb.SkillType) { m.skills++ }
-func (m *countingMetrics) IncPhaseEnded(pb.PhaseType)     { m.phases++ }
-func (m *countingMetrics) IncEffectApplied(pb.EventType)  { m.effects++ }
-func (m *countingMetrics) IncGameEnded(pb.Camp)           { m.ended++ }
+func (m *countingMetrics) IncSkillSubmitted(SkillType) { m.skills++ }
+func (m *countingMetrics) IncPhaseEnded(PhaseType)     { m.phases++ }
+func (m *countingMetrics) IncEffectApplied(EventType)  { m.effects++ }
+func (m *countingMetrics) IncGameEnded(Camp)           { m.ended++ }

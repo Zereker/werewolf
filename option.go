@@ -11,9 +11,7 @@
 
 package werewolf
 
-import (
-	pb "github.com/Zereker/werewolf/proto"
-)
+import ()
 
 // EngineOption 构造引擎时的可选设置。
 //
@@ -29,10 +27,10 @@ type EngineOption func(*Engine) error
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }
 //	engine, err := werewolf.RestoreEngine(cfg, snap,
 //		werewolf.WithResolver(myPhase, myResolver))
-func WithResolver(phase pb.PhaseType, resolver Resolver) EngineOption {
+func WithResolver(phase PhaseType, resolver Resolver) EngineOption {
 	return func(e *Engine) error {
 		if resolver == nil {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_CONFIG,
+			return WrapError(CodeInvalidConfig,
 				"resolver for phase %v must not be nil", phase)
 		}
 		e.phase.registerResolver(phase, resolver)

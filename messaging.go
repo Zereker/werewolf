@@ -7,17 +7,15 @@ package werewolf
 
 import (
 	"time"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // Message 游戏内消息
 type Message struct {
-	SenderID  string       // 发送者ID
-	Content   string       // 消息内容
-	Phase     pb.PhaseType // 发送时的阶段
-	Round     int          // 发送时的回合
-	Timestamp time.Time    // 发送时间
+	SenderID  string    // 发送者ID
+	Content   string    // 消息内容
+	Phase     PhaseType // 发送时的阶段
+	Round     int       // 发送时的回合
+	Timestamp time.Time // 发送时间
 }
 
 // MessageHandler 消息处理器
@@ -108,17 +106,17 @@ func (e *Engine) getMessageReceivers(senderID string) []string {
 	}
 
 	switch e.state.Phase {
-	case pb.PhaseType_PHASE_TYPE_NIGHT_WOLF:
+	case PhaseNightWolf:
 		// 狼人阶段：只有狼队内部能交流。
 		// 按阵营判定，理由同 getWolfTeammates——按角色判会让狼王这类
 		// 自定义狼队角色在夜里发不出话。
-		if sender.Camp != pb.Camp_CAMP_EVIL {
+		if sender.Camp != CampEvil {
 			return nil
 		}
 		// 返回所有存活的狼队成员（包括自己，方便处理）
-		return e.state.alivePlayerIDsByCamp(pb.Camp_CAMP_EVIL)
+		return e.state.alivePlayerIDsByCamp(CampEvil)
 
-	case pb.PhaseType_PHASE_TYPE_DAY:
+	case PhaseDay:
 		// 白天阶段：所有存活玩家都能听到
 		return sortedStrings(e.state.getAlivePlayerIDs())
 

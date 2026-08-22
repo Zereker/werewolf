@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // TestPhaseReadiness_WolfConsensus 狼人商刀要求全部存活狼人都提交。
@@ -12,7 +10,7 @@ func TestPhaseReadiness_WolfConsensus(t *testing.T) {
 		wolf("w1"), wolf("w2"), seer("s"), witch("wi"),
 		villagers("v1", "v2", "v3"),
 	)...)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	r := g.e.PhaseReadiness()
 	if r.Ready {
@@ -22,12 +20,12 @@ func TestPhaseReadiness_WolfConsensus(t *testing.T) {
 		t.Fatalf("应当还差两名狼人，实际 %d: %+v", len(r.Pending), r.Pending)
 	}
 	for _, p := range r.Pending {
-		if p.Skill != pb.SkillType_SKILL_TYPE_KILL {
+		if p.Skill != SkillKill {
 			t.Errorf("待办技能应为 KILL，实际 %v", p.Skill)
 		}
 	}
 
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.mustUse("w1", SkillKill, "v1")
 	r = g.e.PhaseReadiness()
 	if r.Ready {
 		t.Error("Multiple=true，只有一狼提交时仍不应就绪")
@@ -39,7 +37,7 @@ func TestPhaseReadiness_WolfConsensus(t *testing.T) {
 		t.Errorf("已行动者应为 [w1]，实际 %v", r.Acted)
 	}
 
-	g.mustUse("w2", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.mustUse("w2", SkillKill, "v1")
 	if r = g.e.PhaseReadiness(); !r.Ready {
 		t.Errorf("两狼都提交后应当就绪，仍差 %+v", r.Pending)
 	}
@@ -51,7 +49,7 @@ func TestPhaseReadiness_NoEligibleActor(t *testing.T) {
 	g := newRuleGame(t, nil, seats(
 		wolf("w1"), seer("s"), villagers("v1", "v2"),
 	)...)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// 唯一的狼出局后，狼人步骤没有合格行动者
 	g.setDead("w1")
@@ -72,13 +70,13 @@ func TestPhaseReadiness_OptionalStepsNeverBlock(t *testing.T) {
 		t.Errorf("守卫阶段非必需，应当就绪，实际 %+v", r.Pending)
 	}
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 	if r := g.e.PhaseReadiness(); !r.Ready {
 		t.Errorf("女巫阶段非必需，应当就绪，实际 %+v", r.Pending)
 	}
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(PhaseNightSeer)
 	if r := g.e.PhaseReadiness(); !r.Ready {
 		t.Errorf("预言家阶段非必需，应当就绪，实际 %+v", r.Pending)
 	}
@@ -90,7 +88,7 @@ func TestPhaseReadiness_Vote(t *testing.T) {
 		wolf("w1"), seer("s"), villagers("v1", "v2"),
 	)...)
 	g.walkNight()
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 
 	r := g.e.PhaseReadiness()
 	if len(r.Pending) != 4 {
@@ -116,10 +114,10 @@ func TestPhaseReadiness_Vote(t *testing.T) {
 func TestPhaseReadiness_MultipleFalse(t *testing.T) {
 	cfg := DefaultGameConfig()
 	// 造一个双守卫且必须行动的板子，但只要求其中一人
-	guardPhase := cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_GUARD]
+	guardPhase := cfg.Phases[PhaseNightGuard]
 	guardPhase.Steps = []PhaseStep{
-		{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-		{Role: pb.RoleType_ROLE_TYPE_GUARD, Skill: pb.SkillType_SKILL_TYPE_PROTECT,
+		{Role: RoleGod, Skill: SkillAnnounce},
+		{Role: RoleGuard, Skill: SkillProtect,
 			Required: true, Multiple: false},
 	}
 
@@ -130,7 +128,7 @@ func TestPhaseReadiness_MultipleFalse(t *testing.T) {
 	if r := g.e.PhaseReadiness(); r.Ready {
 		t.Error("两名守卫都未行动时不应就绪")
 	}
-	g.mustUse("g1", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.mustUse("g1", SkillProtect, "v1")
 	if r := g.e.PhaseReadiness(); !r.Ready {
 		t.Errorf("Multiple=false，一人完成即应就绪，仍差 %+v", r.Pending)
 	}
@@ -139,31 +137,31 @@ func TestPhaseReadiness_MultipleFalse(t *testing.T) {
 // TestPhaseReadiness_TriggerPhase 死亡技能阶段只等触发者一人。
 func TestPhaseReadiness_TriggerPhase(t *testing.T) {
 	cfg := DefaultGameConfig()
-	hunterPhase := cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER]
+	hunterPhase := cfg.Phases[PhaseNightHunter]
 	hunterPhase.Steps = []PhaseStep{
-		{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-		{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT,
+		{Role: RoleGod, Skill: SkillAnnounce},
+		{Role: RoleHunter, Skill: SkillShoot,
 			Required: true},
-		{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
+		{Role: RoleHunter, Skill: SkillSkip},
 	}
 
 	g := newRuleGame(t, cfg, seats(
 		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
 		villagers("v1", "v2", "v3"),
 	)...)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.mustUse("w2", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.mustUse("w2", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
 	r := g.e.PhaseReadiness()
 	if len(r.Pending) != 1 || r.Pending[0].PlayerID != "h" {
 		t.Fatalf("应当只等被触发的猎人，实际 %+v", r.Pending)
 	}
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
+	g.mustUse("h", SkillShoot, "w1")
 	if r = g.e.PhaseReadiness(); !r.Ready {
 		t.Errorf("猎人开枪后应当就绪，仍差 %+v", r.Pending)
 	}
@@ -175,7 +173,7 @@ func TestPhaseReadiness_DoesNotBlockEndPhase(t *testing.T) {
 	g := newRuleGame(t, nil, seats(
 		wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"),
 	)...)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	if g.e.PhaseReadiness().Ready {
 		t.Fatal("前置：此刻不应就绪")
@@ -192,9 +190,9 @@ func TestPhaseReadiness_DoesNotBlockEndPhase(t *testing.T) {
 // 这个阶段就永远不会就绪。
 func TestPhaseReadiness_MutuallyExclusiveGroup(t *testing.T) {
 	cfg := DefaultGameConfig()
-	for _, phase := range []pb.PhaseType{
-		pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER,
-		pb.PhaseType_PHASE_TYPE_DAY_HUNTER,
+	for _, phase := range []PhaseType{
+		PhaseNightHunter,
+		PhaseDayHunter,
 	} {
 		for i := range cfg.Phases[phase].Steps {
 			cfg.Phases[phase].Steps[i].Required = true
@@ -206,12 +204,12 @@ func TestPhaseReadiness_MutuallyExclusiveGroup(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
 	// 还没表态：欠一次行动，且只报一条（不是开枪、不开枪各一条）
 	before := g.e.PhaseReadiness()
@@ -223,7 +221,7 @@ func TestPhaseReadiness_MutuallyExclusiveGroup(t *testing.T) {
 	}
 
 	// 明确表示不开枪之后就该就绪
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SKIP, "")
+	g.mustUse("h", SkillSkip, "")
 	after := g.e.PhaseReadiness()
 	if !after.Ready {
 		t.Errorf("猎人已表示不开枪，应当就绪，实际还差 %v", after.Pending)
@@ -237,20 +235,20 @@ func TestPhaseReadiness_TriggerActorMatchesRole(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
 	info := g.e.PhaseInfo()
-	if ri := info.RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER]; ri == nil ||
+	if ri := info.RoleInfos[RoleHunter]; ri == nil ||
 		len(ri.PlayerIDs) != 1 || ri.PlayerIDs[0] != "h" {
 		t.Fatalf("猎人步骤的行动者应当是 h，实际 %+v", info.RoleInfos)
 	}
 	// 触发者不是预言家，预言家的步骤（本阶段没有）不该落到他头上
-	if ri := info.RoleInfos[pb.RoleType_ROLE_TYPE_SEER]; ri != nil && len(ri.PlayerIDs) > 0 {
+	if ri := info.RoleInfos[RoleSeer]; ri != nil && len(ri.PlayerIDs) > 0 {
 		t.Errorf("本阶段不该有预言家的行动者，实际 %v", ri.PlayerIDs)
 	}
 }

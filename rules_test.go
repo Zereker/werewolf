@@ -43,8 +43,6 @@ package werewolf
 import (
 	"os"
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // knownDeviations 登记「实现与规则不符、尚未修复」的条目。
@@ -65,15 +63,15 @@ func requireRule(t *testing.T, id string) {
 // seat 座位（玩家 ID + 角色），阵营由角色推导。
 type seat struct {
 	id   string
-	role pb.RoleType
+	role RoleType
 }
 
-func wolf(id string) seat     { return seat{id, pb.RoleType_ROLE_TYPE_WEREWOLF} }
-func seer(id string) seat     { return seat{id, pb.RoleType_ROLE_TYPE_SEER} }
-func witch(id string) seat    { return seat{id, pb.RoleType_ROLE_TYPE_WITCH} }
-func guard(id string) seat    { return seat{id, pb.RoleType_ROLE_TYPE_GUARD} }
-func hunter(id string) seat   { return seat{id, pb.RoleType_ROLE_TYPE_HUNTER} }
-func villager(id string) seat { return seat{id, pb.RoleType_ROLE_TYPE_VILLAGER} }
+func wolf(id string) seat     { return seat{id, RoleWerewolf} }
+func seer(id string) seat     { return seat{id, RoleSeer} }
+func witch(id string) seat    { return seat{id, RoleWitch} }
+func guard(id string) seat    { return seat{id, RoleGuard} }
+func hunter(id string) seat   { return seat{id, RoleHunter} }
+func villager(id string) seat { return seat{id, RoleVillager} }
 
 // villagers 批量生成平民座位。
 func villagers(ids ...string) []seat {
@@ -127,13 +125,13 @@ func seats(groups ...interface{}) []seat {
 }
 
 // use 提交技能，返回错误供调用方断言。
-func (g *ruleGame) use(playerID string, skill pb.SkillType, targetID string) error {
+func (g *ruleGame) use(playerID string, skill SkillType, targetID string) error {
 	g.t.Helper()
 	return g.e.SubmitSkillUse(&SkillUse{PlayerID: playerID, Skill: skill, TargetID: targetID})
 }
 
 // mustUse 提交技能，失败即终止用例。
-func (g *ruleGame) mustUse(playerID string, skill pb.SkillType, targetID string) {
+func (g *ruleGame) mustUse(playerID string, skill SkillType, targetID string) {
 	g.t.Helper()
 	if err := g.use(playerID, skill, targetID); err != nil {
 		g.t.Fatalf("提交技能失败 player=%s skill=%v target=%s: %v", playerID, skill, targetID, err)
@@ -141,7 +139,7 @@ func (g *ruleGame) mustUse(playerID string, skill pb.SkillType, targetID string)
 }
 
 // end 结束当前子阶段并断言流转到 expect。
-func (g *ruleGame) end(expect pb.PhaseType) []*Effect {
+func (g *ruleGame) end(expect PhaseType) []*Effect {
 	g.t.Helper()
 	from := g.e.Phase()
 	effects, err := g.e.EndPhase()
@@ -167,18 +165,18 @@ func (g *ruleGame) endAny() []*Effect {
 // walkNight 从 NIGHT_GUARD 一路走到 DAY，中途不提交任何技能。
 func (g *ruleGame) walkNight() {
 	g.t.Helper()
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightWolf)
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 }
 
 // toNextNight 从 DAY 走到下一个 NIGHT_GUARD（不投票，因而无人出局）。
 func (g *ruleGame) toNextNight() {
 	g.t.Helper()
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	g.end(PhaseVote)
+	g.end(PhaseNightGuard)
 }
 
 // info 取玩家只读信息。
@@ -205,7 +203,7 @@ func (g *ruleGame) assertAlive(id string, want bool, msg string) {
 // witchSeesKill 返回当前 NIGHT_WITCH 阶段女巫看到的刀口。
 func (g *ruleGame) witchSeesKill() string {
 	g.t.Helper()
-	ri := g.e.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_WITCH]
+	ri := g.e.PhaseInfo().RoleInfos[RoleWitch]
 	if ri == nil {
 		return ""
 	}
@@ -216,7 +214,7 @@ func (g *ruleGame) witchSeesKill() string {
 func (g *ruleGame) vote(target string, voters ...string) {
 	g.t.Helper()
 	for _, v := range voters {
-		g.mustUse(v, pb.SkillType_SKILL_TYPE_VOTE, target)
+		g.mustUse(v, SkillVote, target)
 	}
 }
 
@@ -235,7 +233,7 @@ func (g *ruleGame) setDead(ids ...string) {
 }
 
 // findEffect 在效果列表里找第一个指定类型的效果。
-func findEffect(effects []*Effect, typ pb.EventType) *Effect {
+func findEffect(effects []*Effect, typ EventType) *Effect {
 	for _, e := range effects {
 		if e.Type == typ {
 			return e
@@ -253,12 +251,12 @@ func TestRule_R1_SeerChecksCamp(t *testing.T) {
 
 	cases := []struct {
 		target     string
-		wantCamp   pb.Camp
+		wantCamp   Camp
 		wantIsGood bool
 	}{
-		{"w1", pb.Camp_CAMP_EVIL, false},
-		{"v1", pb.Camp_CAMP_GOOD, true},
-		{"wi", pb.Camp_CAMP_GOOD, true}, // 神职也应报好人，而非报出角色
+		{"w1", CampEvil, false},
+		{"v1", CampGood, true},
+		{"wi", CampGood, true}, // 神职也应报好人，而非报出角色
 	}
 
 	for _, tc := range cases {
@@ -268,14 +266,14 @@ func TestRule_R1_SeerChecksCamp(t *testing.T) {
 				villagers("v1", "v2", "v3", "v4"),
 			)...)
 
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+			g.end(PhaseNightWolf)
+			g.end(PhaseNightWitch)
+			g.end(PhaseNightSeer)
 
-			g.mustUse("s", pb.SkillType_SKILL_TYPE_CHECK, tc.target)
-			effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+			g.mustUse("s", SkillCheck, tc.target)
+			effects := g.end(PhaseNightResolve)
 
-			check := findEffect(effects, pb.EventType_EVENT_TYPE_CHECK)
+			check := findEffect(effects, EventCheck)
 			if check == nil {
 				t.Fatal("期望产生 CHECK 效果")
 			}
@@ -305,17 +303,17 @@ func TestRule_R2_WitchSeesKillOnlyWhileAntidoteHeld(t *testing.T) {
 	)...)
 
 	// —— 第一夜：解药在手，应当能看到刀口，并用掉解药 ——
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	if got := g.witchSeesKill(); got != "v1" {
 		t.Fatalf("第一夜解药在手：期望女巫看到刀口 v1，实际 %q", got)
 	}
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("wi", SkillAntidote, "v1")
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	if g.info("wi").HasAntidote {
 		t.Fatal("第一夜救人后解药应当已消耗")
@@ -324,9 +322,9 @@ func TestRule_R2_WitchSeesKillOnlyWhileAntidoteHeld(t *testing.T) {
 
 	// —— 第二夜：解药已用完，不应再看到刀口 ——
 	g.toNextNight()
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v2")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v2")
+	g.end(PhaseNightWitch)
 
 	if got := g.witchSeesKill(); got != "" {
 		t.Errorf("第二夜解药已用完：期望女巫看不到刀口（\"\"），实际 %q", got)
@@ -348,10 +346,10 @@ func TestRule_R3_WitchCannotUseBothPotionsInOneNight(t *testing.T) {
 	// 两种提交顺序都要满足不变量
 	orders := []struct {
 		name  string
-		first pb.SkillType
+		first SkillType
 	}{
-		{"先解药后毒药", pb.SkillType_SKILL_TYPE_ANTIDOTE},
-		{"先毒药后解药", pb.SkillType_SKILL_TYPE_POISON},
+		{"先解药后毒药", SkillAntidote},
+		{"先毒药后解药", SkillPoison},
 	}
 
 	for _, ord := range orders {
@@ -361,22 +359,22 @@ func TestRule_R3_WitchCannotUseBothPotionsInOneNight(t *testing.T) {
 				villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 			)...)
 
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-			g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+			g.end(PhaseNightWolf)
+			g.mustUse("w1", SkillKill, "v1")
+			g.end(PhaseNightWitch)
 
 			// 两瓶药都尝试提交；后提交的那瓶被拒是允许的
-			if ord.first == pb.SkillType_SKILL_TYPE_ANTIDOTE {
-				g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-				_ = g.use("wi", pb.SkillType_SKILL_TYPE_POISON, "v2")
+			if ord.first == SkillAntidote {
+				g.mustUse("wi", SkillAntidote, "v1")
+				_ = g.use("wi", SkillPoison, "v2")
 			} else {
-				g.mustUse("wi", pb.SkillType_SKILL_TYPE_POISON, "v2")
-				_ = g.use("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
+				g.mustUse("wi", SkillPoison, "v2")
+				_ = g.use("wi", SkillAntidote, "v1")
 			}
 
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-			g.end(pb.PhaseType_PHASE_TYPE_DAY)
+			g.end(PhaseNightSeer)
+			g.end(PhaseNightResolve)
+			g.end(PhaseDay)
 
 			after := g.info("wi")
 			potionsUsed := 0
@@ -424,18 +422,18 @@ func TestRule_R4_WitchCannotSaveSelf(t *testing.T) {
 				villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 			)...)
 
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-			g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "wi")
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+			g.end(PhaseNightWolf)
+			g.mustUse("w1", SkillKill, "wi")
+			g.end(PhaseNightWitch)
 
 			if got := g.witchSeesKill(); got != "wi" {
 				t.Fatalf("期望女巫看到自己被刀，实际刀口 %q", got)
 			}
-			g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "wi")
+			g.mustUse("wi", SkillAntidote, "wi")
 
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-			g.end(pb.PhaseType_PHASE_TYPE_DAY)
+			g.end(PhaseNightSeer)
+			g.end(PhaseNightResolve)
+			g.end(PhaseDay)
 
 			g.assertAlive("wi", tc.wantAlive, "女巫自救 WitchCanSaveSelf="+tc.name)
 		})
@@ -466,13 +464,13 @@ func TestRule_R5_GuardMayProtectSelf(t *testing.T) {
 				villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 			)...)
 
-			g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "g")
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-			g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "g")
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-			g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-			g.end(pb.PhaseType_PHASE_TYPE_DAY)
+			g.mustUse("g", SkillProtect, "g")
+			g.end(PhaseNightWolf)
+			g.mustUse("w1", SkillKill, "g")
+			g.end(PhaseNightWitch)
+			g.end(PhaseNightSeer)
+			g.end(PhaseNightResolve)
+			g.end(PhaseDay)
 
 			g.assertAlive("g", tc.wantAlive, "守卫自守（"+tc.name+"）")
 		})
@@ -489,12 +487,12 @@ func TestRule_R5_GuardMaySkipProtection(t *testing.T) {
 	)...)
 
 	// 守卫不提交任何技能，直接过夜
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	g.assertAlive("v1", false, "守卫未守护时刀口应当死亡")
 }
@@ -511,21 +509,21 @@ func TestRule_R6_GuardCannotProtectSameTargetTwice(t *testing.T) {
 	)...)
 
 	// 第一夜：守 v1，狼刀 v1 —— 守护生效
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("g", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 	g.assertAlive("v1", true, "第一夜守护生效")
 
 	// 第二夜：再守 v1 —— 连守无效，狼刀 v1 应当命中
 	g.toNextNight()
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("g", SkillProtect, "v1")
+	effects := g.end(PhaseNightWolf)
 
-	protect := findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT)
+	protect := findEffect(effects, EventProtect)
 	if protect == nil {
 		t.Fatal("期望产生 PROTECT 效果（即便被取消）")
 	}
@@ -533,10 +531,10 @@ func TestRule_R6_GuardCannotProtectSameTargetTwice(t *testing.T) {
 		t.Error("第二夜连守同一目标，PROTECT 效果应当被取消")
 	}
 
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 	g.endAny()
 
 	g.assertAlive("v1", false, "连守无效，第二夜刀口应当死亡")
@@ -552,24 +550,24 @@ func TestRule_R6_GuardMayProtectDifferentTarget(t *testing.T) {
 	)...)
 
 	// 第一夜守 v1
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.mustUse("g", SkillProtect, "v1")
 	g.walkNight()
 
 	// 第二夜改守 v2，狼刀 v2 —— 应当守住
 	g.toNextNight()
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v2")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("g", SkillProtect, "v2")
+	effects := g.end(PhaseNightWolf)
 
-	protect := findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT)
+	protect := findEffect(effects, EventProtect)
 	if protect == nil || protect.Canceled {
 		t.Fatalf("换人守护不应被取消，实际 %+v", protect)
 	}
 
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v2")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("w1", SkillKill, "v2")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	g.assertAlive("v2", true, "换人守护应当生效")
 }
@@ -585,20 +583,20 @@ func TestRule_R6_GuardMayReprotectAfterGap(t *testing.T) {
 	)...)
 
 	// 第一夜守 v1
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.mustUse("g", SkillProtect, "v1")
 	g.walkNight()
 
 	// 第二夜守 v2
 	g.toNextNight()
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v2")
+	g.mustUse("g", SkillProtect, "v2")
 	g.walkNight()
 
 	// 第三夜守回 v1 —— 与上一晚（v2）不同，应当生效
 	g.toNextNight()
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("g", SkillProtect, "v1")
+	effects := g.end(PhaseNightWolf)
 
-	protect := findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT)
+	protect := findEffect(effects, EventProtect)
 	if protect == nil || protect.Canceled {
 		t.Fatalf("隔一晚后重新守回同一人应当生效，实际 %+v", protect)
 	}
@@ -619,7 +617,7 @@ func TestRule_R6_GuardMayReprotectAfterIdleNight(t *testing.T) {
 	)...)
 
 	// 第一夜守 v1
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.mustUse("g", SkillProtect, "v1")
 	g.walkNight()
 
 	// 第二夜守卫弃权
@@ -628,20 +626,20 @@ func TestRule_R6_GuardMayReprotectAfterIdleNight(t *testing.T) {
 
 	// 第三夜守回 v1 —— 上一晚没守任何人，不构成连守
 	g.toNextNight()
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("g", SkillProtect, "v1")
+	effects := g.end(PhaseNightWolf)
 
-	protect := findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT)
+	protect := findEffect(effects, EventProtect)
 	if protect == nil || protect.Canceled {
 		t.Fatalf("空守一晚后重新守回同一人应当生效，实际 %+v", protect)
 	}
 
 	// 并且真的守得住
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 	g.assertAlive("v1", true, "空守一晚后的守护应当生效")
 }
 
@@ -656,20 +654,20 @@ func TestRule_R6_CanceledProtectDoesNotBlockNextNight(t *testing.T) {
 	)...)
 
 	// 第一夜守 v1（生效）
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.mustUse("g", SkillProtect, "v1")
 	g.walkNight()
 
 	// 第二夜再守 v1（连守，被取消）
 	g.toNextNight()
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.mustUse("g", SkillProtect, "v1")
 	g.walkNight()
 
 	// 第三夜守 v1 —— 第二夜那次没有生效，因此不构成连守
 	g.toNextNight()
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("g", SkillProtect, "v1")
+	effects := g.end(PhaseNightWolf)
 
-	protect := findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT)
+	protect := findEffect(effects, EventProtect)
 	if protect == nil || protect.Canceled {
 		t.Fatalf("上一晚的守护被取消，本晚不应再判连守，实际 %+v", protect)
 	}
@@ -690,19 +688,19 @@ func TestRule_R7_GuardPlusAntidoteKillsTarget(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5"),
 	)...)
 
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("g", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	// 前置：女巫仍应看到刀口，守护对她不可见
 	if got := g.witchSeesKill(); got != "v1" {
 		t.Fatalf("守卫的守护不应遮蔽女巫视野：期望刀口 v1，实际 %q", got)
 	}
 
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.mustUse("wi", SkillAntidote, "v1")
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 	g.endAny()
 
 	g.assertAlive("v1", false, "同守同救")
@@ -720,14 +718,14 @@ func TestRule_R7_GuardAloneProtects(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5"),
 	)...)
 
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("g", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 	// 女巫不救
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	g.assertAlive("v1", true, "仅守卫守护")
 }
@@ -743,16 +741,16 @@ func TestRule_R8_HunterShootsWhenKilledByWolves(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
 	// 猎人在结算阶段才被触发，故 NIGHT_RESOLVE 结束后才进入猎人阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("h", SkillShoot, "w1")
+	g.end(PhaseDay)
 
 	g.assertAlive("h", false, "猎人被狼刀")
 	g.assertAlive("w1", false, "猎人开枪带走的目标")
@@ -768,12 +766,12 @@ func TestRule_R8_HunterShootsWhenVotedOut(t *testing.T) {
 	)...)
 
 	g.walkNight()
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 
 	g.vote("h", "w1", "w2", "v1", "v2", "v3")
-	g.end(pb.PhaseType_PHASE_TYPE_DAY_HUNTER)
+	g.end(PhaseDayHunter)
 
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
+	g.mustUse("h", SkillShoot, "w1")
 	g.endAny()
 
 	g.assertAlive("h", false, "猎人被投票出局")
@@ -789,15 +787,15 @@ func TestRule_R8_PoisonedHunterCannotShoot(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_POISON, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.mustUse("wi", SkillPoison, "h")
+	g.end(PhaseNightSeer)
 
 	// 猎人被毒死，结算后应直接进入白天，不经过猎人阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 	g.assertAlive("h", false, "猎人被毒杀")
 }
 
@@ -814,16 +812,16 @@ func TestRule_R8_KnifedAndPoisonedHunterCannotShoot(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
 	// 女巫不救，改为对同一个人补毒
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_POISON, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.mustUse("wi", SkillPoison, "h")
+	g.end(PhaseNightSeer)
 
 	// 猎人身上有毒，结算后应直接进白天
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 	g.assertAlive("h", false, "猎人同时被刀被毒")
 }
 
@@ -843,24 +841,24 @@ func TestRule_R8_HunterShotHunterMayShootBack(t *testing.T) {
 	)...)
 
 	// 夜里狼刀 h1，h1 进开枪阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
 	// h1 打死另一名猎人 h2 —— h2 应当被拉进同一个开枪阶段
-	g.mustUse("h1", pb.SkillType_SKILL_TYPE_SHOOT, "h2")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.mustUse("h1", SkillShoot, "h2")
+	g.end(PhaseNightHunter)
 	g.assertAlive("h2", false, "被 h1 打死")
 
-	if ids := g.e.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER].PlayerIDs; len(ids) != 1 || ids[0] != "h2" {
+	if ids := g.e.PhaseInfo().RoleInfos[RoleHunter].PlayerIDs; len(ids) != 1 || ids[0] != "h2" {
 		t.Fatalf("本阶段应由 h2 行动，实际 %v", ids)
 	}
 
-	g.mustUse("h2", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("h2", SkillShoot, "w1")
+	g.end(PhaseDay)
 	g.assertAlive("w1", false, "h2 的回枪应当生效")
 }
 
@@ -874,15 +872,15 @@ func TestRule_R8_HunterMayNotShoot(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
 	// 猎人不提交任何技能，直接结束
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseDay)
 
 	g.assertAlive("w1", true, "猎人放弃开枪")
 	g.assertAlive("w2", true, "猎人放弃开枪")
@@ -905,18 +903,18 @@ func TestRule_R8_HunterMaySkipExplicitly(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
 	// 前置：引擎确实对外宣告了 SKIP 可用
-	advertised := g.e.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER].AllowedSkills
+	advertised := g.e.PhaseInfo().RoleInfos[RoleHunter].AllowedSkills
 	hasSkip := false
 	for _, sk := range advertised {
-		if sk == pb.SkillType_SKILL_TYPE_SKIP {
+		if sk == SkillSkip {
 			hasSkip = true
 		}
 	}
@@ -925,7 +923,7 @@ func TestRule_R8_HunterMaySkipExplicitly(t *testing.T) {
 	}
 
 	// 宣告了就必须能提交
-	if err := g.use("h", pb.SkillType_SKILL_TYPE_SKIP, ""); err != nil {
+	if err := g.use("h", SkillSkip, ""); err != nil {
 		t.Fatalf("PhaseInfo 宣告 SKIP 可用，SubmitSkillUse 却拒绝: %v", err)
 	}
 
@@ -933,7 +931,7 @@ func TestRule_R8_HunterMaySkipExplicitly(t *testing.T) {
 	allowed := g.e.AllowedSkills("h")
 	t.Logf("Engine.AllowedSkills(h) = %v", allowed)
 
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseDay)
 	g.assertAlive("w1", true, "猎人显式跳过")
 }
 
@@ -948,27 +946,27 @@ func TestRule_R8_HunterShootsOnlyOnce(t *testing.T) {
 	)...)
 
 	// 夜里猎人被刀并开枪带走 w1
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
 	// 猎人在结算阶段才被触发，故 NIGHT_RESOLVE 结束后才进入猎人阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
+	g.mustUse("h", SkillShoot, "w1")
+	g.end(PhaseDay)
 	g.assertAlive("w1", false, "猎人第一枪")
 
 	// 当天投票出局一名平民（不是猎人）——不应再进猎人阶段
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 	g.vote("v1", "w2", "v2", "v3", "v4")
 
-	if got := g.e.Phase(); got != pb.PhaseType_PHASE_TYPE_VOTE {
+	if got := g.e.Phase(); got != PhaseVote {
 		t.Fatalf("投票前阶段异常: %v", got)
 	}
 	g.endAny()
 
-	if got := g.e.Phase(); got == pb.PhaseType_PHASE_TYPE_DAY_HUNTER {
+	if got := g.e.Phase(); got == PhaseDayHunter {
 		t.Fatal("出局者不是猎人，却再次进入 DAY_HUNTER（HunterTriggered 未在触发后清除）")
 	}
 	g.assertAlive("w2", true, "猎人不应开出第二枪")
@@ -991,7 +989,7 @@ func TestRule_R9_GoodWinsWhenAllWolvesDead(t *testing.T) {
 	if !over {
 		t.Fatal("狼人全部出局，游戏应当结束")
 	}
-	if winner != pb.Camp_CAMP_GOOD {
+	if winner != CampGood {
 		t.Errorf("期望好人阵营胜利，实际 %v", winner)
 	}
 }
@@ -1017,7 +1015,7 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 		g.setDead("s", "wi") // 神职全灭，5 平民 vs 2 狼
 
 		over, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
-		if !over || winner != pb.Camp_CAMP_EVIL {
+		if !over || winner != CampEvil {
 			t.Errorf("神职全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
 	})
@@ -1032,7 +1030,7 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 		g.setDead("v1", "v2") // 平民全灭，4 神职 vs 2 狼
 
 		over, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
-		if !over || winner != pb.Camp_CAMP_EVIL {
+		if !over || winner != CampEvil {
 			t.Errorf("平民全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
 	})
@@ -1066,14 +1064,14 @@ func TestRule_R7_GuardSaveTogetherDiesDisabled(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5"),
 	)...)
 
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.mustUse("g", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.mustUse("wi", SkillAntidote, "v1")
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	g.assertAlive("v1", true, "关闭同守同救致死后")
 }
@@ -1088,15 +1086,15 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	requireRule(t, "R10.屠边只数好人")
 
 	e := MustNewEngine(nil)
-	mustAdd(t, e, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, e, "w1", RoleWerewolf)
 	// 隐狼：狼阵营，但角色类别是神职
-	if err := e.AddCustomPlayer("hidden", pb.RoleType_ROLE_TYPE_WEREWOLF,
-		pb.Camp_CAMP_EVIL, RoleCategoryGod); err != nil {
+	if err := e.AddCustomPlayer("hidden", RoleWerewolf,
+		CampEvil, RoleCategoryGod); err != nil {
 		t.Fatalf("AddCustomPlayer 失败: %v", err)
 	}
-	mustAdd(t, e, "s", pb.RoleType_ROLE_TYPE_SEER)
-	mustAdd(t, e, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAdd(t, e, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, e, "s", RoleSeer)
+	mustAdd(t, e, "v1", RoleVillager)
+	mustAdd(t, e, "v2", RoleVillager)
 	if err := e.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
@@ -1110,7 +1108,7 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	if !over {
 		t.Fatal("好人神职已全部出局，屠神应当成立（活着的隐狼不算好人的神）")
 	}
-	if winner != pb.Camp_CAMP_EVIL {
+	if winner != CampEvil {
 		t.Errorf("期望狼人胜利，实际 %v", winner)
 	}
 }
@@ -1134,12 +1132,12 @@ func TestRule_R10_VictoryModeTownWipe(t *testing.T) {
 	// 好人降到 2 == 狼 2，屠城成立
 	g.setDead("v1", "v2")
 	over, winner := g.e.state.checkVictory(VictoryModeTownWipe)
-	if !over || winner != pb.Camp_CAMP_EVIL {
+	if !over || winner != CampEvil {
 		t.Errorf("屠城模式下 好人数 <= 狼人数 应判狼人胜利，实际 over=%v winner=%v", over, winner)
 	}
 
 	// 同一局面在屠边模式下：神职还在、平民全灭 -> 同样是狼胜（屠民）
-	if over, winner := g.e.state.checkVictory(VictoryModeSideWipe); !over || winner != pb.Camp_CAMP_EVIL {
+	if over, winner := g.e.state.checkVictory(VictoryModeSideWipe); !over || winner != CampEvil {
 		t.Errorf("屠边模式下平民全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 	}
 }
@@ -1172,7 +1170,7 @@ func TestRule_R10_MissingCategoryDoesNotEndGame(t *testing.T) {
 		)...)
 		g.setDead("v1", "v2")
 		over, winner := g.e.state.checkVictory(VictoryModeSideWipe)
-		if !over || winner != pb.Camp_CAMP_EVIL {
+		if !over || winner != CampEvil {
 			t.Errorf("好人全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
 	})
@@ -1181,16 +1179,16 @@ func TestRule_R10_MissingCategoryDoesNotEndGame(t *testing.T) {
 // TestRule_R10_CategoryOf 角色类别的默认映射。
 func TestRule_R10_CategoryOf(t *testing.T) {
 	cases := []struct {
-		role pb.RoleType
+		role RoleType
 		want RoleCategory
 	}{
-		{pb.RoleType_ROLE_TYPE_WEREWOLF, RoleCategoryWolf},
-		{pb.RoleType_ROLE_TYPE_SEER, RoleCategoryGod},
-		{pb.RoleType_ROLE_TYPE_WITCH, RoleCategoryGod},
-		{pb.RoleType_ROLE_TYPE_HUNTER, RoleCategoryGod},
-		{pb.RoleType_ROLE_TYPE_GUARD, RoleCategoryGod},
-		{pb.RoleType_ROLE_TYPE_VILLAGER, RoleCategoryVillager},
-		{pb.RoleType_ROLE_TYPE_GOD, RoleCategoryUnknown},
+		{RoleWerewolf, RoleCategoryWolf},
+		{RoleSeer, RoleCategoryGod},
+		{RoleWitch, RoleCategoryGod},
+		{RoleHunter, RoleCategoryGod},
+		{RoleGuard, RoleCategoryGod},
+		{RoleVillager, RoleCategoryVillager},
+		{RoleGod, RoleCategoryUnknown},
 	}
 	for _, tc := range cases {
 		if got := CategoryOf(tc.role); got != tc.want {
@@ -1206,12 +1204,12 @@ func TestRule_R10_CategoryOf(t *testing.T) {
 	// 扩展角色用 AddCustomPlayer 显式指定阵营与类别：
 	// 隐狼是「好人牌面的狼」，阵营与类别都无法从角色推导
 	e2 := MustNewEngine(nil)
-	if err := e2.AddCustomPlayer("hidden", pb.RoleType_ROLE_TYPE_VILLAGER,
-		pb.Camp_CAMP_EVIL, RoleCategoryWolf); err != nil {
+	if err := e2.AddCustomPlayer("hidden", RoleVillager,
+		CampEvil, RoleCategoryWolf); err != nil {
 		t.Fatalf("AddCustomPlayer 失败: %v", err)
 	}
 	hidden, _ := e2.PlayerInfo("hidden")
-	if hidden.Camp != pb.Camp_CAMP_EVIL || hidden.Category != RoleCategoryWolf {
+	if hidden.Camp != CampEvil || hidden.Category != RoleCategoryWolf {
 		t.Errorf("自定义玩家: 期望 EVIL/WOLF，实际 %v/%v", hidden.Camp, hidden.Category)
 	}
 }
@@ -1225,26 +1223,26 @@ func TestRule_R10_HunterShotCanFlipVictory(t *testing.T) {
 		wolf("w1"), hunter("h"), villagers("v1", "v2"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 
 	// 猎人是唯一神职，此刻「屠神」已成立，但必须先让他开枪
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightHunter)
 	if g.e.IsGameOver() {
 		t.Fatal("猎人尚未开枪，游戏不应结束")
 	}
 
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
+	g.mustUse("h", SkillShoot, "w1")
 	g.endAny()
 
 	if !g.e.IsGameOver() {
 		t.Fatal("最后一只狼被带走，游戏应当结束")
 	}
 	over, winner := g.e.state.checkVictory(VictoryModeSideWipe)
-	if !over || winner != pb.Camp_CAMP_GOOD {
+	if !over || winner != CampGood {
 		t.Errorf("猎人带走最后一只狼，应判好人胜利，实际 over=%v winner=%v", over, winner)
 	}
 }
@@ -1271,11 +1269,11 @@ func TestRule_R11_DayThenVoteEliminates(t *testing.T) {
 	}
 
 	// 发言完毕后进入投票
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 	g.vote("v1", "w1", "w2", "v2", "v3", "v4")
 
 	effects := g.endAny()
-	elim := findEffect(effects, pb.EventType_EVENT_TYPE_ELIMINATE)
+	elim := findEffect(effects, EventEliminate)
 	if elim == nil {
 		t.Fatal("期望产生 ELIMINATE 效果")
 	}
@@ -1294,16 +1292,16 @@ func TestRule_R11_DeadPlayerCannotVote(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
+	g.end(PhaseVote)
 
-	err := g.use("v1", pb.SkillType_SKILL_TYPE_VOTE, "w1")
-	if !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_PLAYER_DEAD) {
+	err := g.use("v1", SkillVote, "w1")
+	if !HasCode(err, CodePlayerDead) {
 		t.Errorf("已出局玩家投票应返回 PLAYER_DEAD，实际 %v", err)
 	}
 }
@@ -1319,15 +1317,15 @@ func TestConvention_D1_VoteTieEliminatesNobody(t *testing.T) {
 	)...)
 
 	g.walkNight()
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 
 	// v1 与 v2 各 2 票
 	g.vote("v1", "w1", "w2")
 	g.vote("v2", "v3", "v4")
 
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	effects := g.end(PhaseNightGuard)
 
-	if elim := findEffect(effects, pb.EventType_EVENT_TYPE_ELIMINATE); elim != nil {
+	if elim := findEffect(effects, EventEliminate); elim != nil {
 		t.Errorf("平票不应有人出局，实际放逐了 %s", elim.TargetID)
 	}
 	g.assertAlive("v1", true, "平票")
@@ -1342,10 +1340,10 @@ func TestConvention_D1_NoVotesEliminatesNobody(t *testing.T) {
 	)...)
 
 	g.walkNight()
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
-	if elim := findEffect(effects, pb.EventType_EVENT_TYPE_ELIMINATE); elim != nil {
+	effects := g.end(PhaseNightGuard)
+	if elim := findEffect(effects, EventEliminate); elim != nil {
 		t.Errorf("无人投票时不应有人出局，实际放逐了 %s", elim.TargetID)
 	}
 }
@@ -1357,20 +1355,20 @@ func TestConvention_D2_WolfKillTieIsEmptyKnife(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// 两狼各刀一人，平票
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.mustUse("w2", pb.SkillType_SKILL_TYPE_KILL, "v2")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("w1", SkillKill, "v1")
+	g.mustUse("w2", SkillKill, "v2")
+	g.end(PhaseNightWitch)
 
 	if got := g.witchSeesKill(); got != "" {
 		t.Errorf("狼刀平票应为空刀，女巫不应看到刀口，实际 %q", got)
 	}
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	g.assertAlive("v1", true, "狼刀平票")
 	g.assertAlive("v2", true, "狼刀平票")
@@ -1387,15 +1385,15 @@ func TestConvention_D3_NightPhaseOrder(t *testing.T) {
 		villagers("v1", "v2", "v3", "v4"),
 	)...)
 
-	want := []pb.PhaseType{
-		pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
-		pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
-		pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
-		pb.PhaseType_PHASE_TYPE_NIGHT_SEER,
-		pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE,
-		pb.PhaseType_PHASE_TYPE_DAY,
-		pb.PhaseType_PHASE_TYPE_VOTE,
-		pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 回到下一夜
+	want := []PhaseType{
+		PhaseNightGuard,
+		PhaseNightWolf,
+		PhaseNightWitch,
+		PhaseNightSeer,
+		PhaseNightResolve,
+		PhaseDay,
+		PhaseVote,
+		PhaseNightGuard, // 回到下一夜
 	}
 
 	if got := g.e.Phase(); got != want[0] {
@@ -1420,23 +1418,23 @@ func TestConvention_D3_SkillRejectedOutsideItsPhase(t *testing.T) {
 	// 开局是 NIGHT_GUARD，此时除守卫外的夜间技能都应被拒
 	cases := []struct {
 		player string
-		skill  pb.SkillType
+		skill  SkillType
 		target string
 	}{
-		{"w1", pb.SkillType_SKILL_TYPE_KILL, "v1"},
-		{"wi", pb.SkillType_SKILL_TYPE_POISON, "v1"},
-		{"s", pb.SkillType_SKILL_TYPE_CHECK, "v1"},
-		{"v1", pb.SkillType_SKILL_TYPE_VOTE, "w1"},
+		{"w1", SkillKill, "v1"},
+		{"wi", SkillPoison, "v1"},
+		{"s", SkillCheck, "v1"},
+		{"v1", SkillVote, "w1"},
 	}
 	for _, tc := range cases {
 		err := g.use(tc.player, tc.skill, tc.target)
-		if !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_SKILL_NOT_ALLOWED) {
+		if !HasCode(err, CodeSkillNotAllowed) {
 			t.Errorf("NIGHT_GUARD 阶段提交 %v 应返回 SKILL_NOT_ALLOWED，实际 %v", tc.skill, err)
 		}
 	}
 
 	// 守卫技能在本阶段可用
-	if err := g.use("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1"); err != nil {
+	if err := g.use("g", SkillProtect, "v1"); err != nil {
 		t.Errorf("NIGHT_GUARD 阶段守卫应可守护，实际 %v", err)
 	}
 }

@@ -3,13 +3,11 @@ package werewolf
 import (
 	"encoding/json"
 	"fmt"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // Effect 效果 - 状态变更的描述
 type Effect struct {
-	Type     pb.EventType
+	Type     EventType
 	SourceID string                 // 效果来源（玩家ID）
 	TargetID string                 // 效果目标（玩家ID）
 	Data     map[string]interface{} // 附加数据
@@ -24,7 +22,7 @@ type Effect struct {
 const internalEventThreshold = 100
 
 // isInternalEvent 判断事件是否为引擎内部状态变更。
-func isInternalEvent(t pb.EventType) bool {
+func isInternalEvent(t EventType) bool {
 	return t >= internalEventThreshold
 }
 
@@ -35,23 +33,23 @@ const triggerPhaseKey = "trigger_phase"
 //
 // 死亡触发是一整类能力（猎人开枪、狼王自爆、白痴翻牌），
 // 引擎不认识其中任何一个具体角色，只认识「谁、去哪个阶段」。
-func NewAbilityTriggerEffect(playerID string, phase pb.PhaseType) *Effect {
-	return NewEffect(pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED, playerID, "").
+func NewAbilityTriggerEffect(playerID string, phase PhaseType) *Effect {
+	return NewEffect(EventAbilityTriggered, playerID, "").
 		WithData(triggerPhaseKey, phase)
 }
 
 // triggerPhase 从触发效果中读出目标阶段
-func (e *Effect) triggerPhase() (pb.PhaseType, bool) {
+func (e *Effect) triggerPhase() (PhaseType, bool) {
 	v, ok := e.Data[triggerPhaseKey]
 	if !ok {
-		return pb.PhaseType_PHASE_TYPE_UNSPECIFIED, false
+		return PhaseUnspecified, false
 	}
-	phase, ok := v.(pb.PhaseType)
+	phase, ok := v.(PhaseType)
 	return phase, ok
 }
 
 // NewEffect 创建效果
-func NewEffect(eventType pb.EventType, sourceID, targetID string) *Effect {
+func NewEffect(eventType EventType, sourceID, targetID string) *Effect {
 	return &Effect{
 		Type:     eventType,
 		SourceID: sourceID,
@@ -84,11 +82,11 @@ func (e *Effect) WithData(key string, value interface{}) *Effect {
 // Data 从 map[string]interface{} 折成 map[string]string；
 // Canceled / Reason 原样带上——被规则否决的行动如果在这里丢掉标记，
 // 到了调用方手里就与真的发生过的一模一样。
-func (e *Effect) ToEvent() *pb.Event {
-	event := &pb.Event{
+func (e *Effect) ToEvent() *Event {
+	event := &Event{
 		Type:     e.Type,
-		SourceId: e.SourceID,
-		TargetId: e.TargetID,
+		SourceID: e.SourceID,
+		TargetID: e.TargetID,
 		Data:     make(map[string]string),
 		Canceled: e.Canceled,
 		Reason:   e.Reason,

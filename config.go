@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"time"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // 超时常量
@@ -66,10 +64,10 @@ type GameConfig struct {
 	VictoryMode VictoryMode
 
 	// 起始阶段。Start 之后进入的第一个阶段，为空时默认 NIGHT_GUARD。
-	StartPhase pb.PhaseType
+	StartPhase PhaseType
 
 	// 阶段配置
-	Phases map[pb.PhaseType]*PhaseConfig
+	Phases map[PhaseType]*PhaseConfig
 
 	// DefaultTimeout 未给出 PhaseConfig.Timeout 时的建议超时。
 	// 建议值，引擎不据此计时，详见超时常量的说明；
@@ -82,7 +80,7 @@ type GameConfig struct {
 // 阶段自己没配就用 DefaultTimeout，DefaultTimeout 也没配就用
 // DefaultPhaseTimeout。这两个字段此前只写不读——调用方要拿引擎实际
 // 在用的建议值，只能自己再造一份配置比对。
-func (c *GameConfig) PhaseTimeout(phase pb.PhaseType) time.Duration {
+func (c *GameConfig) PhaseTimeout(phase PhaseType) time.Duration {
 	if pc := c.Phases[phase]; pc != nil && pc.Timeout > 0 {
 		return pc.Timeout
 	}
@@ -94,16 +92,16 @@ func (c *GameConfig) PhaseTimeout(phase pb.PhaseType) time.Duration {
 
 // PhaseConfig 阶段配置
 type PhaseConfig struct {
-	Type      pb.PhaseType  // 阶段类型
+	Type      PhaseType     // 阶段类型
 	Steps     []PhaseStep   // 步骤列表
 	Timeout   time.Duration // 超时时间（建议值，引擎不据此计时）
-	NextPhase pb.PhaseType  // 下一阶段（声明式配置）
+	NextPhase PhaseType     // 下一阶段（声明式配置）
 }
 
 // PhaseStep 阶段步骤。步骤的先后由切片顺序决定。
 type PhaseStep struct {
-	Role  pb.RoleType  // 哪个角色
-	Skill pb.SkillType // 使用什么技能
+	Role  RoleType  // 哪个角色
+	Skill SkillType // 使用什么技能
 
 	// Required 该步骤是否必须完成，阶段才算就绪。
 	//
@@ -136,12 +134,12 @@ type PhaseStep struct {
 //
 // 玩家发言不走技能通道，由 Engine.SendMessage 处理，可见性也在那里按阶段路由。
 type SkillUse struct {
-	PlayerID string       // 使用技能的玩家
-	Skill    pb.SkillType // 技能类型
-	TargetID string       // 技能目标（单人）
+	PlayerID string    // 使用技能的玩家
+	Skill    SkillType // 技能类型
+	TargetID string    // 技能目标（单人）
 
 	// 以下字段由 Engine 在提交时填充，调用方无需设置
-	Phase pb.PhaseType
+	Phase PhaseType
 	Round int
 }
 
@@ -155,20 +153,20 @@ func DefaultGameConfig() *GameConfig {
 		SameGuardKillIsEmpty:   true,
 		GuardSaveTogetherDies:  true,
 		VictoryMode:            VictoryModeSideWipe,
-		StartPhase:             pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
+		StartPhase:             PhaseNightGuard,
 		DefaultTimeout:         DefaultPhaseTimeout,
-		Phases: map[pb.PhaseType]*PhaseConfig{
+		Phases: map[PhaseType]*PhaseConfig{
 			// 白天和投票阶段
-			pb.PhaseType_PHASE_TYPE_DAY:        StandardDayPhase(),
-			pb.PhaseType_PHASE_TYPE_VOTE:       StandardVotePhase(),
-			pb.PhaseType_PHASE_TYPE_DAY_HUNTER: DayHunterPhase(),
+			PhaseDay:       StandardDayPhase(),
+			PhaseVote:      StandardVotePhase(),
+			PhaseDayHunter: DayHunterPhase(),
 			// 夜晚子阶段
-			pb.PhaseType_PHASE_TYPE_NIGHT_GUARD:   NightGuardPhase(),
-			pb.PhaseType_PHASE_TYPE_NIGHT_WOLF:    NightWolfPhase(),
-			pb.PhaseType_PHASE_TYPE_NIGHT_WITCH:   NightWitchPhase(),
-			pb.PhaseType_PHASE_TYPE_NIGHT_SEER:    NightSeerPhase(),
-			pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE: NightResolvePhase(),
-			pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER:  NightHunterPhase(),
+			PhaseNightGuard:   NightGuardPhase(),
+			PhaseNightWolf:    NightWolfPhase(),
+			PhaseNightWitch:   NightWitchPhase(),
+			PhaseNightSeer:    NightSeerPhase(),
+			PhaseNightResolve: NightResolvePhase(),
+			PhaseNightHunter:  NightHunterPhase(),
 		},
 	}
 }
@@ -176,122 +174,122 @@ func DefaultGameConfig() *GameConfig {
 // StandardDayPhase 标准白天阶段配置
 func StandardDayPhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_DAY,
+		Type: PhaseDay,
 		// 白天只有发言，而发言走 SendMessage 而非技能通道，
 		// 因此这里没有玩家技能步骤
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: RoleGod, Skill: SkillAnnounce},
 		},
 		Timeout:   DayPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_VOTE,
+		NextPhase: PhaseVote,
 	}
 }
 
 // StandardVotePhase 标准投票阶段配置
 func StandardVotePhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_VOTE,
+		Type: PhaseVote,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_UNSPECIFIED, Skill: pb.SkillType_SKILL_TYPE_VOTE, Required: true, Multiple: true},
+			{Role: RoleGod, Skill: SkillAnnounce},
+			{Role: RoleUnspecified, Skill: SkillVote, Required: true, Multiple: true},
 		},
 		Timeout:   VotePhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 进入下一夜
+		NextPhase: PhaseNightGuard, // 进入下一夜
 	}
 }
 
 // DayHunterPhase 白天猎人阶段配置（被投票出局后触发）
 func DayHunterPhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_DAY_HUNTER,
+		Type: PhaseDayHunter,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: RoleGod, Skill: SkillAnnounce},
 			// 开枪与不开枪是二选一，用同一个 Group 声明出来
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Group: hunterShootGroup},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Group: hunterShootGroup},
+			{Role: RoleHunter, Skill: SkillShoot, Group: hunterShootGroup},
+			{Role: RoleHunter, Skill: SkillSkip, Group: hunterShootGroup},
 		},
 		Timeout:   HunterPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, // 猎人行动后进入下一夜
+		NextPhase: PhaseNightGuard, // 猎人行动后进入下一夜
 	}
 }
 
 // NightGuardPhase 守卫阶段配置
 func NightGuardPhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
+		Type: PhaseNightGuard,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_GUARD, Skill: pb.SkillType_SKILL_TYPE_PROTECT},
+			{Role: RoleGod, Skill: SkillAnnounce},
+			{Role: RoleGuard, Skill: SkillProtect},
 		},
 		Timeout:   NightPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		NextPhase: PhaseNightWolf,
 	}
 }
 
 // NightWolfPhase 狼人阶段配置
 func NightWolfPhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Type: PhaseNightWolf,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL, Required: true, Multiple: true},
+			{Role: RoleGod, Skill: SkillAnnounce},
+			{Role: RoleWerewolf, Skill: SkillKill, Required: true, Multiple: true},
 		},
 		Timeout:   WolfPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
+		NextPhase: PhaseNightWitch,
 	}
 }
 
 // NightWitchPhase 女巫阶段配置
 func NightWitchPhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
+		Type: PhaseNightWitch,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_ANTIDOTE},
-			{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_POISON},
+			{Role: RoleGod, Skill: SkillAnnounce},
+			{Role: RoleWitch, Skill: SkillAntidote},
+			{Role: RoleWitch, Skill: SkillPoison},
 		},
 		Timeout:   NightPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_SEER,
+		NextPhase: PhaseNightSeer,
 	}
 }
 
 // NightSeerPhase 预言家阶段配置
 func NightSeerPhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_NIGHT_SEER,
+		Type: PhaseNightSeer,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-			{Role: pb.RoleType_ROLE_TYPE_SEER, Skill: pb.SkillType_SKILL_TYPE_CHECK},
+			{Role: RoleGod, Skill: SkillAnnounce},
+			{Role: RoleSeer, Skill: SkillCheck},
 		},
 		Timeout:   NightPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE,
+		NextPhase: PhaseNightResolve,
 	}
 }
 
 // NightResolvePhase 夜晚结算阶段配置（处理击杀、猎人触发等）
 func NightResolvePhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE,
+		Type: PhaseNightResolve,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: RoleGod, Skill: SkillAnnounce},
 		},
 		Timeout:   NightPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_DAY, // 默认进入白天，如有猎人死亡则动态改为猎人阶段
+		NextPhase: PhaseDay, // 默认进入白天，如有猎人死亡则动态改为猎人阶段
 	}
 }
 
 // NightHunterPhase 夜晚猎人阶段配置（被动触发）
 func NightHunterPhase() *PhaseConfig {
 	return &PhaseConfig{
-		Type: pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER,
+		Type: PhaseNightHunter,
 		Steps: []PhaseStep{
-			{Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
+			{Role: RoleGod, Skill: SkillAnnounce},
 			// 开枪与不开枪是二选一，用同一个 Group 声明出来
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SHOOT, Group: hunterShootGroup},
-			{Role: pb.RoleType_ROLE_TYPE_HUNTER, Skill: pb.SkillType_SKILL_TYPE_SKIP, Group: hunterShootGroup},
+			{Role: RoleHunter, Skill: SkillShoot, Group: hunterShootGroup},
+			{Role: RoleHunter, Skill: SkillSkip, Group: hunterShootGroup},
 		},
 		Timeout:   HunterPhaseTimeout,
-		NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
+		NextPhase: PhaseDay,
 	}
 }
 
@@ -310,25 +308,25 @@ func NightHunterPhase() *PhaseConfig {
 //     的触发会被就地否决并记 Error 日志，而不是把游戏带进一个空阶段。
 func (c *GameConfig) Validate() error {
 	if c == nil {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_CONFIG, "config must not be nil")
+		return WrapError(CodeInvalidConfig, "config must not be nil")
 	}
 	if len(c.Phases) == 0 {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_CONFIG, "config contains no phases")
+		return WrapError(CodeInvalidConfig, "config contains no phases")
 	}
 
 	start := c.startPhase()
 	if _, ok := c.Phases[start]; !ok {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+		return WrapError(CodeInvalidPhase,
 			"start phase %v is not present in config", start)
 	}
 
 	for phaseType, pc := range c.Phases {
 		if pc == nil {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+			return WrapError(CodeInvalidPhase,
 				"phase %v has a nil config", phaseType)
 		}
 		if pc.Type != phaseType {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+			return WrapError(CodeInvalidPhase,
 				"phase %v is registered under key %v", pc.Type, phaseType)
 		}
 
@@ -336,13 +334,13 @@ func (c *GameConfig) Validate() error {
 		//
 		// UNSPECIFIED 一并拒绝：想表达「到此结束」有 PHASE_TYPE_END，
 		// 留空只可能是漏填，而漏填的后果与悬空完全一样。
-		if pc.NextPhase == pb.PhaseType_PHASE_TYPE_UNSPECIFIED {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+		if pc.NextPhase == PhaseUnspecified {
+			return WrapError(CodeInvalidPhase,
 				"phase %v has no NextPhase (use PHASE_TYPE_END to end the game)", phaseType)
 		}
-		if pc.NextPhase != pb.PhaseType_PHASE_TYPE_END {
+		if pc.NextPhase != PhaseEnd {
 			if _, ok := c.Phases[pc.NextPhase]; !ok {
-				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				return WrapError(CodeInvalidPhase,
 					"phase %v points to %v which is not present in config", phaseType, pc.NextPhase)
 			}
 		}
@@ -353,7 +351,7 @@ func (c *GameConfig) Validate() error {
 	}
 
 	if c.VictoryMode < VictoryModeSideWipe || c.VictoryMode > VictoryModeTownWipe {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_CONFIG,
+		return WrapError(CodeInvalidConfig,
 			"unknown victory mode %d", int(c.VictoryMode))
 	}
 
@@ -366,22 +364,22 @@ func (c *GameConfig) Validate() error {
 // 「还差谁行动」。ROLE_TYPE_UNSPECIFIED 表示「所有角色」，因此它与任何
 // 具体角色声明同一个技能都构成重复——键相同的那半只是同一个问题里
 // 比较显眼的一半。
-func validateSteps(phaseType pb.PhaseType, steps []PhaseStep) error {
+func validateSteps(phaseType PhaseType, steps []PhaseStep) error {
 	type stepKey struct {
-		role  pb.RoleType
-		skill pb.SkillType
+		role  RoleType
+		skill SkillType
 	}
 
 	seen := make(map[stepKey]bool, len(steps))
-	allRoles := make(map[pb.SkillType]bool, len(steps))
-	groupRole := make(map[string]pb.RoleType, len(steps))
+	allRoles := make(map[SkillType]bool, len(steps))
+	groupRole := make(map[string]RoleType, len(steps))
 	for _, step := range steps {
 		// 互斥备选组是「同一个人几选一」，跨角色的组没有意义：
 		// 就绪判定会逐个行动者去看他提交了组里的哪一个，
 		// 而预言家永远不会提交女巫的技能。
 		if step.Group != "" {
 			if role, ok := groupRole[step.Group]; ok && role != step.Role {
-				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+				return WrapError(CodeInvalidPhase,
 					"phase %v group %q spans roles %v and %v",
 					phaseType, step.Group, role, step.Role)
 			}
@@ -390,18 +388,18 @@ func validateSteps(phaseType pb.PhaseType, steps []PhaseStep) error {
 
 		key := stepKey{role: step.Role, skill: step.Skill}
 		if seen[key] {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+			return WrapError(CodeInvalidPhase,
 				"phase %v declares %v/%v twice", phaseType, step.Role, step.Skill)
 		}
 		seen[key] = true
-		if step.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+		if step.Role == RoleUnspecified {
 			allRoles[step.Skill] = true
 		}
 	}
 
 	for _, step := range steps {
-		if step.Role != pb.RoleType_ROLE_TYPE_UNSPECIFIED && allRoles[step.Skill] {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+		if step.Role != RoleUnspecified && allRoles[step.Skill] {
+			return WrapError(CodeInvalidPhase,
 				"phase %v declares %v for all roles and for %v separately",
 				phaseType, step.Skill, step.Role)
 		}
@@ -411,9 +409,9 @@ func validateSteps(phaseType pb.PhaseType, steps []PhaseStep) error {
 }
 
 // startPhase 返回起始阶段，未配置时用默认值
-func (c *GameConfig) startPhase() pb.PhaseType {
-	if c.StartPhase == pb.PhaseType_PHASE_TYPE_UNSPECIFIED {
-		return pb.PhaseType_PHASE_TYPE_NIGHT_GUARD
+func (c *GameConfig) startPhase() PhaseType {
+	if c.StartPhase == PhaseUnspecified {
+		return PhaseNightGuard
 	}
 	return c.StartPhase
 }

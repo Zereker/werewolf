@@ -3,8 +3,6 @@ package werewolf
 import (
 	"reflect"
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // playMidGame 走到一个有内容的局面：救过人、投出过人、猎人开过枪
@@ -16,23 +14,23 @@ func playMidGame(t *testing.T) *Engine {
 		villagers("v1", "v2", "v3"),
 	)...)
 
-	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "s")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.mustUse("w2", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.mustUse("s", pb.SkillType_SKILL_TYPE_CHECK, "w1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.mustUse("g", SkillProtect, "s")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
+	g.mustUse("w2", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.mustUse("wi", SkillAntidote, "v1")
+	g.end(PhaseNightSeer)
+	g.mustUse("s", SkillCheck, "w1")
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
+	g.end(PhaseVote)
 
 	// 投出猎人，触发开枪
 	g.vote("h", "w1", "w2", "v1", "v2", "v3")
-	g.end(pb.PhaseType_PHASE_TYPE_DAY_HUNTER)
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "w1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	g.end(PhaseDayHunter)
+	g.mustUse("h", SkillShoot, "w1")
+	g.end(PhaseNightGuard)
 
 	return g.e
 }
@@ -49,9 +47,9 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 	var added, started int
 	for _, ef := range log {
 		switch ef.Type {
-		case pb.EventType_EVENT_TYPE_PLAYER_ADDED:
+		case EventPlayerAdded:
 			added++
-		case pb.EventType_EVENT_TYPE_GAME_STARTED:
+		case EventGameStarted:
 			started++
 		}
 	}
@@ -63,15 +61,15 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 	}
 
 	// 关键事件都要在
-	want := []pb.EventType{
-		pb.EventType_EVENT_TYPE_PROTECT,
-		pb.EventType_EVENT_TYPE_SET_NIGHT_KILL,
-		pb.EventType_EVENT_TYPE_SAVE,
-		pb.EventType_EVENT_TYPE_CHECK,
-		pb.EventType_EVENT_TYPE_ELIMINATE,
-		pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED,
-		pb.EventType_EVENT_TYPE_SHOOT,
-		pb.EventType_EVENT_TYPE_PHASE_CHANGED,
+	want := []EventType{
+		EventProtect,
+		EventSetNightKill,
+		EventSave,
+		EventCheck,
+		EventEliminate,
+		EventAbilityTriggered,
+		EventShoot,
+		EventPhaseChanged,
 	}
 	for _, typ := range want {
 		found := false
@@ -154,14 +152,14 @@ func TestReplayEngine_Rejects(t *testing.T) {
 	})
 
 	t.Run("开局效果缺少阶段", func(t *testing.T) {
-		bad := []*Effect{NewEffect(pb.EventType_EVENT_TYPE_GAME_STARTED, "", "")}
+		bad := []*Effect{NewEffect(EventGameStarted, "", "")}
 		if _, err := ReplayEngine(nil, bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
 	})
 
 	t.Run("流转效果缺少阶段", func(t *testing.T) {
-		bad := []*Effect{NewEffect(pb.EventType_EVENT_TYPE_PHASE_CHANGED, "", "")}
+		bad := []*Effect{NewEffect(EventPhaseChanged, "", "")}
 		if _, err := ReplayEngine(nil, bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
@@ -169,7 +167,7 @@ func TestReplayEngine_Rejects(t *testing.T) {
 
 	t.Run("配置不合法", func(t *testing.T) {
 		cfg := DefaultGameConfig()
-		delete(cfg.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+		delete(cfg.Phases, PhaseNightWitch)
 		if _, err := ReplayEngine(cfg, nil); err == nil {
 			t.Error("残缺配置应当被拒绝")
 		}
@@ -180,7 +178,7 @@ func TestReplayEngine_Rejects(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if e.Phase() != pb.PhaseType_PHASE_TYPE_START {
+		if e.Phase() != PhaseStart {
 			t.Errorf("期望 START，实际 %v", e.Phase())
 		}
 	})
@@ -201,14 +199,14 @@ func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
 	)...)
 
 	// 夜里刀死猎人，他开枪打死一名平民，停在白天（回合中途）
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
-	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
+	g.mustUse("h", SkillShoot, "v1")
+	g.end(PhaseDay)
 
 	replayed, err := ReplayEngine(nil, g.e.EffectLog())
 	if err != nil {

@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // TestGameView_IsReadOnly 视图不能被还原成可变的状态对象。
@@ -13,7 +11,7 @@ import (
 // 断言出任何能改状态的东西。
 func TestGameView_IsReadOnly(t *testing.T) {
 	st := newState()
-	if err := st.addPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER); err != nil {
+	if err := st.addPlayer("v1", RoleVillager); err != nil {
 		t.Fatal(err)
 	}
 	view := newStateView(st)
@@ -32,31 +30,31 @@ func TestGameView_IsReadOnly(t *testing.T) {
 
 func TestGameView_ReadsThrough(t *testing.T) {
 	st := newState()
-	for id, role := range map[string]pb.RoleType{
-		"w1": pb.RoleType_ROLE_TYPE_WEREWOLF,
-		"g":  pb.RoleType_ROLE_TYPE_GUARD,
-		"v1": pb.RoleType_ROLE_TYPE_VILLAGER,
-		"v2": pb.RoleType_ROLE_TYPE_VILLAGER,
+	for id, role := range map[string]RoleType{
+		"w1": RoleWerewolf,
+		"g":  RoleGuard,
+		"v1": RoleVillager,
+		"v2": RoleVillager,
 	} {
 		if err := st.addPlayer(id, role); err != nil {
 			t.Fatal(err)
 		}
 	}
-	st.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "v2"))
+	st.applyEffect(NewEffect(EventKill, "", "v2"))
 
 	// LastProtectedTarget 问的是「上一回合」，因此守护要发生在第 1 回合，
 	// 再把状态推到第 2 回合去读
 	st.Round = 1
-	st.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED, "g", "v1"))
+	st.applyEffect(NewEffect(EventSetLastProtected, "g", "v1"))
 	st.Round = 2
-	st.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SET_NIGHT_KILL, "", "v1"))
+	st.applyEffect(NewEffect(EventSetNightKill, "", "v1"))
 
 	view := newStateView(st)
 
 	if got := len(view.AlivePlayers()); got != 3 {
 		t.Errorf("存活玩家数: 期望 3，实际 %d", got)
 	}
-	if got := view.AlivePlayerIDsByRole(pb.RoleType_ROLE_TYPE_WEREWOLF); len(got) != 1 || got[0] != "w1" {
+	if got := view.AlivePlayerIDsByRole(RoleWerewolf); len(got) != 1 || got[0] != "w1" {
 		t.Errorf("狼人列表: 期望 [w1]，实际 %v", got)
 	}
 	if got := view.LastProtectedTarget("g"); got != "v1" {
@@ -82,10 +80,10 @@ func TestGameView_ReadsThrough(t *testing.T) {
 // 改它不会影响引擎状态。
 func TestGameView_RoundContextIsCopy(t *testing.T) {
 	st := newState()
-	if err := st.addPlayer("v1", pb.RoleType_ROLE_TYPE_VILLAGER); err != nil {
+	if err := st.addPlayer("v1", RoleVillager); err != nil {
 		t.Fatal(err)
 	}
-	st.applyEffect(NewEffect(pb.EventType_EVENT_TYPE_SET_NIGHT_KILL, "", "v1"))
+	st.applyEffect(NewEffect(EventSetNightKill, "", "v1"))
 
 	view := newStateView(st)
 	rc := view.RoundContext()

@@ -4,8 +4,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // 本文件的建局默认走 rules_test.go 的 newRuleGame 辅助。
@@ -59,13 +57,13 @@ func TestNewEngine_CustomConfig(t *testing.T) {
 func TestEngine_AddPlayer(t *testing.T) {
 	engine := MustNewEngine(nil)
 
-	mustAdd(t, engine, "p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "p1", RoleWerewolf)
 
 	player, ok := engine.state.getPlayer("p1")
 	if !ok {
 		t.Fatal("expected player to be added")
 	}
-	if player.Role != pb.RoleType_ROLE_TYPE_WEREWOLF {
+	if player.Role != RoleWerewolf {
 		t.Errorf("expected Role=WEREWOLF, got %v", player.Role)
 	}
 }
@@ -74,7 +72,7 @@ func TestEngine_Start(t *testing.T) {
 	// newRuleGame 内部即断言 Start() 必须成功（失败则 Fatal）
 	g := newRuleGame(t, nil, wolf("w1"), villager("v1"))
 
-	if g.e.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if g.e.Phase() != PhaseNightGuard {
 		t.Errorf("expected Phase=NIGHT_GUARD, got %v", g.e.Phase())
 	}
 	if g.e.Round() != 1 {
@@ -96,12 +94,12 @@ func TestEngine_Start_AlreadyStarted(t *testing.T) {
 func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 	cases := []struct {
 		name  string
-		roles map[string]pb.RoleType
+		roles map[string]RoleType
 		want  error
 	}{
 		{"空板子", nil, ErrNoWerewolf},
-		{"只有狼", map[string]pb.RoleType{"w1": pb.RoleType_ROLE_TYPE_WEREWOLF}, ErrNoGoodPlayer},
-		{"只有好人", map[string]pb.RoleType{"v1": pb.RoleType_ROLE_TYPE_VILLAGER}, ErrNoWerewolf},
+		{"只有狼", map[string]RoleType{"w1": RoleWerewolf}, ErrNoGoodPlayer},
+		{"只有好人", map[string]RoleType{"v1": RoleVillager}, ErrNoWerewolf},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -121,32 +119,32 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 func TestEngine_AddPlayer_Validation(t *testing.T) {
 	engine := MustNewEngine(nil)
 
-	if err := engine.AddPlayer("", pb.RoleType_ROLE_TYPE_VILLAGER); err != ErrInvalidPlayerID {
+	if err := engine.AddPlayer("", RoleVillager); err != ErrInvalidPlayerID {
 		t.Errorf("空 ID 应返回 ErrInvalidPlayerID，实际 %v", err)
 	}
-	if err := engine.AddPlayer("god", pb.RoleType_ROLE_TYPE_GOD); !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_INVALID_ROLE) {
+	if err := engine.AddPlayer("god", RoleGod); !HasCode(err, CodeInvalidRole) {
 		t.Errorf("上帝不是玩家身份，应返回 INVALID_ROLE，实际 %v", err)
 	}
 
-	if err := engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_WEREWOLF); err != nil {
+	if err := engine.AddPlayer("w1", RoleWerewolf); err != nil {
 		t.Fatalf("正常添加应当成功，实际 %v", err)
 	}
-	if err := engine.AddPlayer("w1", pb.RoleType_ROLE_TYPE_VILLAGER); !IsErrorCode(err, pb.ErrorCode_ERROR_CODE_PLAYER_EXISTS) {
+	if err := engine.AddPlayer("w1", RoleVillager); !HasCode(err, CodePlayerExists) {
 		t.Errorf("重复 ID 应返回 PLAYER_EXISTS，实际 %v", err)
 	}
 
 	// 阵营由角色推导，调用方不再需要（也无法）传错
 	w1, _ := engine.PlayerInfo("w1")
-	if w1.Camp != pb.Camp_CAMP_EVIL {
+	if w1.Camp != CampEvil {
 		t.Errorf("狼人阵营应为 EVIL，实际 %v", w1.Camp)
 	}
 
 	// 开局后不允许再改动玩家
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v1", RoleVillager)
 	if err := engine.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.AddPlayer("v2", pb.RoleType_ROLE_TYPE_VILLAGER); err != ErrGameAlreadyStarted {
+	if err := engine.AddPlayer("v2", RoleVillager); err != ErrGameAlreadyStarted {
 		t.Errorf("开局后添加玩家应返回 ErrGameAlreadyStarted，实际 %v", err)
 	}
 	if _, ok := engine.PlayerInfo("v2"); ok {
@@ -158,15 +156,15 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 // 长度与元素内容（提交时是否补齐了 Phase/Round），故保留显式风格。
 func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
-	mustAdd(t, engine, "victim", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "wolf", RoleWerewolf)
+	mustAdd(t, engine, "guard", RoleGuard)
+	mustAdd(t, engine, "victim", RoleVillager)
 	mustStart(t, engine)
 
 	// Guard can protect in NIGHT_GUARD phase
 	err := engine.SubmitSkillUse(&SkillUse{
 		PlayerID: "guard",
-		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
+		Skill:    SkillProtect,
 		TargetID: "victim",
 	})
 
@@ -179,7 +177,7 @@ func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 
 	// Verify phase and round are set on skill use
 	use := engine.pendingUses[0]
-	if use.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if use.Phase != PhaseNightGuard {
 		t.Errorf("expected Phase=NIGHT_GUARD, got %v", use.Phase)
 	}
 	if use.Round != 1 {
@@ -190,7 +188,7 @@ func TestEngine_SubmitSkillUse_Valid(t *testing.T) {
 func TestEngine_SubmitSkillUse_InvalidPlayer(t *testing.T) {
 	g := newRuleGame(t, nil, wolf("wolf"), villager("v1"))
 
-	err := g.use("nonexistent", pb.SkillType_SKILL_TYPE_KILL, "wolf")
+	err := g.use("nonexistent", SkillKill, "wolf")
 
 	if err != ErrPlayerNotFound {
 		t.Errorf("expected ErrPlayerNotFound, got %v", err)
@@ -202,7 +200,7 @@ func TestEngine_SubmitSkillUse_DeadPlayer(t *testing.T) {
 	// 开局之后再置为出局：开局前杀掉唯一的狼会让板子不合法
 	g.setDead("wolf")
 
-	err := g.use("wolf", pb.SkillType_SKILL_TYPE_KILL, "victim")
+	err := g.use("wolf", SkillKill, "victim")
 
 	if err != ErrPlayerDead {
 		t.Errorf("expected ErrPlayerDead, got %v", err)
@@ -213,7 +211,7 @@ func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
 	g := newRuleGame(t, nil, seats(wolf("wolf"), villagers("villager", "target"))...)
 
 	// Villager cannot kill
-	err := g.use("villager", pb.SkillType_SKILL_TYPE_KILL, "target")
+	err := g.use("villager", SkillKill, "target")
 
 	if err != ErrSkillNotAllowed {
 		t.Errorf("expected ErrSkillNotAllowed, got %v", err)
@@ -224,15 +222,15 @@ func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
 // 这是对内部队列的直接检查，故保留显式风格。
 func TestEngine_EndPhase(t *testing.T) {
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
-	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "guard", RoleGuard)
+	mustAdd(t, engine, "wolf", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 	mustStart(t, engine)
 
 	// In NIGHT_GUARD phase, guard protects v1
 	mustSubmit(t, engine, &SkillUse{
 		PlayerID: "guard",
-		Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
+		Skill:    SkillProtect,
 		TargetID: "v1",
 	})
 
@@ -247,12 +245,12 @@ func TestEngine_EndPhase(t *testing.T) {
 	}
 
 	// 检查包含 PROTECT effect
-	if findEffect(effects, pb.EventType_EVENT_TYPE_PROTECT) == nil {
+	if findEffect(effects, EventProtect) == nil {
 		t.Error("expected to have EVENT_TYPE_PROTECT effect")
 	}
 
 	// Should transition to NIGHT_WOLF
-	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+	if engine.Phase() != PhaseNightWolf {
 		t.Errorf("expected Phase=NIGHT_WOLF, got %v", engine.Phase())
 	}
 
@@ -266,22 +264,22 @@ func TestEngine_EndPhase_GameOver_WolvesWin(t *testing.T) {
 	g := newRuleGame(t, nil, wolf("wolf"), villager("v1"))
 
 	// NIGHT_GUARD phase - skip
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF phase - wolf kills v1
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	// Continue through night phases
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 	g.endAny() // NIGHT_RESOLVE -> 击杀在此结算
 
 	// v1 出局后平民全灭，狼人按屠边获胜
 	if !g.e.IsGameOver() {
 		t.Error("expected game to be over")
 	}
-	if g.e.Phase() != pb.PhaseType_PHASE_TYPE_END {
+	if g.e.Phase() != PhaseEnd {
 		t.Errorf("expected Phase=END, got %v", g.e.Phase())
 	}
 }
@@ -290,17 +288,17 @@ func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
 	g := newRuleGame(t, nil, seats(wolf("wolf"), villagers("v1", "v2"))...)
 
 	// NIGHT_GUARD -> NIGHT_WOLF
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.end(PhaseNightWolf)
 
 	// NIGHT_WOLF: wolf kills v1
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	// NIGHT_WITCH -> NIGHT_SEER -> NIGHT_RESOLVE -> DAY (v1 killed here) -> VOTE
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
+	g.end(PhaseVote)
 
 	// VOTE: v2 votes wolf
 	g.vote("wolf", "v2")
@@ -316,7 +314,7 @@ func TestEngine_EndPhase_GameOver_GoodWins(t *testing.T) {
 // 不经开局，故保留显式风格。
 func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 	engine := MustNewEngine(nil)
-	engine.state.Phase = pb.PhaseType_PHASE_TYPE_END
+	engine.state.Phase = PhaseEnd
 
 	_, err := engine.EndPhase()
 	if err != ErrGameEnded {
@@ -329,15 +327,15 @@ func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 func TestEngine_GetCurrentPhase(t *testing.T) {
 	engine := MustNewEngine(nil)
 
-	if engine.Phase() != pb.PhaseType_PHASE_TYPE_START {
+	if engine.Phase() != PhaseStart {
 		t.Errorf("expected Phase=START, got %v", engine.Phase())
 	}
 
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 	mustStart(t, engine)
 
-	if engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if engine.Phase() != PhaseNightGuard {
 		t.Errorf("expected Phase=NIGHT_GUARD after start, got %v", engine.Phase())
 	}
 }
@@ -350,8 +348,8 @@ func TestEngine_GetCurrentRound(t *testing.T) {
 		t.Errorf("expected Round=0, got %d", engine.Round())
 	}
 
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 	mustStart(t, engine)
 
 	if engine.Round() != 1 {
@@ -368,7 +366,7 @@ func TestEngine_GetAllowedSkills(t *testing.T) {
 	if len(skills) != 1 {
 		t.Errorf("expected 1 skill, got %d", len(skills))
 	}
-	if skills[0] != pb.SkillType_SKILL_TYPE_PROTECT {
+	if skills[0] != SkillProtect {
 		t.Errorf("expected PROTECT, got %v", skills[0])
 	}
 }
@@ -404,7 +402,7 @@ func TestEngine_IsGameOver(t *testing.T) {
 		t.Error("expected IsGameOver=false initially")
 	}
 
-	engine.state.Phase = pb.PhaseType_PHASE_TYPE_END
+	engine.state.Phase = PhaseEnd
 
 	if !engine.IsGameOver() {
 		t.Error("expected IsGameOver=true when Phase=END")
@@ -416,13 +414,13 @@ func TestEngine_OnEvent(t *testing.T) {
 	g := newRuleGame(t, nil, guard("guard"), wolf("wolf"), villager("v1"))
 
 	eventCount := 0
-	g.e.OnEvent(func(event *pb.Event) {
+	g.e.OnEvent(func(event *Event) {
 		eventCount++
 	})
 
 	// NIGHT_GUARD phase
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
 
 	// Should have 1 event (protect effect)
 	if eventCount != 1 {
@@ -436,16 +434,16 @@ func TestEngine_MultipleHandlers(t *testing.T) {
 	count1 := 0
 	count2 := 0
 
-	g.e.OnEvent(func(event *pb.Event) {
+	g.e.OnEvent(func(event *Event) {
 		count1++
 	})
-	g.e.OnEvent(func(event *pb.Event) {
+	g.e.OnEvent(func(event *Event) {
 		count2++
 	})
 
 	// NIGHT_GUARD phase
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
 
 	if count1 != 1 {
 		t.Errorf("expected handler1 called 1 time, got %d", count1)
@@ -459,9 +457,9 @@ func TestEngine_MultipleHandlers(t *testing.T) {
 // 不走 newRuleGame 的单线程推进辅助。
 func TestEngine_Concurrency(t *testing.T) {
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "guard", pb.RoleType_ROLE_TYPE_GUARD)
-	mustAdd(t, engine, "wolf", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "guard", RoleGuard)
+	mustAdd(t, engine, "wolf", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 	mustStart(t, engine)
 
 	var wg sync.WaitGroup
@@ -487,7 +485,7 @@ func TestEngine_Concurrency(t *testing.T) {
 			defer wg.Done()
 			err := engine.SubmitSkillUse(&SkillUse{
 				PlayerID: "guard",
-				Skill:    pb.SkillType_SKILL_TYPE_PROTECT,
+				Skill:    SkillProtect,
 				TargetID: "v1",
 			})
 			if err != nil && err != ErrPlayerDead && err != ErrTargetDead {
@@ -512,7 +510,7 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	)...)
 
 	// Night 1 - GUARD phase
-	if g.e.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if g.e.Phase() != PhaseNightGuard {
 		t.Errorf("expected NIGHT_GUARD phase, got %v", g.e.Phase())
 	}
 	if g.e.Round() != 1 {
@@ -520,24 +518,24 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// Guard protects seer
-	g.mustUse("guard", pb.SkillType_SKILL_TYPE_PROTECT, "seer")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("guard", SkillProtect, "seer")
+	g.end(PhaseNightWolf)
 
 	// Night 1 - WOLF phase: wolf kills v1
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wolf", SkillKill, "v1")
+	g.end(PhaseNightWitch)
 
 	// Night 1 - WITCH phase (skip)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(PhaseNightSeer)
 
 	// Night 1 - SEER phase: seer checks wolf
-	g.mustUse("seer", pb.SkillType_SKILL_TYPE_CHECK, "wolf")
-	effects := g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.mustUse("seer", SkillCheck, "wolf")
+	effects := g.end(PhaseNightResolve)
 
 	// Should have check result showing wolf
 	hasCheckResult := false
 	for _, e := range effects {
-		if e.Type == pb.EventType_EVENT_TYPE_CHECK && e.Data["isGood"] == false {
+		if e.Type == EventCheck && e.Data["isGood"] == false {
 			hasCheckResult = true
 		}
 	}
@@ -546,13 +544,13 @@ func TestEngine_FullGameCycle(t *testing.T) {
 	}
 
 	// NIGHT_RESOLVE phase - apply night kills
-	g.end(pb.PhaseType_PHASE_TYPE_DAY) // v1 killed here
+	g.end(PhaseDay) // v1 killed here
 
 	// v1 should be dead after NIGHT_RESOLVE
 	g.assertAlive("v1", false, "expected v1 to be dead")
 
 	// Day 1 -> Vote 1
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(PhaseVote)
 
 	// Vote out wolf
 	g.vote("wolf", "seer", "guard")
@@ -572,24 +570,24 @@ func TestEngine_GetPhaseInfo_NightGuard(t *testing.T) {
 
 	info := g.e.PhaseInfo()
 
-	if info.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if info.Phase != PhaseNightGuard {
 		t.Errorf("expected NIGHT_GUARD phase, got %v", info.Phase)
 	}
 	if info.Round != 1 {
 		t.Errorf("expected round 1, got %d", info.Round)
 	}
-	if len(info.ActiveRoles) != 1 || info.ActiveRoles[0] != pb.RoleType_ROLE_TYPE_GUARD {
+	if len(info.ActiveRoles) != 1 || info.ActiveRoles[0] != RoleGuard {
 		t.Errorf("expected GUARD as active role")
 	}
 
-	guardInfo, ok := info.RoleInfos[pb.RoleType_ROLE_TYPE_GUARD]
+	guardInfo, ok := info.RoleInfos[RoleGuard]
 	if !ok {
 		t.Fatal("expected guard role info")
 	}
 	if len(guardInfo.PlayerIDs) != 1 || guardInfo.PlayerIDs[0] != "guard" {
 		t.Errorf("expected guard player ID, got %v", guardInfo.PlayerIDs)
 	}
-	if len(guardInfo.AllowedSkills) != 1 || guardInfo.AllowedSkills[0] != pb.SkillType_SKILL_TYPE_PROTECT {
+	if len(guardInfo.AllowedSkills) != 1 || guardInfo.AllowedSkills[0] != SkillProtect {
 		t.Errorf("expected PROTECT skill, got %v", guardInfo.AllowedSkills)
 	}
 }
@@ -599,15 +597,15 @@ func TestEngine_GetPhaseInfo_NightWolf(t *testing.T) {
 		wolf("wolf1"), wolf("wolf2"), villagers("v1", "v2", "v3"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF) // GUARD -> WOLF
+	g.end(PhaseNightWolf) // GUARD -> WOLF
 
 	info := g.e.PhaseInfo()
 
-	if info.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+	if info.Phase != PhaseNightWolf {
 		t.Errorf("expected NIGHT_WOLF phase, got %v", info.Phase)
 	}
 
-	wolfInfo, ok := info.RoleInfos[pb.RoleType_ROLE_TYPE_WEREWOLF]
+	wolfInfo, ok := info.RoleInfos[RoleWerewolf]
 	if !ok {
 		t.Fatal("expected wolf role info")
 	}
@@ -632,19 +630,19 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 		witch("witch"), wolf("wolf"), villagers("v1", "v2", "v3"),
 	)...)
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF) // GUARD -> WOLF
+	g.end(PhaseNightWolf) // GUARD -> WOLF
 
 	// Wolf kills v1
-	g.mustUse("wolf", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH) // WOLF -> WITCH
+	g.mustUse("wolf", SkillKill, "v1")
+	g.end(PhaseNightWitch) // WOLF -> WITCH
 
 	info := g.e.PhaseInfo()
 
-	if info.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_WITCH {
+	if info.Phase != PhaseNightWitch {
 		t.Errorf("expected NIGHT_WITCH phase, got %v", info.Phase)
 	}
 
-	witchInfo, ok := info.RoleInfos[pb.RoleType_ROLE_TYPE_WITCH]
+	witchInfo, ok := info.RoleInfos[RoleWitch]
 	if !ok {
 		t.Fatal("expected witch role info")
 	}
@@ -675,10 +673,10 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 	if godStep == nil {
 		t.Fatal("expected god announcement step")
 	}
-	if godStep.Role != pb.RoleType_ROLE_TYPE_GOD {
+	if godStep.Role != RoleGod {
 		t.Errorf("expected GOD role, got %v", godStep.Role)
 	}
-	if godStep.Skill != pb.SkillType_SKILL_TYPE_ANNOUNCE {
+	if godStep.Skill != SkillAnnounce {
 		t.Errorf("expected ANNOUNCE skill, got %v", godStep.Skill)
 	}
 
@@ -687,7 +685,7 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 	if len(actionSteps) != 1 {
 		t.Errorf("expected 1 action step, got %d", len(actionSteps))
 	}
-	if actionSteps[0].Role != pb.RoleType_ROLE_TYPE_GUARD {
+	if actionSteps[0].Role != RoleGuard {
 		t.Errorf("expected GUARD role, got %v", actionSteps[0].Role)
 	}
 }
@@ -703,11 +701,11 @@ func TestPhaseInfo_GodAnnouncement(t *testing.T) {
 // 单线程推进辅助（g.end 会断言阶段流转，在并发下无意义）。
 func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "s", pb.RoleType_ROLE_TYPE_SEER)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
-	mustAdd(t, engine, "v3", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "s", RoleSeer)
+	mustAdd(t, engine, "v1", RoleVillager)
+	mustAdd(t, engine, "v2", RoleVillager)
+	mustAdd(t, engine, "v3", RoleVillager)
 	mustStart(t, engine)
 
 	var wg sync.WaitGroup
@@ -716,7 +714,7 @@ func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 200; i++ {
-			engine.OnEvent(func(*pb.Event) {})
+			engine.OnEvent(func(*Event) {})
 		}
 	}()
 	go func() {
@@ -745,16 +743,16 @@ func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
 	)...)
 
 	survivorCalled := false
-	g.e.OnEvent(func(*pb.Event) { panic("boom") })
-	g.e.OnEvent(func(*pb.Event) { survivorCalled = true })
+	g.e.OnEvent(func(*Event) { panic("boom") })
+	g.e.OnEvent(func(*Event) { survivorCalled = true })
 
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v1")
 	// 走到 NIGHT_RESOLVE 之后，产生 KILL 事件
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
 
 	if !survivorCalled {
 		t.Error("前一个 handler panic 后，后续 handler 仍应被调用")
@@ -802,19 +800,19 @@ func (l *recordingLogger) hasError(msg string) bool {
 // 「已开始」，那些校验再也跑不到。
 func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 
 	if _, err := engine.EndPhase(); !errors.Is(err, ErrGameNotStarted) {
 		t.Fatalf("未开局推进阶段应返回 ErrGameNotStarted，实际 %v", err)
 	}
-	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_START {
+	if got := engine.Phase(); got != PhaseStart {
 		t.Errorf("阶段不应变化，实际 %v", got)
 	}
 
 	// 非法板子（全好人）同样推不动，Start 的校验因此仍然有效
 	bad := MustNewEngine(nil)
-	mustAdd(t, bad, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, bad, "v1", RoleVillager)
 	if _, err := bad.EndPhase(); !errors.Is(err, ErrGameNotStarted) {
 		t.Fatalf("期望 ErrGameNotStarted，实际 %v", err)
 	}
@@ -826,16 +824,16 @@ func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 // TestEngine_Start_DispatchesGameStarted 开局事件要推给 OnEvent 的订阅者。
 func TestEngine_Start_DispatchesGameStarted(t *testing.T) {
 	engine := MustNewEngine(nil)
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 
-	var seen []pb.EventType
-	engine.OnEvent(func(ev *pb.Event) { seen = append(seen, ev.Type) })
+	var seen []EventType
+	engine.OnEvent(func(ev *Event) { seen = append(seen, ev.Type) })
 
 	if err := engine.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
-	if len(seen) != 1 || seen[0] != pb.EventType_EVENT_TYPE_GAME_STARTED {
+	if len(seen) != 1 || seen[0] != EventGameStarted {
 		t.Errorf("期望收到 GAME_STARTED，实际 %v", seen)
 	}
 }
@@ -852,12 +850,12 @@ func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
 	)...)
 
 	// 刀死 h1，进入他的开枪阶段
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "h1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseNightHunter)
 
 	for _, id := range []string{"h1", "h2", "s", "w1"} {
 		allowed := g.e.AllowedSkills(id)
@@ -871,7 +869,7 @@ func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
 		t.Errorf("触发者是 h1，h2 不该有可用技能，实际 %v", got)
 	}
 	// 而 SubmitSkillUse 也确实会拒掉 h2
-	if err := g.use("h2", pb.SkillType_SKILL_TYPE_SHOOT, "w1"); err == nil {
+	if err := g.use("h2", SkillShoot, "w1"); err == nil {
 		t.Error("h2 不是触发者，开枪应当被拒")
 	}
 	if got := g.e.AllowedSkills("h1"); len(got) == 0 {
@@ -885,9 +883,9 @@ func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
 // effect.Type / effect.Canceled——那道保护够不着。
 func TestEngine_ResolverReturningNilEffect(t *testing.T) {
 	engine := MustNewEngine(nil,
-		WithResolver(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, resolverReturningNil{}))
-	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
-	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+		WithResolver(PhaseNightGuard, resolverReturningNil{}))
+	mustAdd(t, engine, "w1", RoleWerewolf)
+	mustAdd(t, engine, "v1", RoleVillager)
 	if err := engine.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
@@ -901,7 +899,7 @@ func TestEngine_ResolverReturningNilEffect(t *testing.T) {
 			t.Error("nil 效果不该出现在返回值与效果流里")
 		}
 	}
-	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+	if got := engine.Phase(); got != PhaseNightWolf {
 		t.Errorf("阶段应当照常流转，实际 %v", got)
 	}
 }
@@ -910,7 +908,7 @@ func TestEngine_ResolverReturningNilEffect(t *testing.T) {
 type resolverReturningNil struct{}
 
 func (resolverReturningNil) Resolve([]*SkillUse, GameView, *GameConfig) []*Effect {
-	return []*Effect{nil, NewEffect(pb.EventType_EVENT_TYPE_SKIP, "v1", "")}
+	return []*Effect{nil, NewEffect(EventSkip, "v1", "")}
 }
 
 // TestEngine_RoundBoundaryFollowsStartPhase 回合边界要跟着起始阶段走，而不是写死守卫阶段。
@@ -920,10 +918,10 @@ func (resolverReturningNil) Resolve([]*SkillUse, GameView, *GameConfig) []*Effec
 // 女巫那瓶用掉的解药会一夜又一夜地把同一个人救回来。
 func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	cfg := DefaultGameConfig()
-	cfg.StartPhase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
-	cfg.Phases[pb.PhaseType_PHASE_TYPE_VOTE].NextPhase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
-	cfg.Phases[pb.PhaseType_PHASE_TYPE_DAY_HUNTER].NextPhase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
-	delete(cfg.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	cfg.StartPhase = PhaseNightWolf
+	cfg.Phases[PhaseVote].NextPhase = PhaseNightWolf
+	cfg.Phases[PhaseDayHunter].NextPhase = PhaseNightWolf
+	delete(cfg.Phases, PhaseNightGuard)
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate 失败: %v", err)
 	}
@@ -934,14 +932,14 @@ func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	)...)
 
 	// 第一夜：狼刀 v1，女巫用解药救回
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
-	g.end(pb.PhaseType_PHASE_TYPE_DAY)
-	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.mustUse("wi", SkillAntidote, "v1")
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
+	g.end(PhaseDay)
+	g.end(PhaseVote)
+	g.end(PhaseNightWolf)
 	g.assertAlive("v1", true, "第一夜被解药救回")
 
 	if got := g.e.Round(); got != 2 {
@@ -952,10 +950,10 @@ func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	}
 
 	// 第二夜再刀 v1，女巫的解药已经用完，这一刀必须命中
-	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
-	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.mustUse("w1", SkillKill, "v1")
+	g.end(PhaseNightWitch)
+	g.end(PhaseNightSeer)
+	g.end(PhaseNightResolve)
 	g.endAny()
 	g.assertAlive("v1", false, "解药已用完，第二夜的刀口应当死亡")
 }

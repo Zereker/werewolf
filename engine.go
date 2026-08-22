@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"sync"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 type Engine struct {
@@ -77,17 +75,17 @@ func MustNewEngine(config *GameConfig, opts ...EngineOption) *Engine {
 //
 // 只能在 Start 之前调用。返回错误：游戏已开始、ID 为空、ID 已存在、
 // 角色不能作为玩家身份。
-func (e *Engine) AddPlayer(id string, role pb.RoleType) error {
+func (e *Engine) AddPlayer(id string, role RoleType) error {
 	return e.AddCustomPlayer(id, role, CampOf(role), CategoryOf(role))
 }
 
 // addCustomPlayer 添加玩家并显式指定阵营与角色类别，供扩展角色使用。
-func (e *Engine) AddCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
+func (e *Engine) AddCustomPlayer(id string, role RoleType, camp Camp, category RoleCategory) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	// 开局后再改动玩家会让已发出的身份信息与引擎状态不一致
-	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
+	if e.state.Phase != PhaseStart {
 		return ErrGameAlreadyStarted
 	}
 
@@ -117,7 +115,7 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if e.state.Phase != pb.PhaseType_PHASE_TYPE_START {
+	if e.state.Phase != PhaseStart {
 		return nil, nil, ErrGameAlreadyStarted
 	}
 
@@ -178,7 +176,7 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 // phaseOutcome 一次阶段推进的结果，供锁外使用
 type phaseOutcome struct {
 	effects  []*Effect      // 本阶段产生的全部效果（含内部效果）
-	events   []*pb.Event    // 需要对外发布的事件
+	events   []*Event       // 需要对外发布的事件
 	handlers []EventHandler // 锁内快照的处理器
 }
 
@@ -206,13 +204,13 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	defer e.mu.Unlock()
 
 	currentPhase := e.state.Phase
-	if currentPhase == pb.PhaseType_PHASE_TYPE_END {
+	if currentPhase == PhaseEnd {
 		return phaseOutcome{}, ErrGameEnded
 	}
 	// 未开局就推进会绕过 Start 的全部前置校验——板子里有没有狼、
 	// 每个阶段有没有解析器——而 Start 此后永远返回「已开始」，
 	// 那些校验再也跑不到
-	if currentPhase == pb.PhaseType_PHASE_TYPE_START {
+	if currentPhase == PhaseStart {
 		return phaseOutcome{}, ErrGameNotStarted
 	}
 
@@ -242,7 +240,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	gameOver, winner := e.state.checkVictory(e.config.VictoryMode)
 	endNow := gameOver && !e.state.hasPendingTrigger()
 	if endNow {
-		nextPhase = pb.PhaseType_PHASE_TYPE_END
+		nextPhase = PhaseEnd
 	}
 
 	// 5. 流转。END 也走 nextPhase，不直接赋值 Phase——
@@ -252,7 +250,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	if endNow {
 		// 结束事件与其他事件走同一条构造路径：Effect -> ToEvent，
 		// 避免同一个事件有两份分别构造、日后各自漂移的实现
-		endEffect := NewEffect(pb.EventType_EVENT_TYPE_GAME_ENDED, "", "").
+		endEffect := NewEffect(EventGameEnded, "", "").
 			WithData("winner", winner)
 		e.effectLog = append(e.effectLog, endEffect)
 		out.events = append(out.events, endEffect.ToEvent())
@@ -290,7 +288,7 @@ func (e *Engine) PlayerInfo(playerID string) (PlayerInfo, bool) {
 }
 
 // Phase 获取当前阶段
-func (e *Engine) Phase() pb.PhaseType {
+func (e *Engine) Phase() PhaseType {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.state.Phase
@@ -308,7 +306,7 @@ func (e *Engine) Round() int {
 // 与 PlayerView(id).AllowedSkills 走同一条路径，也与 SubmitSkillUse
 // 的校验一致：三者答案不同的话，调用方按其中一个组织流程，
 // 玩家的提交就会被另一个拒掉。
-func (e *Engine) AllowedSkills(playerID string) []pb.SkillType {
+func (e *Engine) AllowedSkills(playerID string) []SkillType {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -334,7 +332,7 @@ func (e *Engine) AlivePlayerIDs() []string {
 func (e *Engine) IsGameOver() bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return e.state.Phase == pb.PhaseType_PHASE_TYPE_END
+	return e.state.Phase == PhaseEnd
 }
 
 // NightKillTarget 获取当晚被狼人击杀的目标（女巫可查询）
@@ -359,7 +357,7 @@ func (e *Engine) WolfTeammates(playerID string) []string {
 	defer e.mu.RUnlock()
 
 	player, ok := e.state.getPlayer(playerID)
-	if !ok || player.Camp != pb.Camp_CAMP_EVIL {
+	if !ok || player.Camp != CampEvil {
 		return nil
 	}
 
@@ -368,9 +366,9 @@ func (e *Engine) WolfTeammates(playerID string) []string {
 
 // applyEffects 逐个应用效果，返回清理后的效果与需要对外发布的事件。
 // 调用前需持有 e.mu。
-func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*pb.Event) {
+func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*Event) {
 	kept := make([]*Effect, 0, len(effects))
-	events := make([]*pb.Event, 0, len(effects))
+	events := make([]*Event, 0, len(effects))
 
 	for _, effect := range effects {
 		// 第三方 Resolver 返回的切片里可能混进 nil，就地剔除而不是让整局崩掉。
@@ -410,7 +408,7 @@ func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*pb.Event) {
 //
 // 调用前需持有 e.mu。
 func (e *Engine) vetTrigger(effect *Effect) {
-	if effect.Canceled || effect.Type != pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED {
+	if effect.Canceled || effect.Type != EventAbilityTriggered {
 		return
 	}
 	phase, ok := effect.triggerPhase()
@@ -429,7 +427,7 @@ func (e *Engine) vetTrigger(effect *Effect) {
 
 // calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。
 // 调用前需持有 e.mu。
-func (e *Engine) calculateNextPhase(currentPhase pb.PhaseType) pb.PhaseType {
+func (e *Engine) calculateNextPhase(currentPhase PhaseType) PhaseType {
 	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队
 	e.state.consumeTriggerFor(currentPhase)
 

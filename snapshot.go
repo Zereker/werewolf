@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"sort"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // SnapshotVersion 当前快照格式的版本号。
@@ -26,8 +24,8 @@ const SnapshotVersion = 3
 type Snapshot struct {
 	Version int `json:"version"`
 
-	Phase pb.PhaseType `json:"phase"`
-	Round int          `json:"round"`
+	Phase PhaseType `json:"phase"`
+	Round int       `json:"round"`
 
 	Players      []PlayerSnapshot   `json:"players"`
 	RoundContext RoundCtxSnapshot   `json:"round_context"`
@@ -37,8 +35,8 @@ type Snapshot struct {
 // PlayerSnapshot 单个玩家的快照
 type PlayerSnapshot struct {
 	ID       string       `json:"id"`
-	Role     pb.RoleType  `json:"role"`
-	Camp     pb.Camp      `json:"camp"`
+	Role     RoleType     `json:"role"`
+	Camp     Camp         `json:"camp"`
 	Category RoleCategory `json:"category"`
 	Alive    bool         `json:"alive"`
 
@@ -60,17 +58,17 @@ type RoundCtxSnapshot struct {
 
 // PendingTriggerSnapshot 一个待结算的死亡技能
 type PendingTriggerSnapshot struct {
-	PlayerID string       `json:"player_id"`
-	Phase    pb.PhaseType `json:"phase"`
+	PlayerID string    `json:"player_id"`
+	Phase    PhaseType `json:"phase"`
 }
 
 // SkillUseSnapshot 已提交但尚未结算的技能
 type SkillUseSnapshot struct {
-	PlayerID string       `json:"player_id"`
-	Skill    pb.SkillType `json:"skill"`
-	TargetID string       `json:"target_id,omitempty"`
-	Phase    pb.PhaseType `json:"phase"`
-	Round    int          `json:"round"`
+	PlayerID string    `json:"player_id"`
+	Skill    SkillType `json:"skill"`
+	TargetID string    `json:"target_id,omitempty"`
+	Phase    PhaseType `json:"phase"`
+	Round    int       `json:"round"`
 }
 
 // Snapshot 导出引擎的当前状态。
@@ -121,7 +119,7 @@ func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*E
 		return nil, ErrNilSnapshot
 	}
 	if snap.Version != SnapshotVersion {
-		return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+		return nil, WrapError(CodeInvalidSnapshot,
 			"unsupported snapshot version %d (expected %d)", snap.Version, SnapshotVersion)
 	}
 
@@ -160,12 +158,12 @@ func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*E
 //
 // 找不到的话恢复出来的引擎推进不下去。START 与 END 是流程的两端，
 // 不出现在阶段配置中，单独放行。
-func (e *Engine) restorePhase(phase pb.PhaseType) error {
-	if phase == pb.PhaseType_PHASE_TYPE_START || phase == pb.PhaseType_PHASE_TYPE_END {
+func (e *Engine) restorePhase(phase PhaseType) error {
+	if phase == PhaseStart || phase == PhaseEnd {
 		return nil
 	}
 	if e.phase.phaseConfig(phase) == nil {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+		return WrapError(CodeInvalidSnapshot,
 			"phase %v is not present in the supplied config", phase)
 	}
 	return nil
@@ -180,12 +178,12 @@ func (e *Engine) restorePlayers(players []PlayerSnapshot) error {
 		if p.ID == "" {
 			return ErrInvalidPlayerID
 		}
-		if p.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED || p.Role == pb.RoleType_ROLE_TYPE_GOD {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
+		if p.Role == RoleUnspecified || p.Role == RoleGod {
+			return WrapError(CodeInvalidRole,
 				"role %v cannot be assigned to a player", p.Role)
 		}
 		if _, exists := e.state.getPlayer(p.ID); exists {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+			return WrapError(CodeInvalidSnapshot,
 				"duplicate player %q in snapshot", p.ID)
 		}
 		e.state.restorePlayer(p)
@@ -198,12 +196,12 @@ func (e *Engine) restorePlayers(players []PlayerSnapshot) error {
 func (e *Engine) restorePendingUses(uses []SkillUseSnapshot) error {
 	for _, u := range uses {
 		if _, ok := e.state.getPlayer(u.PlayerID); !ok {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+			return WrapError(CodeInvalidSnapshot,
 				"pending skill references unknown player %q", u.PlayerID)
 		}
 		if u.TargetID != "" {
 			if _, ok := e.state.getPlayer(u.TargetID); !ok {
-				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+				return WrapError(CodeInvalidSnapshot,
 					"pending skill references unknown target %q", u.TargetID)
 			}
 		}
@@ -273,7 +271,7 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 }
 
 // restoreProgress 还原阶段、回合与回合上下文
-func (s *gameState) restoreProgress(phase pb.PhaseType, round int, rc RoundCtxSnapshot) {
+func (s *gameState) restoreProgress(phase PhaseType, round int, rc RoundCtxSnapshot) {
 	s.Phase = phase
 	s.Round = round
 	s.RoundCtx = &RoundContext{

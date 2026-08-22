@@ -13,7 +13,7 @@
 - **可扩展** - 自定义角色与阶段无需 fork：注册解析器即可
 - **管住信息** - 提供玩家视角与效果受众，不必自己实现信息过滤
 - **单包设计** - 只需 `import "github.com/Zereker/werewolf"`
-- **依赖极简** - 仅依赖 `google.golang.org/protobuf`（用于事件与枚举定义）
+- **零依赖** - 只用标准库
 - **可存档** - 局面可完整导出为 JSON，恢复后继续推进
 - **线程安全** - 引擎的所有导出方法都可并发调用
 
@@ -33,7 +33,6 @@ import (
 	"log"
 
 	"github.com/Zereker/werewolf"
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func main() {
@@ -45,15 +44,15 @@ func main() {
 	}
 
 	// 2. 添加玩家：2 狼、4 神、2 民（阵营与角色类别由角色推导）
-	for id, role := range map[string]pb.RoleType{
-		"w1": pb.RoleType_ROLE_TYPE_WEREWOLF,
-		"w2": pb.RoleType_ROLE_TYPE_WEREWOLF,
-		"seer":   pb.RoleType_ROLE_TYPE_SEER,
-		"witch":  pb.RoleType_ROLE_TYPE_WITCH,
-		"guard":  pb.RoleType_ROLE_TYPE_GUARD,
-		"hunter": pb.RoleType_ROLE_TYPE_HUNTER,
-		"v1":     pb.RoleType_ROLE_TYPE_VILLAGER,
-		"v2":     pb.RoleType_ROLE_TYPE_VILLAGER,
+	for id, role := range map[string]werewolf.RoleType{
+		"w1":     werewolf.RoleWerewolf,
+		"w2":     werewolf.RoleWerewolf,
+		"seer":   werewolf.RoleSeer,
+		"witch":  werewolf.RoleWitch,
+		"guard":  werewolf.RoleGuard,
+		"hunter": werewolf.RoleHunter,
+		"v1":     werewolf.RoleVillager,
+		"v2":     werewolf.RoleVillager,
 	} {
 		must(engine.AddPlayer(id, role))
 	}
@@ -66,25 +65,25 @@ func main() {
 	// 4. 按阶段推进：每个阶段先提交技能，再调用 EndPhase 结算
 	//    Start() 之后是 NIGHT_GUARD，各阶段可提交的技能由 PhaseInfo 给出
 	must(engine.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: "guard", Skill: pb.SkillType_SKILL_TYPE_PROTECT, TargetID: "seer",
+		PlayerID: "guard", Skill: werewolf.SkillProtect, TargetID: "seer",
 	}))
 	next(engine) // NIGHT_GUARD -> NIGHT_WOLF
 
 	must(engine.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: "w1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1",
+		PlayerID: "w1", Skill: werewolf.SkillKill, TargetID: "v1",
 	}))
 	must(engine.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: "w2", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1",
+		PlayerID: "w2", Skill: werewolf.SkillKill, TargetID: "v1",
 	}))
 	next(engine) // NIGHT_WOLF -> NIGHT_WITCH
 
 	// 女巫此刻可以看到刀口（解药还在手上）
 	info := engine.PhaseInfo()
-	fmt.Printf("女巫看到的刀口: %s\n", info.RoleInfos[pb.RoleType_ROLE_TYPE_WITCH].KillTarget)
+	fmt.Printf("女巫看到的刀口: %s\n", info.RoleInfos[werewolf.RoleWitch].KillTarget)
 	next(engine) // NIGHT_WITCH -> NIGHT_SEER
 
 	must(engine.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: "seer", Skill: pb.SkillType_SKILL_TYPE_CHECK, TargetID: "w1",
+		PlayerID: "seer", Skill: werewolf.SkillCheck, TargetID: "w1",
 	}))
 	next(engine) // NIGHT_SEER -> NIGHT_RESOLVE
 
@@ -147,11 +146,11 @@ effects, _ := engine.EndPhase()
 
 ```go
 // 阵营与角色类别由角色推导，只能在 Start 之前调用
-err := engine.AddPlayer("p1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+err := engine.AddPlayer("p1", werewolf.RoleWerewolf)
 
 // 扩展角色（隐狼、白痴等）阵营/类别无法从角色推导，显式指定
-err = engine.AddCustomPlayer("p2", pb.RoleType_ROLE_TYPE_VILLAGER,
-    pb.Camp_CAMP_EVIL, werewolf.RoleCategoryWolf)
+err = engine.AddCustomPlayer("p2", werewolf.RoleVillager,
+    werewolf.CampEvil, werewolf.RoleCategoryWolf)
 ```
 
 以下情况会返回错误，而不是静默生效：
@@ -206,13 +205,13 @@ config := &werewolf.GameConfig{
 
 ```go
 nightWolf := &werewolf.PhaseConfig{
-    Type: pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+    Type: werewolf.PhaseNightWolf,
     Steps: []werewolf.PhaseStep{
-        {Role: pb.RoleType_ROLE_TYPE_GOD, Skill: pb.SkillType_SKILL_TYPE_ANNOUNCE},
-        {Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Skill: pb.SkillType_SKILL_TYPE_KILL},
+        {Role: werewolf.RoleGod, Skill: werewolf.SkillAnnounce},
+        {Role: werewolf.RoleWerewolf, Skill: werewolf.SkillKill},
     },
     Timeout:   werewolf.WolfPhaseTimeout,
-    NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_WITCH,
+    NextPhase: werewolf.PhaseNightWitch,
 }
 ```
 
@@ -321,21 +320,21 @@ engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用
 
 ```go
 const (
-    roleWolfKing  = pb.RoleType(1000)   // 自定义取值从 1000 起
-    skillWolfClaw = pb.SkillType(1000)
-    phaseWolfKing = pb.PhaseType(1000)
+    roleWolfKing  = werewolf.RoleType(1000)   // 自定义取值从 1000 起
+    skillWolfClaw = werewolf.SkillType(1000)
+    phaseWolfKing = werewolf.PhaseType(1000)
 )
 
 cfg := werewolf.DefaultGameConfig()
 cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
     Type:      phaseWolfKing,
     Steps:     []werewolf.PhaseStep{{Role: roleWolfKing, Skill: skillWolfClaw}},
-    NextPhase: pb.PhaseType_PHASE_TYPE_NIGHT_GUARD,
+    NextPhase: werewolf.PhaseNightGuard,
 }
 
 engine, _ := werewolf.NewEngine(cfg,
     werewolf.WithResolver(phaseWolfKing, &wolfKingResolver{}))
-engine.AddCustomPlayer("wk", roleWolfKing, pb.Camp_CAMP_EVIL, werewolf.RoleCategoryWolf)
+engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCategoryWolf)
 ```
 
 `WithResolver` 是构造选项，`NewEngine` / `RestoreEngine` / `ReplayEngine`
@@ -370,17 +369,16 @@ import (
 	"log"
 
 	"github.com/Zereker/werewolf"
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 func main() {
 	config := werewolf.DefaultGameConfig()
 	engine := werewolf.MustNewEngine(config) // 配置是常量时可用 Must 版本
-	for id, role := range map[string]pb.RoleType{
-		"w1": pb.RoleType_ROLE_TYPE_WEREWOLF,
-		"wi": pb.RoleType_ROLE_TYPE_WITCH,
-		"v1": pb.RoleType_ROLE_TYPE_VILLAGER,
-		"v2": pb.RoleType_ROLE_TYPE_VILLAGER,
+	for id, role := range map[string]werewolf.RoleType{
+		"w1": werewolf.RoleWerewolf,
+		"wi": werewolf.RoleWitch,
+		"v1": werewolf.RoleVillager,
+		"v2": werewolf.RoleVillager,
 	} {
 		if err := engine.AddPlayer(id, role); err != nil {
 			log.Fatal(err)
@@ -391,7 +389,7 @@ func main() {
 	}
 	engine.EndPhase() // -> NIGHT_WOLF
 	engine.SubmitSkillUse(&werewolf.SkillUse{
-		PlayerID: "w1", Skill: pb.SkillType_SKILL_TYPE_KILL, TargetID: "v1",
+		PlayerID: "w1", Skill: werewolf.SkillKill, TargetID: "v1",
 	})
 
 	// 保存：技能已提交、尚未结算，快照会把它一并带上
@@ -413,7 +411,7 @@ func main() {
 	restored.EndPhase() // 结算狼刀
 	fmt.Printf("恢复后阶段=%v，女巫看到的刀口=%s\n",
 		restored.Phase(),
-		restored.PhaseInfo().RoleInfos[pb.RoleType_ROLE_TYPE_WITCH].KillTarget)
+		restored.PhaseInfo().RoleInfos[werewolf.RoleWitch].KillTarget)
 }
 ```
 
@@ -493,10 +491,11 @@ werewolf/
 ├── readiness.go    # 阶段就绪判定
 ├── snapshot.go     # 存档导出与恢复
 ├── state.go        # 游戏状态、角色类别、胜负判定
+├── types.go        # 阶段、阵营、角色、技能
+├── event.go        # 对外事件
 ├── view.go         # Resolver 的只读视图
 ├── rules_test.go      # 以维基百科规则为基准的一致性测试
 ├── extension_test.go  # 第三方扩展契约（以狼王为例）
-├── proto/          # Protobuf 定义（枚举与事件）
 ├── example/        # 可运行示例
 └── docs/
     └── ARCHITECTURE.md

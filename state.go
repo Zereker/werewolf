@@ -2,8 +2,6 @@ package werewolf
 
 import (
 	"sort"
-
-	pb "github.com/Zereker/werewolf/proto"
 )
 
 // RoundContext 回合上下文（每个回合重新创建）
@@ -25,8 +23,8 @@ type RoundContext struct {
 
 // PendingTrigger 一个待结算的死亡技能
 type PendingTrigger struct {
-	PlayerID string       // 触发者
-	Phase    pb.PhaseType // 该去哪个阶段结算
+	PlayerID string    // 触发者
+	Phase    PhaseType // 该去哪个阶段结算
 }
 
 // newRoundContext 创建新的回合上下文
@@ -64,7 +62,7 @@ func (rc *RoundContext) IsPoisoned(playerID string) bool {
 
 // RoleCategory 角色类别
 //
-// 屠边判定需要区分「神职」与「平民」，而 pb.Camp 只有好人/狼人两值，
+// 屠边判定需要区分「神职」与「平民」，而 Camp 只有好人/狼人两值，
 // 表达不了这个维度，故单列一个类别。
 type RoleCategory int
 
@@ -91,20 +89,20 @@ func (c RoleCategory) String() string {
 
 // CategoryOf 由角色推导默认类别。
 //
-// 只覆盖内置的六个角色。pb.RoleType 的底层是 int32，调用方可以用
+// 只覆盖内置的六个角色。RoleType 的底层是 int32，调用方可以用
 // 超出内置枚举的取值来定义自己的角色（建议从 1000 起，避免与后续
 // 内置角色撞号）；这类角色会落到 Unknown，需通过 AddCustomPlayer
 // 显式给出阵营与类别，否则不参与屠边判定。
-func CategoryOf(role pb.RoleType) RoleCategory {
+func CategoryOf(role RoleType) RoleCategory {
 	switch role {
-	case pb.RoleType_ROLE_TYPE_WEREWOLF:
+	case RoleWerewolf:
 		return RoleCategoryWolf
-	case pb.RoleType_ROLE_TYPE_SEER,
-		pb.RoleType_ROLE_TYPE_WITCH,
-		pb.RoleType_ROLE_TYPE_HUNTER,
-		pb.RoleType_ROLE_TYPE_GUARD:
+	case RoleSeer,
+		RoleWitch,
+		RoleHunter,
+		RoleGuard:
 		return RoleCategoryGod
-	case pb.RoleType_ROLE_TYPE_VILLAGER:
+	case RoleVillager:
 		return RoleCategoryVillager
 	default:
 		return RoleCategoryUnknown
@@ -114,8 +112,8 @@ func CategoryOf(role pb.RoleType) RoleCategory {
 // PlayerState 玩家状态
 type PlayerState struct {
 	ID       string
-	Role     pb.RoleType
-	Camp     pb.Camp
+	Role     RoleType
+	Camp     Camp
 	Category RoleCategory // 角色类别（神职/平民/狼人），用于屠边判定
 	Alive    bool
 
@@ -144,7 +142,7 @@ type PlayerState struct {
 // 「State 可以独立使用」——但收进包内之后这个前提不再成立，多出来的
 // 一层锁只剩开销与心智负担。
 type gameState struct {
-	Phase   pb.PhaseType            // 当前阶段
+	Phase   PhaseType               // 当前阶段
 	Round   int                     // 当前回合
 	players map[string]*PlayerState // 玩家状态（私有，通过方法访问）
 
@@ -155,7 +153,7 @@ type gameState struct {
 // newState 创建游戏状态
 func newState() *gameState {
 	return &gameState{
-		Phase:    pb.PhaseType_PHASE_TYPE_START,
+		Phase:    PhaseStart,
 		Round:    0,
 		players:  make(map[string]*PlayerState),
 		RoundCtx: newRoundContext(),
@@ -166,17 +164,17 @@ func newState() *gameState {
 //
 // 内置的六个角色中只有狼人属于狼人阵营。扩展角色（隐狼、狼美人等）
 // 阵营与角色的对应关系不同，需用 AddCustomPlayer 显式指定。
-func CampOf(role pb.RoleType) pb.Camp {
-	if role == pb.RoleType_ROLE_TYPE_WEREWOLF {
-		return pb.Camp_CAMP_EVIL
+func CampOf(role RoleType) Camp {
+	if role == RoleWerewolf {
+		return CampEvil
 	}
-	return pb.Camp_CAMP_GOOD
+	return CampGood
 }
 
 // addPlayer 添加玩家。阵营与角色类别由角色推导。
 //
 // 返回错误：ID 为空、ID 已存在、角色不能作为玩家身份（如上帝）。
-func (s *gameState) addPlayer(id string, role pb.RoleType) error {
+func (s *gameState) addPlayer(id string, role RoleType) error {
 	return s.addCustomPlayer(id, role, CampOf(role), CategoryOf(role))
 }
 
@@ -184,18 +182,18 @@ func (s *gameState) addPlayer(id string, role pb.RoleType) error {
 //
 // 供扩展角色使用：隐狼是好人牌面的狼、白痴是不参与屠边的好人，
 // 这类角色无法从内置映射推导，需要调用方直接给出。
-func (s *gameState) addCustomPlayer(id string, role pb.RoleType, camp pb.Camp, category RoleCategory) error {
+func (s *gameState) addCustomPlayer(id string, role RoleType, camp Camp, category RoleCategory) error {
 	if id == "" {
 		return ErrInvalidPlayerID
 	}
 	// 上帝是系统角色，不是玩家身份
-	if role == pb.RoleType_ROLE_TYPE_UNSPECIFIED || role == pb.RoleType_ROLE_TYPE_GOD {
-		return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
+	if role == RoleUnspecified || role == RoleGod {
+		return WrapError(CodeInvalidRole,
 			"role %v cannot be assigned to a player", role)
 	}
 
 	if _, exists := s.players[id]; exists {
-		return WrapError(pb.ErrorCode_ERROR_CODE_PLAYER_EXISTS, "player %q already exists", id)
+		return WrapError(CodePlayerExists, "player %q already exists", id)
 	}
 
 	player := &PlayerState{
@@ -207,7 +205,7 @@ func (s *gameState) addCustomPlayer(id string, role pb.RoleType, camp pb.Camp, c
 	}
 
 	// 女巫初始有解药和毒药各一瓶
-	if role == pb.RoleType_ROLE_TYPE_WITCH {
+	if role == RoleWitch {
 		player.HasAntidote = true
 		player.HasPoison = true
 	}
@@ -223,9 +221,9 @@ func (s *gameState) countCamps() (good, evil int) {
 			continue
 		}
 		switch p.Camp {
-		case pb.Camp_CAMP_GOOD:
+		case CampGood:
 			good++
-		case pb.Camp_CAMP_EVIL:
+		case CampEvil:
 			evil++
 		}
 	}
@@ -233,7 +231,7 @@ func (s *gameState) countCamps() (good, evil int) {
 }
 
 // currentPhase 当前阶段（包内使用，自带锁）
-func (s *gameState) currentPhase() pb.PhaseType {
+func (s *gameState) currentPhase() PhaseType {
 	return s.Phase
 }
 
@@ -256,8 +254,8 @@ func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 // 要发给玩家的内容用 Engine.PlayerView。
 type PlayerInfo struct {
 	ID          string       `json:"id"`
-	Role        pb.RoleType  `json:"role"`
-	Camp        pb.Camp      `json:"camp"`
+	Role        RoleType     `json:"role"`
+	Camp        Camp         `json:"camp"`
 	Category    RoleCategory `json:"category"`
 	Alive       bool         `json:"alive"`
 	Protected   bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
@@ -285,7 +283,7 @@ func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 }
 
 // getAlivePlayerIDsByRole 获取指定角色的存活玩家ID列表（包内使用）
-func (s *gameState) getAlivePlayerIDsByRole(role pb.RoleType) []string {
+func (s *gameState) getAlivePlayerIDsByRole(role RoleType) []string {
 	result := make([]string, 0)
 	for id, p := range s.players {
 		if p.Alive && p.Role == role {
@@ -342,20 +340,20 @@ func (s *gameState) applyEffect(effect *Effect) {
 
 	switch effect.Type {
 	// 各种死亡：狼刀、毒杀、放逐、开枪
-	case pb.EventType_EVENT_TYPE_KILL,
-		pb.EventType_EVENT_TYPE_POISON,
-		pb.EventType_EVENT_TYPE_ELIMINATE,
-		pb.EventType_EVENT_TYPE_SHOOT:
+	case EventKill,
+		EventPoison,
+		EventEliminate,
+		EventShoot:
 		if target, ok := s.players[effect.TargetID]; ok {
 			target.Alive = false
 		}
 
-	case pb.EventType_EVENT_TYPE_PROTECT:
+	case EventProtect:
 		if _, ok := s.players[effect.TargetID]; ok {
 			s.RoundCtx.ProtectedPlayers[effect.TargetID] = true
 		}
 
-	case pb.EventType_EVENT_TYPE_SAVE:
+	case EventSave:
 		// 只记录「被救过」，不改存活状态。
 		// 死亡统一在夜晚结算阶段发生，此刻目标还活着；
 		// 若在这里置 Alive=true，就成了一个能让任意玩家复活的原语。
@@ -364,11 +362,11 @@ func (s *gameState) applyEffect(effect *Effect) {
 		}
 
 	// 内部状态变更
-	case pb.EventType_EVENT_TYPE_SET_NIGHT_KILL:
+	case EventSetNightKill:
 		s.RoundCtx.KillTarget = effect.TargetID
-	case pb.EventType_EVENT_TYPE_CLEAR_NIGHT_KILL:
+	case EventClearNightKill:
 		s.RoundCtx.KillTarget = ""
-	case pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED:
+	case EventSetLastProtected:
 		if guard, ok := s.players[effect.SourceID]; ok {
 			guard.LastProtectedTarget = effect.TargetID
 			guard.LastProtectedRound = s.Round
@@ -376,16 +374,16 @@ func (s *gameState) applyEffect(effect *Effect) {
 	// 药剂与守护记录不按角色设限：这里是状态的写入点，谁有资格用药
 	// 是规则问题，由 Resolver 判定（内置的 WitchResolver 会查 Role）。
 	// 在这里再写死一遍角色，等于第三方的「女巫类」角色改不动自己的状态。
-	case pb.EventType_EVENT_TYPE_USE_ANTIDOTE:
+	case EventUseAntidote:
 		if witch, ok := s.players[effect.SourceID]; ok {
 			witch.HasAntidote = false
 		}
-	case pb.EventType_EVENT_TYPE_USE_POISON:
+	case EventUsePoison:
 		if witch, ok := s.players[effect.SourceID]; ok {
 			witch.HasPoison = false
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
-	case pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED:
+	case EventAbilityTriggered:
 		// 死亡技能入队，等待流转到对应阶段结算
 		if phase, ok := effect.triggerPhase(); ok && effect.SourceID != "" {
 			s.RoundCtx.PendingTriggers = append(s.RoundCtx.PendingTriggers,
@@ -406,7 +404,7 @@ func (s *gameState) resetRoundStateUnlocked() {
 }
 
 // startAt 把状态置到开局：指定阶段、第一回合、干净的回合上下文
-func (s *gameState) startAt(phase pb.PhaseType) {
+func (s *gameState) startAt(phase PhaseType) {
 	s.Phase = phase
 	s.Round = 1
 	s.resetRoundStateUnlocked()
@@ -418,7 +416,7 @@ func (s *gameState) startAt(phase pb.PhaseType) {
 // 回合上下文重置。回合边界此前写死成 NIGHT_GUARD，而起始阶段和阶段环
 // 都是可配置的——环里不含守卫阶段时，回合数永远停在 1，回合上下文也
 // 永远不重置，上一夜的「被救」「被守」「被毒」记录会一直累积下去。
-func (s *gameState) nextPhase(phase, roundStart pb.PhaseType) {
+func (s *gameState) nextPhase(phase, roundStart PhaseType) {
 	s.Phase = phase
 	if phase == roundStart {
 		s.Round++
@@ -437,13 +435,13 @@ func (s *gameState) nextPhase(phase, roundStart pb.PhaseType) {
 // 非狼队成员返回空列表。
 func (s *gameState) getWolfTeammates(playerID string) []string {
 	player, ok := s.players[playerID]
-	if !ok || player.Camp != pb.Camp_CAMP_EVIL {
+	if !ok || player.Camp != CampEvil {
 		return []string{}
 	}
 
 	result := make([]string, 0)
 	for _, p := range s.players {
-		if p.Camp == pb.Camp_CAMP_EVIL && p.ID != playerID {
+		if p.Camp == CampEvil && p.ID != playerID {
 			result = append(result, p.ID)
 		}
 	}
@@ -451,7 +449,7 @@ func (s *gameState) getWolfTeammates(playerID string) []string {
 }
 
 // alivePlayerIDsByCamp 指定阵营的存活玩家 ID，按 ID 排序（包内使用）
-func (s *gameState) alivePlayerIDsByCamp(camp pb.Camp) []string {
+func (s *gameState) alivePlayerIDsByCamp(camp Camp) []string {
 	result := make([]string, 0)
 	for id, p := range s.players {
 		if p.Alive && p.Camp == camp {
@@ -475,33 +473,33 @@ func (s *gameState) alivePlayerIDsByCamp(camp pb.Camp) []string {
 // 「平民」「神職人員」说的都是好人阵营的那一半。狼队也可以有自己的神
 // （隐狼、狼美人，经 AddCustomPlayer 标成 RoleCategoryGod），把它们一起
 // 计进总数会让一名活着的隐狼把「好人的神已经死光」这个事实一直挡住。
-func (s *gameState) checkVictory(mode VictoryMode) (bool, pb.Camp) {
+func (s *gameState) checkVictory(mode VictoryMode) (bool, Camp) {
 	c := s.census()
 
 	// 狼人全死，好人胜利（两种判定方式一致）
 	if c.evilAlive == 0 {
-		return true, pb.Camp_CAMP_GOOD
+		return true, CampGood
 	}
 
 	// 好人全灭，狼人胜利（兜底，避免无神职无平民的板子永不结束）
 	if c.goodAlive == 0 {
-		return true, pb.Camp_CAMP_EVIL
+		return true, CampEvil
 	}
 
 	switch mode {
 	case VictoryModeTownWipe:
 		if c.goodAlive <= c.evilAlive {
-			return true, pb.Camp_CAMP_EVIL
+			return true, CampEvil
 		}
 
 	default: // VictoryModeSideWipe
 		// 屠神 / 屠民：开局有这个类别，且已经全部出局
 		if c.wipedOut(RoleCategoryGod) || c.wipedOut(RoleCategoryVillager) {
-			return true, pb.Camp_CAMP_EVIL
+			return true, CampEvil
 		}
 	}
 
-	return false, pb.Camp_CAMP_UNSPECIFIED
+	return false, CampUnspecified
 }
 
 // census 一次点名的结果：各阵营存活数，以及好人阵营各类别的总数与存活数。
@@ -529,7 +527,7 @@ func (s *gameState) census() census {
 	}
 
 	for _, p := range s.players {
-		good := p.Camp == pb.Camp_CAMP_GOOD
+		good := p.Camp == CampGood
 		if good {
 			c.total[p.Category]++
 		}
@@ -539,7 +537,7 @@ func (s *gameState) census() census {
 		if good {
 			c.alive[p.Category]++
 			c.goodAlive++
-		} else if p.Camp == pb.Camp_CAMP_EVIL {
+		} else if p.Camp == CampEvil {
 			c.evilAlive++
 		}
 	}
@@ -567,7 +565,7 @@ func (s *gameState) lastProtectedTarget(guardID string) string {
 // 多女巫板子下只要有一人持有解药，刀口就仍需下发。
 func (s *gameState) anyAliveWitchHasAntidote() bool {
 	for _, p := range s.players {
-		if p.Alive && p.Role == pb.RoleType_ROLE_TYPE_WITCH && p.HasAntidote {
+		if p.Alive && p.Role == RoleWitch && p.HasAntidote {
 			return true
 		}
 	}
@@ -598,7 +596,7 @@ func (s *gameState) popTrigger() {
 // 正常推进（calculateNextPhase）与效果流回放（replayEffect 处理
 // PHASE_CHANGED）都要做这一步，且必须做得一模一样，否则回放出来的引擎
 // 会带着一条本该消费掉的触发，从下一步起与原引擎分叉。
-func (s *gameState) consumeTriggerFor(phase pb.PhaseType) {
+func (s *gameState) consumeTriggerFor(phase PhaseType) {
 	if t, ok := s.peekTrigger(); ok && t.Phase == phase {
 		s.popTrigger()
 	}

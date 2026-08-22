@@ -1,8 +1,6 @@
 package werewolf
 
-import (
-	pb "github.com/Zereker/werewolf/proto"
-)
+import ()
 
 // PlayerView 站在某一名玩家的角度，他此刻有权知道的全部信息。
 //
@@ -21,9 +19,9 @@ import (
 // 视图是「此刻的状态」，不是「历史」。预言家历次查验的结果、公开的死亡
 // 记录属于历史，由 Effect 日志（Engine.EffectLog）承载。
 type PlayerView struct {
-	PlayerID string       `json:"player_id"` // 视角所属玩家
-	Round    int          `json:"round"`     // 当前回合
-	Phase    pb.PhaseType `json:"phase"`     // 当前阶段
+	PlayerID string    `json:"player_id"` // 视角所属玩家
+	Round    int       `json:"round"`     // 当前回合
+	Phase    PhaseType `json:"phase"`     // 当前阶段
 
 	// Self 自己的信息：身份、阵营、存活、（女巫的）药剂
 	Self SelfInfo `json:"self"`
@@ -34,7 +32,7 @@ type PlayerView struct {
 
 	// AllowedSkills 本阶段自己可以提交的技能，永不为 nil。
 	// 不该自己行动时为空切片——这也是判断「轮到我了吗」的依据。
-	AllowedSkills []pb.SkillType `json:"allowed_skills"`
+	AllowedSkills []SkillType `json:"allowed_skills"`
 
 	// Teammates 狼队可见：其余狼队友的 ID。好人阵营恒为空。
 	Teammates []string `json:"teammates,omitempty"`
@@ -52,8 +50,8 @@ type PlayerView struct {
 // 一个字段的可见性差别不该靠调用方记得清空。
 type SelfInfo struct {
 	ID       string       `json:"id"`
-	Role     pb.RoleType  `json:"role"`
-	Camp     pb.Camp      `json:"camp"`
+	Role     RoleType     `json:"role"`
+	Camp     Camp         `json:"camp"`
 	Category RoleCategory `json:"category"`
 	Alive    bool         `json:"alive"`
 
@@ -70,7 +68,7 @@ type PublicPlayerInfo struct {
 	// Role 仅在该玩家的身份对本视角公开时填充，否则为 UNSPECIFIED。
 	// 引擎默认只公开「自己」和「狼队友」——出局者是否翻牌属于桌面
 	// 规则，由调用方决定，引擎不替它做主。
-	Role pb.RoleType `json:"role,omitempty"`
+	Role RoleType `json:"role,omitempty"`
 }
 
 // PlayerView 返回指定玩家的视角。
@@ -108,7 +106,7 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 
 	// 狼队互相可见（按阵营，狼王这类自定义狼队角色同样适用）
 	revealed := map[string]bool{playerID: true}
-	if self.Camp == pb.Camp_CAMP_EVIL {
+	if self.Camp == CampEvil {
 		view.Teammates = e.state.getWolfTeammates(playerID)
 		for _, id := range view.Teammates {
 			revealed[id] = true
@@ -120,7 +118,7 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 	// 女巫在解药尚在手时可知刀口。
 	// 已出局的女巫不再是行动者，天亮公布之前不该拿到今晚的刀口——
 	// AllowedSkills 那一路已经对死人关门了，这里也得关。
-	if self.Alive && self.Role == pb.RoleType_ROLE_TYPE_WITCH && self.HasAntidote {
+	if self.Alive && self.Role == RoleWitch && self.HasAntidote {
 		view.KillTarget = e.state.RoundCtx.KillTarget
 	}
 
@@ -151,16 +149,16 @@ func (e *Engine) publicPlayers(revealed map[string]bool) []PublicPlayerInfo {
 // 「为空表示还没轮到我」在语义上与 nil 等价，但序列化出去一个是 []
 // 一个是 null，同一个字段两种形状，调用方要分别处理。
 // 调用前需持有 e.mu。
-func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []pb.SkillType {
+func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []SkillType {
 	// 死亡技能阶段只有触发者能行动
 	if t, ok := e.state.peekTrigger(); ok && t.Phase == e.state.Phase {
 		if t.PlayerID != playerID {
-			return []pb.SkillType{}
+			return []SkillType{}
 		}
 		return e.allowedSkillsFor(info.Role)
 	}
 	if !info.Alive {
-		return []pb.SkillType{}
+		return []SkillType{}
 	}
 	return e.allowedSkillsFor(info.Role)
 }
@@ -201,20 +199,20 @@ func (e *Engine) AudienceOf(effect *Effect) ([]string, bool) {
 
 	switch effect.Type {
 	// 公开事件：死亡、出局、投票结果全场可见
-	case pb.EventType_EVENT_TYPE_KILL,
-		pb.EventType_EVENT_TYPE_POISON,
-		pb.EventType_EVENT_TYPE_ELIMINATE,
-		pb.EventType_EVENT_TYPE_SHOOT,
-		pb.EventType_EVENT_TYPE_VOTE_TIED,
-		pb.EventType_EVENT_TYPE_GAME_STARTED,
-		pb.EventType_EVENT_TYPE_GAME_ENDED:
+	case EventKill,
+		EventPoison,
+		EventEliminate,
+		EventShoot,
+		EventVoteTied,
+		EventGameStarted,
+		EventGameEnded:
 		return e.state.allPlayerIDs(), true
 
 	// 私密事件：只有行动者本人知道
-	case pb.EventType_EVENT_TYPE_CHECK,
-		pb.EventType_EVENT_TYPE_PROTECT,
-		pb.EventType_EVENT_TYPE_SAVE,
-		pb.EventType_EVENT_TYPE_SKIP:
+	case EventCheck,
+		EventProtect,
+		EventSave,
+		EventSkip:
 		return e.actorAudience(effect.SourceID), true
 
 	default:
