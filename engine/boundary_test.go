@@ -9,7 +9,7 @@ import (
 
 // publicKernelEvents 内核自己发出、且**应当**让玩家看到的事件。
 //
-// 与 kernelPrimitives 一起，必须覆盖 event.go 里声明的每一个事件类型——
+// 与 kernelEvents 一起，必须覆盖 event.go 里声明的每一个事件类型——
 // 由 TestKernelEventTypes_AreAllClassified 强制。
 var publicKernelEvents = map[EventType]bool{
 	EventUnspecified: true, // 零值，不是真事件
@@ -20,13 +20,13 @@ var publicKernelEvents = map[EventType]bool{
 // TestKernelEventTypes_AreAllClassified 每一个内核事件类型都必须被明确分类。
 //
 // 「状态原语永不外发」是内核唯一一条不可配置的规则，判断依据是
-// kernelPrimitives 这张手工维护的表。手工维护的表有一个固定的坏结局：
+// kernelEvents 这张手工维护的表。手工维护的表有一个固定的坏结局：
 // 有人加了第八个内核事件类型、忘了往表里添一行，于是这条事件默认按
 // 「外部事件」处理，交给 AudienceProvider 决定——一个「什么都给全场」的
 // provider 就能把状态机的记账推给所有玩家。
 //
 // 这个测试把 event.go 当作真值：它解析源码取出全部 EventXxx 声明，
-// 要求每一个都落在 kernelPrimitives 或 publicKernelEvents 里。新增一个
+// 要求每一个都落在 kernelEvents 或 publicKernelEvents 里。新增一个
 // 事件类型而不分类，它就变红——你必须回答「这条该不该让玩家看见」。
 func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 	fset := token.NewFileSet()
@@ -72,14 +72,14 @@ func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 		v, known := byName[name]
 		if !known {
 			t.Errorf("event.go 里新增了 %s，但这个测试的取值表还没跟上——"+
-				"补一行，同时决定它属于 kernelPrimitives 还是 publicKernelEvents", name)
+				"补一行，同时决定它属于 kernelEvents 还是 publicKernelEvents", name)
 			continue
 		}
 		switch {
-		case kernelPrimitives[v] && publicKernelEvents[v]:
+		case isInternalEvent(v) && publicKernelEvents[v]:
 			t.Errorf("%s 同时被判成状态原语和公开事件", name)
-		case !kernelPrimitives[v] && !publicKernelEvents[v]:
-			t.Errorf("%s（%q）没有被分类：不进 kernelPrimitives 就意味着它会被"+
+		case !isInternalEvent(v) && !publicKernelEvents[v]:
+			t.Errorf("%s（%q）没有被分类：不进 kernelEvents 就意味着它会被"+
 				"当成外部事件交给 AudienceProvider，一个「什么都给全场」的 provider "+
 				"就能把它推给所有玩家。请明确它该不该让玩家看见", name, v)
 		}
@@ -135,7 +135,7 @@ func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 	// 一、AudienceOf 这一路
 	for _, ef := range (primitiveSpewer{}).Resolve(nil, nil) {
 		got, known := e.AudienceOf(ef.ToEvent())
-		if !kernelPrimitives[ef.Type] {
+		if !isInternalEvent(ef.Type) {
 			continue // 对照组：普通规则事件该走 provider
 		}
 		if !known {
@@ -149,7 +149,7 @@ func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 	// 二、OnEvent 这一路
 	sawPublic := false
 	for _, typ := range seen {
-		if kernelPrimitives[typ] {
+		if isInternalEvent(typ) {
 			t.Errorf("状态原语 %v 出现在 OnEvent 里——宿主原样转发就把上帝视角发出去了", typ)
 		}
 		if typ == EventType("PROBE_PUBLIC") {

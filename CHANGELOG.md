@@ -15,6 +15,42 @@
 
 ## 未发布
 
+### 事件分类从注释变成值，`GOTO_PHASE` 的错分因此有东西管了
+
+`kernelPrimitives`（`map[EventType]bool`）换成 `kernelEvents`
+（`map[EventType]eventKind`），三类：
+
+```
+kindStateWrite   SET_ALIVE / SET_VAR / SET_ACTORS / ABILITY_TRIGGERED
+kindControl      GOTO_PHASE                    —— 不改状态，只影响下一步去哪
+kindReplay       PLAYER_ADDED / PHASE_CHANGED  —— 只在效果流回放那条路上有意义
+```
+
+那张表的文档此前写着「它们是状态机的记账（谁的存活位翻了、谁身上多了个
+标记）」。这句话对 `GOTO_PHASE` 是**假的**：它在 `applyEffect` 里根本没有
+分支，一个状态都不改。行为一直是对的（永不外发），分类是错的——而分类只是
+一句注释，错了没有任何东西会响。
+
+类别成为一个值之后这句话就能断言：每条 `kindStateWrite` 拿一份干净状态试
+一遍，改不动即分错了类或写入点漏了分支；每条非 `kindStateWrite` 应用完状态
+必须逐字段不变。把 `GOTO_PHASE` 改回 `kindStateWrite`、或者给它在
+`applyEffect` 里加一条会改状态的分支，都会立刻变红。
+
+顺带纠正了「两类」这个说法本身：`PLAYER_ADDED` 与 `PHASE_CHANGED` 既不改
+状态也不是控制指令，它们是回放记账，是第三类。
+
+`eventKind` **不导出**——外面没有调用方需要它，`isInternalEvent` 是它唯一的
+出口。行为没有任何变化：三类内核事件仍然永不外发，这一条仍然不可配置。
+
+### 八个扩展点补齐 Func 适配器
+
+新增 `ResolverFunc` 与 `VictoryFunc`。此前八个扩展点里只有 `Resolver` 与
+`VictoryChecker` 没有这层适配器，另外六个都有——没有理由，只是历史，
+于是「装一个只有几行的解析器」得先声明一个空结构体。
+
+`TestExtensionPoints_AllHaveFuncAdapters` 把八个函数字面量直接装进一台引擎：
+少一个适配器就编译不过，不必靠人记得补。
+
 ### 变量作用域收敛成一个类型：八个平铺的名字变成一张能枚举的表
 
 **破坏性变更。** `NewSetPlayerVarEffect` / `NewSetRoundVarEffect` /

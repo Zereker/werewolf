@@ -348,3 +348,125 @@ type customEventResolver struct{ typ EventType }
 func (r customEventResolver) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{NewEffect(r.typ, "v1", "")}
 }
+
+// TestEventKind_StateWritesActuallyWriteState 归到 kindStateWrite 的原语必须真的改得动状态。
+//
+// 这条此前只是 kernelPrimitives 上的一句注释——「它们是状态机的记账」。
+// 那句话对 GOTO_PHASE 是假的：它在 applyEffect 里根本没有分支，一个状态
+// 都不改。分类只是注释，错了没有任何东西会响，于是错了很久。
+//
+// 现在类别是一个值，这条性质就能断言：每一条 kindStateWrite 都拿一份
+// 干净状态试一遍，改不动就说明分错了类（或者写入点漏了分支）。
+func TestEventKind_StateWritesActuallyWriteState(t *testing.T) {
+	// 每一类原语的一个代表性样本，外加它的验证方式。
+	probes := map[EventType]struct {
+		effect  func() *Effect
+		changed func(*gameState) bool
+	}{
+		EventSetAlive: {
+			func() *Effect { return NewSetAliveEffect("p1", false) },
+			func(s *gameState) bool { p, ok := s.getPlayer("p1"); return ok && !p.Alive },
+		},
+		EventSetVar: {
+			func() *Effect { return NewSetVarEffect(ScopeGame, "probe", "1") },
+			func(s *gameState) bool { return s.varOf(ScopeGame, "probe") == "1" },
+		},
+		EventSetActors: {
+			func() *Effect { return NewSetActorsEffect(phaseDay, "p1") },
+			func(s *gameState) bool { ids, ok := s.actorsFor(phaseDay); return ok && len(ids) == 1 },
+		},
+		EventAbilityTriggered: {
+			func() *Effect { return NewAbilityTriggerEffect("p1", phaseDay) },
+			func(s *gameState) bool { return s.hasPendingTrigger() },
+		},
+	}
+
+	for typ, kind := range kernelEvents {
+		if kind != kindStateWrite {
+			continue
+		}
+		probe, ok := probes[typ]
+		if !ok {
+			t.Errorf("%v 归在 kindStateWrite，但这个测试没有它的样本——"+
+				"补一条，否则「改状态的真的改得动」这句话对它是没验过的", typ)
+			continue
+		}
+		t.Run(string(typ), func(t *testing.T) {
+			state := newState()
+			mustAddTo(t, state, "p1", roleVillager)
+			state.applyEffect(probe.effect())
+			if !probe.changed(state) {
+				t.Errorf("%v 归在 kindStateWrite 却什么都没改——"+
+					"要么分错了类，要么 applyEffect 漏了它的分支", typ)
+			}
+		})
+	}
+}
+
+// TestEventKind_ControlAndReplayWriteNothing 控制指令与回放记账一个字节都不该动。
+//
+// 与上一条互为反面：GOTO_PHASE 的正确性恰恰在于它**不**改状态
+// （下一步去哪由 calculateNextPhase 读效果流决定），PLAYER_ADDED 与
+// PHASE_CHANGED 则只在 replayEffect 那条路上有意义。
+// 哪天有人给它们在 applyEffect 里加了分支，这条会先响。
+func TestEventKind_ControlAndReplayWriteNothing(t *testing.T) {
+	probes := map[EventType]*Effect{
+		EventGotoPhase:    NewGotoPhaseEffect(phaseDay),
+		EventPlayerAdded:  newPlayerAddedEffect("p2", roleVillager, nil),
+		EventPhaseChanged: newPhaseChangedEffect(phaseDay),
+	}
+
+	for typ, kind := range kernelEvents {
+		if kind == kindStateWrite {
+			continue
+		}
+		probe, ok := probes[typ]
+		if !ok {
+			t.Errorf("%v 不是 kindStateWrite，但这个测试没有它的样本——补一条", typ)
+			continue
+		}
+		t.Run(string(typ), func(t *testing.T) {
+			before := newState()
+			mustAddTo(t, before, "p1", roleVillager)
+			before.startAt(phaseNight)
+
+			after := newState()
+			mustAddTo(t, after, "p1", roleVillager)
+			after.startAt(phaseNight)
+			after.applyEffect(probe)
+
+			if !sameState(before, after) {
+				t.Errorf("%v 归在 %v 却改动了状态——applyEffect 里不该有它的分支", typ, kind)
+			}
+		})
+	}
+}
+
+// sameState 两份状态在写入点看得见的那些字段上是否一致。
+func sameState(a, b *gameState) bool {
+	if a.Phase != b.Phase || a.Round != b.Round || len(a.players) != len(b.players) {
+		return false
+	}
+	if len(a.Vars) != len(b.Vars) || len(a.Actors) != len(b.Actors) {
+		return false
+	}
+	for k, v := range a.Vars {
+		if b.Vars[k] != v {
+			return false
+		}
+	}
+	for _, pa := range a.players {
+		pb, ok := b.players[pa.ID]
+		if !ok || pa.Alive != pb.Alive || pa.Role != pb.Role {
+			return false
+		}
+		if len(pa.Vars) != len(pb.Vars) || len(pa.RoundVars) != len(pb.RoundVars) {
+			return false
+		}
+	}
+	if a.RoundCtx == nil || b.RoundCtx == nil {
+		return a.RoundCtx == b.RoundCtx
+	}
+	return len(a.RoundCtx.Vars) == len(b.RoundCtx.Vars) &&
+		len(a.RoundCtx.PendingTriggers) == len(b.RoundCtx.PendingTriggers)
+}

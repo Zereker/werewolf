@@ -75,19 +75,41 @@ NewSetActorsEffect            下指令：谁能在某阶段行动
 **在 `applyEffect` 里根本没有分支，它不改任何状态**。行为是对的（永不外发），
 分类是错的。
 
-「一个概念」= 规则对内核说的话，分「改状态」与「下指令」两类。
-「代码里的对应物」= 没有，全是平铺的 `NewXxxEffect`。
+**分类已收敛，构造器没有。** `kernelPrimitives`（`map[EventType]bool`）换成了
+`kernelEvents`（`map[EventType]eventKind`），三类：
+
+```
+kindStateWrite   SET_ALIVE / SET_VAR / SET_ACTORS / ABILITY_TRIGGERED
+kindControl      GOTO_PHASE           —— 不改状态，只影响下一步去哪
+kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有意义
+```
+
+原来的二分（改状态 / 下指令）自己也不准：`PLAYER_ADDED` 与 `PHASE_CHANGED`
+哪一类都不是，它们是回放记账。
+
+类别成为一个值之后，那句注释就能断言了：每条 `kindStateWrite` 拿一份干净状态
+试一遍，改不动就是分错了类；每条非 `kindStateWrite` 应用完状态必须逐字段不变。
+把 `GOTO_PHASE` 改回 `kindStateWrite`（也就是今天这个错误）会立刻变红。
+
+`eventKind` 是**未导出的**：外面没有任何调用方需要它，`isInternalEvent` 是它
+唯一的出口。概念有了对应物，不必顺手扩一圈公开 API。
+
+**构造器那一面没动**：六个 `NewXxxEffect` 仍然平铺。要不要给它们也上类型
+（比如 `Effect` 分成两个类型）是下一个问题——代价是所有规则包的返回值签名。
+
+「一个概念」= 规则对内核说的话，分三类。
+「代码里的对应物」= `eventKind`（未导出），构造器仍是平铺的。
 
 ---
 
-## 三、扩展点：八件事，二十四个名字
+## 三、扩展点：八件事，二十四个名字 —— 已补齐一半
 
 八个扩展点，每个都摊成 2-3 个名字：
 
 | 扩展点 | 接口 | Func 适配器 | With 选项 |
 |---|---|---|---|
-| `Resolver` | ✓ | | ✓ |
-| `VictoryChecker` | ✓ | | ✓ |
+| `Resolver` | ✓ | ✓ | ✓ |
+| `VictoryChecker` | ✓ | ✓ | ✓ |
 | `AudienceProvider` | ✓ | ✓ | ✓ |
 | `TeammateProvider` | ✓ | ✓ | ✓ |
 | `SpeechProvider` | ✓ | ✓ | ✓ |
@@ -95,11 +117,17 @@ NewSetActorsEffect            下指令：谁能在某阶段行动
 | `RoleSetup` | ✓ | ✓ | ✓ |
 | `GameSetup` | ✓ | ✓ | ✓ |
 
-**而且不齐整**：`Resolver` 与 `VictoryChecker` 没有 Func 适配器，另外六个有。
-这个不齐整没有理由，只是历史。
+**已补齐**：`Resolver` 与 `VictoryChecker` 此前没有 Func 适配器，另外六个有。
+这个不齐整没有理由，只是历史，现在补上了 `ResolverFunc` 与 `VictoryFunc`
+——`TestExtensionPoints_AllHaveFuncAdapters` 把八个函数字面量直接装进一台
+引擎，少一个适配器就编译不过。
+
+**剩下的那半还在**：一个扩展点仍是三个名字（接口 + 适配器 + 选项）。
+这一半要不要动是另一个问题——三个名字各有各的用处（接口给类型、适配器
+给便利、选项给装配），不像作用域那样是同一件事被摊开。
 
 「一个概念」= 一个扩展点。
-「代码里的对应物」= 一个接口 + 可能有的适配器 + 一个选项函数，三个名字。
+「代码里的对应物」= 一个接口 + 一个适配器 + 一个选项函数，三个名字。
 
 ---
 
@@ -146,8 +174,8 @@ Snapshot Start SubmitSkillUse Teammates Var View Winner
 | 概念 | 代码里的对应物 | 摊成几个名字 |
 |---|---|---|
 | 变量作用域（2×2） | ~~没有~~ → `VarScope` | ~~8~~ → 已收敛 |
-| 规则对内核说的话（两类） | **没有** | 6 |
-| 一个扩展点 | 部分（接口有，装配没有） | 8 × 2~3 = 20 |
+| 规则对内核说的话（三类） | `eventKind`（未导出） | 6（构造器未收敛） |
+| 一个扩展点 | 部分（接口有，装配没有） | 8 × 3 = 24（已齐整，未收敛） |
 | 「谁在看这份数据」 | **没有** | 3 |
 | 便宜的状态读法 | **没有** | 6 |
 

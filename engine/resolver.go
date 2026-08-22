@@ -15,3 +15,15 @@ package engine
 type Resolver interface {
 	Resolve(uses []*SkillUse, view GameView) []*Effect
 }
+
+// ResolverFunc 让普通函数满足 Resolver。
+//
+// 与 AudienceFunc、RoleSetupFunc 那几个是同一个东西。此前八个扩展点里
+// 只有 Resolver 与 VictoryChecker 没有这层适配器——没有理由，只是历史，
+// 于是「装一个只有几行的解析器」得先声明一个空结构体。
+type ResolverFunc func(uses []*SkillUse, view GameView) []*Effect
+
+// Resolve 实现 Resolver。
+func (f ResolverFunc) Resolve(uses []*SkillUse, view GameView) []*Effect {
+	return f(uses, view)
+}

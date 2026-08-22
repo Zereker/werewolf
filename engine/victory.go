@@ -18,6 +18,15 @@ type VictoryChecker interface {
 	CheckVictory(view GameView) (over bool, winner Camp)
 }
 
+// VictoryFunc 让普通函数满足 VictoryChecker。
+//
+// 与 ResolverFunc 一样是补齐：八个扩展点该有同一套装配方式，
+// 少这两个没有理由。
+type VictoryFunc func(view GameView) (over bool, winner Camp)
+
+// CheckVictory 实现 VictoryChecker。
+func (f VictoryFunc) CheckVictory(view GameView) (bool, Camp) { return f(view) }
+
 // WithVictoryChecker 换掉内置的胜负判定。
 //
 // 换掉之后 Config.VictoryMode 就不再起作用了——那个字段只喂给

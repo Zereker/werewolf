@@ -15,28 +15,58 @@ type Effect struct {
 	Reason   string                 // 取消原因
 }
 
-// kernelPrimitives 内核自己的状态原语。
+// eventKind 内核事件的类别。
 //
-// 它们是状态机的记账（谁的存活位翻了、谁身上多了个标记），不该出现在
-// 任何玩家面前——AudienceOf 对它们的回答是「明确不给任何人看」，
-// 且这一条不可配置。
+// 「内核事件分几类」此前只是 kernelPrimitives 那张表上的一句注释——
+// 「它们是状态机的记账（谁的存活位翻了、谁身上多了个标记）」。那句话
+// 对 GOTO_PHASE 是**假的**：它在 applyEffect 里根本没有分支，一个状态
+// 都不改。行为一直是对的（永不外发），分类是错的，而分类只是注释，
+// 错了没有任何东西会响。
 //
-// 判断依据是这张表，不是编号区间。此前写成「>= 100 即内部」，与
-// 「第三方取值从 1000 起」那条约定直接打架：扩展定义的每一个事件类型
-// 都被判成内部事件，于是扩展的事件根本发不出去。
-var kernelPrimitives = map[EventType]bool{
-	EventSetAlive:         true,
-	EventSetVar:           true,
-	EventAbilityTriggered: true,
-	EventPlayerAdded:      true,
-	EventPhaseChanged:     true,
-	EventGotoPhase:        true,
-	EventSetActors:        true,
+// 现在类别是一个值，三条性质因此都能断言（见 effect_test.go）：
+// 改状态的必须真的改得动状态，控制指令与回放记账必须一个字节都不动。
+type eventKind uint8
+
+const (
+	// kindRuleEvent 规则给「发生了什么」起的名字（KILL、SHOOT、决斗）。
+	// 内核不认得，推给 OnEvent，受众由规则决定。这是缺省值：
+	// 任何不在下面那张表里的取值都归这一类。
+	kindRuleEvent eventKind = iota
+
+	// kindStateWrite 改状态的原语，applyEffect 里有它的分支。
+	kindStateWrite
+
+	// kindControl 控制指令。不改任何状态，只影响内核下一步去哪。
+	kindControl
+
+	// kindReplay 效果流回放用的记账，由内核自己写进流里。
+	kindReplay
+)
+
+// kernelEvents 内核自己认得的事件，以及各是哪一类。
+//
+// 不在这张表里的一律是规则事件——判断依据是这张表，不是编号区间。
+// 此前写成「>= 100 即内部」，与「第三方取值从 1000 起」那条约定直接
+// 打架：扩展定义的每一个事件类型都被判成内部事件，于是扩展的事件
+// 根本发不出去。
+var kernelEvents = map[EventType]eventKind{
+	EventSetAlive:         kindStateWrite,
+	EventSetVar:           kindStateWrite,
+	EventSetActors:        kindStateWrite,
+	EventAbilityTriggered: kindStateWrite,
+
+	EventGotoPhase: kindControl,
+
+	EventPlayerAdded:  kindReplay,
+	EventPhaseChanged: kindReplay,
 }
 
-// isInternalEvent 判断事件是否为内核的状态原语。
+// isInternalEvent 判断事件是不是内核自己的原语。
+//
+// 三类内核事件都不该出现在任何玩家面前——AudienceOf 对它们的回答是
+// 「明确不给任何人看」，且这一条不可配置。规则事件则相反，受众由规则决定。
 func isInternalEvent(t EventType) bool {
-	return kernelPrimitives[t]
+	return kernelEvents[t] != kindRuleEvent
 }
 
 // triggerPhaseKey 触发效果中记录「该去哪个阶段结算」的键

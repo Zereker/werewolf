@@ -195,12 +195,15 @@ e.AudienceOf(event)   // 一件事该发给哪些玩家
 | 发言谁能听到 | `WithSpeech(provider)` |
 | 日志与指标 | `WithLogger(l)` / `WithMetrics(m)` |
 
-外加两个不走选项的：局中的状态变更走那四条 `Effect` 原语，宿主级的
+外加两个不走选项的：局中的状态变更走 `Effect` 原语，宿主级的
 状态修改走 `Engine.Apply`（同样经唯一写入点，但绕开阶段结算——是把
 锋利的刀）。
 
-`RoleSetupFunc` / `RoleInfoFunc` / `AudienceFunc` / `TeammateFunc` /
-`SpeechFunc` 让普通函数直接满足对应接口。
+**八个扩展点都能用一个普通函数装上**：`ResolverFunc` / `VictoryFunc` /
+`RoleSetupFunc` / `GameSetupFunc` / `RoleInfoFunc` / `AudienceFunc` /
+`TeammateFunc` / `SpeechFunc`。前两个是后补的——此前只有它们两个没有
+适配器，没有理由，只是历史，于是「装一个只有几行的解析器」得先声明
+一个空结构体。
 
 全部只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 `NewEngine` / `MustNewEngine` / `RestoreEngine` / `ReplayEngine`
