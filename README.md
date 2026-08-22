@@ -696,6 +696,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 │   ├── netserver/           # TCP 服务端（推送、并发、断线重连）
 │   └── extension/           # 自定义角色（白痴）
 └── docs/
+    ├── API.md               # 内核 API 契约：全部导出名，冻结的对象
     ├── DESIGN.md            # 内核技术方案：该长成什么样、为什么
     ├── ROADMAP.md           # 实现方案：按什么次序走到那儿
     ├── ARCHITECTURE.md      # 当前实现的结构
@@ -707,6 +708,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 
 | 想知道 | 看哪份 |
 |---|---|
+| **内核有哪些 API、各承诺什么** | [API.md](docs/API.md) |
 | 内核**该**长成什么样、为什么这么抽象 | [DESIGN.md](docs/DESIGN.md) |
 | 按什么次序走到那儿 | [ROADMAP.md](docs/ROADMAP.md) |
 | 现在的代码是怎么组织的 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |

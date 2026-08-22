@@ -3,8 +3,9 @@
 > 这份文档回答一个问题：**这个内核该长成什么样，才能承载「社会推理」这一类游戏，
 > 而不只是狼人杀。**
 >
-> 实施次序见 [ROADMAP.md](ROADMAP.md)。当前实现的结构见
-> [ARCHITECTURE.md](ARCHITECTURE.md)，与对照实现的比较见 [PRIOR-ART.md](PRIOR-ART.md)。
+> API 的逐条契约见 [API.md](API.md)，实施次序见 [ROADMAP.md](ROADMAP.md)。
+> 当前实现的结构见 [ARCHITECTURE.md](ARCHITECTURE.md)，与对照实现的比较见
+> [PRIOR-ART.md](PRIOR-ART.md)。
 
 ---
 
