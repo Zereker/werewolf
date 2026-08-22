@@ -876,3 +876,84 @@ func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
 		t.Error("触发者 h1 应当可以开枪")
 	}
 }
+
+// TestEngine_ResolverReturningNilEffect 第三方 Resolver 返回的切片里混进 nil，不该让整局崩掉。
+//
+// applyEffect 里有 nil 保护，但 advancePhase 的循环在它之前就先取了
+// effect.Type / effect.Canceled——那道保护够不着。
+func TestEngine_ResolverReturningNilEffect(t *testing.T) {
+	engine := MustNewEngine(nil,
+		WithResolver(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, resolverReturningNil{}))
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	if err := engine.Start(); err != nil {
+		t.Fatalf("Start 失败: %v", err)
+	}
+
+	effects, err := engine.EndPhase()
+	if err != nil {
+		t.Fatalf("EndPhase 失败: %v", err)
+	}
+	for _, ef := range effects {
+		if ef == nil {
+			t.Error("nil 效果不该出现在返回值与效果流里")
+		}
+	}
+	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+		t.Errorf("阶段应当照常流转，实际 %v", got)
+	}
+}
+
+// resolverReturningNil 返回一个含 nil 的效果切片。
+type resolverReturningNil struct{}
+
+func (resolverReturningNil) Resolve([]*SkillUse, GameView, *GameConfig) []*Effect {
+	return []*Effect{nil, NewEffect(pb.EventType_EVENT_TYPE_SKIP, "v1", "")}
+}
+
+// TestEngine_RoundBoundaryFollowsStartPhase 回合边界要跟着起始阶段走，而不是写死守卫阶段。
+//
+// 起始阶段是可配置的，阶段环也是。环里不含 NIGHT_GUARD 时，回合数永远
+// 停在 1，回合上下文也永远不重置：上一夜的「被救」记录一直留着，
+// 女巫那瓶用掉的解药会一夜又一夜地把同一个人救回来。
+func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
+	cfg := DefaultGameConfig()
+	cfg.StartPhase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	cfg.Phases[pb.PhaseType_PHASE_TYPE_VOTE].NextPhase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	cfg.Phases[pb.PhaseType_PHASE_TYPE_DAY_HUNTER].NextPhase = pb.PhaseType_PHASE_TYPE_NIGHT_WOLF
+	delete(cfg.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate 失败: %v", err)
+	}
+
+	g := newRuleGame(t, cfg, seats(
+		wolf("w1"), wolf("w2"), witch("wi"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	// 第一夜：狼刀 v1，女巫用解药救回
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.mustUse("wi", pb.SkillType_SKILL_TYPE_ANTIDOTE, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.end(pb.PhaseType_PHASE_TYPE_VOTE)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.assertAlive("v1", true, "第一夜被解药救回")
+
+	if got := g.e.Round(); got != 2 {
+		t.Errorf("绕回起始阶段应当进入第 2 回合，实际 %d", got)
+	}
+	if got := g.e.RoundContext().SavedPlayers; len(got) != 0 {
+		t.Errorf("回合上下文应当已重置，实际还留着 SavedPlayers=%v", got)
+	}
+
+	// 第二夜再刀 v1，女巫的解药已经用完，这一刀必须命中
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.endAny()
+	g.assertAlive("v1", false, "解药已用完，第二夜的刀口应当死亡")
+}

@@ -120,10 +120,10 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		// （calculateNextPhase）做同样的事。少了这一步，回放出来的引擎
 		// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉
 		e.state.consumeTriggerFor(e.state.Phase)
-		e.state.nextPhase(phase)
+		e.state.nextPhase(phase, e.config.startPhase())
 
 	case pb.EventType_EVENT_TYPE_GAME_ENDED:
-		e.state.nextPhase(pb.PhaseType_PHASE_TYPE_END)
+		e.state.nextPhase(pb.PhaseType_PHASE_TYPE_END, e.config.startPhase())
 
 	default:
 		e.state.applyEffect(effect)

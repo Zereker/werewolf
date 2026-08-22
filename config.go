@@ -374,7 +374,20 @@ func validateSteps(phaseType pb.PhaseType, steps []PhaseStep) error {
 
 	seen := make(map[stepKey]bool, len(steps))
 	allRoles := make(map[pb.SkillType]bool, len(steps))
+	groupRole := make(map[string]pb.RoleType, len(steps))
 	for _, step := range steps {
+		// 互斥备选组是「同一个人几选一」，跨角色的组没有意义：
+		// 就绪判定会逐个行动者去看他提交了组里的哪一个，
+		// 而预言家永远不会提交女巫的技能。
+		if step.Group != "" {
+			if role, ok := groupRole[step.Group]; ok && role != step.Role {
+				return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,
+					"phase %v group %q spans roles %v and %v",
+					phaseType, step.Group, role, step.Role)
+			}
+			groupRole[step.Group] = step.Role
+		}
+
 		key := stepKey{role: step.Role, skill: step.Skill}
 		if seen[key] {
 			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_PHASE,

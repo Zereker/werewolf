@@ -269,3 +269,17 @@ func TestGameConfig_PhaseTimeout(t *testing.T) {
 		t.Errorf("兜底: 期望 %v，实际 %v", DefaultPhaseTimeout, got)
 	}
 }
+
+// TestValidate_RejectsGroupSpanningRoles 互斥备选组是「同一个人几选一」，跨角色没有意义。
+func TestValidate_RejectsGroupSpanningRoles(t *testing.T) {
+	cfg := DefaultGameConfig()
+	day := cfg.Phases[pb.PhaseType_PHASE_TYPE_DAY]
+	day.Steps = append(day.Steps,
+		PhaseStep{Role: pb.RoleType_ROLE_TYPE_SEER, Skill: pb.SkillType_SKILL_TYPE_CHECK, Group: "x"},
+		PhaseStep{Role: pb.RoleType_ROLE_TYPE_WITCH, Skill: pb.SkillType_SKILL_TYPE_POISON, Group: "x"},
+	)
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("跨角色的同名 Group 应当被拒")
+	}
+}

@@ -187,20 +187,17 @@ func (e *Engine) AudienceOf(effect *Effect) ([]string, bool) {
 		return nil, true
 	}
 
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
 	// 被否决的行动只有行动者本人需要知道，且必须先于类型划分判断。
 	//
 	// 「女巫想毒人但今晚已用过解药」产出的是一条 source=女巫 的 POISON，
 	// 与结算阶段那条 source="" 的「某人毒发身亡」是同一个类型。
 	// 只按类型分桶，前者会被当成公开死讯广播给全场，女巫当场暴露。
 	if effect.Canceled {
-		if effect.SourceID == "" {
-			return nil, true
-		}
-		return []string{effect.SourceID}, true
+		return e.actorAudience(effect.SourceID), true
 	}
-
-	e.mu.RLock()
-	defer e.mu.RUnlock()
 
 	switch effect.Type {
 	// 公开事件：死亡、出局、投票结果全场可见
@@ -218,13 +215,23 @@ func (e *Engine) AudienceOf(effect *Effect) ([]string, bool) {
 		pb.EventType_EVENT_TYPE_PROTECT,
 		pb.EventType_EVENT_TYPE_SAVE,
 		pb.EventType_EVENT_TYPE_SKIP:
-		if effect.SourceID == "" {
-			return nil, true
-		}
-		return []string{effect.SourceID}, true
+		return e.actorAudience(effect.SourceID), true
 
 	default:
 		// 未知的外部类型：可能是第三方角色自定的事件
 		return nil, false
 	}
+}
+
+// actorAudience 只发给行动者本人。行动者为空或不在场上时无人可发——
+// 让调用方拿到一个不在这局游戏里的 ID，只会变成一次投递失败。
+// 调用前需持有 e.mu。
+func (e *Engine) actorAudience(sourceID string) []string {
+	if sourceID == "" {
+		return nil
+	}
+	if _, ok := e.state.getPlayer(sourceID); !ok {
+		return nil
+	}
+	return []string{sourceID}
 }

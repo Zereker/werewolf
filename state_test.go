@@ -204,7 +204,7 @@ func TestNextPhase_ToDay(t *testing.T) {
 	state.Phase = pb.PhaseType_PHASE_TYPE_NIGHT
 	state.Round = 1
 
-	state.nextPhase(pb.PhaseType_PHASE_TYPE_DAY)
+	state.nextPhase(pb.PhaseType_PHASE_TYPE_DAY, pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
 
 	if state.Phase != pb.PhaseType_PHASE_TYPE_DAY {
 		t.Errorf("expected Phase=DAY, got %v", state.Phase)
@@ -222,7 +222,8 @@ func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 	state.Phase = pb.PhaseType_PHASE_TYPE_VOTE
 	state.Round = 1
 
-	state.nextPhase(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
+	// 第二个参数是本局的起始阶段，绕回它即是新的一回合
+	state.nextPhase(pb.PhaseType_PHASE_TYPE_NIGHT_GUARD, pb.PhaseType_PHASE_TYPE_NIGHT_GUARD)
 
 	if state.Phase != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
 		t.Errorf("expected Phase=NIGHT_GUARD, got %v", state.Phase)
