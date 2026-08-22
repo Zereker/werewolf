@@ -21,8 +21,8 @@ type RoundContext struct {
 	// 叫 KillTarget 的字段，与另外三张 map 一起，把「某一套规则有哪些
 	// 回合状态」写进了内核——换一套规则，那四样一个都用不上。
 	//
-	// 三种作用域：PlayerState.Vars 跟着玩家走一整局，这里每回合清零，
-	// PlayerState.RoundVars 是「某个玩家在本回合的标记」。
+	// 三种作用域：playerState.Vars 跟着玩家走一整局，这里每回合清零，
+	// playerState.RoundVars 是「某个玩家在本回合的标记」。
 	// 写走 NewSetRoundVarEffect，读走 GameView.RoundVar。
 	Vars map[string]string
 }
@@ -38,8 +38,8 @@ func newRoundContext() *RoundContext {
 	return &RoundContext{}
 }
 
-// PlayerState 玩家状态
-type PlayerState struct {
+// playerState 玩家状态
+type playerState struct {
 	ID    string
 	Role  RoleType
 	Alive bool
@@ -81,7 +81,7 @@ type PlayerState struct {
 type gameState struct {
 	Phase   PhaseType               // 当前阶段
 	Round   int                     // 当前回合
-	players map[string]*PlayerState // 玩家状态（私有，通过方法访问）
+	players map[string]*playerState // 玩家状态（私有，通过方法访问）
 
 	// 回合临时上下文（每个回合重新创建）
 	RoundCtx *RoundContext
@@ -92,7 +92,7 @@ func newState() *gameState {
 	return &gameState{
 		Phase:    PhaseStart,
 		Round:    0,
-		players:  make(map[string]*PlayerState),
+		players:  make(map[string]*playerState),
 		RoundCtx: newRoundContext(),
 	}
 }
@@ -117,7 +117,7 @@ func (s *gameState) addPlayer(id string, role RoleType) error {
 		return WrapError(CodePlayerExists, "player %q already exists", id)
 	}
 
-	player := &PlayerState{
+	player := &playerState{
 		ID:    id,
 		Role:  role,
 		Alive: true,
@@ -167,7 +167,7 @@ func (s *gameState) currentRound() int {
 // getPlayer 获取玩家（包内使用）
 // 返回内部指针，仅限包内代码使用
 // 外部请使用 PlayerInfo(id) 获取只读副本
-func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
+func (s *gameState) getPlayer(id string) (*playerState, bool) {
 	p, ok := s.players[id]
 	return p, ok
 }
@@ -277,7 +277,7 @@ func (s *gameState) clone() *gameState {
 		Vars:            copyVars(s.RoundCtx.Vars),
 	}
 	for id, p := range s.players {
-		out.players[id] = &PlayerState{
+		out.players[id] = &playerState{
 			ID: p.ID, Role: p.Role, Alive: p.Alive,
 			Vars: copyVars(p.Vars), RoundVars: copyVars(p.RoundVars),
 		}

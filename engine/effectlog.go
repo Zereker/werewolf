@@ -54,7 +54,9 @@ func (e *Engine) EffectLog() []*Effect {
 	defer e.mu.RUnlock()
 
 	out := make([]*Effect, len(e.effectLog))
-	copy(out, e.effectLog)
+	for i, ef := range e.effectLog {
+		out[i] = ef.clone()
+	}
 	return out
 }
 
@@ -91,7 +93,7 @@ func ReplayEngine(config *Config, log []*Effect, opts ...EngineOption) (*Engine,
 		}
 	}
 
-	engine.effectLog = append(engine.effectLog, log...)
+	engine.recordEffects(log...)
 
 	return engine, nil
 }
@@ -135,4 +137,15 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		e.state.applyEffect(effect)
 	}
 	return nil
+}
+
+// recordEffects 把一批效果记进历史。
+//
+// 存的是副本：out.effects 会原样返回给 EndPhase 的调用方，
+// 共用同一批指针的话，对方改一个字段就改了引擎的历史。
+// 这是效果流唯一的写入口，与 applyEffect 是状态唯一的写入口对称。
+func (e *Engine) recordEffects(effects ...*Effect) {
+	for _, ef := range effects {
+		e.effectLog = append(e.effectLog, ef.clone())
+	}
 }

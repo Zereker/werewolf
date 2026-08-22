@@ -11,8 +11,9 @@ package engine
 // winner 可以是任何自定义阵营——Camp 的底层是字符串，内核不预设取值，
 // 只负责把结论原样报出去。
 //
-// 与 Resolver 一样：只能读 GameView，在引擎持锁期间被调用，
-// 实现中不要回调 Engine 的任何方法。
+// 与 Resolver 一样：只能读 GameView，在引擎持锁期间被调用，实现中不要
+// 回调 Engine 的任何方法——后果是挂住，不是报错。
+// 详见 doc.go「扩展点不能回头找引擎」。
 type VictoryChecker interface {
 	CheckVictory(view GameView) (over bool, winner Camp)
 }

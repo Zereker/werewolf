@@ -8,7 +8,8 @@ package engine
 // RoleInfoProvider 回答「这个玩家额外该知道什么」。
 //
 // 与 Resolver、VictoryChecker 同构：拿只读的 GameView，返回结论，不碰状态。
-// 在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法。
+// 它在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法——后果是
+// 挂住，不是报错。详见 doc.go「扩展点不能回头找引擎」。
 //
 // 返回 nil 或空表示没有额外信息。键名由角色自己定，会原样出现在
 // PlayerView.RoleInfo 与 RolePhaseInfo.RoleInfo 里。

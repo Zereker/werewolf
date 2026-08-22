@@ -6,10 +6,198 @@
 > tag 与 Release 都由 workflow 创建，发布说明取自本文件对应的小节——
 > 没有小节就发不出去。
 
+> v1.5.0 是 API 冻结点，v1.6.0 在它之上带了一批破坏性变更——把内核与规则
+> 物理拆成两个包、砍掉内核 13 个不该导出的名字。这些是「冻结」这件事真正
+> 成立之前的最后一批，见本版各小节。
+>
 > 公开的 tag 只有 `v1.0.0` 与 `v1.2.0`。`v1.0.0` 到 `v1.2.0` 之间的全部改动
 > 都归入 `v1.2.0` 一节——对使用者而言，中间没有可取用的版本。
 
-## 未发布
+## v1.6.0 — 2026-08-22
+
+### 效果顺序的确定性：只有一条路有人守，而随机对局抓不到它
+
+「规则产出的效果顺序必须由局面唯一决定」写在 `Resolver` 的文档里，是回放与
+快照比对能成立的前提。此前守着它的只有一个 `TestNightResolveResolver_
+PoisonOrderIsDeterministic`——**一条路，八个解析器里的一条**。
+
+随机对局那条「回放必须与原引擎同步」的不变量**抓不到**这类问题：回放走的是
+已录制的效果流，会忠实重放当时那个顺序，无论那个顺序是怎么来的。换句话说，
+它能证明重放忠实，证明不了**生成**是确定的。
+
+违反的写法很自然——统计完票数之后 `for target := range votes` 一把产出效果。
+平时看不出任何异常，只在「从同一个快照重跑两次，结果不一样」时才现形，
+而那种 bug 极难复现。
+
+新增两个测试：
+
+- `TestResolvers_EffectOrderIsDeterminedByTheBoard`：八个内置解析器、
+  11 个用例（平票与唯一最高票、狼刀分歧与一致、女巫双开药、刀口被守、
+  多人同时中毒……），每个用例同一局面跑 60 次，要求逐字节一致。
+  Go 的 map 迭代顺序每次 range 都重新随机，60 次里几乎不可能次次同序。
+- `TestFullGame_EffectLogIsReproducible`：同一个脚本对局跑 12 遍，
+  整份效果流逐字节一致。它罩的是**整条栈**——解析器的顺序、内核
+  `applyEffects` 的顺序、死亡触发排队的顺序、胜负判定的时机。
+
+变异验证（两处分别拆）：让 `VoteResolver` 在平票时按 map 顺序播报候选人
+——第 2/60 次就变红；让夜晚结算按 map 顺序产出中毒死亡——两个测试都变红。
+
+写这两个测试的过程本身有个教训值得记：**第一版的夜晚结算用例只毒了一个人**，
+名单里只有一项，顺序天然稳定，那个变异从它下面整个溜过去了（反倒是原有那个
+窄测试抓住的）。看着更广的测试在重叠处比原来的更弱，是假的信心。现在用例
+改成五人同时中毒，整局脚本也座了两个女巫、各毒一个。
+
+顺带查了内核自己：`snapshotPlayers` 排序后返回、死亡触发队列是切片 FIFO、
+`AllPlayers()` 按 ID 排序——产出效果的路径上没有 map 迭代。
+
+### 扩展点的重入禁令：三处没写、七处都没说清后果
+
+七个扩展点（`Resolver`、`VictoryChecker` 与三个信息边界 provider、
+`RoleInfoProvider`、`RoleSetup`）全部在引擎**持锁期间**被同步调用。
+两个问题：
+
+- **三处根本没写这条禁令**——`TeammateProvider`、`SpeechProvider`、
+  `RoleSetup`，而它们和另外四处一样是在锁内被调用的；
+- **七处都没说后果**。实测下来是**挂住,不是报错**：Go 的读写锁不可重入,
+  在 `Resolve` 里调一下 `Engine.Phase()`,那一局从此没有响应。第三方写规则包
+  踩到这个,看到的现象是整个进程卡死,而不是一条能搜的错误。
+
+现在七个接口的措辞统一,都写明了后果与去处；完整解释在 `engine/doc.go`
+与 `engine/README.md` 新增的「扩展点不能回头找引擎」一节里,连带写清了
+**安全的做法**：要在回调里问引擎,用 `OnEvent` / `OnMessage` 的处理器。
+
+### 事件与消息「在锁外发布」这件事，此前只是一句代码注释
+
+`SendMessage` 里写着「发布在锁外：回调里可能回调 Engine」,`endPhaseInternal`
+同理。这是把引擎接进服务端的**唯一**办法——收到事件,问一句「这该发给谁」,
+再往那几条连接上写——`example/netserver` 的整个推送链路都压在它上面。
+
+而它没有任何测试盯着。谁要是把 `dispatchEvent` 挪回锁内,netserver 会当场
+死锁,整套测试一条都不会红。
+
+新增 `TestCallbacks_MayCallBackIntoTheEngine`：处理器里把公开的读法挨个调
+一遍（`AudienceOf`、`PlayerView`、`Snapshot`、`EffectLog`……），并断言两个
+处理器都真的被调用过,免得测试空转。**带 5 秒超时兜底**——真出问题时它会
+失败而不是挂住,一个卡死的 CI 比一条红线难查得多。
+
+变异验证（两条发布路分别拆）：把事件发布挪进锁内、把消息发布挪进锁内
+——两种都让它在 5 秒后变红,报出「检查发布位置是不是被挪进了锁内」。
+
+### 信息边界：两条泄漏路只有一条有人看守
+
+内核在信息边界上只守一条底线，且不可配置：**自己的状态原语永远不外发**。
+这条底线有两条可能泄漏的路，此前只有第一条有测试盯着：
+
+- `AudienceOf`：即使规则装了一个「什么都给全场」的 `AudienceProvider`
+  也必须被拦住（`TestAudienceOf_KernelPrimitivesAreNeverPublic` 盯着）；
+- **`OnEvent`：完全没测。** 宿主拿到什么就转发什么是最自然的写法
+  ——`example/netserver` 就是这么推的——状态原语要是混进这一路，等于把
+  上帝视角直接推给所有人。
+
+新增内核测试 `TestBoundary_StatePrimitivesNeverReachPlayers`，用一个最坏
+情况的 provider（什么都给全场）同时盯住两条路，并带一条普通规则事件作对照，
+避免测试本身空转。查下来实现本来就是对的（`applyEffects` 不为内部效果造事件），
+现在这件事有据可依。
+
+### 信息边界：那份「哪些是状态原语」的表没人守着
+
+判断依据是 `kernelPrimitives` 这张**手工维护**的表。手工维护的表有一个固定
+的坏结局：有人加了第八个内核事件类型、忘了往表里添一行，于是这条事件默认
+按「外部事件」处理交给 `AudienceProvider` 决定——一个粗心的 provider 就能
+把状态机的记账推给所有玩家。而 `kernelPrimitives` 是未导出的，规则包和使用者
+都看不见它，出了事也无从排查。
+
+新增 `TestKernelEventTypes_AreAllClassified`：把 `event.go` 当作真值，
+用 `go/ast` 解析出全部 `EventXxx` 声明，要求每一个都明确落在
+`kernelPrimitives`（永不外发）或 `publicKernelEvents`（该让玩家看见）里。
+新增一个事件类型而不分类，它就变红——你必须回答「这条该不该让玩家看见」。
+
+变异验证（四种分别拆）：从表里删掉 `SET_ALIVE`、让 `AudienceOf` 不再先拦
+内部事件、让 `applyEffects` 把原语也推给 `OnEvent`、新增一个内核事件类型
+而不分类——四种都让对应的测试变红。
+
+顺带查了 `AudienceOf` 返回 `known=false`（引擎认不得的第三方事件类型）时
+三个 example 怎么处理：CLI 打到主持台控制台、netserver 记日志后丢弃，
+都不发给任何玩家。别人照抄样板不会抄出泄漏。
+
+### 修复：效果流是历史，但外部改得动
+
+**这是一个真实缺陷，不是收紧。** `EndPhase()` 返回的与 `EffectLog()` 返回的，
+都是引擎内部那份历史的**同一批指针**：
+
+```go
+log := e.EffectLog()
+log[0].TargetID = "别人"     // 改的是引擎自己的历史
+log[0].Cancel("我说的")       // Cancel 还是导出方法
+```
+
+调用方随手改一个字段，`ReplayEngine` 就会照着被改过的历史重建出**另一局
+游戏**，而快照对不上号。「效果流是完整历史、可回放、可审计」这三条收益
+一起落空——而它们正是这个引擎最主要的卖点。
+
+修法：`Effect` 有了未导出的 `clone()`（连 `Data` 一起深拷），效果流收口到
+唯一的写入口 `recordEffects`——**进日志的是副本，出日志的也是副本**，
+两侧都不与调用方共享对象。这与「`applyEffect` 是状态唯一的写入点」对称。
+
+变异验证：内核新增 `TestEffectLog_HistoryIsNotWritableFromOutside`，三个
+部件分别拆掉都会让它变红——去掉进日志的克隆（两侧断言都红）、去掉出日志的
+克隆、让 `clone` 不深拷 `Data`。
+
+代价（`go test -bench`）：`EndPhase` 8826 → 9083 ns/op（+2.9%）、60 → 65
+次分配；整局 3.52 → 3.64 ms（+3.3%）。为「历史不可改写」付这个数，值。
+
+### Engine.Apply 的正当性有测试盯着了
+
+`Apply` 绕开阶段结算直接改状态，它的正当性全押在文档里一句话上——「走的
+仍然是同一个写入点，所以存档、回放、审计都不会因为用了它而失真」。那句话
+此前**没有任何测试盯着**。
+
+新增 `TestApply_StaysReplayableAndRestorable`：`Apply` 一次之后，从效果流
+回放、从快照恢复，两条路都要还原出同样的局面。结论是那句话本来就是真的，
+现在它有据可依了。变异验证：把 `Apply` 里的 `recordEffects` 拿掉，测试变红。
+
+### 快照版本号有东西守着了
+
+`SnapshotVersion` 的规则是「对快照结构做出不向后兼容的改动时递增」，
+`RestoreEngine` 用精确相等拒绝对不上的版本。但这套机制有个缺口：改了结构却
+**忘了**递增，旧存档会被按新结构读出一个看似正常、实则错乱的局面，没有任何
+东西会报警——那恰恰是这个版本号想防的事。
+
+新增 golden 测试 `TestSnapshot_ShapeIsPinnedToVersion` 与
+`testdata/snapshot_shape.json`：把一个各作用域都非空的快照的序列化形状钉死，
+字段增删改名、枚举序列化方式变动都会让它变红。红了之后的判断顺序写在测试的
+文档注释里，基准文件用 `go test -run TestSnapshot_ShapeIsPinnedToVersion
+-update-golden .` 更新。变异验证：给 `playerSnapshot` 偷加一个字段而不动版本号，
+测试变红。
+
+### 内核 API 面审计：砍掉 13 个不该导出的名字
+
+用狼人杀这一套规则把内核的导出面过了一遍，问两个问题：**每个导出的名字，
+包外有没有可能的调用者？** 以及**同一件事有没有两个入口？**
+
+量化结果：导出类型 53 → 50，包级函数 34 → 24，方法 51 → 44。
+
+- **`PlayerState` 降为未导出。** 它是唯一一个**包外根本拿不到**的导出类型
+  ——只存在于私有的 `gameState.players` 里，没有任何导出签名提到它。
+  导出它等于把内部结构摆出来却不给路进去。现在包外拿不到的导出类型是零。
+- **七个 `Field` 构造器降为未导出**（`F` `PlayerField` `PhaseField`
+  `SkillField` `TargetField` `EventField` `RoundField`）。只有内核会写日志
+  ——`Resolver` 与 `VictoryChecker` 拿到的只有 `GameView`，拿不到 `Logger`。
+  包外**结构上不可能**构造一个 `Field` 去喂给谁：三个 example 里四个
+  `Logger` 实现全部只读 `...engine.Field`。`Field` 类型本身保留，它是
+  `Logger` 契约的一部分；字段是导出的，真要自己拼一个用字面量就够。
+- **`NopLogger` / `NopMetrics` 与两个构造器降为未导出。** 四个名字表达
+  「什么都不做」，而不传 `WithLogger` 本来就是这个行为，`WithLogger(nil)`
+  也是。没有任何场景需要显式拿到它们。
+- **`NewGameView` 删除。** 它与 `Board.View()` 是同一件事——`View()` 的
+  实现就是 `return NewGameView(b)`。同一件事留一个入口。
+
+看着像重复、但**保留**的一处：`Engine.Phase()` / `Round()` / `RoundVar()` /
+`RoundContext()` / `PlayerInfo()` / `AlivePlayerIDs()` 与 `Engine.View()`
+问的是同一批问题。但 `View()` 会 `clone()` 整个状态，问一句「现在第几回合」
+不该付那个代价。这是性能分层，不是 API 重复。
+
+没有行为变化：全部是可见性调整与一处同义入口的删除。
 
 ### 根包的再导出砍成一个刻意的小集合
 
@@ -27,7 +215,7 @@
 | `Engine` `EngineOption` `SkillUse` `GameView` `Effect` `Snapshot` | 六个 `New*Effect` 构造函数 |
 | | `Logger` `Metrics` `Field` 与字段助手 |
 | | 全部错误码、哨兵错误、`WrapError` / `CodeOf` / `HasCode` |
-| | `Board` `NewGameView` `Seat` `Mark`（解析器单测） |
+| | `Board` `Seat` `Mark`（解析器单测） |
 | | 快照子结构与 `SnapshotVersion` |
 
 理由：那份完整镜像等于宣称「两层拆分与使用者无关」，可它恰恰是这个库

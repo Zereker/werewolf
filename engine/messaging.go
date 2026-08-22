@@ -44,9 +44,9 @@ func (e *Engine) SendMessage(senderID, content string) error {
 	publishMessage(handlers, e.logger, msg, receiverIDs)
 
 	e.logger.Debug("message sent",
-		PlayerField(senderID),
-		PhaseField(msg.Phase),
-		F("receiver_count", len(receiverIDs)))
+		playerField(senderID),
+		phaseField(msg.Phase),
+		logField("receiver_count", len(receiverIDs)))
 
 	return nil
 }
@@ -117,7 +117,7 @@ func publishMessage(handlers []MessageHandler, logger Logger, msg *Message, rece
 	for _, handler := range handlers {
 		func() {
 			defer recoverHandlerPanic(logger, "message handler",
-				PlayerField(msg.SenderID), PhaseField(msg.Phase))
+				playerField(msg.SenderID), phaseField(msg.Phase))
 			handler(msg, append([]string(nil), receiverIDs...))
 		}()
 	}

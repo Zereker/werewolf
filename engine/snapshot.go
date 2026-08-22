@@ -6,8 +6,13 @@ import (
 
 // SnapshotVersion 当前快照格式的版本号。
 //
-// 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
-// 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
+// 每次对快照结构做出不向后兼容的改动时递增，RestoreEngine 会拒绝无法识别
+// 的版本，以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
+//
+// 这套机制原本有个缺口：改了结构却**忘了**递增，没有任何东西会报警——
+// 而那恰恰是这个版本号想防的事。现在规则包里有一个 golden 测试
+// （TestSnapshot_ShapeIsPinnedToVersion）把序列化形状钉住，字段增删改名
+// 都会让它变红，红了之后再判断该不该递增。
 const SnapshotVersion = 10
 
 // Snapshot 引擎的完整可序列化快照。
@@ -258,7 +263,7 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 // 不走 AddPlayer：恢复时要原样还原快照里的存活状态与 Vars，
 // 而 AddPlayer 会经 RoleSetup 重新发一遍初始状态——用掉的药会回来。
 func (s *gameState) restorePlayer(p PlayerSnapshot) {
-	s.players[p.ID] = &PlayerState{
+	s.players[p.ID] = &playerState{
 		ID:        p.ID,
 		Role:      p.Role,
 		Alive:     p.Alive,

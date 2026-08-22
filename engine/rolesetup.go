@@ -19,6 +19,9 @@ package engine
 // 用 Resolver 做。
 //
 // 返回 nil 或空表示这个角色不带任何初始状态。
+//
+// 它在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法——后果是
+// 挂住，不是报错。详见 doc.go「扩展点不能回头找引擎」。
 type RoleSetup interface {
 	Setup(playerID string, role RoleType) map[string]string
 }

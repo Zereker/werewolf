@@ -1,9 +1,11 @@
 package werewolf
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/Zereker/werewolf/engine"
 )
 
 // playMidGame 走到一个有内容的局面：救过人、投出过人、猎人开过枪
@@ -229,5 +231,65 @@ func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
 	}
 	if g.e.Phase() != replayed.Phase() {
 		t.Errorf("推进一步后分叉: 原引擎 %v，回放 %v", g.e.Phase(), replayed.Phase())
+	}
+}
+
+// TestApply_StaysReplayableAndRestorable Apply 用过之后，回放与存档仍然还原得出同一个局面。
+//
+// Engine.Apply 是一把有刃的工具：它绕开阶段结算直接改状态，宿主拿它处理
+// 「玩家掉线判死」「管理员踢人」这类不属于任何阶段的变更。它的正当性
+// 全部押在一句话上——它走的仍然是同一个写入点，所以存档、回放、审计都
+// 不会因为用了它而失真。
+//
+// 那句话此前没有任何测试盯着。这个测试盯住它：Apply 一次之后，
+// 从效果流回放、从快照恢复，两条路都要还原出同样的局面。
+func TestApply_StaysReplayableAndRestorable(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), seer("s"), witch("wi"), guard("g"), hunter("h"),
+		villagers("v1", "v2", "v3"),
+	)...)
+	g.mustUse("g", SkillProtect, "s")
+	if _, err := g.e.EndPhase(); err != nil {
+		t.Fatal(err)
+	}
+
+	// 宿主判一个掉线的玩家出局：不属于任何阶段的状态变更
+	kept := g.e.Apply(
+		engine.NewEffect(EventType("DISCONNECT"), "", "v3"),
+		engine.NewSetAliveEffect("v3", false))
+	if len(kept) != 2 {
+		t.Fatalf("Apply 只留下了 %d 条", len(kept))
+	}
+	if p, _ := g.e.PlayerInfo("v3"); p.Alive {
+		t.Fatal("v3 应该已经出局")
+	}
+
+	// 一、回放
+	replayed, err := Replay(DefaultGameConfig(), DefaultRules(), g.e.EffectLog())
+	if err != nil {
+		t.Fatalf("Replay: %v", err)
+	}
+	if p, ok := replayed.PlayerInfo("v3"); !ok || p.Alive {
+		t.Errorf("回放后 v3 存活=%v（应为 false）——Apply 的效果没被回放还原", p.Alive)
+	}
+	if replayed.Phase() != g.e.Phase() {
+		t.Errorf("回放后阶段=%v，原局=%v", replayed.Phase(), g.e.Phase())
+	}
+
+	// 二、存档
+	data, err := json.Marshal(g.e.Snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snap engine.Snapshot
+	if err := json.Unmarshal(data, &snap); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := Restore(DefaultGameConfig(), DefaultRules(), &snap)
+	if err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if p, ok := restored.PlayerInfo("v3"); !ok || p.Alive {
+		t.Errorf("恢复后 v3 存活=%v（应为 false）", p.Alive)
 	}
 }

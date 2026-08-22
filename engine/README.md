@@ -196,6 +196,31 @@ e.AudienceOf(event)   // 一件事该发给哪些玩家
 `NewEngine` / `MustNewEngine` / `RestoreEngine` / `ReplayEngine`
 四个入口都接受它们。
 
+## 扩展点不能回头找引擎
+
+七个扩展点全部在引擎**持锁期间**被同步调用。实现里回调 `Engine` 的任何
+方法，后果是**挂住**，不是报错——Go 的读写锁不可重入，那一局从此没有响应。
+
+它们不需要回调：想知道的一切都在参数里。签名是刻意收窄的,扩展点拿不到
+`*Engine`,要绕过这条约束得自己把引擎存进结构体,那是一个有意的动作。
+
+要在回调里问引擎,用 `OnEvent` / `OnMessage` 的处理器——事件与消息都在
+**锁外**发布:
+
+```go
+e.OnEvent(func(ev *engine.Event) {
+	audience, known := e.AudienceOf(ev) // 安全：这里没有持锁
+	if !known {
+		return // 引擎认不得的第三方事件类型，自己路由，别默认广播
+	}
+	for _, id := range audience {
+		send(id, ev)
+	}
+})
+```
+
+把引擎接进一个服务端正是这么做的,见 `example/netserver`。
+
 ## 单测自己的解析器
 
 不用整局跑起来。`Board` 让你手工摆一副局面：

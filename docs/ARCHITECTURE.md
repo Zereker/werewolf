@@ -120,11 +120,15 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
 
 持有全部游戏状态，是**唯一的写入点**（`ApplyEffect`）。
 
-- `PlayerState`：身份、存活、女巫药剂、守卫上回合目标
-- `RoundContext`：回合内的临时状态（刀口、被守、被救、被毒、猎人触发），
+- `playerState`（未导出）：身份、存活，外加两张字符串表——`Vars` 跟着
+  玩家走一整局，`RoundVars` 每回合清零。女巫的药剂、守卫上回合守了谁
+  都住在 `Vars` 里，键名由规则自己定，内核只管存。对外只经
+  `PlayerInfo` / `GameView` 给只读副本
+- `RoundContext`：回合内不属于任何玩家的状态（刀口、猎人触发队列），
   每进入新的一夜重建
 - `RoleCategory`：神职 / 平民 / 狼人，屠边判定需要这个维度，
-  而 `werewolf.Camp` 只有好人/狼人两值，表达不了
+  而 `Camp` 只有好人/狼人两值，表达不了。它住在**规则包**
+  （`wolfcamp.go`），不在内核——「神职」是狼人杀的概念
 
 **猎人触发标记是一次性的**：由死亡结算置位，进入猎人阶段后必须
 `ConsumeHunterTrigger` 消费。不消费的话它会在整个回合内持续为真，

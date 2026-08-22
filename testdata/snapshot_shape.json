@@ -1,0 +1,111 @@
+{
+  "version": 10,
+  "phase": "NIGHT_SEER",
+  "round": 1,
+  "players": [
+    {
+      "id": "g",
+      "role": "GUARD",
+      "alive": true,
+      "vars": {
+        "camp": "GOOD",
+        "category": "GOD",
+        "guard.last_round": "1",
+        "guard.last_target": "s"
+      }
+    },
+    {
+      "id": "h",
+      "role": "HUNTER",
+      "alive": true,
+      "vars": {
+        "camp": "GOOD",
+        "category": "GOD"
+      }
+    },
+    {
+      "id": "s",
+      "role": "SEER",
+      "alive": true,
+      "round_vars": {
+        "guard.protected": "1"
+      },
+      "vars": {
+        "camp": "GOOD",
+        "category": "GOD"
+      }
+    },
+    {
+      "id": "v1",
+      "role": "VILLAGER",
+      "alive": true,
+      "round_vars": {
+        "witch.saved": "1"
+      },
+      "vars": {
+        "camp": "GOOD",
+        "category": "VILLAGER"
+      }
+    },
+    {
+      "id": "v2",
+      "role": "VILLAGER",
+      "alive": true,
+      "vars": {
+        "camp": "GOOD",
+        "category": "VILLAGER"
+      }
+    },
+    {
+      "id": "v3",
+      "role": "VILLAGER",
+      "alive": true,
+      "vars": {
+        "camp": "GOOD",
+        "category": "VILLAGER"
+      }
+    },
+    {
+      "id": "w1",
+      "role": "WEREWOLF",
+      "alive": true,
+      "vars": {
+        "camp": "EVIL",
+        "category": "WOLF"
+      }
+    },
+    {
+      "id": "w2",
+      "role": "WEREWOLF",
+      "alive": true,
+      "vars": {
+        "camp": "EVIL",
+        "category": "WOLF"
+      }
+    },
+    {
+      "id": "wi",
+      "role": "WITCH",
+      "alive": true,
+      "vars": {
+        "camp": "GOOD",
+        "category": "GOD",
+        "witch.poison": "1"
+      }
+    }
+  ],
+  "round_context": {
+    "vars": {
+      "wolf.kill_target": "v1"
+    }
+  },
+  "pending_uses": [
+    {
+      "player_id": "s",
+      "skill": "CHECK",
+      "target_id": "w1",
+      "phase": "NIGHT_SEER",
+      "round": 1
+    }
+  ]
+}

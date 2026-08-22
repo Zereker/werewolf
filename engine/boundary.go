@@ -18,7 +18,8 @@ package engine
 // AudienceProvider 回答「一件事该告诉哪些玩家」。
 //
 // 与 Resolver、VictoryChecker 同构：拿只读的 GameView，返回结论，不碰状态。
-// 在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法。
+// 它在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法——后果是
+// 挂住，不是报错。详见 doc.go「扩展点不能回头找引擎」。
 //
 // 第二个返回值是「认不认得这个事件类型」，它与「不给任何人看」是两件事，
 // 必须分得开：前者要求调用方自己路由，后者是明确的判定。返回 false 时
@@ -56,6 +57,9 @@ func WithAudience(provider AudienceProvider) EngineOption {
 //
 // 这个问题**不对称**是允许的：血染钟楼的恶魔认得爪牙，反过来不成立。
 // 内核不检查两边是否一致。
+//
+// 它在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法——后果是
+// 挂住，不是报错。详见 doc.go「扩展点不能回头找引擎」。
 type TeammateProvider interface {
 	Teammates(playerID string, view GameView) []string
 }
@@ -83,6 +87,9 @@ func WithTeammates(provider TeammateProvider) EngineOption {
 //
 // 返回的列表习惯上包含发送者自己，方便调用方直接拿去广播。
 // 返回 nil 表示此刻他说不了话。
+//
+// 它在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法——后果是
+// 挂住，不是报错。详见 doc.go「扩展点不能回头找引擎」。
 type SpeechProvider interface {
 	Receivers(senderID string, view GameView) []string
 }
