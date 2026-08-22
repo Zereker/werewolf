@@ -51,6 +51,7 @@ const (
 	EventAbilityTriggered EventType = 105 // 死亡技能触发，待进入对应阶段结算
 	EventPlayerAdded      EventType = 106 // 玩家入座（用于效果流回放）
 	EventPhaseChanged     EventType = 107 // 阶段流转（用于效果流回放）
+	EventSetPlayerVar     EventType = 108 // 写玩家的自定义状态（供第三方角色使用）
 )
 
 // String 实现 fmt.Stringer，输出沿用枚举全名。
@@ -83,4 +84,5 @@ var eventTypeNames = map[EventType]string{
 	EventAbilityTriggered: "ABILITY_TRIGGERED",
 	EventPlayerAdded:      "PLAYER_ADDED",
 	EventPhaseChanged:     "PHASE_CHANGED",
+	EventSetPlayerVar:     "SET_PLAYER_VAR",
 }

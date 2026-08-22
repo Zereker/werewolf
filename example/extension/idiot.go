@@ -23,22 +23,25 @@ const (
 
 // idiotRule 白痴的规则，包在内置投票解析器外面。
 //
-// # 状态放在哪
+// # 它是无状态的
 //
-// 「这个白痴翻过牌了吗」是第三方自己的状态，而引擎里没有地方放它——
-// PlayerState 的字段是固定的，RoundContext 也是，applyEffect 对不认识的
-// 效果类型直接忽略。所以只能由扩展自己拿着。
+// Resolver 接口的要求是「只能读 GameView、只能通过返回 Effect 表达状态
+// 变更」。「这个白痴翻过牌了吗」是会影响规则判定的状态，所以它必须住在
+// 引擎里，而不是这个结构体的字段里——住在字段里的话，快照带不上它，
+// 效果流也重建不出它，恢复出来的对局是错的。
 //
-// 代价是它不会进快照：Engine.Snapshot() 导不出这个字段。恢复对局时必须由
-// 扩展自己从 Engine.EffectLog() 里把它捡回来（见 restoreFrom）。
-// 这是这个库当前最硌手的一处，下面的注释里有更完整的说明。
+// 引擎给第三方的存放处是 PlayerVar：读走 GameView.PlayerVar，
+// 写走 NewSetPlayerVarEffect。内置角色的药剂与守护记录是同一件事，
+// 只是它们在 PlayerState 上有专门的字段。
 type idiotRule struct {
-	inner    werewolf.Resolver
-	revealed map[string]bool // 已经翻过牌的白痴
+	inner werewolf.Resolver
 }
 
+// varRevealed 这个扩展在 PlayerVar 里用的键。
+const varRevealed = "idiot.revealed"
+
 func newIdiotRule(inner werewolf.Resolver) *idiotRule {
-	return &idiotRule{inner: inner, revealed: make(map[string]bool)}
+	return &idiotRule{inner: inner}
 }
 
 // Resolve 先把已翻牌白痴的票剔掉，再让内置解析器数票；
@@ -51,7 +54,7 @@ func (r *idiotRule) Resolve(
 	// 所以只能在这里把票丢掉。玩家提交时不会被拒，是在结算时不算数。
 	kept := make([]*werewolf.SkillUse, 0, len(uses))
 	for _, u := range uses {
-		if u.Skill == werewolf.SkillVote && r.revealed[u.PlayerID] {
+		if u.Skill == werewolf.SkillVote && revealed(view, u.PlayerID) {
 			continue
 		}
 		kept = append(kept, u)
@@ -59,50 +62,38 @@ func (r *idiotRule) Resolve(
 
 	effects := r.inner.Resolve(kept, view, cfg)
 
-	out := make([]*werewolf.Effect, 0, len(effects)+1)
+	out := make([]*werewolf.Effect, 0, len(effects)+2)
 	for _, ef := range effects {
 		if ef.Type != werewolf.EventEliminate || ef.Canceled {
 			out = append(out, ef)
 			continue
 		}
 		p, ok := view.Player(ef.TargetID)
-		if !ok || p.Role != roleIdiot || r.revealed[ef.TargetID] {
+		if !ok || p.Role != roleIdiot || revealed(view, ef.TargetID) {
 			out = append(out, ef) // 不是白痴，或者已经翻过牌了：照常出局
 			continue
 		}
 
 		// 是个还没翻牌的白痴：把放逐否决掉，改成翻牌。
 		//
-		// 这里用 Cancel 而不是干脆不产出这个效果——被否决的效果仍会
-		// 出现在 EndPhase 的返回值与效果流里，调用方（和回放）因此
-		// 知道「投出来的是他，但他没死，原因是这个」。
+		// 用 Cancel 而不是干脆不产出这个效果——被否决的效果仍会出现在
+		// EndPhase 的返回值与效果流里，调用方（和回放）因此知道
+		// 「投出来的是他，但他没死，原因是这个」。
 		ef.Cancel("白痴翻牌，不出局")
-		out = append(out, ef)
-		out = append(out, werewolf.NewEffect(eventRevealed, ef.TargetID, "").
-			WithData("role", "IDIOT"))
-
-		r.revealed[ef.TargetID] = true
+		out = append(out,
+			ef,
+			werewolf.NewEffect(eventRevealed, ef.TargetID, "").WithData("role", "IDIOT"),
+			// 状态交给引擎保管：随快照走，回放能重建，这个 Resolver 保持无状态
+			werewolf.NewSetPlayerVarEffect(ef.TargetID, varRevealed, "1"),
+		)
 	}
 	return out
 }
 
-// restoreFrom 从效果流把「谁翻过牌」重建出来。
-//
-// 引擎恢复对局时不会带上扩展的状态——它根本不知道有这么个状态。
-// 好在效果流是完整的，扩展自己产出的效果也在里面，可以扫一遍捡回来。
-//
-// 这个方法的存在本身就是一处 API 缺口的证据：每一个有自身状态的第三方
-// 角色都得重写一遍这段，而且必须记得在恢复时调用它——忘了的话对局
-// 恢复出来是错的，还不会报错。
-func (r *idiotRule) restoreFrom(log []*werewolf.Effect) {
-	for _, ef := range log {
-		if ef.Type == eventRevealed && !ef.Canceled {
-			r.revealed[ef.SourceID] = true
-		}
-	}
+// revealed 这个白痴翻过牌了吗。
+func revealed(view werewolf.GameView, id string) bool {
+	return view.PlayerVar(id, varRevealed) != ""
 }
-
-func (r *idiotRule) hasRevealed(id string) bool { return r.revealed[id] }
 
 // describe 把效果讲成一句话，包括这个扩展自己的事件类型。
 func describe(ef *werewolf.Effect) string {

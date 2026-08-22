@@ -8,7 +8,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 4
+const SnapshotVersion = 5
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -46,6 +46,10 @@ type PlayerSnapshot struct {
 
 	LastProtectedTarget string `json:"last_protected_target,omitempty"`
 	LastProtectedRound  int    `json:"last_protected_round,omitempty"`
+
+	// Vars 第三方角色的自定义状态。存这一项是这个机制成立的前提：
+	// 带不上它，扩展的状态就只能藏在 Resolver 里，那正是要解决的问题。
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
 // RoundCtxSnapshot 回合上下文的快照
@@ -232,6 +236,8 @@ func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 			HasAntidote:         p.HasAntidote,
 			HasPoison:           p.HasPoison,
 			LastProtectedTarget: p.LastProtectedTarget,
+			LastProtectedRound:  p.LastProtectedRound,
+			Vars:                copyVars(p.Vars),
 		})
 	}
 	sortPlayerSnapshots(out)
@@ -268,7 +274,21 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 		HasPoison:           p.HasPoison,
 		LastProtectedTarget: p.LastProtectedTarget,
 		LastProtectedRound:  p.LastProtectedRound,
+		Vars:                copyVars(p.Vars),
 	}
+}
+
+// copyVars 复制自定义状态。快照是深拷贝，这一项也不能例外——
+// 否则恢复出来的引擎与原引擎共用同一张 map，改一边动两边。
+func copyVars(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // restoreProgress 还原阶段、回合与回合上下文

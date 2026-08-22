@@ -59,6 +59,34 @@ func (e *Effect) triggerPhase() (PhaseType, bool) {
 	return phase, ok
 }
 
+// 写玩家自定义状态时用到的两个键
+const (
+	playerVarKeyKey   = "var_key"
+	playerVarValueKey = "var_value"
+)
+
+// NewSetPlayerVarEffect 声明「把某个玩家的某项自定义状态改成某值」。
+//
+// 这是第三方角色存放自身状态的正路。白痴的「翻过牌了」、骑士的
+// 「决斗用掉了」这类东西，与女巫的药、守卫的守护记录是同一件事，
+// 只是引擎为内置角色写死了字段、为第三方留了这个通用口子。
+//
+// 走这条路的好处是自动获得整套设施：状态随快照走、效果流能回放、
+// Resolver 因此可以保持无状态——而无状态正是 Resolver 接口要求的。
+// 值传空串即删除该项。
+func NewSetPlayerVarEffect(playerID, key, value string) *Effect {
+	return NewEffect(EventSetPlayerVar, "", playerID).
+		WithData(playerVarKeyKey, key).
+		WithData(playerVarValueKey, value)
+}
+
+// playerVarOf 从效果里读出要写的键值。
+func playerVarOf(e *Effect) (key, value string) {
+	key, _ = e.Data[playerVarKeyKey].(string)
+	value, _ = e.Data[playerVarValueKey].(string)
+	return key, value
+}
+
 // NewEffect 创建效果
 func NewEffect(eventType EventType, sourceID, targetID string) *Effect {
 	return &Effect{

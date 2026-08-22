@@ -20,8 +20,7 @@ func main() {
 	fmt.Println("=== 扩展新角色：白痴 ===")
 	fmt.Println()
 
-	rule := newIdiotRule(werewolf.NewVoteResolver())
-	engine := build(rule)
+	engine := build(newIdiotRule(werewolf.NewVoteResolver()))
 
 	// 第三方的事件也走 OnEvent。编号 1000 以上是扩展的地盘，
 	// 引擎不认识它们，但也不替它们决定「不该外发」。
@@ -41,7 +40,7 @@ func main() {
 	show(engine, endPhase(engine))
 
 	alive := aliveOf(engine, "idiot")
-	fmt.Printf("  白痴还活着吗: %v（翻过牌: %v）\n\n", alive, rule.hasRevealed("idiot"))
+	fmt.Printf("  白痴还活着吗: %v（翻过牌: %v）\n\n", alive, revealedIn(engine, "idiot"))
 
 	fmt.Println("【翻牌之后，白痴的票不再算数】")
 	toVote(engine)
@@ -55,8 +54,8 @@ func main() {
 	fmt.Printf("  w1 还活着吗: %v（白痴那一票没算，w1 是 2 票、v1 是 3 票）\n\n",
 		aliveOf(engine, "w1"))
 
-	fmt.Println("【存档与恢复：扩展的状态得自己捡回来】")
-	demoRestore(engine, rule)
+	fmt.Println("【存档与恢复：扩展的状态跟着一起回来】")
+	demoRestore(engine)
 }
 
 // build 组一局带白痴的游戏。三步，全是导出 API。
@@ -97,30 +96,31 @@ func build(rule *idiotRule) *werewolf.Engine {
 	return engine
 }
 
-// demoRestore 存档、恢复，并把扩展自己的状态捡回来。
-func demoRestore(engine *werewolf.Engine, rule *idiotRule) {
+// demoRestore 存档、恢复。扩展的状态跟着一起回来，不需要额外做什么。
+func demoRestore(engine *werewolf.Engine) {
 	snap := engine.Snapshot()
-	log := engine.EffectLog()
 
 	// 恢复时必须再把解析器给一遍——快照只记局面，不记规则。
-	restoredRule := newIdiotRule(werewolf.NewVoteResolver())
 	restored, err := werewolf.RestoreEngine(nil, snap,
-		werewolf.WithResolver(werewolf.PhaseVote, restoredRule))
+		werewolf.WithResolver(werewolf.PhaseVote,
+			newIdiotRule(werewolf.NewVoteResolver())))
 	if err != nil {
 		fmt.Printf("  恢复失败: %v\n", err)
 		return
 	}
 
-	fmt.Printf("  刚恢复时，扩展以为白痴翻过牌了吗: %v  <- 状态丢了\n",
-		restoredRule.hasRevealed("idiot"))
-
-	restoredRule.restoreFrom(log)
-	fmt.Printf("  从效果流捡回来之后: %v\n", restoredRule.hasRevealed("idiot"))
-	fmt.Printf("  局面本身: 第%d回合 %v\n", restored.Round(), restored.Phase())
+	fmt.Printf("  局面: 第%d回合 %v\n", restored.Round(), restored.Phase())
+	fmt.Printf("  白痴翻过牌了吗: %v\n", revealedIn(restored, "idiot"))
 	fmt.Println()
-	fmt.Println("  引擎不知道扩展有状态，快照自然带不上它。效果流里有，")
-	fmt.Println("  但得扩展自己扫一遍捡回来，而且必须记得调用——忘了的话")
-	fmt.Println("  对局恢复出来是错的，还不会报错。")
+	fmt.Println("  这一项之所以能跟着回来，是因为它住在引擎里而不是解析器里：")
+	fmt.Println("  写走 NewSetPlayerVarEffect，读走 GameView.PlayerVar。")
+	fmt.Println("  解析器因此是无状态的——那正是 Resolver 接口要求的。")
+}
+
+// revealedIn 从引擎读这个扩展自己的状态。
+func revealedIn(engine *werewolf.Engine, id string) bool {
+	p, ok := engine.PlayerInfo(id)
+	return ok && p.Vars[varRevealed] != ""
 }
 
 // ==================== 小工具 ====================

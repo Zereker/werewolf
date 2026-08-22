@@ -128,6 +128,20 @@ type PlayerState struct {
 	// 是否构成连守由 gameState.lastProtectedTarget 按回合号判定。
 	LastProtectedTarget string // 最近一次生效守护的目标
 	LastProtectedRound  int    // 那次守护发生在第几回合，0 表示从未守护
+
+	// Vars 第三方角色的自定义状态。
+	//
+	// 上面那几个字段——女巫的药、守卫的守护记录——本质上是同一件事：
+	// 「某个角色私有的、会影响规则判定的状态」。引擎为内置角色把它们
+	// 写成了字段，为它们各写了一条 applyEffect 分支；而这两处第三方
+	// 都改不了，于是自定义角色只能把状态藏在自己的 Resolver 里，
+	// 也就是只能违反「状态变更一律经由 Effect」这条不变量。
+	//
+	// Vars 把那个口子开出来：走 EventSetPlayerVar 写，随快照走，
+	// 回放能重建。内置的那几个字段保留——它们是默认板子，
+	// p.HasAntidote 比 p.Vars["antidote"] 好读得多，而且要出现在
+	// 面向玩家的 SelfInfo 上。
+	Vars map[string]string
 }
 
 // gameState 游戏状态。
@@ -261,6 +275,14 @@ type PlayerInfo struct {
 	Protected   bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
 	HasAntidote bool         `json:"has_antidote"`
 	HasPoison   bool         `json:"has_poison"`
+
+	// Vars 第三方角色的自定义状态。
+	//
+	// 刻意只出现在这里（上帝视角），不出现在面向玩家的 SelfInfo 上：
+	// 扩展往里放什么由扩展决定，默认把它交给玩家等于让每个扩展
+	// 自己去想「这一项能不能给他看」——那正是这个库要替调用方
+	// 收掉的那类判断。要给玩家看的，由扩展自己推。
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
 // PlayerInfo 获取玩家信息的只读副本
@@ -279,6 +301,7 @@ func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 		Protected:   s.RoundCtx.IsProtected(id), // 从 RoundContext 获取
 		HasAntidote: p.HasAntidote,
 		HasPoison:   p.HasPoison,
+		Vars:        copyVars(p.Vars),
 	}, true
 }
 
@@ -383,6 +406,22 @@ func (s *gameState) applyEffect(effect *Effect) {
 			witch.HasPoison = false
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
+	case EventSetPlayerVar:
+		// 第三方角色的自定义状态。值为空即删除，免得快照里堆一堆空串。
+		if p, ok := s.players[effect.TargetID]; ok {
+			key, value := playerVarOf(effect)
+			if key != "" {
+				if value == "" {
+					delete(p.Vars, key)
+				} else {
+					if p.Vars == nil {
+						p.Vars = make(map[string]string, 1)
+					}
+					p.Vars[key] = value
+				}
+			}
+		}
+
 	case EventAbilityTriggered:
 		// 死亡技能入队，等待流转到对应阶段结算
 		if phase, ok := effect.triggerPhase(); ok && effect.SourceID != "" {
@@ -556,6 +595,15 @@ func (s *gameState) lastProtectedTarget(guardID string) string {
 		return ""
 	}
 	return p.LastProtectedTarget
+}
+
+// playerVar 读某个玩家的自定义状态，没有则为空串。
+func (s *gameState) playerVar(playerID, key string) string {
+	p, ok := s.players[playerID]
+	if !ok {
+		return ""
+	}
+	return p.Vars[key]
 }
 
 // anyAliveWitchHasAntidote 是否还有存活女巫持有解药。

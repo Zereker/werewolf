@@ -273,6 +273,17 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 				seed, step, e.Phase(), e.Round(), clone.Phase(), clone.Round())
 		}
 
+		// 光比阶段与回合不够：快照漏掉一个字段，两边照样能同步地
+		// 走完一整局，只是规则判定不一样了——LastProtectedRound 就是这么
+		// 漏了一整轮的（存一次档，连守限制当场失效）。
+		// 逐字节比对两边导出的快照，才真的能挡住「漏字段」这一类。
+		a, _ := json.Marshal(e.Snapshot())
+		b, _ := json.Marshal(clone.Snapshot())
+		if string(a) != string(b) {
+			t.Fatalf("seed=%d step=%d 快照往返后状态不一致:\n  原  %s\n  副本 %s",
+				seed, step, a, b)
+		}
+
 		// 不变量 H：回合数单调不减，且绕回起始阶段就必须是新的一回合。
 		//
 		// 「回合边界」此前写死成守卫阶段，阶段环里没有它的时候回合数

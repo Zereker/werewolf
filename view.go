@@ -30,6 +30,13 @@ type GameView interface {
 	// 视图只给事实，是否允许再守由 Resolver 依配置判定。
 	LastProtectedTarget(guardID string) string
 
+	// PlayerVar 返回某个玩家的一项自定义状态，没有则为空串。
+	//
+	// 第三方角色用它存放自身状态（白痴翻没翻牌、骑士的决斗用没用掉），
+	// 写入走 NewSetPlayerVarEffect。内置角色的药剂与守护记录是同一件事，
+	// 只是它们在 PlayerInfo 上有专门的字段。
+	PlayerVar(playerID, key string) string
+
 	// Round 返回当前回合数
 	Round() int
 
@@ -76,6 +83,10 @@ func (v stateView) RoundContext() RoundContext {
 
 func (v stateView) LastProtectedTarget(guardID string) string {
 	return v.s.lastProtectedTarget(guardID)
+}
+
+func (v stateView) PlayerVar(playerID, key string) string {
+	return v.s.playerVar(playerID, key)
 }
 
 func (v stateView) Round() int { return v.s.currentRound() }

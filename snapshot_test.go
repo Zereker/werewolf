@@ -449,3 +449,123 @@ func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
 		t.Error("技能指向不存在的目标，恢复应当被拒")
 	}
 }
+
+// TestSnapshot_CarriesEveryPlayerField 快照必须把玩家状态一个字段不落地带走。
+//
+// LastProtectedRound 曾经漏在 snapshotPlayers 之外整整一轮：存一次档，
+// 守卫的连守限制当场失效——原引擎判连守取消、恢复后的引擎放行。
+// 只比阶段与回合的往返测试挡不住这一类，因为两边照样能同步地走完一局，
+// 只是规则判定不一样了。
+func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), guard("gd"), witch("wi"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	// 让每一类玩家状态都有非零值
+	g.mustUse("gd", SkillProtect, "v1")
+	g.end(PhaseNightWolf)
+	g.mustUse("w1", SkillKill, "v2")
+	g.end(PhaseNightWitch)
+	g.mustUse("wi", SkillAntidote, "v2")
+	g.endAny()
+
+	// 再加一项第三方的自定义状态
+	g.e.mu.Lock()
+	g.e.state.applyEffect(NewSetPlayerVarEffect("v3", "custom.flag", "yes"))
+	g.e.mu.Unlock()
+
+	snap := g.e.Snapshot()
+	byID := make(map[string]PlayerSnapshot, len(snap.Players))
+	for _, p := range snap.Players {
+		byID[p.ID] = p
+	}
+
+	// 逐个字段与引擎内部的真值比对
+	g.e.mu.RLock()
+	for id, want := range g.e.state.players {
+		got := byID[id]
+		switch {
+		case got.Role != want.Role, got.Camp != want.Camp, got.Category != want.Category:
+			t.Errorf("%s 的身份没带全: %+v", id, got)
+		case got.Alive != want.Alive:
+			t.Errorf("%s 的存活状态没带上", id)
+		case got.HasAntidote != want.HasAntidote, got.HasPoison != want.HasPoison:
+			t.Errorf("%s 的药剂没带上", id)
+		case got.LastProtectedTarget != want.LastProtectedTarget:
+			t.Errorf("%s 的守护目标没带上", id)
+		case got.LastProtectedRound != want.LastProtectedRound:
+			t.Errorf("%s 的守护回合没带上: 快照 %d，实际 %d",
+				id, got.LastProtectedRound, want.LastProtectedRound)
+		case len(got.Vars) != len(want.Vars):
+			t.Errorf("%s 的自定义状态没带上: 快照 %v，实际 %v", id, got.Vars, want.Vars)
+		}
+	}
+	g.e.mu.RUnlock()
+
+	// 往返之后再导一次，必须逐字节一致
+	restored, err := RestoreEngine(nil, snap)
+	if err != nil {
+		t.Fatalf("恢复失败: %v", err)
+	}
+	a, _ := json.Marshal(snap)
+	b, _ := json.Marshal(restored.Snapshot())
+	if string(a) != string(b) {
+		t.Errorf("往返后不一致:\n  原  %s\n  副本 %s", a, b)
+	}
+}
+
+// TestPlayerVar_SurvivesSnapshotAndReplay 第三方角色的状态随快照与效果流一起走。
+//
+// 这是「扩展的状态该住在哪」的答案：住在引擎里，写走 NewSetPlayerVarEffect。
+// 住在 Resolver 自己的字段里的话，快照带不上、回放也重建不出——
+// 而 Resolver 接口本来就要求它无状态。
+func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
+	const customPhase = PhaseType(1000)
+
+	cfg := DefaultGameConfig()
+	cfg.Phases[customPhase] = &PhaseConfig{
+		Type:      customPhase,
+		NextPhase: PhaseDay,
+		Steps:     []PhaseStep{{Role: RoleVillager, Skill: SkillSkip}},
+	}
+	cfg.Phases[PhaseNightResolve].NextPhase = customPhase
+
+	opts := []EngineOption{WithResolver(customPhase, varWritingResolver{})}
+	g := newRuleGameWith(t, cfg, opts,
+		seats(wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"))...)
+
+	for g.e.Phase() != customPhase {
+		g.endAny()
+	}
+	g.endAny()
+
+	if got := g.info("v1").Vars["custom.mark"]; got != "set" {
+		t.Fatalf("自定义状态应当写进了引擎，实际 %q", got)
+	}
+
+	// 快照
+	restored, err := RestoreEngine(cfg, g.e.Snapshot(), opts...)
+	if err != nil {
+		t.Fatalf("恢复失败: %v", err)
+	}
+	if p, _ := restored.PlayerInfo("v1"); p.Vars["custom.mark"] != "set" {
+		t.Errorf("恢复后自定义状态丢了: %v", p.Vars)
+	}
+
+	// 效果流回放
+	replayed, err := ReplayEngine(cfg, g.e.EffectLog(), opts...)
+	if err != nil {
+		t.Fatalf("回放失败: %v", err)
+	}
+	if p, _ := replayed.PlayerInfo("v1"); p.Vars["custom.mark"] != "set" {
+		t.Errorf("回放后自定义状态丢了: %v", p.Vars)
+	}
+}
+
+// varWritingResolver 一个只写自定义状态的解析器。
+type varWritingResolver struct{}
+
+func (varWritingResolver) Resolve([]*SkillUse, GameView, *GameConfig) []*Effect {
+	return []*Effect{NewSetPlayerVarEffect("v1", "custom.mark", "set")}
+}
