@@ -207,7 +207,7 @@ func (g *ruleGame) witchSeesKill() string {
 	if ri == nil {
 		return ""
 	}
-	return ri.KillTarget
+	return witchKill(ri)
 }
 
 // vote 让多名玩家投同一目标。
@@ -985,7 +985,7 @@ func TestRule_R9_GoodWinsWhenAllWolvesDead(t *testing.T) {
 
 	g.setDead("w1", "w2")
 
-	over, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
+	over, winner := checkVictory(g.e)
 	if !over {
 		t.Fatal("狼人全部出局，游戏应当结束")
 	}
@@ -1014,7 +1014,7 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 
 		g.setDead("s", "wi") // 神职全灭，5 平民 vs 2 狼
 
-		over, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
+		over, winner := checkVictory(g.e)
 		if !over || winner != CampEvil {
 			t.Errorf("神职全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
@@ -1029,7 +1029,7 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 
 		g.setDead("v1", "v2") // 平民全灭，4 神职 vs 2 狼
 
-		over, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
+		over, winner := checkVictory(g.e)
 		if !over || winner != CampEvil {
 			t.Errorf("平民全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
@@ -1044,7 +1044,7 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 
 		g.setDead("wi", "v1") // 神职剩预言家，平民剩 2 人
 
-		over, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
+		over, winner := checkVictory(g.e)
 		if over {
 			t.Errorf("神职与平民都尚有存活，游戏不应结束，实际 winner=%v", winner)
 		}
@@ -1104,7 +1104,7 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	e.state.players["s"].Alive = false
 	e.mu.Unlock()
 
-	over, winner := e.state.checkVictory(e.config.VictoryMode)
+	over, winner := checkVictory(e)
 	if !over {
 		t.Fatal("好人神职已全部出局，屠神应当成立（活着的隐狼不算好人的神）")
 	}
@@ -1125,19 +1125,19 @@ func TestRule_R10_VictoryModeTownWipe(t *testing.T) {
 	)...)
 
 	// 好人 4 > 狼 2，游戏继续
-	if over, _ := g.e.state.checkVictory(VictoryModeTownWipe); over {
+	if over, _ := checkVictory(g.e); over {
 		t.Fatal("好人多于狼人时游戏不应结束")
 	}
 
 	// 好人降到 2 == 狼 2，屠城成立
 	g.setDead("v1", "v2")
-	over, winner := g.e.state.checkVictory(VictoryModeTownWipe)
+	over, winner := checkVictory(g.e)
 	if !over || winner != CampEvil {
 		t.Errorf("屠城模式下 好人数 <= 狼人数 应判狼人胜利，实际 over=%v winner=%v", over, winner)
 	}
 
 	// 同一局面在屠边模式下：神职还在、平民全灭 -> 同样是狼胜（屠民）
-	if over, winner := g.e.state.checkVictory(VictoryModeSideWipe); !over || winner != CampEvil {
+	if over, winner := checkVictory(g.e); !over || winner != CampEvil {
 		t.Errorf("屠边模式下平民全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 	}
 }
@@ -1150,7 +1150,7 @@ func TestRule_R10_MissingCategoryDoesNotEndGame(t *testing.T) {
 		g := newRuleGame(t, nil, seats(
 			wolf("w1"), villagers("v1", "v2", "v3"),
 		)...)
-		if over, winner := g.e.state.checkVictory(VictoryModeSideWipe); over {
+		if over, winner := checkVictory(g.e); over {
 			t.Errorf("板子上本就没有神职，不应判负，实际 winner=%v", winner)
 		}
 	})
@@ -1159,7 +1159,7 @@ func TestRule_R10_MissingCategoryDoesNotEndGame(t *testing.T) {
 		g := newRuleGame(t, nil, seats(
 			wolf("w1"), seer("s"), witch("wi"), guard("g"),
 		)...)
-		if over, winner := g.e.state.checkVictory(VictoryModeSideWipe); over {
+		if over, winner := checkVictory(g.e); over {
 			t.Errorf("板子上本就没有平民，不应判负，实际 winner=%v", winner)
 		}
 	})
@@ -1169,7 +1169,7 @@ func TestRule_R10_MissingCategoryDoesNotEndGame(t *testing.T) {
 			wolf("w1"), villagers("v1", "v2"),
 		)...)
 		g.setDead("v1", "v2")
-		over, winner := g.e.state.checkVictory(VictoryModeSideWipe)
+		over, winner := checkVictory(g.e)
 		if !over || winner != CampEvil {
 			t.Errorf("好人全灭应判狼人胜利，实际 over=%v winner=%v", over, winner)
 		}
@@ -1241,7 +1241,7 @@ func TestRule_R10_HunterShotCanFlipVictory(t *testing.T) {
 	if !g.e.IsGameOver() {
 		t.Fatal("最后一只狼被带走，游戏应当结束")
 	}
-	over, winner := g.e.state.checkVictory(VictoryModeSideWipe)
+	over, winner := checkVictory(g.e)
 	if !over || winner != CampGood {
 		t.Errorf("猎人带走最后一只狼，应判好人胜利，实际 over=%v winner=%v", over, winner)
 	}

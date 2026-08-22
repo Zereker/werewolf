@@ -214,8 +214,11 @@ func (t *table) godView() {
 		for _, id := range sortedKeys(ri.Teammates) {
 			fmt.Printf("    %s 的狼队友: %v\n", id, ri.Teammates[id])
 		}
-		if ri.KillTarget != "" {
-			fmt.Printf("    女巫可见的刀口: %s\n", ri.KillTarget)
+		// 角色专属信息由角色自己填，主持台不认识具体角色，照单打印
+		for _, id := range sortedKeys(ri.RoleInfo) {
+			for _, k := range sortedKeys(ri.RoleInfo[id]) {
+				fmt.Printf("    %s 的 %s: %s\n", id, k, ri.RoleInfo[id][k])
+			}
 		}
 	}
 }
@@ -262,8 +265,8 @@ func (t *table) playerView(args []string) {
 	if len(v.Teammates) > 0 {
 		fmt.Printf("  你的狼队友: %v\n", v.Teammates)
 	}
-	if v.KillTarget != "" {
-		fmt.Printf("  今晚被刀的是: %s\n", v.KillTarget)
+	if t := v.RoleInfo[werewolf.RoleInfoKillTarget]; t != "" {
+		fmt.Printf("  今晚被刀的是: %s\n", t)
 	}
 	if len(v.AllowedSkills) == 0 {
 		fmt.Println("  现在还轮不到你")
@@ -360,7 +363,8 @@ func (t *table) end() {
 // 同一件事，全场可见的公告一份，只给行动者本人的私信一份。
 func (t *table) deliver(effects []*werewolf.Effect) {
 	for _, ef := range effects {
-		audience, known := t.engine.AudienceOf(ef)
+		// EndPhase 给的是内部的 Effect，AudienceOf 问的是对外的事件
+		audience, known := t.engine.AudienceOf(ef.ToEvent())
 		if !known {
 			// 第三方角色自定义的事件类型，引擎无从判断可见性
 			fmt.Printf("  [?] %s（引擎不认得这个类型，需自行路由）\n", describe(ef))

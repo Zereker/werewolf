@@ -646,8 +646,8 @@ func TestEngine_GetPhaseInfo_NightWitch(t *testing.T) {
 	if !ok {
 		t.Fatal("expected witch role info")
 	}
-	if witchInfo.KillTarget != "v1" {
-		t.Errorf("expected kill target v1, got %s", witchInfo.KillTarget)
+	if witchKill(witchInfo) != "v1" {
+		t.Errorf("expected kill target v1, got %s", witchKill(witchInfo))
 	}
 	if len(witchInfo.AllowedSkills) != 2 {
 		t.Errorf("expected 2 skills (ANTIDOTE, POISON), got %d", len(witchInfo.AllowedSkills))
@@ -981,7 +981,7 @@ func TestEngine_EndPhase_ReturnsGameEnded(t *testing.T) {
 	}
 
 	// 而且它得有受众——不然调用方还是不知道该发给谁
-	audience, known := g.e.AudienceOf(ended)
+	audience, known := g.e.AudienceOf(ended.ToEvent())
 	if !known || len(audience) == 0 {
 		t.Errorf("GAME_ENDED 应当是全场可见，实际 (%v, %v)", audience, known)
 	}

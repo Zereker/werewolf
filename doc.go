@@ -39,8 +39,8 @@
 //
 // 狼人杀真正难的部分是信息边界，所以引擎把它收在库内，分成两半：
 //
-//	Engine.PlayerView(id)      某个玩家有权知道的一切，可以原样发给他
-//	Engine.AudienceOf(effect)  一件事该发给哪些玩家
+//	Engine.PlayerView(id)     某个玩家有权知道的一切，可以原样发给他
+//	Engine.AudienceOf(event)  一件事该发给哪些玩家
 //
 // 与之相对，PhaseInfo、PlayerInfo、WolfTeammates、NightKillTarget 是
 // 上帝视角：调用方作为主持人需要它们来组织流程，但它们的内容
@@ -56,8 +56,32 @@
 //		werewolf.WithResolver(myPhase, myResolver))           // 注册解析器
 //	engine.AddCustomPlayer("p1", myRole, camp, category)      // 阵营与类别
 //
-// 自定义取值建议从 1000 起，避免与后续内置枚举撞号。
-// extension_test.go 用狼王把这条路径完整走通，全程只用导出 API。
+// 角色自身的状态走 Var：跟着玩家走一整局的用 PlayerVar（白痴翻没翻牌），
+// 每回合清零的用 RoundVar（今晚谁被标记了）。读用 GameView.PlayerVar /
+// RoundVar，写用 NewSetPlayerVarEffect / NewSetRoundVarEffect。
+// 它们随快照走、回放能重建，因此 Resolver 可以保持无状态——
+// 而无状态正是这个接口的要求。内置角色的药剂、守护记录、刀口、被守被救
+// 都是同一件事，只是它们在 PlayerState / RoundContext 上有专门的字段。
+//
+// 角色额外让玩家看到什么（女巫的刀口、盗贼的底牌）由 RoleInfoProvider
+// 回答，用 WithRoleInfo 注册，结果出现在 PlayerView.RoleInfo 与
+// RolePhaseInfo.RoleInfo。内置女巫走的就是这条路，没有特权。
+//
+// 胜负条件由 VictoryChecker 决定，可用 WithVictoryChecker 换掉。
+// 第三方阵营（丘比特的情侣）有自己的胜利条件，判定写死在引擎里的话
+// 那类板子根本没有地方表达；包一层 DefaultVictoryChecker 即可在内置
+// 规则之上再加一条。
+//
+// 自定义取值一律从 1000 起。这不只是「避免撞号」的建议——事件类型的
+// 编号是分段的，1000 以上才是扩展的地盘：
+//
+//	  1 ..  99   引擎的外部可见事件，通过 OnEvent 推给调用方
+//	100 .. 999   引擎的内部状态变更，不外发
+//	1000 起      第三方扩展自己的事件类型，照常推给 OnEvent；
+//	             AudienceOf 对它们回答「不知道」，路由由扩展自己决定
+//
+// example/extension 用白痴把这条路径走通，全程只用导出 API；
+// extension_test.go 用狼王再走一遍死亡触发那条分支。
 //
 // # 边界：引擎不做什么
 //

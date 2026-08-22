@@ -19,6 +19,19 @@ type RoundContext struct {
 	// 每加一个死亡触发角色（狼王、白痴）就要再加两个字段、
 	// 并在引擎的阶段流转里多一个分支。改成队列后引擎不认识任何具体角色。
 	PendingTriggers []PendingTrigger
+
+	// Vars 第三方角色的回合级自定义状态，每回合自动清空。
+	//
+	// 上面那四个字段——刀口、被守、被救、被毒——与这里是同一件事：
+	// 「本回合有效、会影响规则判定的状态」。引擎为内置角色把它们写成了
+	// 字段，第三方改不了，于是回合级的扩展状态无处可放。
+	//
+	// PendingTriggers 的注释里已经记着同一个教训（猎人专属字段改成队列），
+	// 但当时只泛化了死亡触发那一项。这里补上其余。
+	//
+	// 与 PlayerState.Vars 的分工：那个跟着玩家走一整局，这个每回合清零。
+	// 写走 NewSetRoundVarEffect，读走 GameView.RoundVar。
+	Vars map[string]string
 }
 
 // PendingTrigger 一个待结算的死亡技能
@@ -128,6 +141,20 @@ type PlayerState struct {
 	// 是否构成连守由 gameState.lastProtectedTarget 按回合号判定。
 	LastProtectedTarget string // 最近一次生效守护的目标
 	LastProtectedRound  int    // 那次守护发生在第几回合，0 表示从未守护
+
+	// Vars 第三方角色的自定义状态。
+	//
+	// 上面那几个字段——女巫的药、守卫的守护记录——本质上是同一件事：
+	// 「某个角色私有的、会影响规则判定的状态」。引擎为内置角色把它们
+	// 写成了字段，为它们各写了一条 applyEffect 分支；而这两处第三方
+	// 都改不了，于是自定义角色只能把状态藏在自己的 Resolver 里，
+	// 也就是只能违反「状态变更一律经由 Effect」这条不变量。
+	//
+	// Vars 把那个口子开出来：走 EventSetPlayerVar 写，随快照走，
+	// 回放能重建。内置的那几个字段保留——它们是默认板子，
+	// p.HasAntidote 比 p.Vars["antidote"] 好读得多，而且要出现在
+	// 面向玩家的 SelfInfo 上。
+	Vars map[string]string
 }
 
 // gameState 游戏状态。
@@ -261,6 +288,14 @@ type PlayerInfo struct {
 	Protected   bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
 	HasAntidote bool         `json:"has_antidote"`
 	HasPoison   bool         `json:"has_poison"`
+
+	// Vars 第三方角色的自定义状态。
+	//
+	// 刻意只出现在这里（上帝视角），不出现在面向玩家的 SelfInfo 上：
+	// 扩展往里放什么由扩展决定，默认把它交给玩家等于让每个扩展
+	// 自己去想「这一项能不能给他看」——那正是这个库要替调用方
+	// 收掉的那类判断。要给玩家看的，由扩展自己推。
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
 // PlayerInfo 获取玩家信息的只读副本
@@ -279,6 +314,7 @@ func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 		Protected:   s.RoundCtx.IsProtected(id), // 从 RoundContext 获取
 		HasAntidote: p.HasAntidote,
 		HasPoison:   p.HasPoison,
+		Vars:        copyVars(p.Vars),
 	}, true
 }
 
@@ -383,6 +419,36 @@ func (s *gameState) applyEffect(effect *Effect) {
 			witch.HasPoison = false
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
+	case EventSetPlayerVar:
+		// 第三方角色的自定义状态。值为空即删除，免得快照里堆一堆空串。
+		if p, ok := s.players[effect.TargetID]; ok {
+			key, value := playerVarOf(effect)
+			if key != "" {
+				if value == "" {
+					delete(p.Vars, key)
+				} else {
+					if p.Vars == nil {
+						p.Vars = make(map[string]string, 1)
+					}
+					p.Vars[key] = value
+				}
+			}
+		}
+
+	case EventSetRoundVar:
+		// 回合级的自定义状态。值为空即删除。
+		key, value := roundVarOf(effect)
+		if key != "" {
+			if value == "" {
+				delete(s.RoundCtx.Vars, key)
+			} else {
+				if s.RoundCtx.Vars == nil {
+					s.RoundCtx.Vars = make(map[string]string, 1)
+				}
+				s.RoundCtx.Vars[key] = value
+			}
+		}
+
 	case EventAbilityTriggered:
 		// 死亡技能入队，等待流转到对应阶段结算
 		if phase, ok := effect.triggerPhase(); ok && effect.SourceID != "" {
@@ -459,92 +525,6 @@ func (s *gameState) alivePlayerIDsByCamp(camp Camp) []string {
 	return sortedStrings(result)
 }
 
-// checkVictory 按指定方式检查胜利条件。
-//
-// 好人阵营的胜利条件与判定方式无关：「將狼人淘汰以獲取勝利」。
-// 狼人阵营的胜利条件取决于 mode：
-//
-//	VictoryModeSideWipe（屠边）「需要淘汰所有平民或神職人員」
-//	VictoryModeTownWipe（屠城）好人存活数 <= 狼人存活数
-//
-// 屠边判定只对开局就存在的类别生效：没有神职的板子不会因
-// 「神职全灭」在开局瞬间判负，平民同理。
-//
-// 「平民」「神職人員」说的都是好人阵营的那一半。狼队也可以有自己的神
-// （隐狼、狼美人，经 AddCustomPlayer 标成 RoleCategoryGod），把它们一起
-// 计进总数会让一名活着的隐狼把「好人的神已经死光」这个事实一直挡住。
-func (s *gameState) checkVictory(mode VictoryMode) (bool, Camp) {
-	c := s.census()
-
-	// 狼人全死，好人胜利（两种判定方式一致）
-	if c.evilAlive == 0 {
-		return true, CampGood
-	}
-
-	// 好人全灭，狼人胜利（兜底，避免无神职无平民的板子永不结束）
-	if c.goodAlive == 0 {
-		return true, CampEvil
-	}
-
-	switch mode {
-	case VictoryModeTownWipe:
-		if c.goodAlive <= c.evilAlive {
-			return true, CampEvil
-		}
-
-	default: // VictoryModeSideWipe
-		// 屠神 / 屠民：开局有这个类别，且已经全部出局
-		if c.wipedOut(RoleCategoryGod) || c.wipedOut(RoleCategoryVillager) {
-			return true, CampEvil
-		}
-	}
-
-	return false, CampUnspecified
-}
-
-// census 一次点名的结果：各阵营存活数，以及好人阵营各类别的总数与存活数。
-type census struct {
-	goodAlive int
-	evilAlive int
-
-	// total / alive 只统计好人阵营。屠边说的「平民」「神職人員」指的是
-	// 好人的那一半；狼队也可以有自己的神（隐狼），算进来的话一名活着的
-	// 隐狼就能把「好人的神已经死光」一直挡住。
-	total map[RoleCategory]int
-	alive map[RoleCategory]int
-}
-
-// wipedOut 该类别开局就存在，且现在已经全部出局。
-func (c census) wipedOut(cat RoleCategory) bool {
-	return c.total[cat] > 0 && c.alive[cat] == 0
-}
-
-// census 点一次名。
-func (s *gameState) census() census {
-	c := census{
-		total: make(map[RoleCategory]int, 2),
-		alive: make(map[RoleCategory]int, 2),
-	}
-
-	for _, p := range s.players {
-		good := p.Camp == CampGood
-		if good {
-			c.total[p.Category]++
-		}
-		if !p.Alive {
-			continue
-		}
-		if good {
-			c.alive[p.Category]++
-			c.goodAlive++
-		} else if p.Camp == CampEvil {
-			c.evilAlive++
-		}
-	}
-
-	return c
-}
-
 // lastProtectedTarget 该守卫在**上一回合**守护的目标，无则为空。
 //
 // 连守判定问的是「上一晚是不是守的同一个人」，而不是「上一次守的是谁」：
@@ -558,18 +538,21 @@ func (s *gameState) lastProtectedTarget(guardID string) string {
 	return p.LastProtectedTarget
 }
 
-// anyAliveWitchHasAntidote 是否还有存活女巫持有解药。
-//
-// 用于规则「解藥未使用時可以得知狼人的殺害對象」：解药用完后，
-// 女巫不再获知刀口。标准板子只有一名女巫，此时即「该女巫是否仍持有解药」；
-// 多女巫板子下只要有一人持有解药，刀口就仍需下发。
-func (s *gameState) anyAliveWitchHasAntidote() bool {
-	for _, p := range s.players {
-		if p.Alive && p.Role == RoleWitch && p.HasAntidote {
-			return true
-		}
+// roundVar 读本回合的自定义状态，没有则为空串。
+func (s *gameState) roundVar(key string) string {
+	if s.RoundCtx == nil {
+		return ""
 	}
-	return false
+	return s.RoundCtx.Vars[key]
+}
+
+// playerVar 读某个玩家的自定义状态，没有则为空串。
+func (s *gameState) playerVar(playerID, key string) string {
+	p, ok := s.players[playerID]
+	if !ok {
+		return ""
+	}
+	return p.Vars[key]
 }
 
 // peekTrigger 查看队首的待结算死亡技能
@@ -621,6 +604,7 @@ func (s *gameState) RoundContext() *RoundContext {
 		SavedPlayers:     copyStringBoolMap(s.RoundCtx.SavedPlayers),
 		PoisonedPlayers:  copyStringBoolMap(s.RoundCtx.PoisonedPlayers),
 		PendingTriggers:  append([]PendingTrigger(nil), s.RoundCtx.PendingTriggers...),
+		Vars:             copyVars(s.RoundCtx.Vars),
 	}
 }
 

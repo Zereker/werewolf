@@ -135,8 +135,10 @@ func godNarratorDemo() {
 				}
 
 				// 女巫特殊信息：被杀目标
-				if role == werewolf.RoleWitch && roleInfo.KillTarget != "" {
-					fmt.Printf("    今晚被杀: %s\n", roleInfo.KillTarget)
+				for id, info := range roleInfo.RoleInfo {
+					if t := info[werewolf.RoleInfoKillTarget]; t != "" {
+						fmt.Printf("    %s 可见的刀口: %s\n", id, t)
+					}
 				}
 			}
 		}
@@ -209,7 +211,11 @@ func getGodAnnouncement(phase werewolf.PhaseType, info *werewolf.PhaseInfo) stri
 	case werewolf.PhaseNightWitch:
 		killTarget := ""
 		if witchInfo, ok := info.RoleInfos[werewolf.RoleWitch]; ok {
-			killTarget = witchInfo.KillTarget
+			for _, one := range witchInfo.RoleInfo {
+				if t := one[werewolf.RoleInfoKillTarget]; t != "" {
+					killTarget = t
+				}
+			}
 		}
 		if killTarget != "" {
 			return fmt.Sprintf("狼人请闭眼。女巫请睁眼，今晚 %s 被杀害，你要使用解药吗？你要使用毒药吗？", killTarget)

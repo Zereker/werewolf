@@ -271,21 +271,27 @@ v.Self            // 自己的身份、阵营、（女巫的）药剂
 v.Players         // 全场公开信息；身份只对自己与狼队友可见
 v.AllowedSkills   // 本阶段自己能提交的技能，为空即「还没轮到我」
 v.Teammates       // 狼人可见：队友
-v.KillTarget      // 女巫可见：今晚刀口（解药用完即为空）
+v.RoleInfo        // 角色专属信息，如女巫的刀口 v.RoleInfo[RoleInfoKillTarget]
 ```
 
 配套的 `AudienceOf` 回答「发生的事该告诉谁」：
 
 ```go
-for _, effect := range effects {
-    audience, known := engine.AudienceOf(effect)
+// 推的一路：OnEvent 给的就是 Event，直接问
+engine.OnEvent(func(ev *werewolf.Event) {
+    audience, known := engine.AudienceOf(ev)
     if !known {
-        // 第三方角色自定义的事件类型，引擎无从判断可见性，调用方自己路由
-        continue
+        return // 第三方角色自定义的事件类型，引擎无从判断，调用方自己路由
     }
     for _, id := range audience {
-        send(id, effect)   // 死亡全场可见；查验/守护/解药只给行动者
+        send(id, ev)   // 死亡全场可见；查验/守护/解药只给行动者
     }
+})
+
+// 拉的一路：EndPhase 给的是内部的 Effect，转一下
+for _, effect := range effects {
+    audience, _ := engine.AudienceOf(effect.ToEvent())
+    ...
 }
 ```
 
@@ -331,7 +337,7 @@ engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用
 
 ```go
 const (
-    roleWolfKing  = werewolf.RoleType(1000)   // 自定义取值从 1000 起
+    roleWolfKing  = werewolf.RoleType(1000)   // 自定义取值一律从 1000 起
     skillWolfClaw = werewolf.SkillType(1000)
     phaseWolfKing = werewolf.PhaseType(1000)
 )
@@ -352,9 +358,37 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
+扩展能改动的三处，都由构造选项给出：
+
+| 想加什么 | 用什么 |
+|---|---|
+| 新角色的行为 | `WithResolver(phase, resolver)`，可包装内置解析器复用逻辑 |
+| 角色自身的状态 | `NewSetPlayerVarEffect`（跟着玩家一整局）/ `NewSetRoundVarEffect`（每回合清零），读走 `GameView.PlayerVar` / `RoundVar` |
+| 新的胜利条件 | `WithVictoryChecker(checker)`，包一层 `DefaultVictoryChecker` 就能在内置规则之上再加一条 |
+| 角色专属信息 | `WithRoleInfo(role, provider)`，结果出现在 `PlayerView.RoleInfo` 与 `RolePhaseInfo.RoleInfo` |
+
+内置角色在这四件事上**没有特权**：女巫的刀口走的就是 `WithRoleInfo`（键名
+`RoleInfoKillTarget`），可以被换掉；队友按**阵营**给，`AddCustomPlayer` 加进来的
+狼王一样拿得到。加一个角色不需要改引擎里任何一行。
+
+状态一定要走 Var 而不是存在 Resolver 的字段里：`Resolver` 接口要求
+「只能通过返回 Effect 表达状态变更」，存在字段里的东西快照带不上、回放
+也重建不出，恢复出来的对局是错的**还不会报错**。
+
+**事件类型的编号是分段的**，这一点关系到扩展的事件能不能发出去：
+
+| 段 | 归谁 | 会不会推给 `OnEvent` |
+|---|---|---|
+| `1..99` | 引擎的外部可见事件 | 会 |
+| `100..999` | 引擎的内部状态变更 | 不会 |
+| **`1000` 起** | **第三方扩展** | **会**；`AudienceOf` 回答「不知道」，路由由扩展自己决定 |
+
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
-完整可运行的例子见 [extension_test.go](extension_test.go)。
+
+可运行的例子：[example/extension](example/extension) 加了一个**白痴**（被投票放逐时
+翻牌、不出局、此后失去投票权），演示包装内置解析器、否决一个效果、自定义事件类型
+与存档恢复；[extension_test.go](extension_test.go) 用狼王再走一遍死亡触发那条分支。
 
 ## 命令行主持台
 
@@ -389,6 +423,29 @@ $ go run ./example/cli
 `view <玩家>` 出来的内容可以原样发给他，`[私信]` / `[全场]` 的分发依据是
 `AudienceOf`。`run` 让它自己随机跑完一局，`save` / `load` 演示服务重启。
 也可以照脚本跑：`go run ./example/cli < example/cli/testdata/demo.txt`。
+
+## TCP 服务端
+
+`example/netserver` 是一个 TCP 长连接的服务端，也是这个库的第二个真实使用者。
+命令行主持台验证的是「一个人主持一局」，有一整类东西它碰不到——事件推送、
+每条连接一份视图、多局并发、断线重连、超时真的触发——都由它来压。
+
+协议是 TCP + 一行一条 JSON，`nc` 就能玩：
+
+```console
+$ go run ./example/netserver &
+$ nc localhost 9000
+{"type":"join","player":"p1"}
+<- {"type":"phase","phase":"NIGHT_GUARD","round":1,"deadline_ms":...}
+<- {"type":"view","view":{...}}          // 只有 p1 有权知道的那一份
+{"type":"act","skill":"protect","target":"p5"}
+{"type":"say","text":"我是好人"}
+<- {"type":"event","event":{...}}        // 只推给 AudienceOf 划出来的人
+```
+
+房间用单 goroutine 串行化对引擎的访问（actor），而不是加锁：引擎的回调是在
+`EndPhase` 内部、释放引擎锁之后触发的，房间若自己也加锁就会撞上
+「持房间锁 → EndPhase → 回调 → 想再拿房间锁」的自锁。
 
 ## 效果流与回放
 
@@ -543,7 +600,9 @@ werewolf/
 ├── rules_test.go      # 以维基百科规则为基准的一致性测试
 ├── extension_test.go  # 第三方扩展契约（以狼王为例）
 ├── example/        # 可运行示例
-│   └── cli/        # 命令行主持台（真实使用者）
+│   ├── cli/        # 命令行主持台（真实使用者）
+│   ├── netserver/  # TCP 服务端（推送、并发、断线重连）
+│   └── extension/  # 自定义角色（白痴）
 └── docs/
     └── ARCHITECTURE.md
 ```

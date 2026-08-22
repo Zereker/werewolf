@@ -273,6 +273,17 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 				seed, step, e.Phase(), e.Round(), clone.Phase(), clone.Round())
 		}
 
+		// 光比阶段与回合不够：快照漏掉一个字段，两边照样能同步地
+		// 走完一整局，只是规则判定不一样了——LastProtectedRound 就是这么
+		// 漏了一整轮的（存一次档，连守限制当场失效）。
+		// 逐字节比对两边导出的快照，才真的能挡住「漏字段」这一类。
+		a, _ := json.Marshal(e.Snapshot())
+		b, _ := json.Marshal(clone.Snapshot())
+		if string(a) != string(b) {
+			t.Fatalf("seed=%d step=%d 快照往返后状态不一致:\n  原  %s\n  副本 %s",
+				seed, step, a, b)
+		}
+
 		// 不变量 H：回合数单调不减，且绕回起始阶段就必须是新的一回合。
 		//
 		// 「回合边界」此前写死成守卫阶段，阶段环里没有它的时候回合数
@@ -335,9 +346,9 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 				}
 			}
 			// 刀口只有活着且解药在手的女巫能看到
-			if v.KillTarget != "" {
+			if v.RoleInfo[RoleInfoKillTarget] != "" {
 				if !self.Alive || self.Role != RoleWitch || !self.HasAntidote {
-					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.KillTarget)
+					t.Fatalf("seed=%d step=%d %s 不该看到刀口 %q", seed, step, id, v.RoleInfo[RoleInfoKillTarget])
 				}
 			}
 			// 好人不该有狼队友
@@ -348,7 +359,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 
 		// 不变量 F：AudienceOf 给出的受众必须都在场上；私密/被否决的效果不得外扩
 		for _, ef := range lastEffects {
-			aud, known := e.AudienceOf(ef)
+			aud, known := e.AudienceOf(ef.ToEvent())
 			if !known {
 				t.Fatalf("seed=%d step=%d 引擎不认得自己产出的效果 %v", seed, step, ef.Type)
 			}

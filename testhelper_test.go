@@ -49,3 +49,27 @@ func mustAddTo(t *testing.T, s *gameState, id string, role RoleType) {
 		t.Fatalf("addPlayer(%q, %v): %v", id, role, err)
 	}
 }
+
+// checkVictory 按引擎当前的判定器算一次胜负。
+//
+// 胜负判定从 gameState 上的方法改成了可替换的 VictoryChecker，
+// 测试里问「现在分出胜负了吗」得走同一条路——否则测的就不是引擎在用的
+// 那一套了。
+func checkVictory(e *Engine) (bool, Camp) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.victory.CheckVictory(newStateView(e.state))
+}
+
+// witchKill 从 RolePhaseInfo 里取出女巫可见的刀口。
+//
+// 刀口从 RolePhaseInfo 的一等字段变成了角色自己填的 RoleInfo——
+// 内置角色在信息这件事上不再比第三方角色多一等待遇。
+func witchKill(ri *RolePhaseInfo) string {
+	for _, info := range ri.RoleInfo {
+		if t := info[RoleInfoKillTarget]; t != "" {
+			return t
+		}
+	}
+	return ""
+}

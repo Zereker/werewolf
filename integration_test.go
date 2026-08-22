@@ -42,7 +42,7 @@ func TestFullGame_WolvesWin(t *testing.T) {
 	}
 
 	winner := CampEvil
-	_, actualWinner := g.e.state.checkVictory(g.e.config.VictoryMode)
+	_, actualWinner := checkVictory(g.e)
 	if actualWinner != winner {
 		t.Errorf("expected EVIL wins, got %v", actualWinner)
 	}
@@ -76,7 +76,7 @@ func TestFullGame_GoodWins(t *testing.T) {
 		t.Error("expected game to be over (good wins)")
 	}
 
-	_, winner := g.e.state.checkVictory(g.e.config.VictoryMode)
+	_, winner := checkVictory(g.e)
 	if winner != CampGood {
 		t.Errorf("expected GOOD wins, got %v", winner)
 	}

@@ -51,8 +51,13 @@ func (p *PhaseInfo) PlayerActionSteps() []PhaseStep {
 type RolePhaseInfo struct {
 	PlayerIDs     []string            // 该角色的玩家ID列表
 	AllowedSkills []SkillType         // 可用技能
-	Teammates     map[string][]string // 队友信息（狼人：玩家ID -> 队友IDs）
-	KillTarget    string              // 被杀目标（女巫可见）
+	Teammates     map[string][]string // 同阵营队友（玩家ID -> 队友IDs），好人阵营为空
+
+	// RoleInfo 角色专属信息：玩家ID -> 该玩家额外看得到的东西。
+	//
+	// 由角色自己的 RoleInfoProvider 回答，引擎不认识任何具体角色。
+	// 内置女巫的刀口在这里的键是 RoleInfoKillTarget。
+	RoleInfo map[string]map[string]string
 }
 
 // PhaseInfo 获取当前阶段信息（上帝视角）。
@@ -121,17 +126,24 @@ func (e *Engine) buildRolePhaseInfo(role RoleType, triggerActive bool, trigger P
 	// 这里漏了排序，同一个局面每次调用给出的名单顺序都不一样。
 	ri.PlayerIDs = e.actorsForStep(role, triggerActive, trigger)
 
-	switch role {
-	case RoleWerewolf:
-		// 狼人需要知道队友才能协商（getWolfTeammates 按阵营给全狼队）
-		ri.Teammates = make(map[string][]string, len(ri.PlayerIDs))
-		for _, id := range ri.PlayerIDs {
-			ri.Teammates[id] = e.state.getWolfTeammates(id)
+	for _, id := range ri.PlayerIDs {
+		// 队友按**阵营**给，不按角色。此前这里是 case RoleWerewolf，
+		// 于是经 AddCustomPlayer 加进来的狼王在这份名单里拿不到队友——
+		// 而 PlayerView 与 WolfTeammates 那两条路都是对的，只有主持人
+		// 照着组织流程的这一份漏了。
+		if mates := e.state.getWolfTeammates(id); len(mates) > 0 {
+			if ri.Teammates == nil {
+				ri.Teammates = make(map[string][]string, len(ri.PlayerIDs))
+			}
+			ri.Teammates[id] = mates
 		}
-	case RoleWitch:
-		// 规则：解药未使用时才可得知刀口
-		if e.state.anyAliveWitchHasAntidote() {
-			ri.KillTarget = e.state.RoundCtx.KillTarget
+
+		// 角色专属信息由角色自己回答，引擎不认识任何具体角色
+		if info := e.roleInfoFor(id, role); info != nil {
+			if ri.RoleInfo == nil {
+				ri.RoleInfo = make(map[string]map[string]string, len(ri.PlayerIDs))
+			}
+			ri.RoleInfo[id] = info
 		}
 	}
 

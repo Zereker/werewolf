@@ -18,6 +18,12 @@ type GameView interface {
 	// AlivePlayers 返回所有存活玩家
 	AlivePlayers() []PlayerInfo
 
+	// AllPlayers 返回全部玩家（含已出局的），按 ID 排序。
+	//
+	// 胜负判定需要它：「开局有几个神职」得数上已经死掉的那些，
+	// 只看存活的算不出「屠神」。
+	AllPlayers() []PlayerInfo
+
 	// AlivePlayerIDsByRole 返回指定角色的存活玩家 ID
 	AlivePlayerIDsByRole(role RoleType) []string
 
@@ -29,6 +35,20 @@ type GameView interface {
 	// 「上一回合」是严格的：空守一晚、或那次守护被判无效，都返回空。
 	// 视图只给事实，是否允许再守由 Resolver 依配置判定。
 	LastProtectedTarget(guardID string) string
+
+	// PlayerVar 返回某个玩家的一项自定义状态，没有则为空串。
+	//
+	// 第三方角色用它存放自身状态（白痴翻没翻牌、骑士的决斗用没用掉），
+	// 写入走 NewSetPlayerVarEffect。内置角色的药剂与守护记录是同一件事，
+	// 只是它们在 PlayerInfo 上有专门的字段。
+	PlayerVar(playerID, key string) string
+
+	// RoundVar 返回本回合的一项自定义状态，没有则为空串。
+	//
+	// 与 PlayerVar 的分工：那个跟着玩家走一整局，这个每回合自动清零。
+	// 内置的刀口、被守、被救、被毒都属于后者，只是它们在
+	// RoundContext 上有专门的字段。
+	RoundVar(key string) string
 
 	// Round 返回当前回合数
 	Round() int
@@ -62,6 +82,17 @@ func (v stateView) AlivePlayers() []PlayerInfo {
 	return out
 }
 
+func (v stateView) AllPlayers() []PlayerInfo {
+	ids := v.s.allPlayerIDs()
+	out := make([]PlayerInfo, 0, len(ids))
+	for _, id := range ids {
+		if info, ok := v.s.PlayerInfo(id); ok {
+			out = append(out, info)
+		}
+	}
+	return out
+}
+
 func (v stateView) AlivePlayerIDsByRole(role RoleType) []string {
 	return v.s.getAlivePlayerIDsByRole(role)
 }
@@ -77,6 +108,12 @@ func (v stateView) RoundContext() RoundContext {
 func (v stateView) LastProtectedTarget(guardID string) string {
 	return v.s.lastProtectedTarget(guardID)
 }
+
+func (v stateView) PlayerVar(playerID, key string) string {
+	return v.s.playerVar(playerID, key)
+}
+
+func (v stateView) RoundVar(key string) string { return v.s.roundVar(key) }
 
 func (v stateView) Round() int { return v.s.currentRound() }
 

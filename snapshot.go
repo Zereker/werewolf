@@ -8,7 +8,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 3
+const SnapshotVersion = 6
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -19,8 +19,9 @@ const SnapshotVersion = 3
 // 快照**不包含** GameConfig、Logger、Metrics 与回调：
 // 这些由调用方在恢复时提供，规则配置本身也应由调用方掌握版本。
 //
-// 枚举以数值形式序列化。protobuf 的枚举编号是稳定契约，
-// 而名称可能被重命名，故不用名称。
+// 枚举以**名字**序列化（"NIGHT_GUARD" 而不是 21）。存档是要给人看、
+// 也可能被别的语言读的东西，编号对不上号；名字一旦定下就不再改，
+// 与编号一样稳定。第三方的自定义取值没有名字，按编号写。
 type Snapshot struct {
 	Version int `json:"version"`
 
@@ -45,6 +46,10 @@ type PlayerSnapshot struct {
 
 	LastProtectedTarget string `json:"last_protected_target,omitempty"`
 	LastProtectedRound  int    `json:"last_protected_round,omitempty"`
+
+	// Vars 第三方角色的自定义状态。存这一项是这个机制成立的前提：
+	// 带不上它，扩展的状态就只能藏在 Resolver 里，那正是要解决的问题。
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
 // RoundCtxSnapshot 回合上下文的快照
@@ -54,6 +59,9 @@ type RoundCtxSnapshot struct {
 	SavedPlayers     []string                 `json:"saved_players,omitempty"`
 	PoisonedPlayers  []string                 `json:"poisoned_players,omitempty"`
 	PendingTriggers  []PendingTriggerSnapshot `json:"pending_triggers,omitempty"`
+
+	// Vars 第三方角色的回合级自定义状态
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
 // PendingTriggerSnapshot 一个待结算的死亡技能
@@ -231,6 +239,8 @@ func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 			HasAntidote:         p.HasAntidote,
 			HasPoison:           p.HasPoison,
 			LastProtectedTarget: p.LastProtectedTarget,
+			LastProtectedRound:  p.LastProtectedRound,
+			Vars:                copyVars(p.Vars),
 		})
 	}
 	sortPlayerSnapshots(out)
@@ -249,6 +259,7 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 		SavedPlayers:     sortedKeys(s.RoundCtx.SavedPlayers),
 		PoisonedPlayers:  sortedKeys(s.RoundCtx.PoisonedPlayers),
 		PendingTriggers:  snapshotTriggers(s.RoundCtx.PendingTriggers),
+		Vars:             copyVars(s.RoundCtx.Vars),
 	}
 }
 
@@ -267,7 +278,21 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 		HasPoison:           p.HasPoison,
 		LastProtectedTarget: p.LastProtectedTarget,
 		LastProtectedRound:  p.LastProtectedRound,
+		Vars:                copyVars(p.Vars),
 	}
+}
+
+// copyVars 复制自定义状态。快照是深拷贝，这一项也不能例外——
+// 否则恢复出来的引擎与原引擎共用同一张 map，改一边动两边。
+func copyVars(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // restoreProgress 还原阶段、回合与回合上下文
@@ -280,6 +305,7 @@ func (s *gameState) restoreProgress(phase PhaseType, round int, rc RoundCtxSnaps
 		SavedPlayers:     keySet(rc.SavedPlayers),
 		PoisonedPlayers:  keySet(rc.PoisonedPlayers),
 		PendingTriggers:  restoreTriggers(rc.PendingTriggers),
+		Vars:             copyVars(rc.Vars),
 	}
 }
 

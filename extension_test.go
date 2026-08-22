@@ -163,13 +163,13 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 
 	// 内置狼人出局，狼王还在 —— 狼人阵营未灭，游戏继续
 	engine.state.applyEffect(NewEffect(EventKill, "", "w1"))
-	if over, _ := engine.state.checkVictory(VictoryModeSideWipe); over {
+	if over, _ := checkVictory(engine); over {
 		t.Error("狼王仍在场，狼人阵营不应判为全灭")
 	}
 
 	// 狼王也出局 —— 好人获胜
 	engine.state.applyEffect(NewEffect(EventKill, "", "wk"))
-	over, winner := engine.state.checkVictory(VictoryModeSideWipe)
+	over, winner := checkVictory(engine)
 	if !over || winner != CampGood {
 		t.Errorf("狼人阵营全灭应判好人胜利，实际 over=%v winner=%v", over, winner)
 	}

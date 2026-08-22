@@ -37,9 +37,13 @@ type PlayerView struct {
 	// Teammates 狼队可见：其余狼队友的 ID。好人阵营恒为空。
 	Teammates []string `json:"teammates,omitempty"`
 
-	// KillTarget 女巫可见：今晚狼人的击杀目标。
-	// 依规则「解藥未使用時可以得知狼人的殺害對象」，解药用完后恒为空。
-	KillTarget string `json:"kill_target,omitempty"`
+	// RoleInfo 角色专属信息：这个角色额外让他看到的东西。
+	//
+	// 由角色自己的 RoleInfoProvider 回答（见 WithRoleInfo），引擎不认识
+	// 任何具体角色。内置女巫的刀口在这里的键是 RoleInfoKillTarget——
+	// 它此前是 PlayerView 上一个具名字段，等于内置角色比第三方角色多
+	// 一等公民的待遇，而加一个角色不该要求改引擎。
+	RoleInfo map[string]string `json:"role_info,omitempty"`
 }
 
 // SelfInfo 一名玩家对自己有权知道的全部信息。
@@ -115,12 +119,8 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 
 	view.Players = e.publicPlayers(revealed)
 
-	// 女巫在解药尚在手时可知刀口。
-	// 已出局的女巫不再是行动者，天亮公布之前不该拿到今晚的刀口——
-	// AllowedSkills 那一路已经对死人关门了，这里也得关。
-	if self.Alive && self.Role == RoleWitch && self.HasAntidote {
-		view.KillTarget = e.state.RoundCtx.KillTarget
-	}
+	// 角色专属信息由角色自己回答
+	view.RoleInfo = e.roleInfoFor(playerID, self.Role)
 
 	return view
 }
@@ -165,21 +165,26 @@ func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []Skil
 
 // ==================== 效果的接收者 ====================
 
-// AudienceOf 返回一个效果应该发给哪些玩家。
+// AudienceOf 返回一件事应该发给哪些玩家。
 //
 // 这是配套 PlayerView 的另一半：视图解决「玩家该看到什么状态」，
 // 这里解决「发生的事该告诉谁」。引擎给出默认的可见性划分，
 // 调用方可以据此路由，而不必自己去记「查验结果只能给预言家」。
 //
+// 参数是对外的 Event 而不是内部的 Effect：这个问题问的是「外面的人
+// 该看到什么」，而 OnEvent 推给调用方的正是 Event。手里拿着 Effect
+// （EndPhase 的返回值）时用 Effect.ToEvent() 转一下。
+//
 // 引擎内部事件（SET_NIGHT_KILL 等）返回空——它们不该出现在任何玩家面前。
 //
 // 第二个返回值表示引擎是否认得这个事件类型。第三方 Resolver 可以产出
-// 自定义类型的效果，引擎对它们的可见性无从判断，此时返回 (nil, false)：
+// 自定义类型的事件，引擎对它们的可见性无从判断，此时返回 (nil, false)：
 // 调用方需要自己路由，而不该把「引擎不知道」当成「不给任何人看」。
-func (e *Engine) AudienceOf(effect *Effect) ([]string, bool) {
-	if effect == nil {
+func (e *Engine) AudienceOf(event *Event) ([]string, bool) {
+	if event == nil {
 		return nil, false
 	}
+	effect := event
 	if isInternalEvent(effect.Type) {
 		// 内部事件是引擎的状态变更，不给任何玩家看——这是明确的判断
 		return nil, true
