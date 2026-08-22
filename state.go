@@ -476,65 +476,75 @@ func (s *gameState) alivePlayerIDsByCamp(camp pb.Camp) []string {
 // （隐狼、狼美人，经 AddCustomPlayer 标成 RoleCategoryGod），把它们一起
 // 计进总数会让一名活着的隐狼把「好人的神已经死光」这个事实一直挡住。
 func (s *gameState) checkVictory(mode VictoryMode) (bool, pb.Camp) {
-	var goodAlive, evilAlive int
-	var godsTotal, godsAlive int
-	var villagersTotal, villagersAlive int
-
-	for _, p := range s.players {
-		if p.Camp == pb.Camp_CAMP_GOOD {
-			switch p.Category {
-			case RoleCategoryGod:
-				godsTotal++
-				if p.Alive {
-					godsAlive++
-				}
-			case RoleCategoryVillager:
-				villagersTotal++
-				if p.Alive {
-					villagersAlive++
-				}
-			}
-		}
-
-		if !p.Alive {
-			continue
-		}
-		switch p.Camp {
-		case pb.Camp_CAMP_GOOD:
-			goodAlive++
-		case pb.Camp_CAMP_EVIL:
-			evilAlive++
-		}
-	}
+	c := s.census()
 
 	// 狼人全死，好人胜利（两种判定方式一致）
-	if evilAlive == 0 {
+	if c.evilAlive == 0 {
 		return true, pb.Camp_CAMP_GOOD
 	}
 
 	// 好人全灭，狼人胜利（兜底，避免无神职无平民的板子永不结束）
-	if goodAlive == 0 {
+	if c.goodAlive == 0 {
 		return true, pb.Camp_CAMP_EVIL
 	}
 
 	switch mode {
 	case VictoryModeTownWipe:
-		if goodAlive <= evilAlive {
+		if c.goodAlive <= c.evilAlive {
 			return true, pb.Camp_CAMP_EVIL
 		}
 
 	default: // VictoryModeSideWipe
-		// 屠神：开局有神职且已全部出局
-		if godsTotal > 0 && godsAlive == 0 {
-			return true, pb.Camp_CAMP_EVIL
-		}
-		// 屠民：开局有平民且已全部出局
-		if villagersTotal > 0 && villagersAlive == 0 {
+		// 屠神 / 屠民：开局有这个类别，且已经全部出局
+		if c.wipedOut(RoleCategoryGod) || c.wipedOut(RoleCategoryVillager) {
 			return true, pb.Camp_CAMP_EVIL
 		}
 	}
 
 	return false, pb.Camp_CAMP_UNSPECIFIED
+}
+
+// census 一次点名的结果：各阵营存活数，以及好人阵营各类别的总数与存活数。
+type census struct {
+	goodAlive int
+	evilAlive int
+
+	// total / alive 只统计好人阵营。屠边说的「平民」「神職人員」指的是
+	// 好人的那一半；狼队也可以有自己的神（隐狼），算进来的话一名活着的
+	// 隐狼就能把「好人的神已经死光」一直挡住。
+	total map[RoleCategory]int
+	alive map[RoleCategory]int
+}
+
+// wipedOut 该类别开局就存在，且现在已经全部出局。
+func (c census) wipedOut(cat RoleCategory) bool {
+	return c.total[cat] > 0 && c.alive[cat] == 0
+}
+
+// census 点一次名。
+func (s *gameState) census() census {
+	c := census{
+		total: make(map[RoleCategory]int, 2),
+		alive: make(map[RoleCategory]int, 2),
+	}
+
+	for _, p := range s.players {
+		good := p.Camp == pb.Camp_CAMP_GOOD
+		if good {
+			c.total[p.Category]++
+		}
+		if !p.Alive {
+			continue
+		}
+		if good {
+			c.alive[p.Category]++
+			c.goodAlive++
+		} else if p.Camp == pb.Camp_CAMP_EVIL {
+			c.evilAlive++
+		}
+	}
+
+	return c
 }
 
 // lastProtectedTarget 该守卫在**上一回合**守护的目标，无则为空。

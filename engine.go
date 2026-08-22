@@ -226,28 +226,8 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 		e.logger.Debug("resolved effects", PhaseField(currentPhase), F("effect_count", len(out.effects)))
 	}
 
-	// 2. 应用效果，收集对外可见的事件。
-	//
-	// 第三方 Resolver 返回的切片里可能混进 nil，就地剔除而不是让整局崩掉。
-	// 判断必须在循环最前面：applyEffect 内部那道 nil 保护够不着这里的
-	// vetTrigger 与日志字段。
-	out.effects = dropNilEffects(out.effects)
-	for _, effect := range out.effects {
-		e.vetTrigger(effect)
-		e.state.applyEffect(effect)
-
-		e.logger.Debug("effect applied",
-			EventField(effect.Type),
-			PlayerField(effect.SourceID),
-			TargetField(effect.TargetID),
-			F("canceled", effect.Canceled))
-		e.metrics.IncEffectApplied(effect.Type)
-
-		if isInternalEvent(effect.Type) {
-			continue
-		}
-		out.events = append(out.events, effect.ToEvent())
-	}
+	// 2. 应用效果，收集对外可见的事件
+	out.effects, out.events = e.applyEffects(out.effects)
 	e.effectLog = append(e.effectLog, out.effects...)
 
 	// 3. 清空待处理列表
@@ -386,20 +366,37 @@ func (e *Engine) WolfTeammates(playerID string) []string {
 	return e.state.getWolfTeammates(playerID)
 }
 
-// dropNilEffects 剔除切片里的 nil，全部非 nil 时原样返回。
-func dropNilEffects(effects []*Effect) []*Effect {
-	for _, e := range effects {
-		if e == nil {
-			out := make([]*Effect, 0, len(effects))
-			for _, e := range effects {
-				if e != nil {
-					out = append(out, e)
-				}
-			}
-			return out
+// applyEffects 逐个应用效果，返回清理后的效果与需要对外发布的事件。
+// 调用前需持有 e.mu。
+func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*pb.Event) {
+	kept := make([]*Effect, 0, len(effects))
+	events := make([]*pb.Event, 0, len(effects))
+
+	for _, effect := range effects {
+		// 第三方 Resolver 返回的切片里可能混进 nil，就地剔除而不是让整局崩掉。
+		// 这道判断得在最前面：applyEffect 内部那道 nil 保护够不着下面的
+		// vetTrigger 与日志字段。
+		if effect == nil {
+			continue
+		}
+		kept = append(kept, effect)
+
+		e.vetTrigger(effect)
+		e.state.applyEffect(effect)
+
+		e.logger.Debug("effect applied",
+			EventField(effect.Type),
+			PlayerField(effect.SourceID),
+			TargetField(effect.TargetID),
+			F("canceled", effect.Canceled))
+		e.metrics.IncEffectApplied(effect.Type)
+
+		if !isInternalEvent(effect.Type) {
+			events = append(events, effect.ToEvent())
 		}
 	}
-	return effects
+
+	return kept, events
 }
 
 // vetTrigger 否决指向未配置阶段的死亡技能触发。

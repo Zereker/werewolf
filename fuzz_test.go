@@ -89,6 +89,20 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 			}
 		}
 
+		// 不变量 G：同一个局面反复查询，名单顺序必须稳定
+		want := map[pb.RoleType]string{}
+		for role, ri := range e.PhaseInfo().RoleInfos {
+			want[role] = fmt.Sprint(ri.PlayerIDs)
+		}
+		for i := 0; i < 3; i++ {
+			for role, ri := range e.PhaseInfo().RoleInfos {
+				if got := fmt.Sprint(ri.PlayerIDs); got != want[role] {
+					t.Fatalf("seed=%d step=%d PhaseInfo 的 %v 名单顺序不稳定: %s vs %s",
+						seed, step, role, want[role], got)
+				}
+			}
+		}
+
 		// 不变量 B：快照往返后继续推进，结果必须一致
 		snap := e.Snapshot()
 		raw, _ := json.Marshal(snap)
