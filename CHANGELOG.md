@@ -2,6 +2,10 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)，破坏性变更在每个版本的开头单独列出。
 
+> 发版由 GitHub Actions 完成：**Actions → Release → Run workflow**，填版本号即可。
+> tag 与 Release 都由 workflow 创建，发布说明取自本文件对应的小节——
+> 没有小节就发不出去。
+
 > 公开的 tag 只有 `v1.0.0` 与 `v1.2.0`。`v1.0.0` 到 `v1.2.0` 之间的全部改动
 > 都归入 `v1.2.0` 一节——对使用者而言，中间没有可取用的版本。
 

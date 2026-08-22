@@ -1,0 +1,98 @@
+name: Release
+
+# 手动触发：Actions -> Release -> Run workflow，填版本号即可。
+#
+# 刻意不做成「推 tag 时触发」——那样 tag 得先由某个人在本地推上来，
+# 于是「谁来打 tag」这件事又回到了本地环境。这里由 CI 自己建 tag 与
+# Release，本地不需要任何权限。
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号，形如 v1.3.0（必须已经在 CHANGELOG.md 里有对应小节）'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # 发布前的几道闸。宁可在这里失败，也不要发出一个打不开的版本。
+      - name: Check version format
+        run: |
+          VERSION='${{ inputs.version }}'
+          if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "版本号必须形如 v1.3.0，实际收到: $VERSION"
+            exit 1
+          fi
+
+          # v2 及以上要求模块路径带 /vN 后缀，否则使用者 go get 取不到。
+          # 本项目刻意不走 /v2，所以这里直接拦下，免得发出一个没人能用的版本。
+          MAJOR=$(echo "$VERSION" | sed -E 's/^v([0-9]+)\..*/\1/')
+          MODULE=$(head -1 go.mod | awk '{print $2}')
+          if [ "$MAJOR" -ge 2 ] && ! echo "$MODULE" | grep -q "/v$MAJOR\$"; then
+            echo "打 $VERSION 需要把 go.mod 的模块路径改成 $MODULE/v$MAJOR"
+            echo "本项目的既定取舍是不走 /vN，见 CHANGELOG"
+            exit 1
+          fi
+
+      - name: Check tag does not exist
+        run: |
+          if git rev-parse '${{ inputs.version }}' >/dev/null 2>&1; then
+            echo "tag ${{ inputs.version }} 已经存在"
+            exit 1
+          fi
+
+      # 没有发布说明的版本不该存在。这一条把 CHANGELOG 从「写了更好」
+      # 变成「不写就发不出去」。
+      - name: Extract release notes
+        run: |
+          # 按字面前缀比对，不走正则：版本号里的点在正则下会匹配任意字符，
+          # v1.3.0 会误命中 v1.3.0x 这类小节
+          awk -v ver='## ${{ inputs.version }}' '
+            !found && substr($0, 1, length(ver)) == ver &&
+              (length($0) == length(ver) || substr($0, length(ver) + 1, 1) == " ") {
+              found = 1; next
+            }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "CHANGELOG.md 里没有 '## ${{ inputs.version }}' 这一节"
+            exit 1
+          fi
+          echo "--- 发布说明 ---"
+          cat release-notes.md
+
+      # 不给红的树打 tag
+      - name: Verify
+        run: |
+          go build ./...
+          go vet ./...
+          go test -race ./...
+          go run ./example > /dev/null
+          go run ./example/cli -seed 7 < example/cli/testdata/demo.txt > /dev/null
+
+      # gh 在 runner 上是预装的，tag 由这条命令一并创建
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create '${{ inputs.version }}' \
+            --target "$GITHUB_SHA" \
+            --title '${{ inputs.version }}' \
+            --notes-file release-notes.md
