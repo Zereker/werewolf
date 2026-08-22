@@ -77,3 +77,7 @@ jobs:
       # 顺带覆盖存档与恢复
       - name: Run CLI
         run: go run ./example/cli -seed 7 < example/cli/testdata/demo.txt > /dev/null
+
+      # 扩展示例：自定义角色那条路径也得真的跑一遍
+      - name: Run extension example
+        run: go run ./example/extension > /dev/null

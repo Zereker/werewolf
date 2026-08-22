@@ -56,8 +56,16 @@
 //		werewolf.WithResolver(myPhase, myResolver))           // 注册解析器
 //	engine.AddCustomPlayer("p1", myRole, camp, category)      // 阵营与类别
 //
-// 自定义取值建议从 1000 起，避免与后续内置枚举撞号。
-// extension_test.go 用狼王把这条路径完整走通，全程只用导出 API。
+// 自定义取值一律从 1000 起。这不只是「避免撞号」的建议——事件类型的
+// 编号是分段的，1000 以上才是扩展的地盘：
+//
+//	  1 ..  99   引擎的外部可见事件，通过 OnEvent 推给调用方
+//	100 .. 999   引擎的内部状态变更，不外发
+//	1000 起      第三方扩展自己的事件类型，照常推给 OnEvent；
+//	             AudienceOf 对它们回答「不知道」，路由由扩展自己决定
+//
+// example/extension 用白痴把这条路径走通，全程只用导出 API；
+// extension_test.go 用狼王再走一遍死亡触发那条分支。
 //
 // # 边界：引擎不做什么
 //

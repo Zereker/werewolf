@@ -337,7 +337,7 @@ engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用
 
 ```go
 const (
-    roleWolfKing  = werewolf.RoleType(1000)   // 自定义取值从 1000 起
+    roleWolfKing  = werewolf.RoleType(1000)   // 自定义取值一律从 1000 起
     skillWolfClaw = werewolf.SkillType(1000)
     phaseWolfKing = werewolf.PhaseType(1000)
 )
@@ -358,9 +358,20 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
+**事件类型的编号是分段的**，这一点关系到扩展的事件能不能发出去：
+
+| 段 | 归谁 | 会不会推给 `OnEvent` |
+|---|---|---|
+| `1..99` | 引擎的外部可见事件 | 会 |
+| `100..999` | 引擎的内部状态变更 | 不会 |
+| **`1000` 起** | **第三方扩展** | **会**；`AudienceOf` 回答「不知道」，路由由扩展自己决定 |
+
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
-完整可运行的例子见 [extension_test.go](extension_test.go)。
+
+可运行的例子：[example/extension](example/extension) 加了一个**白痴**（被投票放逐时
+翻牌、不出局、此后失去投票权），演示包装内置解析器、否决一个效果、自定义事件类型
+与存档恢复；[extension_test.go](extension_test.go) 用狼王再走一遍死亡触发那条分支。
 
 ## 命令行主持台
 
@@ -573,7 +584,8 @@ werewolf/
 ├── extension_test.go  # 第三方扩展契约（以狼王为例）
 ├── example/        # 可运行示例
 │   ├── cli/        # 命令行主持台（真实使用者）
-│   └── netserver/  # TCP 服务端（推送、并发、断线重连）
+│   ├── netserver/  # TCP 服务端（推送、并发、断线重连）
+│   └── extension/  # 自定义角色（白痴）
 └── docs/
     └── ARCHITECTURE.md
 ```
