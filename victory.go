@@ -9,6 +9,8 @@
 
 package werewolf
 
+import "github.com/Zereker/werewolf/engine"
+
 // DefaultVictoryChecker 内置判定，按 GameConfig.VictoryMode 分屠边与屠城。
 //
 // 导出它是为了让扩展能包装复用：第三方阵营的胜利条件通常是
@@ -57,7 +59,7 @@ func (c DefaultVictoryChecker) CheckVictory(view GameView) (bool, Camp) {
 		}
 	}
 
-	return false, CampUnspecified
+	return false, engine.CampUnspecified
 }
 
 // census 一次点名的结果：各阵营存活数，以及好人阵营各类别的总数与存活数。

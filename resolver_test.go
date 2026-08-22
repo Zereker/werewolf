@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 )
 
@@ -190,7 +191,7 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 	if len(effects) != 1 {
 		t.Errorf("expected 1 effect from WolfResolver, got %d", len(effects))
 	}
-	if effects[0].Type != EventSetRoundVar {
+	if effects[0].Type != engine.EventSetRoundVar {
 		t.Errorf("expected SET_ROUND_VAR effect, got %v", effects[0].Type)
 	}
 
@@ -256,7 +257,7 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (SET_NIGHT_KILL) even when protected, got %d", len(effects))
 	}
-	if effects[0].Type != EventSetRoundVar {
+	if effects[0].Type != engine.EventSetRoundVar {
 		t.Errorf("expected SET_NIGHT_KILL, got %v", effects[0].Type)
 	}
 
@@ -359,7 +360,7 @@ func TestWitchResolver_Poison(t *testing.T) {
 	effects := resolver.Resolve(uses, b.View())
 
 	// WitchResolver 只产生 USE_POISON 效果，实际死亡由 NightResolveResolver 处理
-	usePoisonEffects := filterEffects(effects, EventSetPlayerRoundVar)
+	usePoisonEffects := filterEffects(effects, engine.EventSetPlayerRoundVar)
 	if len(usePoisonEffects) != 1 {
 		t.Fatalf("expected 1 USE_POISON effect, got %d", len(usePoisonEffects))
 	}
@@ -422,10 +423,10 @@ func TestGuardResolver_Protect(t *testing.T) {
 	if got := len(filterEffects(effects, EventProtect)); got != 1 {
 		t.Fatalf("expected one PROTECT, got %d in %v", got, effects)
 	}
-	if got := len(filterEffects(effects, EventSetPlayerRoundVar)); got != 1 {
+	if got := len(filterEffects(effects, engine.EventSetPlayerRoundVar)); got != 1 {
 		t.Fatalf("expected one round mark, got %d in %v", got, effects)
 	}
-	if got := len(filterEffects(effects, EventSetPlayerVar)); got != 2 {
+	if got := len(filterEffects(effects, engine.EventSetPlayerVar)); got != 2 {
 		t.Fatalf("expected two guard records, got %d in %v", got, effects)
 	}
 

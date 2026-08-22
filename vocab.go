@@ -1,14 +1,15 @@
-// vocab.go 狼人杀的词汇表：九个阶段、六个角色、十个技能、两个阵营、三种类别。
+// vocab.go 狼人杀的词汇表：十个阶段、六个角色、八个技能、九个事件，
+// 外加两个阵营与三种角色类别（见 wolfcamp.go）。
 //
 // 内核只有类型，取值全在这里——它不知道有「女巫」这个角色，也不知道
 // 「NIGHT_WITCH」这个阶段。换一套规则，这个文件整个换掉即可。
 //
-// 类型经 alias 再导出（见 alias.go），因此使用者写 werewolf.RoleWitch
-// 与 werewolf.RoleType 都成立，不必显式 import 内核包。
+// 类型经别名再导出（见 alias.go），因此使用者写 werewolf.RoleWitch
+// 与 werewolf.RoleType 都成立，摆一副板子不必 import 内核包。
 
 package werewolf
 
-// 九个阶段。
+// 十个阶段。默认板子用其中九个，PhaseNight 供批量模式。
 const (
 	PhaseNight        PhaseType = "NIGHT" // 夜晚（整体，用于批量模式）
 	PhaseNightGuard   PhaseType = "NIGHT_GUARD"
@@ -23,7 +24,7 @@ const (
 )
 
 // PhaseStart 与 PhaseEnd 由内核拥有（还没开局 / 已经结束），
-// 经 alias 再导出，见 alias.go。
+// 与这里的取值同属一张表，经别名再导出，见 alias.go。
 
 // 六个角色，外加上帝这个系统角色。
 const (
@@ -35,7 +36,8 @@ const (
 	RoleGuard    RoleType = "GUARD"
 )
 
-// 十个技能。
+// 八个技能。弃权（SkillSkip）与上帝公告（SkillAnnounce）由内核拥有，
+// 见 alias.go。
 const (
 	SkillKill     SkillType = "KILL"     // 狼人击杀
 	SkillCheck    SkillType = "CHECK"    // 预言家查验
@@ -48,7 +50,7 @@ const (
 )
 
 // RoleGod、SkillSkip、SkillAnnounce 由内核拥有（主持人不是玩家、弃权是
-// 通用动作），经 alias 再导出，见 alias.go。
+// 通用动作），同样经别名再导出，见 alias.go。
 
 // 狼人杀的事件类型：规则给「发生了什么」起的名字。
 //

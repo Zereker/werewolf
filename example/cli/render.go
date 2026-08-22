@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Zereker/werewolf"
+	"github.com/Zereker/werewolf/engine"
 )
 
 // ==================== 输入解析 ====================
@@ -76,7 +77,7 @@ func shortRole(r werewolf.RoleType) string {
 	if s, ok := roleWords[r]; ok {
 		return s
 	}
-	if r == werewolf.RoleUnspecified {
+	if r == engine.RoleUnspecified {
 		return "全体"
 	}
 	return r.String()
@@ -137,19 +138,19 @@ func announce(p werewolf.PhaseType) string {
 // 主持人会把一次失败的用毒当成真的毒死了人。
 func describe(ef *werewolf.Effect) string {
 	verb := map[werewolf.EventType]string{
-		werewolf.EventKill:         "被刀",
-		werewolf.EventPoison:       "被毒",
-		werewolf.EventEliminate:    "被投票出局",
-		werewolf.EventShoot:        "被枪打死",
-		werewolf.EventProtect:      "被守护",
-		werewolf.EventSave:         "被解药救回",
-		werewolf.EventCheck:        "被查验",
-		werewolf.EventSkip:         "放弃行动",
-		werewolf.EventVoteTied:     "平票，无人出局",
-		werewolf.EventGameStarted:  "游戏开始",
-		werewolf.EventGameEnded:    "游戏结束",
-		werewolf.EventPlayerAdded:  "入座",
-		werewolf.EventPhaseChanged: "阶段流转",
+		werewolf.EventKill:       "被刀",
+		werewolf.EventPoison:     "被毒",
+		werewolf.EventEliminate:  "被投票出局",
+		werewolf.EventShoot:      "被枪打死",
+		werewolf.EventProtect:    "被守护",
+		werewolf.EventSave:       "被解药救回",
+		werewolf.EventCheck:      "被查验",
+		werewolf.EventSkip:       "放弃行动",
+		werewolf.EventVoteTied:   "平票，无人出局",
+		engine.EventGameStarted:  "游戏开始",
+		engine.EventGameEnded:    "游戏结束",
+		engine.EventPlayerAdded:  "入座",
+		engine.EventPhaseChanged: "阶段流转",
 
 		// 内部效果只会出现在效果流里，不会发给任何玩家。
 		// log 看的是原始流水，把它们也译出来才读得懂。
@@ -157,11 +158,11 @@ func describe(ef *werewolf.Effect) string {
 		// 这几条是内核的状态原语，与角色无关：谁死了、谁身上多了个标记。
 		// 「记下今晚的刀口」「消耗解药」这类说法此前也是事件类型，
 		// 现在它们只是原语里的一个键名，读法见 varLabel。
-		werewolf.EventSetAlive:          "存活状态变更",
-		werewolf.EventSetPlayerVar:      "改玩家状态",
-		werewolf.EventSetPlayerRoundVar: "本回合标记",
-		werewolf.EventSetRoundVar:       "改本回合状态",
-		werewolf.EventAbilityTriggered:  "死亡技能待结算",
+		engine.EventSetAlive:          "存活状态变更",
+		engine.EventSetPlayerVar:      "改玩家状态",
+		engine.EventSetPlayerRoundVar: "本回合标记",
+		engine.EventSetRoundVar:       "改本回合状态",
+		engine.EventAbilityTriggered:  "死亡技能待结算",
 	}[ef.Type]
 	if verb == "" {
 		verb = ef.Type.String()
@@ -290,7 +291,7 @@ func roleInfoLines(info map[string]string) []string {
 }
 
 func revealed(r werewolf.RoleType) string {
-	if r == werewolf.RoleUnspecified {
+	if r == engine.RoleUnspecified {
 		return ""
 	}
 	return "(" + shortRole(r) + ")"
@@ -309,23 +310,23 @@ func deadMark(alive bool) string {
 // 而不是把英文原文甩给玩家。
 func reason(err error) string {
 	switch {
-	case errors.Is(err, werewolf.ErrPlayerNotFound):
+	case errors.Is(err, engine.ErrPlayerNotFound):
 		return "没有这个玩家"
-	case errors.Is(err, werewolf.ErrPlayerDead):
+	case errors.Is(err, engine.ErrPlayerDead):
 		return "他已经出局了"
-	case errors.Is(err, werewolf.ErrTargetNotFound):
+	case errors.Is(err, engine.ErrTargetNotFound):
 		return "没有这个目标"
-	case errors.Is(err, werewolf.ErrTargetDead):
+	case errors.Is(err, engine.ErrTargetDead):
 		return "目标已经出局了"
-	case errors.Is(err, werewolf.ErrSkillNotAllowed):
+	case errors.Is(err, engine.ErrSkillNotAllowed):
 		return "现在轮不到他用这个技能"
-	case errors.Is(err, werewolf.ErrMessageNotAllowed):
+	case errors.Is(err, engine.ErrMessageNotAllowed):
 		return "这个阶段他不能发言"
-	case errors.Is(err, werewolf.ErrGameEnded):
+	case errors.Is(err, engine.ErrGameEnded):
 		return "游戏已经结束"
-	case errors.Is(err, werewolf.ErrGameNotStarted):
+	case errors.Is(err, engine.ErrGameNotStarted):
 		return "游戏还没开始"
-	case errors.Is(err, werewolf.ErrInvalidSnapshot):
+	case errors.Is(err, engine.ErrInvalidSnapshot):
 		return "存档不合法或版本不匹配"
 	default:
 		return err.Error()

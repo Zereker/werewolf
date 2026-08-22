@@ -13,6 +13,7 @@ import (
 	"fmt"
 
 	"github.com/Zereker/werewolf"
+	"github.com/Zereker/werewolf/engine"
 )
 
 // 自定义取值从 1000 起，避免与后续内置枚举撞号。
@@ -34,13 +35,13 @@ const (
 // 写走 NewSetPlayerVarEffect。女巫的药、守卫的守护记录走的是同一条路，
 // 内置角色在这件事上没有特权。
 type idiotRule struct {
-	inner werewolf.Resolver
+	inner engine.Resolver
 }
 
 // varRevealed 这个扩展在 PlayerVar 里用的键。
 const varRevealed = "idiot.revealed"
 
-func newIdiotRule(inner werewolf.Resolver) *idiotRule {
+func newIdiotRule(inner engine.Resolver) *idiotRule {
 	return &idiotRule{inner: inner}
 }
 
@@ -106,9 +107,9 @@ func (r *idiotRule) Resolve(
 		}
 		revealedAt[ef.TargetID] = true
 		out = append(out,
-			werewolf.NewEffect(eventRevealed, ef.TargetID, "").WithData("role", "IDIOT"),
+			engine.NewEffect(eventRevealed, ef.TargetID, "").WithData("role", "IDIOT"),
 			// 状态交给引擎保管：随快照走，回放能重建，这个 Resolver 保持无状态
-			werewolf.NewSetPlayerVarEffect(ef.TargetID, varRevealed, "1"),
+			engine.NewSetPlayerVarEffect(ef.TargetID, varRevealed, "1"),
 		)
 	}
 	return out

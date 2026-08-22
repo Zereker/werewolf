@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 	"time"
 )
@@ -94,7 +95,7 @@ func TestStandardVotePhase(t *testing.T) {
 
 	// Verify vote step
 	voteStep := phase.Steps[1]
-	if voteStep.Role != RoleUnspecified {
+	if voteStep.Role != engine.RoleUnspecified {
 		t.Errorf("expected Role=UNSPECIFIED, got %v", voteStep.Role)
 	}
 	if voteStep.Skill != SkillVote {
@@ -184,7 +185,7 @@ func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 	cfg := DefaultGameConfig()
 	delete(cfg.Phases, PhaseNightWitch) // NIGHT_WOLF 的 NextPhase 悬空
 
-	if _, err := NewEngine(cfg); err == nil {
+	if _, err := engine.NewEngine(cfg); err == nil {
 		t.Fatal("残缺配置应当在构造时被拒绝")
 	}
 }
@@ -200,15 +201,15 @@ func TestStart_RejectsMissingResolver(t *testing.T) {
 		NextPhase: PhaseNightGuard,
 	}
 	cfg.Phases[PhaseVote].NextPhase = PhaseType("NO_RESOLVER")
-	engine, err := NewEngine(cfg, opts...)
+	eng, err := engine.NewEngine(cfg, opts...)
 	if err != nil {
 		t.Fatalf("配置本身应当合法: %v", err)
 	}
 
-	mustAdd(t, engine, "w1", RoleWerewolf)
-	mustAdd(t, engine, "v1", RoleVillager)
+	mustAdd(t, eng, "w1", RoleWerewolf)
+	mustAdd(t, eng, "v1", RoleVillager)
 
-	if err := engine.Start(); err == nil {
+	if err := eng.Start(); err == nil {
 		t.Error("缺少解析器时 Start 应当报错")
 	}
 }
@@ -218,14 +219,14 @@ func TestStartPhase_Configurable(t *testing.T) {
 	cfg := DefaultGameConfig()
 	cfg.StartPhase = PhaseDay
 
-	engine := MustNewWith(cfg, DefaultRules())
-	mustAdd(t, engine, "w1", RoleWerewolf)
-	mustAdd(t, engine, "v1", RoleVillager)
-	if err := engine.Start(); err != nil {
+	eng := MustNewWith(cfg, DefaultRules())
+	mustAdd(t, eng, "w1", RoleWerewolf)
+	mustAdd(t, eng, "v1", RoleVillager)
+	if err := eng.Start(); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := engine.Phase(); got != PhaseDay {
+	if got := eng.Phase(); got != PhaseDay {
 		t.Errorf("期望从 DAY 开局，实际 %v", got)
 	}
 }
@@ -306,8 +307,8 @@ func TestGameConfig_PhaseTimeout(t *testing.T) {
 	}
 	// DefaultTimeout 也没配时退回常量
 	bare := &GameConfig{Phases: cfg.Phases}
-	if got := bare.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != DefaultPhaseTimeout {
-		t.Errorf("兜底: 期望 %v，实际 %v", DefaultPhaseTimeout, got)
+	if got := bare.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != engine.DefaultPhaseTimeout {
+		t.Errorf("兜底: 期望 %v，实际 %v", engine.DefaultPhaseTimeout, got)
 	}
 }
 

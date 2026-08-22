@@ -8,7 +8,11 @@
 
 package werewolf
 
-import "time"
+import (
+	"time"
+
+	"github.com/Zereker/werewolf/engine"
+)
 
 // 各阶段的建议超时。板子数据，不是引擎逻辑——引擎不据此计时，
 // 什么时候调 EndPhase 完全由调用方决定。
@@ -58,7 +62,7 @@ func (m VictoryMode) String() string {
 func DefaultGameConfig() *GameConfig {
 	return &GameConfig{
 		StartPhase:     PhaseNightGuard,
-		DefaultTimeout: DefaultPhaseTimeout,
+		DefaultTimeout: engine.DefaultPhaseTimeout,
 		Phases: map[PhaseType]*PhaseConfig{
 			// 白天和投票阶段
 			PhaseDay:       StandardDayPhase(),
@@ -95,7 +99,7 @@ func StandardVotePhase() *PhaseConfig {
 		Type: PhaseVote,
 		Steps: []PhaseStep{
 			{Role: RoleGod, Skill: SkillAnnounce},
-			{Role: RoleUnspecified, Skill: SkillVote, Required: true, Multiple: true},
+			{Role: engine.RoleUnspecified, Skill: SkillVote, Required: true, Multiple: true},
 		},
 		Timeout:   VotePhaseTimeout,
 		NextPhase: PhaseNightGuard, // 进入下一夜

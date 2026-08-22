@@ -10,7 +10,11 @@
 
 package werewolf
 
-import "strconv"
+import (
+	"strconv"
+
+	"github.com/Zereker/werewolf/engine"
+)
 
 // 狼人杀在回合级状态里用到的键名。
 //
@@ -79,8 +83,8 @@ func lastProtected(view GameView, guardID string) string {
 // markProtected 记下「本回合守卫守了谁」，供下回合判断连守。
 func markProtected(view GameView, guardID, targetID string) []*Effect {
 	return []*Effect{
-		NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedTarget, targetID),
-		NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
+		engine.NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedTarget, targetID),
+		engine.NewSetPlayerVarEffect(guardID, PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
 	}
 }
 

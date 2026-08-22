@@ -6,6 +6,8 @@
 
 package werewolf
 
+import "github.com/Zereker/werewolf/engine"
+
 // 女巫专属信息在 RoleInfo 里的键名。
 //
 // RoleInfoAntidote / RoleInfoPoison 是药剂存量的**投射**，存储在
@@ -23,8 +25,8 @@ const (
 //
 // 做成表而不是 switch：加内置角色时只需在这里加一行，第三方经
 // WithRoleInfo 注册的走的是同一张表、同一条读取路径，没有先后之分。
-var builtinRoleInfo = map[RoleType]RoleInfoProvider{
-	RoleWitch: RoleInfoFunc(builtinWitchInfo),
+var builtinRoleInfo = map[RoleType]engine.RoleInfoProvider{
+	RoleWitch: engine.RoleInfoFunc(builtinWitchInfo),
 }
 
 // builtinWitchInfo 女巫看得到自己的药剂存量，以及解药尚在手时的刀口。

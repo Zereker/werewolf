@@ -6,7 +6,10 @@
 
 package main
 
-import "github.com/Zereker/werewolf"
+import (
+	"github.com/Zereker/werewolf"
+	"github.com/Zereker/werewolf/engine"
+)
 
 // clientMsg 客户端发来的。
 //
@@ -28,10 +31,10 @@ type serverMsg struct {
 	Type string `json:"type"`
 
 	// view：这个玩家此刻有权知道的一切，直接来自 Engine.PlayerView
-	View *werewolf.PlayerView `json:"view,omitempty"`
+	View *engine.PlayerView `json:"view,omitempty"`
 
 	// event：发生了什么。只推给 Engine.AudienceOf 划出来的那些人
-	Event *werewolf.Event `json:"event,omitempty"`
+	Event *engine.Event `json:"event,omitempty"`
 
 	// chat：谁说了什么。接收者由 Engine 按阶段决定
 	From string `json:"from,omitempty"`

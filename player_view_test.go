@@ -3,6 +3,7 @@ package werewolf
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/Zereker/werewolf/engine"
 	"os"
 	"regexp"
 	"testing"
@@ -33,7 +34,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 			if p.ID == "v1" {
 				continue
 			}
-			if p.Role != RoleUnspecified {
+			if p.Role != engine.RoleUnspecified {
 				t.Errorf("不应看到 %s 的身份，实际 %v", p.ID, p.Role)
 			}
 		}
@@ -51,7 +52,7 @@ func TestPlayerView_HidesOtherIdentities(t *testing.T) {
 					t.Errorf("%s 对狼人应当可见为狼，实际 %v", p.ID, p.Role)
 				}
 			default:
-				if p.Role != RoleUnspecified {
+				if p.Role != engine.RoleUnspecified {
 					t.Errorf("狼人不应看到 %s 的身份，实际 %v", p.ID, p.Role)
 				}
 			}
@@ -139,7 +140,7 @@ func TestPlayerView_AllowedSkillsGateAction(t *testing.T) {
 	}
 
 	// 出局玩家没有可用技能
-	e.Apply(NewSetAliveEffect("g", false))
+	e.Apply(engine.NewSetAliveEffect("g", false))
 	if got := e.PlayerView("g").AllowedSkills; len(got) != 0 {
 		t.Errorf("已出局玩家不应有可用技能，实际 %v", got)
 	}
@@ -173,7 +174,7 @@ func TestPlayerView_DeadWitchCannotSeeKillTarget(t *testing.T) {
 
 	v := g.e.PlayerView("wi")
 	if v == nil {
-		t.Fatal("PlayerView 不应为 nil")
+		t.Fatal("engine.PlayerView 不应为 nil")
 	}
 	if v.Self.Alive {
 		t.Fatal("前置条件：女巫此时应已出局")
@@ -225,21 +226,21 @@ func TestAudienceOf(t *testing.T) {
 		want   []string // nil 表示只校验数量
 		count  int
 	}{
-		{"击杀全场可见", NewEffect(EventKill, "", "v1"), nil, all},
-		{"放逐全场可见", NewEffect(EventEliminate, "", "v1"), nil, all},
-		{"开枪全场可见", NewEffect(EventShoot, "h", "v1"), nil, all},
-		{"平票全场可见", NewEffect(EventVoteTied, "", ""), nil, all},
-		{"游戏结束全场可见", NewEffect(EventGameEnded, "", ""), nil, all},
-		{"查验只给预言家", NewEffect(EventCheck, "s", "w1"), []string{"s"}, 1},
-		{"守护只给守卫", NewEffect(EventProtect, "g", "v1"), []string{"g"}, 1},
-		{"解药只给女巫", NewEffect(EventSave, "wi", "v1"), []string{"wi"}, 1},
-		{"内部效果不给任何人", NewSetAliveEffect("v1", false), nil, 0},
-		{"消耗解药不给任何人", NewSetPlayerVarEffect("wi", VarWitchAntidote, ""), nil, 0},
-		{"触发效果不给任何人", NewAbilityTriggerEffect("h", PhaseNightHunter), nil, 0},
+		{"击杀全场可见", engine.NewEffect(EventKill, "", "v1"), nil, all},
+		{"放逐全场可见", engine.NewEffect(EventEliminate, "", "v1"), nil, all},
+		{"开枪全场可见", engine.NewEffect(EventShoot, "h", "v1"), nil, all},
+		{"平票全场可见", engine.NewEffect(EventVoteTied, "", ""), nil, all},
+		{"游戏结束全场可见", engine.NewEffect(engine.EventGameEnded, "", ""), nil, all},
+		{"查验只给预言家", engine.NewEffect(EventCheck, "s", "w1"), []string{"s"}, 1},
+		{"守护只给守卫", engine.NewEffect(EventProtect, "g", "v1"), []string{"g"}, 1},
+		{"解药只给女巫", engine.NewEffect(EventSave, "wi", "v1"), []string{"wi"}, 1},
+		{"内部效果不给任何人", engine.NewSetAliveEffect("v1", false), nil, 0},
+		{"消耗解药不给任何人", engine.NewSetPlayerVarEffect("wi", VarWitchAntidote, ""), nil, 0},
+		{"触发效果不给任何人", engine.NewAbilityTriggerEffect("h", PhaseNightHunter), nil, 0},
 		{"被否决的用毒只给女巫本人", canceledEffect(
-			NewEffect(EventPoison, "wi", "v1")), []string{"wi"}, 1},
+			engine.NewEffect(EventPoison, "wi", "v1")), []string{"wi"}, 1},
 		{"被否决的守护只给守卫本人", canceledEffect(
-			NewEffect(EventProtect, "g", "v1")), []string{"g"}, 1},
+			engine.NewEffect(EventProtect, "g", "v1")), []string{"g"}, 1},
 	}
 
 	for _, tc := range cases {
@@ -265,7 +266,7 @@ func TestAudienceOf(t *testing.T) {
 
 	// 第三方自定义的外部事件类型：引擎无从判断可见性，必须说「不知道」，
 	// 而不是给出一个看起来权威的空受众
-	custom := NewEffect(EventType("THIRD_PARTY_EVENT"), "w1", "v1")
+	custom := engine.NewEffect(EventType("THIRD_PARTY_EVENT"), "w1", "v1")
 	if got, known := e.AudienceOf(custom.ToEvent()); known || got != nil {
 		t.Errorf("未知外部类型应返回 (nil, false)，实际 (%v, %v)", got, known)
 	}
@@ -302,7 +303,7 @@ func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 
 	for _, m := range found {
 		typ := EventType(m[1])
-		ef := NewEffect(typ, "s", "v1")
+		ef := engine.NewEffect(typ, "s", "v1")
 		got, known := e.AudienceOf(ef.ToEvent())
 		if !known {
 			t.Errorf("外部事件 %s 没有划分受众", typ)
@@ -318,13 +319,13 @@ func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 func TestAudienceOf_UnknownActorGetsNobody(t *testing.T) {
 	e := newViewGame(t)
 
-	canceled := NewSetAliveEffect("v1", false)
+	canceled := engine.NewSetAliveEffect("v1", false)
 	canceled.Cancel("no poison")
 	if got, known := e.AudienceOf(canceled.ToEvent()); len(got) != 0 || !known {
 		t.Errorf("被否决效果的 source 不在场上，受众应为空，实际 (%v, %v)", got, known)
 	}
 
-	private := NewEffect(EventCheck, "查无此人", "v1")
+	private := engine.NewEffect(EventCheck, "查无此人", "v1")
 	if got, _ := e.AudienceOf(private.ToEvent()); len(got) != 0 {
 		t.Errorf("私密效果的 source 不在场上，受众应为空，实际 %v", got)
 	}

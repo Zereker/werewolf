@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 )
 
@@ -49,9 +50,9 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 		// 真正让人出局的是旁边那条 SET_ALIVE。内置角色的狼刀、
 		// 投票放逐走的也是同一条路，第三方在这件事上没有额外负担。
 		effects = append(effects,
-			NewEffect(EventShoot, use.PlayerID, use.TargetID),
-			NewSetAliveEffect(use.TargetID, false),
-			NewSetPlayerVarEffect(use.PlayerID, varWolfKingGun, ""))
+			engine.NewEffect(EventShoot, use.PlayerID, use.TargetID),
+			engine.NewSetAliveEffect(use.TargetID, false),
+			engine.NewSetPlayerVarEffect(use.PlayerID, varWolfKingGun, ""))
 		break
 	}
 	return effects
@@ -61,7 +62,7 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 //
 // 这演示了「装饰已有解析器」——扩展不必从零实现整个阶段。
 type voteWithWolfKing struct {
-	inner Resolver
+	inner engine.Resolver
 }
 
 func (r *voteWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*Effect {
@@ -71,7 +72,7 @@ func (r *voteWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			continue
 		}
 		if p, ok := view.Player(ef.TargetID); ok && p.Role == roleWolfKing {
-			effects = append(effects, NewAbilityTriggerEffect(ef.TargetID, phaseWolfKing))
+			effects = append(effects, engine.NewAbilityTriggerEffect(ef.TargetID, phaseWolfKing))
 		}
 	}
 	return effects
@@ -94,17 +95,17 @@ func newWolfKingGame(t *testing.T) *Engine {
 	}
 
 	// 2. 构造时注册狼王阶段的解析器，并装饰投票解析器
-	engine, err := NewWith(cfg, DefaultRules(),
-		WithRoleSetup(roleWolfKing, RoleSetupFunc(wolfKingSetup)),
-		WithResolver(phaseWolfKing, &wolfKingResolver{}),
-		WithResolver(PhaseVote,
+	eng, err := NewWith(cfg, DefaultRules(),
+		engine.WithRoleSetup(roleWolfKing, engine.RoleSetupFunc(wolfKingSetup)),
+		engine.WithResolver(phaseWolfKing, &wolfKingResolver{}),
+		engine.WithResolver(PhaseVote,
 			&voteWithWolfKing{inner: NewVoteResolver()}))
 	if err != nil {
 		t.Fatalf("配置应当合法: %v", err)
 	}
 
 	// 3. 狼王的阵营与类别推导不出来，显式给出
-	if err := engine.AddPlayer("wk", roleWolfKing); err != nil {
+	if err := eng.AddPlayer("wk", roleWolfKing); err != nil {
 		t.Fatal(err)
 	}
 	for id, role := range map[string]RoleType{
@@ -115,86 +116,86 @@ func newWolfKingGame(t *testing.T) *Engine {
 		"v2": RoleVillager,
 		"v3": RoleVillager,
 	} {
-		if err := engine.AddPlayer(id, role); err != nil {
+		if err := eng.AddPlayer(id, role); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	if err := engine.Start(); err != nil {
+	if err := eng.Start(); err != nil {
 		t.Fatal(err)
 	}
-	return engine
+	return eng
 }
 
 // TestExtension_WolfKing 第三方角色端到端可用
 func TestExtension_WolfKing(t *testing.T) {
-	engine := newWolfKingGame(t)
+	eng := newWolfKingGame(t)
 
 	// 走完第一夜（狼人空刀）
-	for engine.Phase() != PhaseDay {
-		if _, err := engine.EndPhase(); err != nil {
+	for eng.Phase() != PhaseDay {
+		if _, err := eng.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := engine.EndPhase(); err != nil { // DAY -> VOTE
+	if _, err := eng.EndPhase(); err != nil { // DAY -> VOTE
 		t.Fatal(err)
 	}
 
 	// 放逐狼王
 	for _, voter := range []string{"s", "g", "v1", "v2"} {
-		if err := engine.SubmitSkillUse(&SkillUse{
+		if err := eng.SubmitSkillUse(&SkillUse{
 			PlayerID: voter, Skill: SkillVote, TargetID: "wk",
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := engine.EndPhase(); err != nil {
+	if _, err := eng.EndPhase(); err != nil {
 		t.Fatal(err)
 	}
 
 	// 引擎应当自动流转到自定义的狼王阶段
-	if got := engine.Phase(); got != phaseWolfKing {
+	if got := eng.Phase(); got != phaseWolfKing {
 		t.Fatalf("期望进入狼王阶段，实际 %v", got)
 	}
 
 	// 别的玩家不能冒用狼王的技能
-	if err := engine.SubmitSkillUse(&SkillUse{
+	if err := eng.SubmitSkillUse(&SkillUse{
 		PlayerID: "w1", Skill: skillWolfClaw, TargetID: "s",
 	}); err == nil {
 		t.Error("非触发者不应能使用狼王技能")
 	}
 
 	// 狼王开枪带走预言家
-	if err := engine.SubmitSkillUse(&SkillUse{
+	if err := eng.SubmitSkillUse(&SkillUse{
 		PlayerID: "wk", Skill: skillWolfClaw, TargetID: "s",
 	}); err != nil {
 		t.Fatalf("被触发的狼王应当可以开枪: %v", err)
 	}
-	if _, err := engine.EndPhase(); err != nil {
+	if _, err := eng.EndPhase(); err != nil {
 		t.Fatal(err)
 	}
 
-	if alive := mustInfo(t, engine, "s").Alive; alive {
+	if alive := mustInfo(t, eng, "s").Alive; alive {
 		t.Error("狼王开枪带走的预言家应当出局")
 	}
-	if got := engine.Phase(); got != PhaseNightGuard {
+	if got := eng.Phase(); got != PhaseNightGuard {
 		t.Errorf("狼王阶段结束后应进入下一夜，实际 %v", got)
 	}
 }
 
 // TestExtension_WolfKingCountsAsWolfForVictory 自定义类别参与屠边判定
 func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
-	engine := newWolfKingGame(t)
+	eng := newWolfKingGame(t)
 
 	// 内置狼人出局，狼王还在 —— 狼人阵营未灭，游戏继续
-	engine.Apply(NewSetAliveEffect("w1", false))
-	if over, _ := checkVictory(engine); over {
+	eng.Apply(engine.NewSetAliveEffect("w1", false))
+	if over, _ := checkVictory(eng); over {
 		t.Error("狼王仍在场，狼人阵营不应判为全灭")
 	}
 
 	// 狼王也出局 —— 好人获胜
-	engine.Apply(NewSetAliveEffect("wk", false))
-	over, winner := checkVictory(engine)
+	eng.Apply(engine.NewSetAliveEffect("wk", false))
+	over, winner := checkVictory(eng)
 	if !over || winner != CampGood {
 		t.Errorf("狼人阵营全灭应判好人胜利，实际 over=%v winner=%v", over, winner)
 	}
@@ -205,22 +206,22 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 // 想让某阶段不产生任何效果，注册一个返回空切片的解析器；
 // 传 nil 只可能是漏了，必须在构造时就报出来。
 func TestExtension_WithResolverRejectsNil(t *testing.T) {
-	if _, err := NewEngine(nil, WithResolver(PhaseDay, nil)); err == nil {
+	if _, err := engine.NewEngine(nil, engine.WithResolver(PhaseDay, nil)); err == nil {
 		t.Error("nil 解析器应当被拒绝")
 	}
 	if !panicsOnNilResolver(t) {
-		t.Error("MustNewEngine 遇到非法选项应当 panic")
+		t.Error("engine.MustNewEngine 遇到非法选项应当 panic")
 	}
 }
 
 func panicsOnNilResolver(t *testing.T) (panicked bool) {
 	t.Helper()
 	defer func() { panicked = recover() != nil }()
-	MustNew(DefaultRules(), WithResolver(PhaseDay, nil))
+	MustNew(DefaultRules(), engine.WithResolver(PhaseDay, nil))
 	return false
 }
 
-func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
+func mustInfo(t *testing.T, e *Engine, id string) engine.PlayerInfo {
 	t.Helper()
 	p, ok := e.PlayerInfo(id)
 	if !ok {
@@ -234,31 +235,31 @@ func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
 // 此前 PhaseInfo 是一个写死内置阶段的 switch，自定义阶段返回空，
 // 调用方无从得知该让谁行动。
 func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
-	engine := newWolfKingGame(t)
+	eng := newWolfKingGame(t)
 
-	for engine.Phase() != PhaseDay {
-		if _, err := engine.EndPhase(); err != nil {
+	for eng.Phase() != PhaseDay {
+		if _, err := eng.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := engine.EndPhase(); err != nil { // DAY -> VOTE
+	if _, err := eng.EndPhase(); err != nil { // DAY -> VOTE
 		t.Fatal(err)
 	}
 	for _, voter := range []string{"s", "g", "v1", "v2"} {
-		if err := engine.SubmitSkillUse(&SkillUse{
+		if err := eng.SubmitSkillUse(&SkillUse{
 			PlayerID: voter, Skill: SkillVote, TargetID: "wk",
 		}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := engine.EndPhase(); err != nil {
+	if _, err := eng.EndPhase(); err != nil {
 		t.Fatal(err)
 	}
-	if engine.Phase() != phaseWolfKing {
-		t.Fatalf("期望进入狼王阶段，实际 %v", engine.Phase())
+	if eng.Phase() != phaseWolfKing {
+		t.Fatalf("期望进入狼王阶段，实际 %v", eng.Phase())
 	}
 
-	info := engine.PhaseInfo()
+	info := eng.PhaseInfo()
 	ri := info.RoleInfos[roleWolfKing]
 	if ri == nil {
 		t.Fatal("自定义角色应当出现在 RoleInfos 中")
@@ -274,11 +275,11 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	}
 
 	// 视角同样对自定义角色生效
-	v := engine.PlayerView("wk")
+	v := eng.PlayerView("wk")
 	if len(v.AllowedSkills) != 2 {
 		t.Errorf("狼王视角应当看到自己的两个技能，实际 %v", v.AllowedSkills)
 	}
-	if got := engine.PlayerView("v3").AllowedSkills; len(got) != 0 {
+	if got := eng.PlayerView("v3").AllowedSkills; len(got) != 0 {
 		t.Errorf("非触发者不应有可用技能，实际 %v", got)
 	}
 }
@@ -291,34 +292,34 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	const roleWolfKing = RoleType("WOLF_KING")
 
-	engine := MustNew(DefaultRules(), WithRoleSetup(roleWolfKing, RoleSetupFunc(
+	eng := MustNew(DefaultRules(), engine.WithRoleSetup(roleWolfKing, engine.RoleSetupFunc(
 		func(string, RoleType) map[string]string {
 			return CampVars(CampEvil, RoleCategoryWolf)
 		})))
-	mustAdd(t, engine, "w1", RoleWerewolf)
-	if err := engine.AddPlayer("wk", roleWolfKing); err != nil {
+	mustAdd(t, eng, "w1", RoleWerewolf)
+	if err := eng.AddPlayer("wk", roleWolfKing); err != nil {
 		t.Fatalf("AddPlayer 失败: %v", err)
 	}
-	mustAdd(t, engine, "s", RoleSeer)
-	mustAdd(t, engine, "v1", RoleVillager)
-	mustAdd(t, engine, "v2", RoleVillager)
-	if err := engine.Start(); err != nil {
+	mustAdd(t, eng, "s", RoleSeer)
+	mustAdd(t, eng, "v1", RoleVillager)
+	mustAdd(t, eng, "v2", RoleVillager)
+	if err := eng.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
 
 	// 互为队友
-	if got := engine.Teammates("wk"); len(got) != 1 || got[0] != "w1" {
+	if got := eng.Teammates("wk"); len(got) != 1 || got[0] != "w1" {
 		t.Errorf("狼王应当看到队友 w1，实际 %v", got)
 	}
-	if got := engine.Teammates("w1"); len(got) != 1 || got[0] != "wk" {
+	if got := eng.Teammates("w1"); len(got) != 1 || got[0] != "wk" {
 		t.Errorf("真狼应当看到队友 wk，实际 %v", got)
 	}
-	if got := engine.Teammates("s"); got != nil {
+	if got := eng.Teammates("s"); got != nil {
 		t.Errorf("好人不该有狼队友，实际 %v", got)
 	}
 
 	// 视图里互相翻牌
-	view := engine.PlayerView("wk")
+	view := eng.PlayerView("wk")
 	roles := make(map[string]RoleType, len(view.Players))
 	for _, p := range view.Players {
 		roles[p.ID] = p.Role
@@ -326,23 +327,23 @@ func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	if roles["w1"] != RoleWerewolf {
 		t.Errorf("狼王的视图里应能看到 w1 的身份，实际 %v", roles["w1"])
 	}
-	if roles["s"] != RoleUnspecified {
+	if roles["s"] != engine.RoleUnspecified {
 		t.Errorf("狼王不该看到预言家的身份，实际 %v", roles["s"])
 	}
 
 	// 夜里能和狼队互通
-	for engine.Phase() != PhaseNightWolf {
-		if _, err := engine.EndPhase(); err != nil {
+	for eng.Phase() != PhaseNightWolf {
+		if _, err := eng.EndPhase(); err != nil {
 			t.Fatalf("推进失败: %v", err)
 		}
 	}
-	if got := engine.MessageReceivers("wk"); len(got) != 2 {
+	if got := eng.MessageReceivers("wk"); len(got) != 2 {
 		t.Errorf("狼王夜里应能与整个狼队互通，实际 %v", got)
 	}
-	if err := engine.SendMessage("wk", "刀预言家"); err != nil {
+	if err := eng.SendMessage("wk", "刀预言家"); err != nil {
 		t.Errorf("狼王夜里应当能发言，实际 %v", err)
 	}
-	if err := engine.SendMessage("s", "?"); err == nil {
+	if err := eng.SendMessage("s", "?"); err == nil {
 		t.Error("好人夜里不该能发言")
 	}
 }
@@ -371,7 +372,7 @@ func TestExtension_TriggerToUnconfiguredPhaseIsRejected(t *testing.T) {
 
 	// 猎人死了，触发指向已被删掉的阶段：应当照常进白天，且触发被否决
 	effects := g.end(PhaseDay)
-	trigger := findEffect(effects, EventAbilityTriggered)
+	trigger := findEffect(effects, engine.EventAbilityTriggered)
 	if trigger == nil {
 		t.Fatal("期望产生 ABILITY_TRIGGERED 效果（即便被否决）")
 	}

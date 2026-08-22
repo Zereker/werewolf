@@ -1,13 +1,14 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 )
 
 // 本文件是给「按脚本推进一局游戏」的测试用的辅助函数。
 //
 // 这些包装存在的理由只有一个：**建局与推进出错时必须当场终止**。
-// 早期测试大量写成 engine.Start() / engine.AddPlayer(...) 而不看返回值，
+// 早期测试大量写成 eng.Start() / eng.AddPlayer(...) 而不看返回值，
 // 一旦这些调用开始返回错误（板子不合法、重复 ID、配置残缺），测试不会
 // 在出错处停下，而是带着一个没开局的引擎继续往下跑——最后要么在某个
 // 无关的断言上失败、要么直接在空切片上取下标 panic，两种都极难定位。
@@ -59,7 +60,7 @@ func checkVictoryWith(e *Engine, rules Rules) (bool, Camp) {
 //
 // 刀口从 RolePhaseInfo 的一等字段变成了角色自己填的 RoleInfo——
 // 内置角色在信息这件事上不再比第三方角色多一等待遇。
-func witchKill(ri *RolePhaseInfo) string {
+func witchKill(ri *engine.RolePhaseInfo) string {
 	for _, info := range ri.RoleInfo {
 		if t := info[RoleInfoKillTarget]; t != "" {
 			return t
@@ -76,16 +77,16 @@ func witchKill(ri *RolePhaseInfo) string {
 // 相同的那个写入点。
 
 // board 一副手工摆出来的局面。
-type board = Board
+type board = engine.Board
 
 // newBoard 摆一副局面。
-func newBoard(seats ...PlayerInfo) board {
+func newBoard(seats ...engine.PlayerInfo) board {
 	return board{Round: 1, Players: seats}
 }
 
 // seatOf 拼一名玩家。vars 是键值交替的可变参数。
-func seatOf(id string, role RoleType, vars ...string) PlayerInfo {
-	out := Seat(id, role, true, vars...)
+func seatOf(id string, role RoleType, vars ...string) engine.PlayerInfo {
+	out := engine.Seat(id, role, true, vars...)
 	if setup, ok := builtinRoleSetup[role]; ok {
 		// 内置角色的初始状态（阵营、类别、女巫的药）由 RoleSetup 发，
 		// 直接摆局面时得自己补上，否则女巫手里没有药
@@ -111,7 +112,7 @@ func withKill(b board, target string) board {
 func markSeat(b board, id string, keys ...string) board {
 	for i, p := range b.Players {
 		if p.ID == id {
-			b.Players[i] = Mark(p, keys...)
+			b.Players[i] = engine.Mark(p, keys...)
 		}
 	}
 	return b
@@ -132,7 +133,7 @@ func protectedInEngine(e *Engine, id string) bool {
 }
 
 // mustSeat 取出一名玩家，不存在即终止。
-func mustSeat(t *testing.T, b board, id string) PlayerInfo {
+func mustSeat(t *testing.T, b board, id string) engine.PlayerInfo {
 	t.Helper()
 	p, ok := b.Player(id)
 	if !ok {

@@ -259,9 +259,13 @@ NIGHT_RESOLVE  NightResolve    ──► KILL / POISON / HUNTER_TRIGGERED
 
 1. 用自己的字符串定义角色、技能、阶段（枚举底层是字符串，不会撞号）
 2. 在 `GameConfig.Phases` 里声明该阶段
-3. 构造时用 `werewolf.WithResolver(phase, resolver)` 注册解析器
-   （`NewEngine` / `RestoreEngine` / `ReplayEngine` 都接受）
-4. `WithRoleSetup` 给出它的初始状态（阵营、类别、道具）
+3. 构造时用 `engine.WithResolver(phase, resolver)` 注册解析器
+   （`werewolf.New` / `NewWith` / `Restore` / `Replay` 与内核的
+   `NewEngine` / `RestoreEngine` / `ReplayEngine` 都接受）
+4. `engine.WithRoleSetup` 给出它的初始状态（阵营、类别、道具）
+
+扩展点全部住在内核包 `github.com/Zereker/werewolf/engine`——扩展规则
+本来就是在动内核的接线，调用点上出现 `engine.` 这个前缀是刻意的。
 
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect`，
 引擎会把它排入待结算队列、自动流转过去，并把胜负判定推迟到结算之后。

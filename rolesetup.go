@@ -5,6 +5,8 @@
 
 package werewolf
 
+import "github.com/Zereker/werewolf/engine"
+
 // 女巫药剂在 Vars 里的键名。
 //
 // 值为 "1" 表示尚在手中，用掉即删除（空值在 applyEffect 里等同删除）。
@@ -26,18 +28,18 @@ const (
 //
 // 没有登记的角色（含扩展角色）不属于任何阵营，也就不参与胜负计数。
 // 这是刻意的：内核没有默认阵营可给，而「悄悄算作好人」比「不算」更难查。
-var builtinRoleSetup = map[RoleType]RoleSetup{
+var builtinRoleSetup = map[RoleType]engine.RoleSetup{
 	RoleWerewolf: sideSetup(CampEvil, RoleCategoryWolf),
 	RoleSeer:     sideSetup(CampGood, RoleCategoryGod),
 	RoleHunter:   sideSetup(CampGood, RoleCategoryGod),
 	RoleGuard:    sideSetup(CampGood, RoleCategoryGod),
 	RoleVillager: sideSetup(CampGood, RoleCategoryVillager),
-	RoleWitch:    RoleSetupFunc(builtinWitchSetup),
+	RoleWitch:    engine.RoleSetupFunc(builtinWitchSetup),
 }
 
 // sideSetup 只发阵营与类别的初始状态。
-func sideSetup(camp Camp, category RoleCategory) RoleSetup {
-	return RoleSetupFunc(func(string, RoleType) map[string]string {
+func sideSetup(camp Camp, category RoleCategory) engine.RoleSetup {
+	return engine.RoleSetupFunc(func(string, RoleType) map[string]string {
 		return campVars(camp, category)
 	})
 }

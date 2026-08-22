@@ -12,6 +12,8 @@
 
 package werewolf
 
+import "github.com/Zereker/werewolf/engine"
+
 // 狼人杀的两个阵营。
 const (
 	CampGood Camp = "GOOD" // 好人
@@ -47,12 +49,12 @@ const (
 )
 
 // campOf 这名玩家属于哪一边，没有登记则为 CampUnspecified。
-func campOf(p PlayerInfo) Camp {
+func campOf(p engine.PlayerInfo) Camp {
 	return Camp(p.Var(VarCamp))
 }
 
 // categoryOf 这名玩家是什么类别，没有登记则为 RoleCategoryUnknown。
-func categoryOf(p PlayerInfo) RoleCategory {
+func categoryOf(p engine.PlayerInfo) RoleCategory {
 	return RoleCategory(p.Var(VarCategory))
 }
 
@@ -66,7 +68,7 @@ func categoryOf(p PlayerInfo) RoleCategory {
 //		}))
 func campVars(camp Camp, category RoleCategory) map[string]string {
 	out := make(map[string]string, 2)
-	if camp != CampUnspecified {
+	if camp != engine.CampUnspecified {
 		out[VarCamp] = string(camp)
 	}
 	if category != RoleCategoryUnknown {

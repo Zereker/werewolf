@@ -1,6 +1,7 @@
 package werewolf
 
 import (
+	"github.com/Zereker/werewolf/engine"
 	"testing"
 )
 
@@ -30,7 +31,7 @@ func newKnightGame(t *testing.T, extra ...EngineOption) *Engine {
 	t.Helper()
 
 	opts := append([]EngineOption{
-		WithRoleSetup(roleKnight, RoleSetupFunc(knightSetup)),
+		engine.WithRoleSetup(roleKnight, engine.RoleSetupFunc(knightSetup)),
 	}, extra...)
 
 	e := MustNew(DefaultRules(), opts...)
@@ -97,7 +98,7 @@ func TestRoleSetup_BuiltinWitchWalksTheSamePath(t *testing.T) {
 	t.Run("换掉之后空手上桌", func(t *testing.T) {
 		// 只留阵营，不发药——不留阵营的话开局就判好人少一个，
 		// 与这条测试想验的事无关
-		e := newKnightGame(t, WithRoleSetup(RoleWitch,
+		e := newKnightGame(t, engine.WithRoleSetup(RoleWitch,
 			sideSetup(CampGood, RoleCategoryGod)))
 
 		wi, _ := e.PlayerInfo("wi")
@@ -197,14 +198,14 @@ func TestRoleSetup_InitialStateIsNotHandedToThePlayer(t *testing.T) {
 
 	v := e.PlayerView("kn")
 	if v == nil {
-		t.Fatal("PlayerView(kn) 不应为 nil")
+		t.Fatal("eng.PlayerView(kn) 不应为 nil")
 	}
 	if len(v.RoleInfo) != 0 {
-		t.Fatalf("没有注册 RoleInfoProvider 时不该凭空出现专属信息: %v", v.RoleInfo)
+		t.Fatalf("没有注册 engine.RoleInfoProvider 时不该凭空出现专属信息: %v", v.RoleInfo)
 	}
 
 	// 注册之后才出现，键名由角色自己定
-	e2 := newKnightGame(t, WithRoleInfo(roleKnight, RoleInfoFunc(
+	e2 := newKnightGame(t, engine.WithRoleInfo(roleKnight, engine.RoleInfoFunc(
 		func(id string, view GameView) map[string]string {
 			if view.PlayerVar(id, varKnightDuel) == "" {
 				return nil
@@ -254,12 +255,12 @@ func TestRoleSetup_WitchSeesHerOwnPotions(t *testing.T) {
 
 // TestRoleSetup_NilRejected 与 WithResolver、WithRoleInfo 一致，拒绝 nil。
 func TestRoleSetup_NilRejected(t *testing.T) {
-	_, err := New(DefaultRules(), WithRoleSetup(roleKnight, nil))
+	_, err := New(DefaultRules(), engine.WithRoleSetup(roleKnight, nil))
 	if err == nil {
 		t.Fatal("注册 nil 的初始状态应当报错")
 	}
-	if code := CodeOf(err); code != CodeInvalidConfig {
-		t.Errorf("期望 CodeInvalidConfig，实际 %v", code)
+	if code := engine.CodeOf(err); code != engine.CodeInvalidConfig {
+		t.Errorf("期望 engine.CodeInvalidConfig，实际 %v", code)
 	}
 }
 

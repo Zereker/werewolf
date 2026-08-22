@@ -11,6 +11,8 @@
 
 package werewolf
 
+import "github.com/Zereker/werewolf/engine"
+
 // Rules 狼人杀的规则变体。
 //
 // 桌面上有分歧的规则做成开关，而不是替使用者选一个：同守同救到底死不死、
@@ -46,7 +48,7 @@ func (r Rules) Validate() error {
 	switch r.VictoryMode {
 	case VictoryModeSideWipe, VictoryModeTownWipe:
 	default:
-		return WrapError(CodeInvalidConfig, "unknown victory mode %q", string(r.VictoryMode))
+		return engine.WrapError(engine.CodeInvalidConfig, "unknown victory mode %q", string(r.VictoryMode))
 	}
 	return nil
 }
@@ -57,8 +59,8 @@ func (r Rules) Validate() error {
 // 「哪些阶段有解析器」一眼可见。第三方阶段经 WithResolver 注册。
 //
 // 表是规则的一部分，不是内核的：内核不知道 NIGHT_WITCH 该由谁结算。
-func builtinResolvers(rules Rules) map[PhaseType]Resolver {
-	return map[PhaseType]Resolver{
+func builtinResolvers(rules Rules) map[PhaseType]engine.Resolver {
+	return map[PhaseType]engine.Resolver{
 		PhaseDay:          NewDayResolver(),
 		PhaseVote:         NewVoteResolver(),
 		PhaseNightGuard:   NewGuardResolver(rules),
@@ -83,19 +85,19 @@ func builtinResolvers(rules Rules) map[PhaseType]Resolver {
 //		append(werewolf.Options(rules), werewolf.WithResolver(myPhase, myResolver))...)
 func Options(rules Rules) []EngineOption {
 	opts := []EngineOption{
-		WithVictoryChecker(DefaultVictoryChecker{Mode: rules.VictoryMode}),
-		WithAudience(builtinAudience),
-		WithTeammates(builtinTeammates),
-		WithSpeech(builtinSpeech),
+		engine.WithVictoryChecker(DefaultVictoryChecker{Mode: rules.VictoryMode}),
+		engine.WithAudience(builtinAudience),
+		engine.WithTeammates(builtinTeammates),
+		engine.WithSpeech(builtinSpeech),
 	}
 	for phase, r := range builtinResolvers(rules) {
-		opts = append(opts, WithResolver(phase, r))
+		opts = append(opts, engine.WithResolver(phase, r))
 	}
 	for role, p := range builtinRoleInfo {
-		opts = append(opts, WithRoleInfo(role, p))
+		opts = append(opts, engine.WithRoleInfo(role, p))
 	}
 	for role, su := range builtinRoleSetup {
-		opts = append(opts, WithRoleSetup(role, su))
+		opts = append(opts, engine.WithRoleSetup(role, su))
 	}
 	return opts
 }
@@ -111,7 +113,7 @@ func New(rules Rules, extra ...EngineOption) (*Engine, error) {
 	if err := rules.Validate(); err != nil {
 		return nil, err
 	}
-	return NewEngine(DefaultGameConfig(), append(Options(rules), extra...)...)
+	return engine.NewEngine(DefaultGameConfig(), append(Options(rules), extra...)...)
 }
 
 // NewWith 同 New，但使用给定的阶段配置。
@@ -121,7 +123,7 @@ func NewWith(config *GameConfig, rules Rules, extra ...EngineOption) (*Engine, e
 	if err := rules.Validate(); err != nil {
 		return nil, err
 	}
-	return NewEngine(config, append(Options(rules), extra...)...)
+	return engine.NewEngine(config, append(Options(rules), extra...)...)
 }
 
 // MustNewWith 同 NewWith，配置不合法时 panic。
@@ -158,7 +160,7 @@ func Restore(config *GameConfig, rules Rules, snap *Snapshot, extra ...EngineOpt
 	if config == nil {
 		config = DefaultGameConfig()
 	}
-	return RestoreEngine(config, snap, append(Options(rules), extra...)...)
+	return engine.RestoreEngine(config, snap, append(Options(rules), extra...)...)
 }
 
 // Replay 按效果流重建一局狼人杀。config 为 nil 时用默认阶段配置。
@@ -169,5 +171,5 @@ func Replay(config *GameConfig, rules Rules, log []*Effect, extra ...EngineOptio
 	if config == nil {
 		config = DefaultGameConfig()
 	}
-	return ReplayEngine(config, log, append(Options(rules), extra...)...)
+	return engine.ReplayEngine(config, log, append(Options(rules), extra...)...)
 }

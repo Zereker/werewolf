@@ -11,6 +11,60 @@
 
 ## 未发布
 
+### 根包的再导出砍成一个刻意的小集合
+
+**破坏性变更**：根包 `werewolf` 此前把内核的公开 API 整个再导出了一遍
+（`alias.go` 约 250 行，一百多个名字）。现在只留二十来个。被移除的那些
+仍然存在，位置变了：`import "github.com/Zereker/werewolf/engine"`。
+
+收录规则只有一条：**根包自己的导出 API 用得到的名字，才留在根包**。
+
+| 留下 | 去内核取 |
+|---|---|
+| `PhaseType` `RoleType` `SkillType` `EventType` `Camp` | `Event` `Message` `PlayerView` `PlayerInfo` `PhaseInfo` `PhaseReadiness` … |
+| `PhaseStart` `PhaseEnd` `RoleGod` `SkillSkip` `SkillAnnounce` `VarCamp` `VarPresent` | `NewEngine` `MustNewEngine` `RestoreEngine` `ReplayEngine` |
+| `GameConfig` `PhaseConfig` `PhaseStep` | 八个 `With*` 选项与 `Resolver` `RoleSetup` `AudienceProvider` 等扩展点类型 |
+| `Engine` `EngineOption` `SkillUse` `GameView` `Effect` `Snapshot` | 六个 `New*Effect` 构造函数 |
+| | `Logger` `Metrics` `Field` 与字段助手 |
+| | 全部错误码、哨兵错误、`WrapError` / `CodeOf` / `HasCode` |
+| | `Board` `NewGameView` `Seat` `Mark`（解析器单测） |
+| | 快照子结构与 `SnapshotVersion` |
+
+理由：那份完整镜像等于宣称「两层拆分与使用者无关」，可它恰恰是这个库
+最想说的事。砍完之后，**开一局狼人杀仍然只 import 根包**，而一旦要改
+规则——自己写解析器、换胜负判定、接日志、按错误码分支——调用点上就会
+出现 `engine.` 这个前缀。边界因此在代码里看得见，不只在文档里。
+
+规则包自己带头这么写：`resolver.go`、`rolesetup.go`、`victory.go`、
+`wolfboundary.go` 全部改成显式的 `engine.` 调用。三个 example 同理。
+
+没有任何行为变化：全部是别名的增删与调用点的限定符。验证方式是把两个
+确定性示例（`example`、`example/extension`）改前改后的输出逐字节比对，
+完全一致；`make check` 与 5000 局随机对局照常通过，覆盖率仍是 94.6%。
+
+### 修掉 example/cli 的 `-seed` 复现不了一整局
+
+比对示例输出时发现的：`-seed` 只喂给了发牌，托管（`auto`）挑技能与目标
+走的是全局 `rand`。同一个种子跑两次结果不一样——拿它复现一个 bug 是
+复现不出来的。现在牌桌持有那个随机源，发牌与托管共用，同种子逐字节可复现
+（连跑三次比对确认）。
+
+### 内核有了自己的 README
+
+新增 [`engine/README.md`](engine/README.md)：内核是什么、唯一的写入点、
+四条状态原语、信息边界、八个扩展点、怎么用 `Board` 单测自己的解析器、
+内核不做什么。附一套两页纸的完整规则（红蓝公投）作为可运行的最小例子——
+文中的两段代码都是先跑通再抄进来的。
+
+顺带修掉几处不实的说法：README 与 `doc.go` 里「把 grep 指向 `engine/`，
+那里没有一个『女巫』『狼人』这样的取值」是查不实的——测试夹具与注释里
+就有。换成能查的说法：内核的词汇表只有五个非空取值（`START` `END`
+`GOD` `SKIP` `ANNOUNCE`），全在 `engine/types.go` 里。`WithRoleSetup`
+的文档示例还停留在整数枚举时代（`RoleType = 1001`），一并改掉。README
+里那段存档恢复的示例引用了一个从未定义的 `config` 变量，编译不过——
+现在它把配置留在手上再传回去，正好把「配置必须与保存时一致」演示出来。
+README 的两段完整示例这次是真的跑过的。
+
 ### 清掉三笔为兼容留下的折中
 
 拆包时有几处是为了「不破坏刚发的 v1.5.0」才留的折中。这个库目前没有已知的

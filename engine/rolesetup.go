@@ -33,12 +33,12 @@ func (f RoleSetupFunc) Setup(playerID string, role RoleType) map[string]string {
 
 // WithRoleSetup 给某个角色注册初始状态。
 //
-//	const roleKnight werewolf.RoleType = 1001
+//	const roleKnight = engine.RoleType("KNIGHT")
 //
-//	engine, _ := werewolf.NewEngine(cfg,
-//		werewolf.WithResolver(phaseKnight, knightResolver{}),
-//		werewolf.WithRoleSetup(roleKnight, werewolf.RoleSetupFunc(
-//			func(id string, role werewolf.RoleType) map[string]string {
+//	e, _ := engine.NewEngine(cfg,
+//		engine.WithResolver(phaseKnight, knightResolver{}),
+//		engine.WithRoleSetup(roleKnight, engine.RoleSetupFunc(
+//			func(id string, role engine.RoleType) map[string]string {
 //				return map[string]string{"knight.duel": "1"}
 //			})))
 //

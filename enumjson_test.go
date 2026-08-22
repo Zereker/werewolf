@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"encoding/json"
+	"github.com/Zereker/werewolf/engine"
 	"strings"
 	"testing"
 )
@@ -15,19 +16,19 @@ import (
 
 func TestEnumJSON_MarshalsAsNames(t *testing.T) {
 	type box struct {
-		Phase PhaseType    `json:"phase"`
-		Role  RoleType     `json:"role"`
-		Skill SkillType    `json:"skill"`
-		Event EventType    `json:"event"`
-		Camp  Camp         `json:"camp"`
-		Cat   RoleCategory `json:"category"`
-		Code  ErrorCode    `json:"code"`
+		Phase PhaseType        `json:"phase"`
+		Role  RoleType         `json:"role"`
+		Skill SkillType        `json:"skill"`
+		Event EventType        `json:"event"`
+		Camp  Camp             `json:"camp"`
+		Cat   RoleCategory     `json:"category"`
+		Code  engine.ErrorCode `json:"code"`
 	}
 
 	got, err := json.Marshal(box{
 		Phase: PhaseNightGuard, Role: RoleWitch, Skill: SkillAntidote,
-		Event: EventSetAlive, Camp: CampEvil, Cat: RoleCategoryGod,
-		Code: CodeInvalidBoard,
+		Event: engine.EventSetAlive, Camp: CampEvil, Cat: RoleCategoryGod,
+		Code: engine.CodeInvalidBoard,
 	})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -85,8 +86,8 @@ func TestEnumJSON_ZeroValueIsUnspecified(t *testing.T) {
 		e EventType
 		c Camp
 	)
-	if p != PhaseUnspecified || r != RoleUnspecified || s != SkillUnspecified ||
-		e != EventUnspecified || c != CampUnspecified {
+	if p != engine.PhaseUnspecified || r != engine.RoleUnspecified || s != engine.SkillUnspecified ||
+		e != engine.EventUnspecified || c != engine.CampUnspecified {
 		t.Error("零值应当等于各自的 Unspecified")
 	}
 	// String() 仍然给出可读的名字，日志里不会出现一个空白

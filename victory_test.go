@@ -1,6 +1,10 @@
 package werewolf
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Zereker/werewolf/engine"
+)
 
 // campLovers 一个第三方阵营。
 //
@@ -15,7 +19,7 @@ const campLovers Camp = "LOVERS"
 // 第三方阵营连「赢」这个结论都报不出去。
 type loversWin struct {
 	a, b  string
-	inner VictoryChecker
+	inner engine.VictoryChecker
 }
 
 func (l loversWin) CheckVictory(view GameView) (bool, Camp) {
@@ -37,7 +41,7 @@ func (l loversWin) CheckVictory(view GameView) (bool, Camp) {
 func TestVictoryChecker_ThirdCamp(t *testing.T) {
 	checker := loversWin{a: "w1", b: "v1", inner: DefaultVictoryChecker{}}
 
-	g := newRuleGameWith(t, nil, []EngineOption{WithVictoryChecker(checker)},
+	g := newRuleGameWith(t, nil, []EngineOption{engine.WithVictoryChecker(checker)},
 		seats(wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"))...)
 
 	// 还没到只剩两人，走的是内置规则
@@ -61,7 +65,7 @@ func TestVictoryChecker_ThirdCamp(t *testing.T) {
 func TestVictoryChecker_FallsBackToBuiltin(t *testing.T) {
 	checker := loversWin{a: "w1", b: "v1", inner: DefaultVictoryChecker{}}
 
-	g := newRuleGameWith(t, nil, []EngineOption{WithVictoryChecker(checker)},
+	g := newRuleGameWith(t, nil, []EngineOption{engine.WithVictoryChecker(checker)},
 		seats(wolf("w1"), wolf("w2"), seer("s"), villagers("v1", "v2", "v3"))...)
 
 	// 狼全死：情侣那条不成立，内置规则判好人胜
@@ -93,7 +97,7 @@ func TestVictoryChecker_DefaultIsUnchanged(t *testing.T) {
 
 // TestWithVictoryChecker_RejectsNil 传 nil 只可能是漏了，构造时就该报出来。
 func TestWithVictoryChecker_RejectsNil(t *testing.T) {
-	if _, err := NewEngine(nil, WithVictoryChecker(nil)); err == nil {
+	if _, err := engine.NewEngine(nil, engine.WithVictoryChecker(nil)); err == nil {
 		t.Error("nil 判定器应当被拒绝")
 	}
 }

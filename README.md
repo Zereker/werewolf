@@ -51,7 +51,7 @@ import (
 func main() {
 	// 1. 组装一局。DefaultRules 是维基那一套规则；
 	//    配置会先经校验，残缺的阶段流转图在这里就会被拒绝
-	engine, err := werewolf.New(werewolf.DefaultRules())
+	g, err := werewolf.New(werewolf.DefaultRules())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -67,40 +67,40 @@ func main() {
 		"v1":     werewolf.RoleVillager,
 		"v2":     werewolf.RoleVillager,
 	} {
-		must(engine.AddPlayer(id, role))
+		must(g.AddPlayer(id, role))
 	}
 
 	// 3. 开始游戏，进入第一夜的守卫阶段
-	if err := engine.Start(); err != nil {
+	if err := g.Start(); err != nil {
 		log.Fatal(err)
 	}
 
 	// 4. 按阶段推进：每个阶段先提交技能，再调用 EndPhase 结算
 	//    Start() 之后是 NIGHT_GUARD，各阶段可提交的技能由 PhaseInfo 给出
-	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+	must(g.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "guard", Skill: werewolf.SkillProtect, TargetID: "seer",
 	}))
-	next(engine) // NIGHT_GUARD -> NIGHT_WOLF
+	next(g) // NIGHT_GUARD -> NIGHT_WOLF
 
-	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+	must(g.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "w1", Skill: werewolf.SkillKill, TargetID: "v1",
 	}))
-	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+	must(g.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "w2", Skill: werewolf.SkillKill, TargetID: "v1",
 	}))
-	next(engine) // NIGHT_WOLF -> NIGHT_WITCH
+	next(g) // NIGHT_WOLF -> NIGHT_WITCH
 
 	// 女巫此刻可以看到刀口（解药还在手上）
-	fmt.Printf("女巫看到的刀口: %s\n", witchSees(engine))
-	next(engine) // NIGHT_WITCH -> NIGHT_SEER
+	fmt.Printf("女巫看到的刀口: %s\n", witchSees(g))
+	next(g) // NIGHT_WITCH -> NIGHT_SEER
 
-	must(engine.SubmitSkillUse(&werewolf.SkillUse{
+	must(g.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "seer", Skill: werewolf.SkillCheck, TargetID: "w1",
 	}))
-	next(engine) // NIGHT_SEER -> NIGHT_RESOLVE
+	next(g) // NIGHT_SEER -> NIGHT_RESOLVE
 
 	// 5. 夜晚结算：死亡在此产生
-	effects, err := engine.EndPhase()
+	effects, err := g.EndPhase()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,8 +108,8 @@ func main() {
 		fmt.Printf("效果: %v -> %s (canceled=%v)\n", e.Type, e.TargetID, e.Canceled)
 	}
 
-	v1, _ := engine.PlayerInfo("v1")
-	fmt.Printf("天亮了，当前阶段=%v，v1 存活=%v\n", engine.Phase(), v1.Alive)
+	v1, _ := g.PlayerInfo("v1")
+	fmt.Printf("天亮了，当前阶段=%v，v1 存活=%v\n", g.Phase(), v1.Alive)
 }
 
 func next(e *werewolf.Engine) {
@@ -146,10 +146,10 @@ func must(err error) {
 - 判定胜负条件
 
 ```go
-engine := werewolf.MustNew(werewolf.DefaultRules())
-engine.Start()
-engine.SubmitSkillUse(use)
-effects, _ := engine.EndPhase()
+g := werewolf.MustNew(werewolf.DefaultRules())
+g.Start()
+g.SubmitSkillUse(use)
+effects, _ := g.EndPhase()
 ```
 
 `EndPhase` 是推进游戏的唯一入口，阶段流转与猎人等动态阶段都由它处理。
@@ -159,7 +159,7 @@ effects, _ := engine.EndPhase()
 ```go
 // 只能在 Start 之前调用。内置角色与扩展角色走同一个入口——
 // 阵营、类别、道具这些初始状态写在角色自己的 RoleSetup 里
-err := engine.AddPlayer("p1", werewolf.RoleWerewolf)
+err := g.AddPlayer("p1", werewolf.RoleWerewolf)
 ```
 
 以下情况会返回错误，而不是静默生效：
@@ -189,7 +189,7 @@ rules.SameGuardKillIsEmpty = true     // 守卫守住刀口时空刀（守护生
 rules.GuardSaveTogetherDies = true    // 同守同救，目标依然死亡
 rules.VictoryMode = werewolf.VictoryModeSideWipe // 屠边判定
 
-engine, _ := werewolf.New(rules)
+g, _ := werewolf.New(rules)
 ```
 
 规则开关**不在 `GameConfig` 上**：那是阶段机的配置（起始阶段、阶段图、
@@ -286,7 +286,7 @@ type Effect struct {
 `PlayerView` 返回的内容可以直接发给该玩家：
 
 ```go
-v := engine.PlayerView("p1")
+v := g.PlayerView("p1")
 
 v.Self            // 自己的身份、阵营、存活状态
 v.Players         // 全场公开信息；身份只对自己与狼队友可见
@@ -300,8 +300,8 @@ v.RoleInfo        // 角色专属信息：女巫的刀口 v.RoleInfo[RoleInfoKil
 
 ```go
 // 推的一路：OnEvent 给的就是 Event，直接问
-engine.OnEvent(func(ev *werewolf.Event) {
-    audience, known := engine.AudienceOf(ev)
+g.OnEvent(func(ev *engine.Event) {
+    audience, known := g.AudienceOf(ev)
     if !known {
         return // 第三方角色自定义的事件类型，引擎无从判断，调用方自己路由
     }
@@ -312,7 +312,7 @@ engine.OnEvent(func(ev *werewolf.Event) {
 
 // 拉的一路：EndPhase 给的是内部的 Effect，转一下
 for _, effect := range effects {
-    audience, _ := engine.AudienceOf(effect.ToEvent())
+    audience, _ := g.AudienceOf(effect.ToEvent())
     ...
 }
 ```
@@ -334,7 +334,7 @@ for _, effect := range effects {
 引擎不计时，但它知道谁还没行动：
 
 ```go
-r := engine.PhaseReadiness()
+r := g.PhaseReadiness()
 
 for _, p := range r.Pending {
     fmt.Println("必须等:", p.PlayerID, p.Skill)   // 不动就不能推进
@@ -343,7 +343,7 @@ for _, p := range r.Optional {
     fmt.Println("可以催:", p.PlayerID, p.Skill)   // 不动也合法
 }
 
-engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用方决定
+g.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用方决定
 ```
 
 **`Ready` 不表示「所有人都动过了」**：默认配置里只有狼人商刀与投票是
@@ -360,6 +360,11 @@ engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用
 内置六个角色只是一套默认板子。加入狼王、白痴、骑士等角色不需要 fork：
 
 ```go
+import (
+    "github.com/Zereker/werewolf"
+    "github.com/Zereker/werewolf/engine" // 扩展点住在内核包
+)
+
 const (
     // 枚举的底层是字符串，用自己的名字即可，不会与内置的撞号
     roleWolfKing  = werewolf.RoleType("WOLF_KING")
@@ -374,18 +379,20 @@ cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
     NextPhase: werewolf.PhaseNightGuard,
 }
 
-engine, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
-    werewolf.WithResolver(phaseWolfKing, &wolfKingResolver{}),
+g, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
+    engine.WithResolver(phaseWolfKing, &wolfKingResolver{}),
     // 阵营与类别写在角色自己身上，入座时不用再给一遍
-    werewolf.WithRoleSetup(roleWolfKing, werewolf.RoleSetupFunc(
+    engine.WithRoleSetup(roleWolfKing, engine.RoleSetupFunc(
         func(string, werewolf.RoleType) map[string]string {
             return werewolf.CampVars(werewolf.CampEvil, werewolf.RoleCategoryWolf)
         })))
-engine.AddPlayer("wk", roleWolfKing)
+g.AddPlayer("wk", roleWolfKing)
 ```
 
-`WithResolver` 是构造选项，`New` / `NewWith` / `Restore` / `Replay`
-四个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
+这八个 `With*` 都住在内核包（`engine.WithResolver`、`engine.WithRoleSetup`……），
+用它们就得 import `werewolf/engine`——扩展规则本来就是在动内核的接线。
+它们是构造选项，`New` / `NewWith` / `Restore` / `Replay` 四个入口都接受，
+`engine.WithLogger` / `engine.WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
 扩展能改动的八处，都由构造选项给出：
@@ -500,8 +507,8 @@ $ nc localhost 9000
 ## 效果流与回放
 
 ```go
-log := engine.EffectLog()                    // 自建局以来的完整事件流
-replayed, _ := werewolf.ReplayEngine(cfg, log) // 按流重建局面
+log := g.EffectLog()                    // 自建局以来的完整事件流
+replayed, _ := werewolf.Replay(cfg, rules, log) // 按流重建局面
 ```
 
 效果流是**历史**，快照是**状态**：持久化用 `Snapshot`，
@@ -509,7 +516,7 @@ replayed, _ := werewolf.ReplayEngine(cfg, log) // 按流重建局面
 
 ## 存档与恢复
 
-`Engine.Snapshot()` 导出完整局面，`RestoreEngine` 从快照重建引擎。
+`Engine.Snapshot()` 导出完整局面，`werewolf.Restore` 从快照重建引擎。
 快照是纯数据结构，可直接用 `encoding/json` 序列化。
 
 ```go
@@ -524,27 +531,29 @@ import (
 )
 
 func main() {
-	engine := werewolf.MustNew(werewolf.DefaultRules()) // 配置是常量时可用 Must 版本
+	// 配置留在手上：恢复时要原样再给一遍
+	cfg, rules := werewolf.DefaultGameConfig(), werewolf.DefaultRules()
+	g := werewolf.MustNewWith(cfg, rules) // 配置是常量时可用 Must 版本
 	for id, role := range map[string]werewolf.RoleType{
 		"w1": werewolf.RoleWerewolf,
 		"wi": werewolf.RoleWitch,
 		"v1": werewolf.RoleVillager,
 		"v2": werewolf.RoleVillager,
 	} {
-		if err := engine.AddPlayer(id, role); err != nil {
+		if err := g.AddPlayer(id, role); err != nil {
 			log.Fatal(err)
 		}
 	}
-	if err := engine.Start(); err != nil {
+	if err := g.Start(); err != nil {
 		log.Fatal(err)
 	}
-	engine.EndPhase() // -> NIGHT_WOLF
-	engine.SubmitSkillUse(&werewolf.SkillUse{
+	g.EndPhase() // -> NIGHT_WOLF
+	g.SubmitSkillUse(&werewolf.SkillUse{
 		PlayerID: "w1", Skill: werewolf.SkillKill, TargetID: "v1",
 	})
 
 	// 保存：技能已提交、尚未结算，快照会把它一并带上
-	data, err := json.Marshal(engine.Snapshot())
+	data, err := json.Marshal(g.Snapshot())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -554,7 +563,7 @@ func main() {
 	if err := json.Unmarshal(data, &snap); err != nil {
 		log.Fatal(err)
 	}
-	restored, err := werewolf.RestoreEngine(config, &snap)
+	restored, err := werewolf.Restore(cfg, rules, &snap)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -642,32 +651,50 @@ NIGHT_GUARD → NIGHT_WOLF → NIGHT_WITCH → NIGHT_SEER → NIGHT_RESOLVE
 ## 项目结构
 
 ```
-werewolf/
-├── config.go       # 游戏配置、阶段配置、规则开关
-├── effect.go       # 效果类型定义
-├── engine.go       # 核心引擎（状态机）
-├── errors.go       # 错误定义
-├── logger.go       # 日志与指标接口
-├── phase.go        # 阶段管理器、技能校验
-├── resolver.go     # 各阶段解析器
-├── effectlog.go    # 效果流日志与回放
-├── events.go       # 事件通知
-├── messaging.go    # 玩家发言的路由
-├── phase_info.go   # 阶段信息（上帝视角）
-├── player_view.go  # 玩家视角与效果受众
-├── readiness.go    # 阶段就绪判定
-├── snapshot.go     # 存档导出与恢复
-├── state.go        # 游戏状态、角色类别、胜负判定
-├── doc.go          # 包文档
-├── types.go        # 阶段、阵营、角色、技能
-├── event.go        # 对外事件
-├── view.go         # Resolver 的只读视图
-├── rules_test.go      # 以维基百科规则为基准的一致性测试
-├── extension_test.go  # 第三方扩展契约（以狼王为例）
-├── example/        # 可运行示例
-│   ├── cli/        # 命令行主持台（真实使用者）
-│   ├── netserver/  # TCP 服务端（推送、并发、断线重连）
-│   └── extension/  # 自定义角色（白痴）
+werewolf/                    # 规则包：狼人杀这一套怎么玩
+├── vocab.go                 # 词汇表：十个阶段、六个角色、八个技能、九个事件
+├── board.go                 # 默认板子：阶段环、各阶段建议超时、屠边/屠城
+├── rules.go                 # 规则开关与 Options()——把内核装配成一局狼人杀
+├── resolver.go              # 八个解析器，各管一个阶段
+├── rolesetup.go             # 每个角色带着什么入座（药剂、阵营、类别）
+├── roleinfo.go              # 角色专属信息（女巫看到的刀口）
+├── victory.go               # 胜负判定
+├── wolfboundary.go          # 信息边界：受众、队友、发言
+├── wolfcamp.go              # 阵营与角色类别
+├── nightstate.go            # 夜间状态的键名与读法
+├── alias.go                 # 内核名字的小集合再导出（收录规则见文件头）
+├── doc.go                   # 包文档
+│
+├── engine/                  # 内核：不知道狼人杀是什么
+│   ├── README.md            # 内核自己的说明
+│   ├── engine.go            # 状态机
+│   ├── config.go            # 阶段机的配置
+│   ├── phase.go             # 阶段流转与技能校验
+│   ├── resolver.go          # Resolver 接口
+│   ├── effect.go            # 四条状态原语
+│   ├── state.go             # 状态与唯一的写入点
+│   ├── view.go              # Resolver 的只读视图
+│   ├── boundary.go          # 受众/队友/发言三个扩展点
+│   ├── player_view.go       # 玩家视角与效果受众
+│   ├── phase_info.go        # 阶段信息（上帝视角）
+│   ├── readiness.go         # 阶段就绪判定
+│   ├── victory.go           # VictoryChecker 接口
+│   ├── rolesetup.go         # RoleSetup 扩展点
+│   ├── roleinfo.go          # RoleInfoProvider 扩展点
+│   ├── option.go            # 构造选项
+│   ├── snapshot.go          # 存档导出与恢复
+│   ├── effectlog.go         # 效果流日志与回放
+│   ├── event.go / events.go # 对外事件与通知
+│   ├── messaging.go         # 玩家发言的路由
+│   ├── errors.go            # 错误码与哨兵错误
+│   ├── logger.go            # 日志与指标接口
+│   ├── testview.go          # Board：单测解析器用的手摆局面
+│   └── types.go             # 词汇表的类型（取值在规则包）
+│
+├── example/                 # 可运行示例
+│   ├── cli/                 # 命令行主持台（真实使用者）
+│   ├── netserver/           # TCP 服务端（推送、并发、断线重连）
+│   └── extension/           # 自定义角色（白痴）
 └── docs/
     └── ARCHITECTURE.md
 ```
@@ -746,12 +773,21 @@ API 是承诺。
 | `github.com/Zereker/werewolf/engine` | 内核：玩家、阶段环、四条状态原语、信息边界 |
 
 **「规则只用公开 API」由编译器保证**，不靠自觉——规则包在内核之外，它能用的
-入口使用者也能用。想验证的话把 grep 指向 `engine/`：那里没有一个「女巫」
-「狼人」这样的取值。
+入口使用者也能用。想验证的话看 [`engine/types.go`](engine/types.go)：内核的
+词汇表只有五个非空取值——`START`、`END`、`GOD`、`SKIP`、`ANNOUNCE`，外加
+各类型的空零值。「女巫」「狼人」一个都没有，它们全在根包的
+[`vocab.go`](vocab.go) 里。
 
-使用者**不必 import 两个包**：内核的公开 API 在根包全部再导出了一遍
-（见 `alias.go`），`werewolf.Effect` 与 `engine.Effect` 是同一个类型。
-要写一套自己的规则包，直接 import `werewolf/engine`。
+**开一局只 import 根包就够。** 根包把内核的一小部分名字再导出了一遍
+（见 [`alias.go`](alias.go)，二十来个），收录规则只有一条：本包自己的
+导出 API 用得到的才留——`SkillUse`、`GameView`、`Effect`、`Snapshot`、
+词汇表的类型与取值。它们是纯别名，`werewolf.Effect` 与 `engine.Effect`
+是同一个类型。
+
+**一旦要改规则，就会写出 `engine.` 这个前缀**：自己写解析器、换胜负判定、
+接日志与指标、按错误码分支、拆快照——都从 `werewolf/engine` 取。这不是
+遗漏，是想让边界在调用点上看得见。本包自己的 `resolver.go`、`rolesetup.go`
+就是这么写的。内核的完整 API 见 [engine/README.md](engine/README.md)。
 
 ## 许可证
 
