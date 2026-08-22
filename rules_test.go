@@ -108,7 +108,22 @@ func newRuleGame(t *testing.T, cfg *GameConfig, seats ...seat) *ruleGame {
 // 日志、指标、自定义解析器都只能在构造时给出，故需要这个入口。
 func newRuleGameWith(t *testing.T, cfg *GameConfig, opts []EngineOption, seats ...seat) *ruleGame {
 	t.Helper()
-	e := MustNewEngine(cfg, opts...)
+	return newRuleGameRules(t, cfg, DefaultRules(), opts, seats...)
+}
+
+// newRuleGameRules 同 newRuleGameWith，另外指定规则开关。
+//
+// 规则开关此前挂在 GameConfig 上，现在住在 Rules 上——内核不该认得
+// 「女巫能不能自救」这种事。cfg 为 nil 时用默认阶段配置。
+func newRuleGameRules(t *testing.T, cfg *GameConfig, rules Rules, opts []EngineOption, seats ...seat) *ruleGame {
+	t.Helper()
+	if cfg == nil {
+		cfg = DefaultGameConfig()
+	}
+	e, err := NewWith(cfg, rules, opts...)
+	if err != nil {
+		t.Fatalf("NewWith 失败: %v", err)
+	}
 	for _, st := range seats {
 		if err := e.AddPlayer(st.id, st.role); err != nil {
 			t.Fatalf("AddPlayer(%s, %v) 失败: %v", st.id, st.role, err)
@@ -118,6 +133,12 @@ func newRuleGameWith(t *testing.T, cfg *GameConfig, opts []EngineOption, seats .
 		t.Fatalf("Start() 失败: %v", err)
 	}
 	return &ruleGame{t: t, e: e}
+}
+
+// newRuleGameR 按给定规则开关建局，使用默认阶段配置。
+func newRuleGameR(t *testing.T, rules Rules, seats ...seat) *ruleGame {
+	t.Helper()
+	return newRuleGameRules(t, nil, rules, nil, seats...)
 }
 
 // seats 拼接座位表。
@@ -425,9 +446,9 @@ func TestRule_R4_WitchCannotSaveSelf(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := DefaultGameConfig()
-			cfg.WitchCanSaveSelf = tc.canSaveSelf
-			g := newRuleGame(t, cfg, seats(
+			cfgRules := DefaultRules()
+			cfgRules.WitchCanSaveSelf = tc.canSaveSelf
+			g := newRuleGameR(t, cfgRules, seats(
 				wolf("w1"), wolf("w2"), witch("wi"), seer("s"),
 				villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 			)...)
@@ -467,9 +488,9 @@ func TestRule_R5_GuardMayProtectSelf(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := DefaultGameConfig()
-			cfg.GuardCanProtectSelf = tc.canProtectSelf
-			g := newRuleGame(t, cfg, seats(
+			cfgRules := DefaultRules()
+			cfgRules.GuardCanProtectSelf = tc.canProtectSelf
+			g := newRuleGameR(t, cfgRules, seats(
 				wolf("w1"), wolf("w2"), guard("g"), seer("s"),
 				villagers("v1", "v2", "v3", "v4", "v5", "v6"),
 			)...)
@@ -1066,10 +1087,10 @@ func TestRule_R10_WolvesWinByWipingOutOneSide(t *testing.T) {
 // 维基记载的是「依然會死亡」，故 GuardSaveTogetherDies 默认为 true；
 // 关掉之后守护与解药叠加，目标存活。
 func TestRule_R7_GuardSaveTogetherDiesDisabled(t *testing.T) {
-	cfg := DefaultGameConfig()
-	cfg.GuardSaveTogetherDies = false
+	cfgRules := DefaultRules()
+	cfgRules.GuardSaveTogetherDies = false
 
-	g := newRuleGame(t, cfg, seats(
+	g := newRuleGameR(t, cfgRules, seats(
 		wolf("w1"), wolf("w2"), guard("g"), witch("wi"),
 		villagers("v1", "v2", "v3", "v4", "v5"),
 	)...)
@@ -1099,7 +1120,7 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	// 它的 setup 里，与内置角色走同一张表
 	const roleHiddenWolf = RoleType("HIDDEN_WOLF")
 
-	e := MustNewEngine(nil, WithRoleSetup(roleHiddenWolf,
+	e := MustNew(DefaultRules(), WithRoleSetup(roleHiddenWolf,
 		sideSetup(CampEvil, RoleCategoryGod)))
 	mustAdd(t, e, "w1", RoleWerewolf)
 	if err := e.AddPlayer("hidden", roleHiddenWolf); err != nil {
@@ -1128,10 +1149,10 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 
 // TestRule_R10_VictoryModeTownWipe 屠城判定的变体开关。
 func TestRule_R10_VictoryModeTownWipe(t *testing.T) {
-	cfg := DefaultGameConfig()
-	cfg.VictoryMode = VictoryModeTownWipe
+	cfgRules := DefaultRules()
+	cfgRules.VictoryMode = VictoryModeTownWipe
 
-	g := newRuleGame(t, cfg, seats(
+	g := newRuleGameR(t, cfgRules, seats(
 		wolf("w1"), wolf("w2"),
 		seer("s"), witch("wi"),
 		villagers("v1", "v2"),
@@ -1231,7 +1252,7 @@ func TestRule_R10_RoleCategories(t *testing.T) {
 	// 没有登记的角色不属于任何阵营——这是刻意的：内核没有默认阵营可给，
 	// 而「悄悄算作好人」比「不算」更难查
 	const roleUnregistered = RoleType("UNREGISTERED")
-	e2 := MustNewEngine(nil)
+	e2 := MustNew(DefaultRules())
 	if err := e2.AddPlayer("x", roleUnregistered); err != nil {
 		t.Fatalf("AddPlayer 失败: %v", err)
 	}

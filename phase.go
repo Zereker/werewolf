@@ -8,33 +8,15 @@ type phaseManager struct {
 	resolvers map[PhaseType]Resolver
 }
 
-// builtinResolvers 内置阶段的解析器。
+// newPhaseManager 创建阶段管理器。
 //
-// 做成表而不是一串赋值：加内置阶段时只需要在这里加一行，
-// 也让「哪些阶段有解析器」一眼可见。
-// 第三方阶段通过 WithResolver 注册，不进这张表。
-var builtinResolvers = map[PhaseType]func() Resolver{
-	PhaseDay:          func() Resolver { return NewDayResolver() },
-	PhaseVote:         func() Resolver { return NewVoteResolver() },
-	PhaseNightGuard:   func() Resolver { return NewGuardResolver() },
-	PhaseNightWolf:    func() Resolver { return NewWolfResolver() },
-	PhaseNightWitch:   func() Resolver { return NewWitchResolver() },
-	PhaseNightSeer:    func() Resolver { return NewSeerResolver() },
-	PhaseNightResolve: func() Resolver { return NewNightResolveResolver() },
-	PhaseNightHunter:  func() Resolver { return NewHunterResolver() },
-	PhaseDayHunter:    func() Resolver { return NewHunterResolver() },
-}
-
-// newPhaseManager 创建阶段管理器
+// 不装任何默认解析器：内核不知道哪个阶段该由谁结算。狼人杀的那一批
+// 由 werewolf.Options 作为构造选项传进来。
 func newPhaseManager(config *GameConfig) *phaseManager {
-	p := &phaseManager{
+	return &phaseManager{
 		config:    config,
-		resolvers: make(map[PhaseType]Resolver, len(builtinResolvers)),
+		resolvers: make(map[PhaseType]Resolver, 8),
 	}
-	for phase, make := range builtinResolvers {
-		p.resolvers[phase] = make()
-	}
-	return p
 }
 
 // registerResolver 注册或替换某阶段的解析器

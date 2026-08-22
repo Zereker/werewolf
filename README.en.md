@@ -46,7 +46,7 @@ go get github.com/Zereker/werewolf
 ## Quick start
 
 ```go
-engine, _ := werewolf.NewEngine(nil) // nil = the default 9-player board
+engine, _ := werewolf.New(werewolf.DefaultRules()) // the default 9-player board
 
 for id, role := range map[string]werewolf.RoleType{
     "w1": werewolf.RoleWerewolf, "w2": werewolf.RoleWerewolf,
@@ -133,12 +133,14 @@ randomized games per test run.
 Werewolf rules, so that Werewolf becomes the *first* rules pack rather than the
 only one.
 
-To be precise about how far that has got: the **behaviour** is separated — no
-code path in the engine recognises a specific role, camp, or cause of death.
-The **wiring** is still backwards: `NewEngine` installs the Werewolf defaults
-directly, and there is still a table mapping Werewolf phases to Werewolf
-resolvers. v2 inverts that, so the rules pack assembles the kernel rather than
-the kernel knowing the rules, and moves the module path to `/v2`.
+To be precise about how far that has got: no code path in the engine recognises
+a specific role, camp, or cause of death, and the wiring now runs the right way
+— `NewEngine` builds a state machine that knows nothing (no resolvers, no
+victory condition, no information boundary), and `werewolf.Options` installs the
+whole rule set through the same public options a third party would use.
+
+What is left is the physical split into two packages, so that "the rules only
+use public API" is enforced by the compiler rather than by discipline.
 
 **v2.0.0 will be the last breaking release** — after it, the public API is a
 commitment. See [CHANGELOG.md](CHANGELOG.md) for the roadmap and the full list

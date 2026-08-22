@@ -49,9 +49,9 @@ import (
 )
 
 func main() {
-	// 1. 创建引擎（nil 表示使用默认配置）。
+	// 1. 组装一局。DefaultRules 是维基那一套规则；
 	//    配置会先经校验，残缺的阶段流转图在这里就会被拒绝
-	engine, err := werewolf.NewEngine(nil)
+	engine, err := werewolf.New(werewolf.DefaultRules())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func must(err error) {
 - 判定胜负条件
 
 ```go
-engine := werewolf.NewEngine(config)
+engine := werewolf.MustNew(werewolf.DefaultRules())
 engine.Start()
 engine.SubmitSkillUse(use)
 effects, _ := engine.EndPhase()
@@ -171,25 +171,34 @@ err := engine.AddPlayer("p1", werewolf.RoleWerewolf)
 | 角色是上帝或未指定 | `INVALID_ROLE` |
 | 游戏已开始 | `ErrGameAlreadyStarted` |
 
-`Start` 同样会校验板子：缺狼返回 `ErrNoWerewolf`，缺好人返回 `ErrNoGoodPlayer`，
-重复调用返回 `ErrGameAlreadyStarted`。
+`Start` 同样会校验板子：**开局就已分出胜负**的局面返回 `ErrInvalidBoard`
+（缺狼、缺好人、屠城模式下狼不比好人少都属于这一类），重复调用返回
+`ErrGameAlreadyStarted`。
 
-### GameConfig（游戏配置）
+### Rules（规则开关）
 
-声明式规则配置：
+桌面上有分歧的规则做成开关，引擎不替谁做主：
 
 ```go
-config := &werewolf.GameConfig{
-    WitchCanSaveSelf:       false, // 女巫不能自救
-    WitchCanUseBothPotions: false, // 女巫不能在同一夜同时用解药和毒药
-    GuardCanProtectSelf:    true,  // 守卫可以自守
-    GuardCanRepeat:         false, // 守卫不能连续守同一人
-    SameGuardKillIsEmpty:   true,  // 守卫守住刀口时空刀（守护生效）
-    GuardSaveTogetherDies:  true,  // 同守同救，目标依然死亡
+rules := werewolf.DefaultRules()      // 维基那一套
+rules.WitchCanSaveSelf = false        // 女巫不能自救
+rules.WitchCanUseBothPotions = false  // 女巫不能在同一夜同时用解药和毒药
+rules.GuardCanProtectSelf = true      // 守卫可以自守
+rules.GuardCanRepeat = false          // 守卫不能连续守同一人
+rules.SameGuardKillIsEmpty = true     // 守卫守住刀口时空刀（守护生效）
+rules.GuardSaveTogetherDies = true    // 同守同救，目标依然死亡
+rules.VictoryMode = werewolf.VictoryModeSideWipe // 屠边判定
 
-    VictoryMode: werewolf.VictoryModeSideWipe, // 屠边判定
-}
+engine, _ := werewolf.New(rules)
 ```
+
+规则开关**不在 `GameConfig` 上**：那是阶段机的配置（起始阶段、阶段图、
+建议超时），内核不该认得「女巫能不能自救」。解析器在构造时拿到 `Rules`，
+`Resolve` 的签名因此与规则无关。
+
+### GameConfig（阶段配置）
+
+阶段机的声明式配置：
 
 ### 胜负判定
 
@@ -364,7 +373,7 @@ cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
     NextPhase: werewolf.PhaseNightGuard,
 }
 
-engine, _ := werewolf.NewEngine(cfg,
+engine, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
     werewolf.WithResolver(phaseWolfKing, &wolfKingResolver{}),
     // 阵营与类别写在角色自己身上，入座时不用再给一遍
     werewolf.WithRoleSetup(roleWolfKing, werewolf.RoleSetupFunc(
@@ -374,8 +383,8 @@ engine, _ := werewolf.NewEngine(cfg,
 engine.AddPlayer("wk", roleWolfKing)
 ```
 
-`WithResolver` 是构造选项，`NewEngine` / `RestoreEngine` / `ReplayEngine`
-三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
+`WithResolver` 是构造选项，`New` / `NewWith` / `Restore` / `Replay`
+四个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
 扩展能改动的八处，都由构造选项给出：
@@ -514,8 +523,7 @@ import (
 )
 
 func main() {
-	config := werewolf.DefaultGameConfig()
-	engine := werewolf.MustNewEngine(config) // 配置是常量时可用 Must 版本
+	engine := werewolf.MustNew(werewolf.DefaultRules()) // 配置是常量时可用 Must 版本
 	for id, role := range map[string]werewolf.RoleType{
 		"w1": werewolf.RoleWerewolf,
 		"wi": werewolf.RoleWitch,
@@ -724,11 +732,13 @@ CHANGELOG 里对应的小节。四道闸：版本号格式、tag 未占用、CHA
 唯一一个。
 
 拆到什么程度说清楚免得误解：**行为**已经分干净了——引擎的代码路径里没有一处认得具体
-角色、阵营或死法。但**接线**还是反的：`NewEngine` 直接装上狼人杀的那批默认实现，
-`phase.go` 里还有一张「哪个阶段用哪个解析器」的表。v2 把接线倒过来——由规则包组装内核，
-而不是内核认得规则——并把模块路径改成 `/v2`。
+角色、阵营或死法，**接线也已经倒过来**：`NewEngine` 造出来的是一台什么都不认识的
+状态机，狼人杀的一整套由 `werewolf.Options` 经公开选项装上去。
 
-**v2.0.0 是最后一次大破坏**，之后公开 API 是承诺。破坏性变更的完整清单与路线见
+还差的是把两层**物理拆成两个包**（`werewolf` 与 `werewolf/engine`），让「规则只用
+公开 API」由编译器保证而不是靠自觉。
+
+`go get` 的路径不会变（子包不需要 `/vN` 后缀）。破坏性变更的完整清单见
 [CHANGELOG.md](CHANGELOG.md)。
 
 v2.0.0 发布之前，请锁定 tag 使用。

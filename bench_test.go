@@ -23,7 +23,7 @@ func benchBoard() []RoleType {
 func benchEngine(b *testing.B, until PhaseType) *Engine {
 	b.Helper()
 
-	e := MustNewEngine(nil)
+	e := MustNew(DefaultRules())
 	for i, r := range benchBoard() {
 		if err := e.AddPlayer(playerID(i), r); err != nil {
 			b.Fatal(err)
@@ -49,7 +49,7 @@ func playerID(i int) string {
 func BenchmarkFullGame(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		e := MustNewEngine(nil)
+		e := MustNew(DefaultRules())
 		for j, r := range benchBoard() {
 			if err := e.AddPlayer(playerID(j), r); err != nil {
 				b.Fatal(err)

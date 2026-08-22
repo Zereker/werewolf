@@ -193,3 +193,100 @@ func revealedRole(v *PlayerView, id string) RoleType {
 	}
 	return RoleUnspecified
 }
+
+// TestBareEngine_KnowsNothing 只装了内核的引擎一无所知。
+//
+// 这是拆分的核心断言，也是「狼人杀只是第一个规则包」这句话的可执行说法：
+// NewEngine 造出来的东西没有解析器、不会判出胜负、不认得任何角色的初始状态、
+// 不知道谁和谁是一边的、不知道谁能听到谁说话。狼人杀的一切由 werewolf.Options
+// 经公开选项装上去——它自己也没有走任何后门。
+//
+// 这条测试的价值在变异下才看得出来：把内核的缺省胜负判定换回
+// DefaultVictoryChecker，别的测试一条都不会红（默认规则下行为一样），
+// 只有它会。
+func TestBareEngine_KnowsNothing(t *testing.T) {
+	e, err := NewEngine(DefaultGameConfig())
+	if err != nil {
+		t.Fatalf("内核构造不该失败: %v", err)
+	}
+
+	t.Run("没有解析器", func(t *testing.T) {
+		if got := len(e.phase.resolvers); got != 0 {
+			t.Errorf("内核不该自带解析器，实际 %d 个", got)
+		}
+	})
+
+	t.Run("不会判出胜负", func(t *testing.T) {
+		// 一副只有狼、按狼人杀规则早就该结束的板子
+		bare := MustNewEngine(DefaultGameConfig())
+		for id, role := range map[string]RoleType{
+			"w1": RoleWerewolf, "w2": RoleWerewolf,
+		} {
+			if err := bare.AddPlayer(id, role); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if over, winner := bare.victory.CheckVictory(newStateView(bare.state)); over {
+			t.Errorf("内核不知道什么叫赢，实际判出 winner=%v", winner)
+		}
+	})
+
+	t.Run("阶段缺解析器时开局被拒", func(t *testing.T) {
+		// 内核不自带解析器，因此默认阶段配置对它是不完整的——
+		// 这一条会在 Start 时报出来，而不是让游戏推进到一半静默停住
+		bare := MustNewEngine(DefaultGameConfig())
+		if err := bare.AddPlayer("w1", RoleWerewolf); err != nil {
+			t.Fatal(err)
+		}
+		if err := bare.Start(); err == nil {
+			t.Error("阶段没有解析器时开局应当被拒")
+		}
+	})
+
+	t.Run("不认得任何角色", func(t *testing.T) {
+		if got := len(e.roleSetup); got != 0 {
+			t.Errorf("内核不该自带角色初始状态，实际 %d 项", got)
+		}
+		if got := len(e.roleInfo); got != 0 {
+			t.Errorf("内核不该自带角色专属信息，实际 %d 项", got)
+		}
+	})
+
+	t.Run("不划分信息边界", func(t *testing.T) {
+		if e.audience != nil {
+			t.Error("内核不该自带受众划分")
+		}
+		if e.teammates != nil {
+			t.Error("内核不该自带队友判定")
+		}
+		if e.speech != nil {
+			t.Error("内核不该自带发言范围")
+		}
+	})
+}
+
+// TestWerewolfOptions_GoThroughThePublicDoor 狼人杀那一套全部走公开选项。
+//
+// 逐项比对：装上 Options 之后有的东西，正是内核缺的那些。中间没有第二条路径。
+func TestWerewolfOptions_GoThroughThePublicDoor(t *testing.T) {
+	bare := MustNewEngine(DefaultGameConfig())
+	full := MustNew(DefaultRules())
+
+	if len(bare.phase.resolvers) != 0 || len(full.phase.resolvers) != 9 {
+		t.Errorf("解析器: 内核 %d 个，装上规则后 %d 个",
+			len(bare.phase.resolvers), len(full.phase.resolvers))
+	}
+	if len(bare.roleSetup) != 0 || len(full.roleSetup) != 6 {
+		t.Errorf("角色初始状态: 内核 %d 项，装上规则后 %d 项",
+			len(bare.roleSetup), len(full.roleSetup))
+	}
+	if _, ok := full.victory.(DefaultVictoryChecker); !ok {
+		t.Errorf("装上规则后应当是狼人杀的判定，实际 %T", full.victory)
+	}
+	if _, ok := bare.victory.(neverEnds); !ok {
+		t.Errorf("内核的缺省应当是「永不结束」，实际 %T", bare.victory)
+	}
+	if full.audience == nil || full.teammates == nil || full.speech == nil {
+		t.Error("装上规则后三个 provider 都该有")
+	}
+}

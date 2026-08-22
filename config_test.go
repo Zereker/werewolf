@@ -5,21 +5,36 @@ import (
 	"time"
 )
 
+// TestDefaultRules 规则开关的默认值。
+//
+// 它们此前挂在 GameConfig 上，与阶段机的配置混在同一个结构体里，
+// 于是内核认得「女巫能不能自救」这种事。现在住在 Rules 上。
+func TestDefaultRules(t *testing.T) {
+	rules := DefaultRules()
+
+	if rules.WitchCanSaveSelf {
+		t.Error("expected WitchCanSaveSelf=false")
+	}
+	if !rules.GuardCanProtectSelf {
+		t.Error("expected GuardCanProtectSelf=true")
+	}
+	if rules.GuardCanRepeat {
+		t.Error("expected GuardCanRepeat=false")
+	}
+	if !rules.SameGuardKillIsEmpty {
+		t.Error("expected SameGuardKillIsEmpty=true")
+	}
+	if rules.VictoryMode != VictoryModeSideWipe {
+		t.Errorf("expected VictoryMode=SIDE_WIPE, got %v", rules.VictoryMode)
+	}
+	if err := rules.Validate(); err != nil {
+		t.Errorf("默认规则应当合法: %v", err)
+	}
+}
+
 func TestDefaultGameConfig(t *testing.T) {
 	config := DefaultGameConfig()
 
-	if config.WitchCanSaveSelf {
-		t.Error("expected WitchCanSaveSelf=false")
-	}
-	if !config.GuardCanProtectSelf {
-		t.Error("expected GuardCanProtectSelf=true")
-	}
-	if config.GuardCanRepeat {
-		t.Error("expected GuardCanRepeat=false")
-	}
-	if !config.SameGuardKillIsEmpty {
-		t.Error("expected SameGuardKillIsEmpty=true")
-	}
 	if config.DefaultTimeout != 30*time.Second {
 		t.Errorf("expected DefaultTimeout=30s, got %v", config.DefaultTimeout)
 	}
@@ -177,7 +192,7 @@ func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 // TestStart_RejectsMissingResolver 阶段没有解析器时，技能会被静默丢弃，
 // 必须在开局前拦下。
 func TestStart_RejectsMissingResolver(t *testing.T) {
-	engine := MustNewEngine(nil)
+	engine := MustNew(DefaultRules())
 	delete(engine.phase.resolvers, PhaseNightWolf)
 
 	mustAdd(t, engine, "w1", RoleWerewolf)
@@ -193,7 +208,7 @@ func TestStartPhase_Configurable(t *testing.T) {
 	cfg := DefaultGameConfig()
 	cfg.StartPhase = PhaseDay
 
-	engine := MustNewEngine(cfg)
+	engine := MustNewWith(cfg, DefaultRules())
 	mustAdd(t, engine, "w1", RoleWerewolf)
 	mustAdd(t, engine, "v1", RoleVillager)
 	if err := engine.Start(); err != nil {
@@ -220,12 +235,17 @@ func TestValidate_RejectsMissingNextPhase(t *testing.T) {
 }
 
 // TestValidate_RejectsUnknownVictoryMode 越界的胜负判定方式不该被 default 分支吞掉。
+//
+// 校验从 GameConfig.Validate 搬到了 Rules.Validate，跟着 VictoryMode 一起走。
 func TestValidate_RejectsUnknownVictoryMode(t *testing.T) {
-	cfg := DefaultGameConfig()
-	cfg.VictoryMode = VictoryMode(99)
+	rules := DefaultRules()
+	rules.VictoryMode = VictoryMode(99)
 
-	if err := cfg.Validate(); err == nil {
+	if err := rules.Validate(); err == nil {
 		t.Fatal("越界的 VictoryMode 应当被拒")
+	}
+	if _, err := New(rules); err == nil {
+		t.Fatal("越界的 VictoryMode 应当让组装失败")
 	}
 	if got := VictoryMode(99).String(); got != "UNKNOWN" {
 		t.Errorf("String(): 期望 UNKNOWN，实际 %s", got)

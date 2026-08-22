@@ -22,19 +22,17 @@
 // 扩展性就被证明了；如果不能，缺什么当场暴露。这几版补上的
 // WithRoleSetup、WithAudience、WithTeammates 都是这么找出来的。
 //
-// 拆到什么程度，说清楚免得误解：**行为**已经分干净了——内核的代码
-// 路径里没有一处认得具体角色、阵营或死法。但**接线**还是反的：
-// NewEngine 直接装上狼人杀的那批默认实现（builtinAudience 等），
-// phase.go 里还有一张「哪个阶段用哪个解析器」的表，两处都写着
-// 狼人杀的名字。
+// 接线的方向是「规则组装内核」，不是「内核认得规则」：NewEngine 造出来的
+// 是一台什么都不认识的状态机——没有解析器、不会判出胜负、不认得任何角色、
+// 不划分信息边界。狼人杀的那一整套由 werewolf.Options 经公开选项装上去，
+// 与第三方注册自定义角色走的是同一批入口（见 TestBareEngine_KnowsNothing）。
 //
-// v2 会把这两层拆成两个包（模块路径带 /v2）并把接线倒过来：由规则包
-// 组装内核，而不是内核认得规则。届时狼人杀成为第一个规则包，
-// 不再是唯一一个。
+// 两层目前仍在同一个包里，往后会分成 werewolf 与 werewolf/engine 两个包，
+// 让「规则只用公开 API」这件事由编译器保证而不是靠自觉。
 //
 // # 起手
 //
-//	engine, err := werewolf.NewEngine(nil)   // nil 表示默认配置
+//	engine, err := werewolf.New(werewolf.DefaultRules())
 //	engine.AddPlayer("w1", werewolf.RoleWerewolf)
 //	engine.AddPlayer("s", werewolf.RoleSeer)
 //	// ... 其余玩家
@@ -96,7 +94,7 @@
 // 不需要 fork 这个库：
 //
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }        // 声明阶段
-//	engine, _ := werewolf.NewEngine(cfg,
+//	engine, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
 //		werewolf.WithResolver(myPhase, myResolver),           // 注册行为
 //		werewolf.WithRoleSetup(myRole, mySetup))              // 注册初始状态
 //	engine.AddPlayer("p1", myRole)                            // 入座，与内置角色同一个入口

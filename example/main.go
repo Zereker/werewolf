@@ -49,17 +49,15 @@ func main() {
 func basicGameSetup() {
 	fmt.Println("【示例1: 基础游戏设置】")
 
-	// 1. 创建游戏配置（可选，使用默认配置）
-	config := werewolf.DefaultGameConfig()
+	// 1. 规则开关（可选，DefaultRules 已经是维基那一套）
+	rules := werewolf.DefaultRules()
+	rules.WitchCanSaveSelf = false    // 女巫不能自救
+	rules.GuardCanProtectSelf = true  // 守卫可以自守
+	rules.GuardCanRepeat = false      // 守卫不能连续守同一人
+	rules.SameGuardKillIsEmpty = true // 同守同杀为空刀
 
-	// 自定义规则
-	config.WitchCanSaveSelf = false    // 女巫不能自救
-	config.GuardCanProtectSelf = true  // 守卫可以自守
-	config.GuardCanRepeat = false      // 守卫不能连续守同一人
-	config.SameGuardKillIsEmpty = true // 同守同杀为空刀
-
-	// 2. 创建游戏引擎（日志可选，用构造选项给出）
-	engine := werewolf.MustNewEngine(config,
+	// 2. 组装一局（日志可选，用构造选项给出）
+	engine := werewolf.MustNew(rules,
 		werewolf.WithLogger(&SimpleLogger{}))
 
 	// 3. 添加玩家
@@ -94,7 +92,7 @@ func basicGameSetup() {
 func godNarratorDemo() {
 	fmt.Println("【示例2: 上帝（主持人）引导游戏】")
 
-	engine := werewolf.MustNewEngine(nil)
+	engine := werewolf.MustNew(werewolf.DefaultRules())
 
 	// 添加玩家
 	seat(engine, "wolf1", werewolf.RoleWerewolf)
@@ -241,7 +239,7 @@ func fullGameFlow() {
 	fmt.Println("【示例3: 完整游戏流程】")
 
 	// 创建引擎和玩家
-	engine := werewolf.MustNewEngine(nil) // 使用默认配置
+	engine := werewolf.MustNew(werewolf.DefaultRules())
 
 	// 添加玩家
 	seat(engine, "wolf1", werewolf.RoleWerewolf)
@@ -428,7 +426,7 @@ func fullGameFlow() {
 func messagingDemo() {
 	fmt.Println("【示例4: 消息系统演示】")
 
-	engine := werewolf.MustNewEngine(nil)
+	engine := werewolf.MustNew(werewolf.DefaultRules())
 
 	// 添加玩家（需要足够多的好人防止游戏过早结束）
 	seat(engine, "wolf1", werewolf.RoleWerewolf)

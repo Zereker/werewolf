@@ -14,6 +14,48 @@
 v2 的方向是把内核与狼人杀规则拆开（见下面「路线」一节）。这一节记录
 朝那个方向走出的每一步；`go.mod` 的 `/v2` 后缀会在真正发版前一次性改掉。
 
+### 接线倒过来：规则组装内核，不是内核认得规则
+
+**破坏性变更**：`Resolver.Resolve` 去掉 `config *GameConfig` 参数；
+`GameConfig` 上的 7 个规则开关搬到新的 `Rules` 上；
+`NewGuardResolver` / `NewWitchResolver` / `NewNightResolveResolver` 现在收一个
+`Rules`；新增 `New` / `NewWith` / `MustNew` / `MustNewWith` / `Restore` / `Replay`
+作为狼人杀的组装入口。
+
+`NewEngine` 此前会替你装上狼人杀的一整套：九个阶段的解析器、屠边判定、
+受众划分、队友判定、发言范围、六个角色的初始状态。也就是说**内核认得规则**。
+
+现在它造出来的是一台什么都不认识的状态机，狼人杀的一切由 `Options(rules)`
+经公开选项装上去——与第三方注册自定义角色走的是同一批入口，没有后门：
+
+```go
+// 这就是 werewolf.New 的全部内容
+NewEngine(DefaultGameConfig(), append(Options(rules), extra...)...)
+```
+
+- **`Resolver.Resolve` 少一个参数。** 解析器的配置是「它是什么」的一部分，
+  本来就该在构造时定死，而不是每次结算重新递一遍整个 `GameConfig`。
+  第三方解析器也不用再从一个自己看不懂的结构体里挑字段。
+- **`GameConfig` 只剩阶段机的配置**（起始阶段、阶段图、建议超时）。
+  「女巫能不能自救」搬进 `Rules`——内核不该认得女巫。
+- **`VictoryMode` 的校验跟着搬进 `Rules.Validate`。**
+- **内核的缺省胜负判定是「永不结束」**（`neverEnds`），不是 nil。
+  一台只装了内核的引擎应该能推进阶段、只是永不分出胜负，而不是在第一次
+  `Start` 空指针崩掉——这个洞是拆分过程中撞出来的。
+
+#### 一条守着这件事的测试
+
+变异验证时发现一个空白：把内核的缺省判定换回 `DefaultVictoryChecker`，
+**一条测试都不会红**——默认规则下行为完全一样。于是补了
+`TestBareEngine_KnowsNothing`：逐项断言裸内核没有解析器、不会判出胜负、
+不认得任何角色、不划分信息边界。再做同样的变异，它会红。
+
+`TestWerewolfOptions_GoThroughThePublicDoor` 从另一头比：装上 `Options` 之后
+有的东西，正是内核缺的那些，中间没有第二条路径。
+
+变异验证：内核装回狼人杀胜负判定 → 2 条红；内核装回受众划分 → 1 条红；
+`newPhaseManager` 装回九个解析器 → 1 条红。
+
 ### 枚举改成字符串，`enumjson.go` 整个消失
 
 **破坏性变更**：`PhaseType` / `RoleType` / `SkillType` / `EventType` /

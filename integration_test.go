@@ -12,15 +12,15 @@ import (
 
 func TestFullGame_WolvesWin(t *testing.T) {
 	// 本局无神职，屠边条件（屠神/屠民）不适用，故显式使用屠城判定
-	config := DefaultGameConfig()
-	config.VictoryMode = VictoryModeTownWipe
+	configRules := DefaultRules()
+	configRules.VictoryMode = VictoryModeTownWipe
 
 	// 2 狼 vs 3 民：开局 3 > 2 游戏继续，v1 出局后 2 <= 2 狼人获胜。
 	//
 	// 此前是 2 狼 vs 2 民，屠城判定在开局那一刻就已成立——游戏在第一次
 	// EndPhase 就结束了，根本没走到杀人这步。测试因为忽略了返回错误而
 	// 「通过」，但它验证的并不是自己声称的那件事。
-	g := newRuleGame(t, config, seats(
+	g := newRuleGameR(t, configRules, seats(
 		wolf("wolf1"), wolf("wolf2"), villagers("v1", "v2", "v3"),
 	)...)
 
@@ -106,10 +106,10 @@ func TestScenario_WitchSavesVictim(t *testing.T) {
 }
 
 func TestScenario_GuardProtects(t *testing.T) {
-	config := DefaultGameConfig()
-	config.SameGuardKillIsEmpty = true
+	configRules := DefaultRules()
+	configRules.SameGuardKillIsEmpty = true
 
-	g := newRuleGame(t, config, seats(
+	g := newRuleGameR(t, configRules, seats(
 		wolf("wolf"), guard("guard"), villagers("victim", "v2"),
 	)...)
 
@@ -177,10 +177,10 @@ func TestScenario_MultipleRounds(t *testing.T) {
 // ==================== Configuration Variant Tests ====================
 
 func TestConfig_WitchCanSaveSelf_Enabled(t *testing.T) {
-	config := DefaultGameConfig()
-	config.WitchCanSaveSelf = true
+	configRules := DefaultRules()
+	configRules.WitchCanSaveSelf = true
 
-	g := newRuleGame(t, config, seats(
+	g := newRuleGameR(t, configRules, seats(
 		wolf("wolf"), witch("witch"), villagers("v1", "v2"),
 	)...)
 
@@ -201,10 +201,10 @@ func TestConfig_WitchCanSaveSelf_Enabled(t *testing.T) {
 }
 
 func TestConfig_WitchCanSaveSelf_Disabled(t *testing.T) {
-	config := DefaultGameConfig()
-	config.WitchCanSaveSelf = false
+	configRules := DefaultRules()
+	configRules.WitchCanSaveSelf = false
 
-	g := newRuleGame(t, config, seats(
+	g := newRuleGameR(t, configRules, seats(
 		wolf("wolf"), witch("witch"), villagers("v1", "v2"),
 	)...)
 
@@ -226,10 +226,10 @@ func TestConfig_WitchCanSaveSelf_Disabled(t *testing.T) {
 }
 
 func TestConfig_SameGuardKill_Empty(t *testing.T) {
-	config := DefaultGameConfig()
-	config.SameGuardKillIsEmpty = true
+	configRules := DefaultRules()
+	configRules.SameGuardKillIsEmpty = true
 
-	g := newRuleGame(t, config, seats(
+	g := newRuleGameR(t, configRules, seats(
 		wolf("wolf"), guard("guard"), villagers("victim", "v2"),
 	)...)
 
@@ -249,10 +249,10 @@ func TestConfig_SameGuardKill_Empty(t *testing.T) {
 }
 
 func TestConfig_SameGuardKill_NotEmpty(t *testing.T) {
-	config := DefaultGameConfig()
-	config.SameGuardKillIsEmpty = false
+	configRules := DefaultRules()
+	configRules.SameGuardKillIsEmpty = false
 
-	g := newRuleGame(t, config, seats(
+	g := newRuleGameR(t, configRules, seats(
 		wolf("wolf"), guard("guard"), villagers("victim", "v2"),
 	)...)
 
@@ -284,10 +284,10 @@ func TestConfig_WitchCanUseBothPotions(t *testing.T) {
 	setup := func(t *testing.T, canUseBoth bool) *ruleGame {
 		t.Helper()
 
-		config := DefaultGameConfig()
-		config.WitchCanUseBothPotions = canUseBoth
+		configRules := DefaultRules()
+		configRules.WitchCanUseBothPotions = canUseBoth
 
-		g := newRuleGame(t, config, seats(
+		g := newRuleGameR(t, configRules, seats(
 			wolf("wolf"), witch("witch"), villagers("victim", "v2", "v3"),
 		)...)
 
@@ -467,10 +467,10 @@ func TestSubStepMode_WolfVoteTie(t *testing.T) {
 }
 
 func TestSubStepMode_GuardProtectsFromKill(t *testing.T) {
-	config := DefaultGameConfig()
-	config.SameGuardKillIsEmpty = true
+	configRules := DefaultRules()
+	configRules.SameGuardKillIsEmpty = true
 
-	g := newRuleGame(t, config, seats(
+	g := newRuleGameR(t, configRules, seats(
 		guard("guard"), wolf("wolf"), witch("witch"),
 		seer("seer"), villager("victim"),
 	)...)

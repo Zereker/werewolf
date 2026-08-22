@@ -70,7 +70,7 @@ func newRoom(name string, tick time.Duration) (*room, error) {
 		cmds:  make(chan command, 64),
 	}
 
-	engine, err := werewolf.NewEngine(nil, werewolf.WithLogger(roomLogger{room: name}))
+	engine, err := werewolf.New(werewolf.DefaultRules(), werewolf.WithLogger(roomLogger{room: name}))
 	if err != nil {
 		return nil, err
 	}

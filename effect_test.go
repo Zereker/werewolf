@@ -329,6 +329,6 @@ func TestCustomEventReachesOnEvent(t *testing.T) {
 // customEventResolver 产出一个第三方自定义类型的事件。
 type customEventResolver struct{ typ EventType }
 
-func (r customEventResolver) Resolve([]*SkillUse, GameView, *GameConfig) []*Effect {
+func (r customEventResolver) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{NewEffect(r.typ, "v1", "")}
 }

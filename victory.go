@@ -36,6 +36,16 @@ func WithVictoryChecker(checker VictoryChecker) EngineOption {
 	}
 }
 
+// neverEnds 内核的缺省判定：永远不结束。
+//
+// 内核不知道什么叫「赢」，所以缺省只能是「不知道」。做成一个不结束的
+// 判定而不是留 nil：一台只装了内核的引擎应该能推进阶段、只是永不分出胜负，
+// 而不是在第一次 Start 就空指针崩掉。规则包一定会用 WithVictoryChecker
+// 换掉它（见 werewolf.Options）。
+type neverEnds struct{}
+
+func (neverEnds) CheckVictory(GameView) (bool, Camp) { return false, CampUnspecified }
+
 // DefaultVictoryChecker 内置判定，按 GameConfig.VictoryMode 分屠边与屠城。
 //
 // 导出它是为了让扩展能包装复用：第三方阵营的胜利条件通常是

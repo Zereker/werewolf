@@ -64,19 +64,20 @@ func TestFuzz_Invariants(t *testing.T) {
 //
 // 只随机「使用者真的可能这么配」的维度，且必须自洽——Validate 过不了的
 // 配置属于另一类测试（config_test.go 里逐条盯着），在这里只会掩盖真问题。
-func randomConfig(rng *rand.Rand) *GameConfig {
+func randomConfig(rng *rand.Rand) (*GameConfig, Rules) {
 	cfg := DefaultGameConfig()
+	rules := DefaultRules()
 
 	// 6 个规则开关，各自独立
-	cfg.WitchCanSaveSelf = rng.Intn(2) == 0
-	cfg.WitchCanUseBothPotions = rng.Intn(2) == 0
-	cfg.GuardCanProtectSelf = rng.Intn(2) == 0
-	cfg.GuardCanRepeat = rng.Intn(2) == 0
-	cfg.SameGuardKillIsEmpty = rng.Intn(2) == 0
-	cfg.GuardSaveTogetherDies = rng.Intn(2) == 0
+	rules.WitchCanSaveSelf = rng.Intn(2) == 0
+	rules.WitchCanUseBothPotions = rng.Intn(2) == 0
+	rules.GuardCanProtectSelf = rng.Intn(2) == 0
+	rules.GuardCanRepeat = rng.Intn(2) == 0
+	rules.SameGuardKillIsEmpty = rng.Intn(2) == 0
+	rules.GuardSaveTogetherDies = rng.Intn(2) == 0
 
 	if rng.Intn(2) == 0 {
-		cfg.VictoryMode = VictoryModeTownWipe
+		rules.VictoryMode = VictoryModeTownWipe
 	}
 
 	// 阶段环：三成的局面把守卫阶段整个摘掉。
@@ -94,7 +95,10 @@ func randomConfig(rng *rand.Rand) *GameConfig {
 	if err := cfg.Validate(); err != nil {
 		panic("随机出的配置本身不合法: " + err.Error())
 	}
-	return cfg
+	if err := rules.Validate(); err != nil {
+		panic("随机出的规则本身不合法: " + err.Error())
+	}
+	return cfg, rules
 }
 
 // randomBoard 随机出一副能真的开局的板子。
@@ -150,7 +154,7 @@ func randomBoard(rng *rand.Rand, withGuard bool, extraEvil int) []RoleType {
 // 一直只有 extension_test.go 里手写的一条路径。
 //
 // 返回配置需要的构造选项：解析器只能在构造时给出，恢复与回放同理。
-func withWolfKing(cfg *GameConfig) []EngineOption {
+func withWolfKing(cfg *GameConfig, rules Rules) []EngineOption {
 	cfg.Phases[phaseWolfKing] = &PhaseConfig{
 		Type:      phaseWolfKing,
 		Steps:     []PhaseStep{{Role: roleWolfKing, Skill: skillWolfClaw}},
@@ -160,7 +164,7 @@ func withWolfKing(cfg *GameConfig) []EngineOption {
 		WithRoleSetup(roleWolfKing, RoleSetupFunc(wolfKingSetup)),
 		WithResolver(phaseWolfKing, &wolfKingResolver{}),
 		WithResolver(PhaseVote, &voteWithWolfKing{inner: NewVoteResolver()}),
-		WithResolver(PhaseNightResolve, &nightResolveWithWolfKing{inner: NewNightResolveResolver()}),
+		WithResolver(PhaseNightResolve, &nightResolveWithWolfKing{inner: NewNightResolveResolver(rules)}),
 	}
 }
 
@@ -170,8 +174,8 @@ func withWolfKing(cfg *GameConfig) []EngineOption {
 // 所有死法，就得每条通道各包一层。
 type nightResolveWithWolfKing struct{ inner Resolver }
 
-func (r *nightResolveWithWolfKing) Resolve(uses []*SkillUse, view GameView, cfg *GameConfig) []*Effect {
-	effects := r.inner.Resolve(uses, view, cfg)
+func (r *nightResolveWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*Effect {
+	effects := r.inner.Resolve(uses, view)
 	for _, ef := range effects[:len(effects):len(effects)] {
 		if ef.Canceled || ef.TargetID == "" {
 			continue
@@ -187,14 +191,14 @@ func (r *nightResolveWithWolfKing) Resolve(uses []*SkillUse, view GameView, cfg 
 }
 
 func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
-	cfg := randomConfig(rng)
+	cfg, rules := randomConfig(rng)
 	_, hasGuardPhase := cfg.Phases[PhaseNightGuard]
 
 	tags := []string{"有守卫阶段", "屠边", "只用内置角色"}
 	if !hasGuardPhase {
 		tags[0] = "无守卫阶段"
 	}
-	if cfg.VictoryMode == VictoryModeTownWipe {
+	if rules.VictoryMode == VictoryModeTownWipe {
 		tags[1] = "屠城"
 	}
 
@@ -203,10 +207,13 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 	withCustom := rng.Intn(10) < 3
 	if withCustom {
 		tags[2] = "含自定义角色"
-		opts = withWolfKing(cfg)
+		opts = withWolfKing(cfg, rules)
 	}
 
-	e := MustNewEngine(cfg, opts...)
+	e, errNew := NewWith(cfg, rules, opts...)
+	if errNew != nil {
+		t.Fatalf("seed=%d NewWith: %v", seed, errNew)
+	}
 	extraEvil := 0
 	if withCustom {
 		extraEvil = 1 // 狼王也是狼
@@ -289,7 +296,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		raw, _ := json.Marshal(snap)
 		var round Snapshot
 		_ = json.Unmarshal(raw, &round)
-		clone, errR := RestoreEngine(cfg, &round, opts...)
+		clone, errR := Restore(cfg, rules, &round, opts...)
 		if errR != nil {
 			t.Fatalf("seed=%d step=%d Restore: %v", seed, step, errR)
 		}
@@ -417,7 +424,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		}
 
 		// 不变量 D：效果流回放必须与原引擎同步
-		replayed, err := ReplayEngine(cfg, e.EffectLog(), opts...)
+		replayed, err := Replay(cfg, rules, e.EffectLog(), opts...)
 		if err != nil {
 			t.Fatalf("seed=%d step=%d Replay: %v", seed, step, err)
 		}

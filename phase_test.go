@@ -4,6 +4,10 @@ import (
 	"testing"
 )
 
+// TestNewPhase 内核造出来的阶段机不带任何解析器。
+//
+// 这是拆分的核心断言：内核不知道 NIGHT_WITCH 该由谁结算。此前这里装着
+// 一张九个阶段的默认表，也就是内核认得狼人杀的整套流程。
 func TestNewPhase(t *testing.T) {
 	config := DefaultGameConfig()
 	p := newPhaseManager(config)
@@ -11,31 +15,29 @@ func TestNewPhase(t *testing.T) {
 	if p.config != config {
 		t.Error("expected config to be set")
 	}
-	// 3 day/vote/hunter resolvers + 6 night phase resolvers = 9
-	if len(p.resolvers) != 9 {
-		t.Errorf("expected 9 resolvers, got %d", len(p.resolvers))
+	if len(p.resolvers) != 0 {
+		t.Errorf("内核不该自带解析器，实际 %d 个", len(p.resolvers))
 	}
+}
 
-	// Verify resolvers are registered
-	if p.resolvers[PhaseDay] == nil {
-		t.Error("expected DayResolver to be registered")
-	}
-	if p.resolvers[PhaseVote] == nil {
-		t.Error("expected VoteResolver to be registered")
-	}
+// TestWerewolfOptions_RegisterEveryPhase 狼人杀那一套经公开选项装进去。
+//
+// 九个阶段的解析器全部来自 werewolf.Options——它走的是 WithResolver，
+// 与第三方注册自定义阶段完全同一条路，没有后门。
+func TestWerewolfOptions_RegisterEveryPhase(t *testing.T) {
+	e := MustNew(DefaultRules())
 
-	// Verify night sub-phase resolvers are registered
-	if p.resolvers[PhaseNightGuard] == nil {
-		t.Error("expected GuardResolver to be registered")
+	for _, phase := range []PhaseType{
+		PhaseDay, PhaseVote, PhaseNightGuard, PhaseNightWolf,
+		PhaseNightWitch, PhaseNightSeer, PhaseNightResolve,
+		PhaseNightHunter, PhaseDayHunter,
+	} {
+		if e.phase.resolvers[phase] == nil {
+			t.Errorf("%v 没有解析器", phase)
+		}
 	}
-	if p.resolvers[PhaseNightWolf] == nil {
-		t.Error("expected WolfResolver to be registered")
-	}
-	if p.resolvers[PhaseNightWitch] == nil {
-		t.Error("expected WitchResolver to be registered")
-	}
-	if p.resolvers[PhaseNightSeer] == nil {
-		t.Error("expected SeerResolver to be registered")
+	if got := len(e.phase.resolvers); got != 9 {
+		t.Errorf("期望 9 个解析器，实际 %d", got)
 	}
 }
 
@@ -75,8 +77,7 @@ func TestGetPhaseConfig_Invalid(t *testing.T) {
 }
 
 func TestGetResolver(t *testing.T) {
-	config := DefaultGameConfig()
-	p := newPhaseManager(config)
+	p := MustNew(DefaultRules()).phase
 
 	dayResolver := p.resolver(PhaseDay)
 	if dayResolver == nil {
