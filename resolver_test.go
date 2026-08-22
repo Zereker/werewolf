@@ -18,8 +18,8 @@ func TestVoteResolver_Empty(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (tied), got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_UNSPECIFIED {
-		t.Errorf("expected EVENT_TYPE_UNSPECIFIED for empty votes, got %v", effects[0].Type)
+	if effects[0].Type != pb.EventType_EVENT_TYPE_VOTE_TIED {
+		t.Errorf("expected EVENT_TYPE_VOTE_TIED for empty votes, got %v", effects[0].Type)
 	}
 }
 
@@ -96,8 +96,8 @@ func TestVoteResolver_Tie(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_UNSPECIFIED {
-		t.Errorf("expected EVENT_TYPE_UNSPECIFIED for tie, got %v", effects[0].Type)
+	if effects[0].Type != pb.EventType_EVENT_TYPE_VOTE_TIED {
+		t.Errorf("expected EVENT_TYPE_VOTE_TIED for tie, got %v", effects[0].Type)
 	}
 	if effects[0].Data["result"] != "tied" {
 		t.Errorf("expected result=tied, got %v", effects[0].Data["result"])
@@ -124,8 +124,8 @@ func TestVoteResolver_Invalid(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect, got %d", len(effects))
 	}
-	if effects[0].Type != pb.EventType_EVENT_TYPE_UNSPECIFIED {
-		t.Errorf("expected EVENT_TYPE_UNSPECIFIED for invalid votes, got %v", effects[0].Type)
+	if effects[0].Type != pb.EventType_EVENT_TYPE_VOTE_TIED {
+		t.Errorf("expected EVENT_TYPE_VOTE_TIED for invalid votes, got %v", effects[0].Type)
 	}
 }
 

@@ -1,6 +1,8 @@
 package werewolf
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	pb "github.com/Zereker/werewolf/proto"
@@ -144,6 +146,75 @@ func TestPlayerView_AllowedSkillsGateAction(t *testing.T) {
 }
 
 // TestAudienceOf 效果的默认受众划分
+// TestPlayerView_DeadWitchCannotSeeKillTarget 出局的女巫拿不到今晚的刀口。
+//
+// 「解藥未使用時可以得知狼人的殺害對象」的前提是她还在场上行动。
+// 已出局的女巫在天亮公布之前就知道刀口，等于提前拿到了全场信息。
+func TestPlayerView_DeadWitchCannotSeeKillTarget(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), witch("wi"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	// 第一夜刀死女巫，她不救自己
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "wi")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	g.assertAlive("wi", false, "第一夜被刀")
+
+	// 第二夜狼队刀预言家，此刻停在女巫阶段
+	g.toNextNight()
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "s")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+
+	v := g.e.PlayerView("wi")
+	if v == nil {
+		t.Fatal("PlayerView 不应为 nil")
+	}
+	if v.Self.Alive {
+		t.Fatal("前置条件：女巫此时应已出局")
+	}
+	if !v.Self.HasAntidote {
+		t.Fatal("前置条件：女巫的解药未使用")
+	}
+	if v.KillTarget != "" {
+		t.Errorf("出局的女巫不应看到刀口，实际 %q", v.KillTarget)
+	}
+}
+
+// TestPlayerView_SelfDoesNotLeakProtection 被守护的玩家不该从自己的视图里读出来。
+//
+// 「守卫守了谁」是守卫独占的信息：被守的人一旦知道，就等于知道自己
+// 今晚刀不死，也大幅缩小了守卫的范围。AudienceOf 把 PROTECT 判给守卫
+// 一个人，PublicPlayerInfo 也刻意不含这个字段——Self 不能是漏的那半。
+func TestPlayerView_SelfDoesNotLeakProtection(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), guard("g"),
+		villagers("v1", "v2", "v3", "v4", "v5", "v6"),
+	)...)
+
+	g.mustUse("g", pb.SkillType_SKILL_TYPE_PROTECT, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+
+	// 前置：守护确实生效了（上帝视角看得到）
+	if !g.info("v1").Protected {
+		t.Fatal("前置条件：v1 应处于被守护状态")
+	}
+
+	// SelfInfo 里根本没有这个字段，序列化出去也不会带上
+	data, err := json.Marshal(g.e.PlayerView("v1").Self)
+	if err != nil {
+		t.Fatalf("序列化失败: %v", err)
+	}
+	if bytes.Contains(bytes.ToLower(data), []byte("protect")) {
+		t.Errorf("玩家自视图不应包含守护状态，实际 %s", data)
+	}
+}
+
 func TestAudienceOf(t *testing.T) {
 	e := newViewGame(t)
 	all := 8
@@ -157,6 +228,7 @@ func TestAudienceOf(t *testing.T) {
 		{"击杀全场可见", NewEffect(pb.EventType_EVENT_TYPE_KILL, "", "v1"), nil, all},
 		{"放逐全场可见", NewEffect(pb.EventType_EVENT_TYPE_ELIMINATE, "", "v1"), nil, all},
 		{"开枪全场可见", NewEffect(pb.EventType_EVENT_TYPE_SHOOT, "h", "v1"), nil, all},
+		{"平票全场可见", NewEffect(pb.EventType_EVENT_TYPE_VOTE_TIED, "", ""), nil, all},
 		{"游戏结束全场可见", NewEffect(pb.EventType_EVENT_TYPE_GAME_ENDED, "", ""), nil, all},
 		{"查验只给预言家", NewEffect(pb.EventType_EVENT_TYPE_CHECK, "s", "w1"), []string{"s"}, 1},
 		{"守护只给守卫", NewEffect(pb.EventType_EVENT_TYPE_PROTECT, "g", "v1"), []string{"g"}, 1},
@@ -164,11 +236,18 @@ func TestAudienceOf(t *testing.T) {
 		{"内部效果不给任何人", NewEffect(pb.EventType_EVENT_TYPE_SET_NIGHT_KILL, "", "v1"), nil, 0},
 		{"消耗解药不给任何人", NewEffect(pb.EventType_EVENT_TYPE_USE_ANTIDOTE, "wi", ""), nil, 0},
 		{"触发效果不给任何人", NewAbilityTriggerEffect("h", pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER), nil, 0},
+		{"被否决的用毒只给女巫本人", canceledEffect(
+			NewEffect(pb.EventType_EVENT_TYPE_POISON, "wi", "v1")), []string{"wi"}, 1},
+		{"被否决的守护只给守卫本人", canceledEffect(
+			NewEffect(pb.EventType_EVENT_TYPE_PROTECT, "g", "v1")), []string{"g"}, 1},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := e.AudienceOf(tc.effect)
+			got, known := e.AudienceOf(tc.effect)
+			if !known {
+				t.Fatalf("引擎应当认得 %v", tc.effect.Type)
+			}
 			if len(got) != tc.count {
 				t.Fatalf("受众数量: 期望 %d，实际 %d (%v)", tc.count, len(got), got)
 			}
@@ -180,32 +259,45 @@ func TestAudienceOf(t *testing.T) {
 		})
 	}
 
-	if got := e.AudienceOf(nil); got != nil {
-		t.Errorf("nil 效果应返回 nil，实际 %v", got)
+	if got, known := e.AudienceOf(nil); got != nil || known {
+		t.Errorf("nil 效果应返回 (nil, false)，实际 (%v, %v)", got, known)
 	}
+
+	// 第三方自定义的外部事件类型：引擎无从判断可见性，必须说「不知道」，
+	// 而不是给出一个看起来权威的空受众
+	custom := NewEffect(pb.EventType(50), "w1", "v1")
+	if got, known := e.AudienceOf(custom); known || got != nil {
+		t.Errorf("未知外部类型应返回 (nil, false)，实际 (%v, %v)", got, known)
+	}
+}
+
+// canceledEffect 把效果标成被否决，供表驱动用例内联构造。
+func canceledEffect(e *Effect) *Effect {
+	e.Cancel("test")
+	return e
 }
 
 // TestAudienceOf_CoversEveryPublicEvent 每个外部可见的事件类型都要有明确受众，
 // 新增事件类型时不能忘了在这里划分可见性。
+//
+// 遍历 proto 里的全部枚举值，而不是手写一份清单：手写清单挡不住
+// 「新加了类型但忘了同步清单」——它恰恰是这个测试声称要挡的那类问题。
 func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 	e := newViewGame(t)
 
-	external := []pb.EventType{
-		pb.EventType_EVENT_TYPE_GAME_STARTED,
-		pb.EventType_EVENT_TYPE_GAME_ENDED,
-		pb.EventType_EVENT_TYPE_KILL,
-		pb.EventType_EVENT_TYPE_PROTECT,
-		pb.EventType_EVENT_TYPE_SAVE,
-		pb.EventType_EVENT_TYPE_POISON,
-		pb.EventType_EVENT_TYPE_CHECK,
-		pb.EventType_EVENT_TYPE_ELIMINATE,
-		pb.EventType_EVENT_TYPE_SHOOT,
-		pb.EventType_EVENT_TYPE_SKIP,
-	}
-	for _, typ := range external {
+	for num, name := range pb.EventType_name {
+		typ := pb.EventType(num)
+		if typ == pb.EventType_EVENT_TYPE_UNSPECIFIED || isInternalEvent(typ) {
+			continue
+		}
 		ef := NewEffect(typ, "s", "v1")
-		if got := e.AudienceOf(ef); len(got) == 0 {
-			t.Errorf("外部事件 %v 没有划分受众", typ)
+		got, known := e.AudienceOf(ef)
+		if !known {
+			t.Errorf("外部事件 %s 没有划分受众", name)
+			continue
+		}
+		if len(got) == 0 {
+			t.Errorf("外部事件 %s 的受众为空", name)
 		}
 	}
 }

@@ -279,11 +279,20 @@ v.KillTarget      // 女巫可见：今晚刀口（解药用完即为空）
 
 ```go
 for _, effect := range effects {
-    for _, id := range engine.AudienceOf(effect) {
+    audience, known := engine.AudienceOf(effect)
+    if !known {
+        // 第三方角色自定义的事件类型，引擎无从判断可见性，调用方自己路由
+        continue
+    }
+    for _, id := range audience {
         send(id, effect)   // 死亡全场可见；查验/守护/解药只给行动者
     }
 }
 ```
+
+被规则否决的行动（`effect.Canceled`）只发给行动者本人：
+「女巫想毒人但今晚已经用过解药」若按类型当成公开死讯广播出去，
+女巫当场暴露。
 
 `PhaseInfo` / `PlayerInfo` / `WolfTeammates` / `NightKillTarget`
 是**上帝视角**接口，供调用方作为主持人使用，不可整体转发给玩家。

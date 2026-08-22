@@ -25,8 +25,8 @@ type PlayerView struct {
 	Round    int          // 当前回合
 	Phase    pb.PhaseType // 当前阶段
 
-	// Self 自己的完整信息：身份、阵营、存活、（女巫的）药剂
-	Self PlayerInfo
+	// Self 自己的信息：身份、阵营、存活、（女巫的）药剂
+	Self SelfInfo
 
 	// Players 全场玩家的公开信息，按 ID 排序。
 	// 身份只在对本视角公开时才填充（自己、狼队友）。
@@ -42,6 +42,24 @@ type PlayerView struct {
 	// KillTarget 女巫可见：今晚狼人的击杀目标。
 	// 依规则「解藥未使用時可以得知狼人的殺害對象」，解药用完后恒为空。
 	KillTarget string
+}
+
+// SelfInfo 一名玩家对自己有权知道的全部信息。
+//
+// 刻意不复用上帝视角的 PlayerInfo：那个结构体带着 Protected
+// （今晚是否被守卫守护），而「守卫守了谁」是守卫独占的信息——
+// 被守的人一旦知道，就等于知道自己刀不死，也大幅缩小了守卫的范围。
+// 一个字段的可见性差别不该靠调用方记得清空。
+type SelfInfo struct {
+	ID       string       `json:"id"`
+	Role     pb.RoleType  `json:"role"`
+	Camp     pb.Camp      `json:"camp"`
+	Category RoleCategory `json:"category"`
+	Alive    bool         `json:"alive"`
+
+	// HasAntidote / HasPoison 女巫的药剂存量，非女巫恒为 false
+	HasAntidote bool `json:"has_antidote"`
+	HasPoison   bool `json:"has_poison"`
 }
 
 // PublicPlayerInfo 一名玩家对外公开的信息
@@ -73,10 +91,18 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 	}
 
 	view := &PlayerView{
-		PlayerID:      playerID,
-		Round:         e.state.Round,
-		Phase:         e.state.Phase,
-		Self:          self,
+		PlayerID: playerID,
+		Round:    e.state.Round,
+		Phase:    e.state.Phase,
+		Self: SelfInfo{
+			ID:          self.ID,
+			Role:        self.Role,
+			Camp:        self.Camp,
+			Category:    self.Category,
+			Alive:       self.Alive,
+			HasAntidote: self.HasAntidote,
+			HasPoison:   self.HasPoison,
+		},
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
 	}
 
@@ -91,8 +117,10 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 
 	view.Players = e.publicPlayers(revealed)
 
-	// 女巫在解药尚在手时可知刀口
-	if self.Role == pb.RoleType_ROLE_TYPE_WITCH && self.HasAntidote {
+	// 女巫在解药尚在手时可知刀口。
+	// 已出局的女巫不再是行动者，天亮公布之前不该拿到今晚的刀口——
+	// AllowedSkills 那一路已经对死人关门了，这里也得关。
+	if self.Alive && self.Role == pb.RoleType_ROLE_TYPE_WITCH && self.HasAntidote {
 		view.KillTarget = e.state.RoundCtx.KillTarget
 	}
 
@@ -143,23 +171,44 @@ func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []pb.S
 // 调用方可以据此路由，而不必自己去记「查验结果只能给预言家」。
 //
 // 引擎内部事件（SET_NIGHT_KILL 等）返回空——它们不该出现在任何玩家面前。
-func (e *Engine) AudienceOf(effect *Effect) []string {
-	if effect == nil || isInternalEvent(effect.Type) {
-		return nil
+//
+// 第二个返回值表示引擎是否认得这个事件类型。第三方 Resolver 可以产出
+// 自定义类型的效果，引擎对它们的可见性无从判断，此时返回 (nil, false)：
+// 调用方需要自己路由，而不该把「引擎不知道」当成「不给任何人看」。
+func (e *Engine) AudienceOf(effect *Effect) ([]string, bool) {
+	if effect == nil {
+		return nil, false
+	}
+	if isInternalEvent(effect.Type) {
+		// 内部事件是引擎的状态变更，不给任何玩家看——这是明确的判断
+		return nil, true
+	}
+
+	// 被否决的行动只有行动者本人需要知道，且必须先于类型划分判断。
+	//
+	// 「女巫想毒人但今晚已用过解药」产出的是一条 source=女巫 的 POISON，
+	// 与结算阶段那条 source="" 的「某人毒发身亡」是同一个类型。
+	// 只按类型分桶，前者会被当成公开死讯广播给全场，女巫当场暴露。
+	if effect.Canceled {
+		if effect.SourceID == "" {
+			return nil, true
+		}
+		return []string{effect.SourceID}, true
 	}
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
 	switch effect.Type {
-	// 公开事件：死亡与出局全场可见
+	// 公开事件：死亡、出局、投票结果全场可见
 	case pb.EventType_EVENT_TYPE_KILL,
 		pb.EventType_EVENT_TYPE_POISON,
 		pb.EventType_EVENT_TYPE_ELIMINATE,
 		pb.EventType_EVENT_TYPE_SHOOT,
+		pb.EventType_EVENT_TYPE_VOTE_TIED,
 		pb.EventType_EVENT_TYPE_GAME_STARTED,
 		pb.EventType_EVENT_TYPE_GAME_ENDED:
-		return e.state.allPlayerIDs()
+		return e.state.allPlayerIDs(), true
 
 	// 私密事件：只有行动者本人知道
 	case pb.EventType_EVENT_TYPE_CHECK,
@@ -167,11 +216,12 @@ func (e *Engine) AudienceOf(effect *Effect) []string {
 		pb.EventType_EVENT_TYPE_SAVE,
 		pb.EventType_EVENT_TYPE_SKIP:
 		if effect.SourceID == "" {
-			return nil
+			return nil, true
 		}
-		return []string{effect.SourceID}
+		return []string{effect.SourceID}, true
 
 	default:
-		return nil
+		// 未知的外部类型：可能是第三方角色自定的事件
+		return nil, false
 	}
 }

@@ -106,9 +106,13 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 
 	result := countVotes(uses, pb.SkillType_SKILL_TYPE_VOTE)
 
-	// 如果平票或无票，不处决任何人
+	// 如果平票或无票，不处决任何人。
+	//
+	// 用专门的 VOTE_TIED 而不是 UNSPECIFIED：平票是最常见的一种投票结局，
+	// 全场都得知道「今天没人出局」。挂在 UNSPECIFIED 上的事件既没法分类，
+	// 也拿不到受众划分。
 	if result.Tied || result.Winner == "" {
-		effect := NewEffect(pb.EventType_EVENT_TYPE_UNSPECIFIED, "", "").
+		effect := NewEffect(pb.EventType_EVENT_TYPE_VOTE_TIED, "", "").
 			WithData("result", "tied").
 			WithData("votes", result.Votes)
 		effects = append(effects, effect)
