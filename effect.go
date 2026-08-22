@@ -63,6 +63,9 @@ func (e *Effect) triggerPhase() (PhaseType, bool) {
 const (
 	playerVarKeyKey   = "var_key"
 	playerVarValueKey = "var_value"
+
+	roundVarKeyKey   = "round_var_key"
+	roundVarValueKey = "round_var_value"
 )
 
 // NewSetPlayerVarEffect 声明「把某个玩家的某项自定义状态改成某值」。
@@ -84,6 +87,25 @@ func NewSetPlayerVarEffect(playerID, key, value string) *Effect {
 func playerVarOf(e *Effect) (key, value string) {
 	key, _ = e.Data[playerVarKeyKey].(string)
 	value, _ = e.Data[playerVarValueKey].(string)
+	return key, value
+}
+
+// NewSetRoundVarEffect 声明「把本回合的某项自定义状态改成某值」。
+//
+// 与 NewSetPlayerVarEffect 的分工：那个跟着玩家走一整局（白痴翻过牌了），
+// 这个每回合自动清零（今晚谁被标记了）。内置的刀口、被守、被救、被毒
+// 都属于后者，只是它们在 RoundContext 上有专门的字段。
+// 值传空串即删除该项。
+func NewSetRoundVarEffect(key, value string) *Effect {
+	return NewEffect(EventSetRoundVar, "", "").
+		WithData(roundVarKeyKey, key).
+		WithData(roundVarValueKey, value)
+}
+
+// roundVarOf 从效果里读出要写的键值。
+func roundVarOf(e *Effect) (key, value string) {
+	key, _ = e.Data[roundVarKeyKey].(string)
+	value, _ = e.Data[roundVarValueKey].(string)
 	return key, value
 }
 

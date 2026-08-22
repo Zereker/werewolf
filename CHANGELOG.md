@@ -28,10 +28,17 @@
   现在 `1..99` 是引擎外部事件、`100..999` 是引擎内部状态变更、`1000` 起是扩展的
   地盘（照常推给 `OnEvent`，`AudienceOf` 回答「不知道」）。
 
-- **快照版本 4 → 5**，`PlayerSnapshot` 增加 `Vars`。
+- **快照版本 4 → 6**，`PlayerSnapshot` 与 `RoundCtxSnapshot` 各增加 `Vars`。
 
 ### 新增
 
+- **`WithVictoryChecker`：胜负条件可以换了。** 判定此前写死在引擎里、只认好人与
+  狼人两边，丘比特的情侣、第三方阵营这类板子根本没有地方表达。内置判定导出为
+  `DefaultVictoryChecker`，包一层就能在原规则之上再加一条。
+- **`RoundVar`：回合级的自定义状态。** 与 `PlayerVar` 的分工是「跟着玩家走一整局」
+  与「每回合自动清零」。`RoundContext` 的刀口、被守、被救、被毒是同一件事，
+  只是它们有专门的字段——`PendingTriggers` 的注释里已经记着这个教训
+  （猎人专属字段改成队列），但当时只泛化了死亡触发那一项。
 - **`PlayerVar`：第三方角色的状态有地方放了。** 读走 `GameView.PlayerVar`，
   写走 `NewSetPlayerVarEffect`，随快照走、回放能重建。此前扩展只能把状态藏在
   自己的 Resolver 里——而 `Resolver` 接口白纸黑字要求「只能通过返回 Effect 表达

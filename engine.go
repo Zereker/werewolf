@@ -17,6 +17,11 @@ type Engine struct {
 	logger  Logger
 	metrics Metrics
 
+	// victory 胜负判定。默认按 GameConfig.VictoryMode 走内置规则，
+	// 可用 WithVictoryChecker 换掉——第三方阵营有自己的胜利条件，
+	// 判定写死在引擎里的话那类板子根本没有地方表达。
+	victory VictoryChecker
+
 	// 当前阶段收集的技能使用
 	pendingUses []*SkillUse
 
@@ -49,6 +54,7 @@ func NewEngine(config *GameConfig, opts ...EngineOption) (*Engine, error) {
 		phase:           newPhaseManager(config),
 		logger:          NewNopLogger(),
 		metrics:         NewNopMetrics(),
+		victory:         DefaultVictoryChecker{Mode: config.VictoryMode},
 		pendingUses:     make([]*SkillUse, 0),
 		effectLog:       make([]*Effect, 0),
 		eventHandlers:   make([]EventHandler, 0),
@@ -237,7 +243,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	//    因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
 	nextPhase := e.calculateNextPhase(currentPhase)
 
-	gameOver, winner := e.state.checkVictory(e.config.VictoryMode)
+	gameOver, winner := e.victory.CheckVictory(newStateView(e.state))
 	endNow := gameOver && !e.state.hasPendingTrigger()
 	if endNow {
 		nextPhase = PhaseEnd

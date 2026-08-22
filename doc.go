@@ -56,11 +56,17 @@
 //		werewolf.WithResolver(myPhase, myResolver))           // 注册解析器
 //	engine.AddCustomPlayer("p1", myRole, camp, category)      // 阵营与类别
 //
-// 角色自身的状态——白痴翻没翻牌、骑士的决斗用没用掉——走 PlayerVar：
-// 读用 GameView.PlayerVar，写用 NewSetPlayerVarEffect。它随快照走、
-// 回放能重建，因此 Resolver 可以保持无状态，而无状态正是这个接口的要求。
-// 内置角色的药剂与守护记录是同一件事，只是它们在 PlayerState 上
-// 有专门的字段。
+// 角色自身的状态走 Var：跟着玩家走一整局的用 PlayerVar（白痴翻没翻牌），
+// 每回合清零的用 RoundVar（今晚谁被标记了）。读用 GameView.PlayerVar /
+// RoundVar，写用 NewSetPlayerVarEffect / NewSetRoundVarEffect。
+// 它们随快照走、回放能重建，因此 Resolver 可以保持无状态——
+// 而无状态正是这个接口的要求。内置角色的药剂、守护记录、刀口、被守被救
+// 都是同一件事，只是它们在 PlayerState / RoundContext 上有专门的字段。
+//
+// 胜负条件由 VictoryChecker 决定，可用 WithVictoryChecker 换掉。
+// 第三方阵营（丘比特的情侣）有自己的胜利条件，判定写死在引擎里的话
+// 那类板子根本没有地方表达；包一层 DefaultVictoryChecker 即可在内置
+// 规则之上再加一条。
 //
 // 自定义取值一律从 1000 起。这不只是「避免撞号」的建议——事件类型的
 // 编号是分段的，1000 以上才是扩展的地盘：

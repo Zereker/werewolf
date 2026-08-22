@@ -358,6 +358,18 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 三个入口都接受它，`WithLogger` / `WithMetrics` 同理。解析器、日志与指标
 都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
 
+扩展能改动的三处，都由构造选项给出：
+
+| 想加什么 | 用什么 |
+|---|---|
+| 新角色的行为 | `WithResolver(phase, resolver)`，可包装内置解析器复用逻辑 |
+| 角色自身的状态 | `NewSetPlayerVarEffect`（跟着玩家一整局）/ `NewSetRoundVarEffect`（每回合清零），读走 `GameView.PlayerVar` / `RoundVar` |
+| 新的胜利条件 | `WithVictoryChecker(checker)`，包一层 `DefaultVictoryChecker` 就能在内置规则之上再加一条 |
+
+状态一定要走 Var 而不是存在 Resolver 的字段里：`Resolver` 接口要求
+「只能通过返回 Effect 表达状态变更」，存在字段里的东西快照带不上、回放
+也重建不出，恢复出来的对局是错的**还不会报错**。
+
 **事件类型的编号是分段的**，这一点关系到扩展的事件能不能发出去：
 
 | 段 | 归谁 | 会不会推给 `OnEvent` |

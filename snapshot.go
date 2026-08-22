@@ -8,7 +8,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 5
+const SnapshotVersion = 6
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -59,6 +59,9 @@ type RoundCtxSnapshot struct {
 	SavedPlayers     []string                 `json:"saved_players,omitempty"`
 	PoisonedPlayers  []string                 `json:"poisoned_players,omitempty"`
 	PendingTriggers  []PendingTriggerSnapshot `json:"pending_triggers,omitempty"`
+
+	// Vars 第三方角色的回合级自定义状态
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
 // PendingTriggerSnapshot 一个待结算的死亡技能
@@ -256,6 +259,7 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 		SavedPlayers:     sortedKeys(s.RoundCtx.SavedPlayers),
 		PoisonedPlayers:  sortedKeys(s.RoundCtx.PoisonedPlayers),
 		PendingTriggers:  snapshotTriggers(s.RoundCtx.PendingTriggers),
+		Vars:             copyVars(s.RoundCtx.Vars),
 	}
 }
 
@@ -301,6 +305,7 @@ func (s *gameState) restoreProgress(phase PhaseType, round int, rc RoundCtxSnaps
 		SavedPlayers:     keySet(rc.SavedPlayers),
 		PoisonedPlayers:  keySet(rc.PoisonedPlayers),
 		PendingTriggers:  restoreTriggers(rc.PendingTriggers),
+		Vars:             copyVars(rc.Vars),
 	}
 }
 
