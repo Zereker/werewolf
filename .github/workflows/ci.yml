@@ -38,6 +38,11 @@ jobs:
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
+      # 每个基准各跑一次。不比对耗时（CI 的机器时快时慢，比了也是噪声），
+      # 只确保它们没有随重构烂掉——不跑的基准迟早编译不过或 panic。
+      - name: Run benchmarks once
+        run: go test -bench=. -benchtime=1x -run '"'"'^$'"'"' ./...
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:

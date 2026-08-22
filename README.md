@@ -536,6 +536,7 @@ werewolf/
 ├── readiness.go    # 阶段就绪判定
 ├── snapshot.go     # 存档导出与恢复
 ├── state.go        # 游戏状态、角色类别、胜负判定
+├── doc.go          # 包文档
 ├── types.go        # 阶段、阵营、角色、技能
 ├── event.go        # 对外事件
 ├── view.go         # Resolver 的只读视图
@@ -589,6 +590,10 @@ go test -race ./...     # 并发检查
 golangci-lint run       # 静态检查（覆盖测试代码）
 go run ./example        # 示例必须能跑通，不是只能编译
 ```
+
+## 更新日志
+
+见 [CHANGELOG.md](CHANGELOG.md)。破坏性变更在每个版本开头单独列出。
 
 ## 许可证
 
