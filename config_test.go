@@ -207,7 +207,7 @@ func TestStartPhase_Configurable(t *testing.T) {
 
 // TestValidate_RejectsMissingNextPhase 漏填 NextPhase 与悬空的 NextPhase 后果相同。
 //
-// 想表达「到此结束」有 PHASE_TYPE_END，留空只可能是漏填。
+// 想表达「到此结束」有 END，留空只可能是漏填。
 // 而 nextSubPhase 对 UNSPECIFIED 的处理是直接进 END——游戏在那里
 // 静默收场，连 GAME_ENDED 都不会发。
 func TestValidate_RejectsMissingNextPhase(t *testing.T) {

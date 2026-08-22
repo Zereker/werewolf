@@ -15,8 +15,18 @@ import (
 // 出局的女巫看到刀口、被否决的效果广播给全场——恰好都属于
 // 「某个特定局面下才现形」，也恰好都能被这里的不变量抓住。
 //
+// # 随机的是配置，不只是打法
+//
+// 这个测试最初只随机「怎么打」，板子与规则配置写死成默认值。但已经查出的
+// 三条会改变对局结果的问题里，有两条恰恰出在**自定义配置**上：回合边界
+// 写死了守卫阶段（阶段环里没有它就永不重置回合上下文）、恢复出来的引擎
+// 注册不了自定义解析器。默认配置那条路早就被踩实了，出事的一直是旁边那些。
+//
+// 所以板子、6 个规则开关、胜负判定方式、起始阶段与阶段环现在也一起随机。
+// 不变量一条都不用改——它们本来就该在任何合法配置下成立。
+//
 // 种子固定，因此失败可以复现：日志里会带上 seed 与 step。
-// games 调大即可加大搜索强度（3000 局约 15 秒）。
+// games 调大即可加大搜索强度（3000 局约 20 秒）。
 func TestFuzz_Invariants(t *testing.T) {
 	const games = 200
 	stats := map[string]int{}
@@ -29,25 +39,102 @@ func TestFuzz_Invariants(t *testing.T) {
 					t.Fatalf("seed=%d PANIC: %v", seed, r)
 				}
 			}()
-			stats[playRandom(t, seed, rng)]++
+			for _, k := range playRandom(t, seed, rng) {
+				stats[k]++
+			}
 		}()
+	}
+	for _, k := range []string{"结束", "屠边", "屠城", "有守卫阶段", "无守卫阶段"} {
+		t.Logf("  %-12s %d", k, stats[k])
 	}
 	if n := stats["400 步未结束"]; n > 0 {
 		t.Errorf("有 %d 局在 400 步内没有结束", n)
 	}
+	// 随机化一旦退化（比如某个分支永远走不到），这个测试会安静地
+	// 变成只跑默认配置——那正是它要修的毛病，所以显式挡一道
+	for _, k := range []string{"屠边", "屠城", "有守卫阶段", "无守卫阶段"} {
+		if stats[k] == 0 {
+			t.Errorf("随机化没有覆盖到「%s」，搜索空间退化了", k)
+		}
+	}
 }
 
-func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
-	e := MustNewEngine(nil)
-	roles := []RoleType{
-		RoleWerewolf, RoleWerewolf,
-		RoleWerewolf, RoleSeer,
-		RoleWitch, RoleGuard,
-		RoleHunter, RoleVillager,
-		RoleVillager, RoleVillager,
-		RoleVillager, RoleVillager,
+// randomConfig 随机出一套合法配置。
+//
+// 只随机「使用者真的可能这么配」的维度，且必须自洽——Validate 过不了的
+// 配置属于另一类测试（config_test.go 里逐条盯着），在这里只会掩盖真问题。
+func randomConfig(rng *rand.Rand) *GameConfig {
+	cfg := DefaultGameConfig()
+
+	// 6 个规则开关，各自独立
+	cfg.WitchCanSaveSelf = rng.Intn(2) == 0
+	cfg.WitchCanUseBothPotions = rng.Intn(2) == 0
+	cfg.GuardCanProtectSelf = rng.Intn(2) == 0
+	cfg.GuardCanRepeat = rng.Intn(2) == 0
+	cfg.SameGuardKillIsEmpty = rng.Intn(2) == 0
+	cfg.GuardSaveTogetherDies = rng.Intn(2) == 0
+
+	if rng.Intn(2) == 0 {
+		cfg.VictoryMode = VictoryModeTownWipe
 	}
+
+	// 阶段环：三成的局面把守卫阶段整个摘掉。
+	//
+	// 没有守卫的板子本来就该这么配，而回合边界此前写死成 NIGHT_GUARD，
+	// 摘掉它之后回合数永远停在 1、回合上下文永不重置——女巫用掉的那瓶
+	// 解药会一夜又一夜地把同一个人救回来。这条路必须有人走。
+	if rng.Intn(10) < 3 {
+		cfg.StartPhase = PhaseNightWolf
+		cfg.Phases[PhaseVote].NextPhase = PhaseNightWolf
+		cfg.Phases[PhaseDayHunter].NextPhase = PhaseNightWolf
+		delete(cfg.Phases, PhaseNightGuard)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		panic("随机出的配置本身不合法: " + err.Error())
+	}
+	return cfg
+}
+
+// randomBoard 随机出一副合法的板子：至少一狼、至少一好人。
+func randomBoard(rng *rand.Rand, withGuard bool) []RoleType {
+	gods := []RoleType{RoleSeer, RoleWitch, RoleHunter}
+	if withGuard {
+		gods = append(gods, RoleGuard)
+	}
+
+	roles := make([]RoleType, 0, 12)
+	for i := 0; i < 1+rng.Intn(3); i++ { // 1~3 狼
+		roles = append(roles, RoleWerewolf)
+	}
+	for _, g := range gods { // 每个神职各有一半概率上场
+		if rng.Intn(2) == 0 {
+			roles = append(roles, g)
+		}
+	}
+	for i := 0; i < 1+rng.Intn(5); i++ { // 1~5 民，保证好人不为空
+		roles = append(roles, RoleVillager)
+	}
+
 	rng.Shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
+	return roles
+}
+
+// playRandom 跑一局，返回若干个用于统计的标签。
+func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
+	cfg := randomConfig(rng)
+	_, hasGuardPhase := cfg.Phases[PhaseNightGuard]
+
+	tags := []string{"有守卫阶段", "屠边"}
+	if !hasGuardPhase {
+		tags[0] = "无守卫阶段"
+	}
+	if cfg.VictoryMode == VictoryModeTownWipe {
+		tags[1] = "屠城"
+	}
+
+	e := MustNewEngine(cfg)
+	roles := randomBoard(rng, hasGuardPhase)
 
 	ids := make([]string, 0, len(roles))
 	identity := map[string][2]int32{}
@@ -64,9 +151,11 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 	}
 
 	dead := map[string]bool{}
+	lastRound := e.Round()
+	cycles := 1 // 已经进入起始阶段一次
 	for step := 0; step < 400; step++ {
 		if e.IsGameOver() {
-			return "结束"
+			return append(tags, "结束")
 		}
 
 		// 每个存活玩家随机提交一个当前允许的技能
@@ -106,7 +195,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 		raw, _ := json.Marshal(snap)
 		var round Snapshot
 		_ = json.Unmarshal(raw, &round)
-		clone, errR := RestoreEngine(nil, &round)
+		clone, errR := RestoreEngine(cfg, &round)
 		if errR != nil {
 			t.Fatalf("seed=%d step=%d Restore: %v", seed, step, errR)
 		}
@@ -122,6 +211,38 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 			t.Fatalf("seed=%d step=%d 快照分叉: 原=%v/%d 副本=%v/%d",
 				seed, step, e.Phase(), e.Round(), clone.Phase(), clone.Round())
 		}
+
+		// 不变量 H：回合数单调不减，且绕回起始阶段就必须是新的一回合。
+		//
+		// 「回合边界」此前写死成守卫阶段，阶段环里没有它的时候回合数
+		// 永远停在 1。光看这一条还不够——回合数不动本身不刺眼，
+		// 真正的后果由下面的 I 抓。
+		if e.Round() < lastRound {
+			t.Fatalf("seed=%d step=%d 回合数倒退: %d -> %d", seed, step, lastRound, e.Round())
+		}
+		if e.Phase() == cfg.startPhase() {
+			cycles++
+		}
+		if e.Round() < cycles {
+			t.Fatalf("seed=%d step=%d 第 %d 次绕回起始阶段，回合数却只有 %d",
+				seed, step, cycles, e.Round())
+		}
+
+		// 不变量 I：进入新的一回合时，回合上下文必须是干净的。
+		//
+		// 被守、被救、被毒、刀口都是「本回合有效」的记录。不清的话
+		// 女巫用掉的那瓶解药会一夜又一夜地把同一个人救回来——
+		// 一次性道具变成了永久道具，规则当场失效。
+		if e.Round() > lastRound {
+			if rc := e.RoundContext(); rc != nil {
+				if rc.KillTarget != "" || len(rc.ProtectedPlayers) > 0 ||
+					len(rc.SavedPlayers) > 0 || len(rc.PoisonedPlayers) > 0 {
+					t.Fatalf("seed=%d step=%d 进入第 %d 回合，上一回合的记录还在: %+v",
+						seed, step, e.Round(), rc)
+				}
+			}
+		}
+		lastRound = e.Round()
 
 		// 不变量 C：死人不复活；身份不变
 		for _, id := range ids {
@@ -188,7 +309,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 		}
 
 		// 不变量 D：效果流回放必须与原引擎同步
-		replayed, err := ReplayEngine(nil, e.EffectLog())
+		replayed, err := ReplayEngine(cfg, e.EffectLog())
 		if err != nil {
 			t.Fatalf("seed=%d step=%d Replay: %v", seed, step, err)
 		}
@@ -204,5 +325,5 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) string {
 			}
 		}
 	}
-	return "400 步未结束"
+	return append(tags, "400 步未结束")
 }

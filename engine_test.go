@@ -246,7 +246,7 @@ func TestEngine_EndPhase(t *testing.T) {
 
 	// 检查包含 PROTECT effect
 	if findEffect(effects, EventProtect) == nil {
-		t.Error("expected to have EVENT_TYPE_PROTECT effect")
+		t.Error("expected to have PROTECT effect")
 	}
 
 	// Should transition to NIGHT_WOLF
@@ -956,4 +956,33 @@ func TestEngine_RoundBoundaryFollowsStartPhase(t *testing.T) {
 	g.end(PhaseNightResolve)
 	g.endAny()
 	g.assertAlive("v1", false, "解药已用完，第二夜的刀口应当死亡")
+}
+
+// TestEngine_EndPhase_ReturnsGameEnded 结束事件必须出现在 EndPhase 的返回值里。
+//
+// 引擎有三条出口：EndPhase 的返回值、OnEvent 的事件流、EffectLog。
+// GAME_ENDED 此前只走后两条，照着「EndPhase -> AudienceOf -> 发给玩家」
+// 路由的调用方会漏掉整局最重要的一件事——谁赢了。
+func TestEngine_EndPhase_ReturnsGameEnded(t *testing.T) {
+	g := newRuleGame(t, nil, seats(wolf("w1"), villagers("v1", "v2"))...)
+	g.setDead("w1")
+
+	effects, err := g.e.EndPhase()
+	if err != nil {
+		t.Fatalf("EndPhase 失败: %v", err)
+	}
+
+	ended := findEffect(effects, EventGameEnded)
+	if ended == nil {
+		t.Fatal("EndPhase 的返回值里应当包含 GAME_ENDED")
+	}
+	if got, ok := ended.Data["winner"].(Camp); !ok || got != CampGood {
+		t.Errorf("胜方: 期望 CampGood，实际 %v", ended.Data["winner"])
+	}
+
+	// 而且它得有受众——不然调用方还是不知道该发给谁
+	audience, known := g.e.AudienceOf(ended)
+	if !known || len(audience) == 0 {
+		t.Errorf("GAME_ENDED 应当是全场可见，实际 (%v, %v)", audience, known)
+	}
 }

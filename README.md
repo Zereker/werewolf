@@ -117,8 +117,8 @@ func must(err error) {
 
 ```
 女巫看到的刀口: v1
-效果: EVENT_TYPE_KILL -> v1 (canceled=false)
-天亮了，当前阶段=PHASE_TYPE_DAY，v1 存活=false
+效果: KILL -> v1 (canceled=false)
+天亮了，当前阶段=DAY，v1 存活=false
 ```
 
 完整示例见 [example/main.go](example/main.go)。
@@ -158,8 +158,8 @@ err = engine.AddCustomPlayer("p2", werewolf.RoleVillager,
 | 情况 | 错误 |
 |------|------|
 | ID 为空 | `ErrInvalidPlayerID` |
-| ID 重复 | `ERROR_CODE_PLAYER_EXISTS` |
-| 角色是上帝或未指定 | `ERROR_CODE_INVALID_ROLE` |
+| ID 重复 | `PLAYER_EXISTS` |
+| 角色是上帝或未指定 | `INVALID_ROLE` |
 | 游戏已开始 | `ErrGameAlreadyStarted` |
 
 `Start` 同样会校验板子：缺狼返回 `ErrNoWerewolf`，缺好人返回 `ErrNoGoodPlayer`，
@@ -305,14 +305,25 @@ for _, effect := range effects {
 
 ```go
 r := engine.PhaseReadiness()
-if !r.Ready {
-    fmt.Println("还差:", r.Pending)   // 谁、什么角色、什么技能
+
+for _, p := range r.Pending {
+    fmt.Println("必须等:", p.PlayerID, p.Skill)   // 不动就不能推进
 }
+for _, p := range r.Optional {
+    fmt.Println("可以催:", p.PlayerID, p.Skill)   // 不动也合法
+}
+
 engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用方决定
 ```
 
-由 `PhaseStep.Required` / `Multiple` 声明：狼人商刀与投票要求全员参与，
-其余步骤可选。没有合格行动者的必需步骤（守卫已出局）视为自动满足。
+**`Ready` 不表示「所有人都动过了」**：默认配置里只有狼人商刀与投票是
+`Required`，守卫、女巫、预言家、猎人都可以不动。所以「还差谁**必须**动」
+看 `Pending`，「本阶段谁**可以**动」看 `Optional`——只看前者来驱动游戏，
+那几个角色一整局都不会被叫到。
+
+由 `PhaseStep.Required` / `Multiple` / `Group` 声明。没有合格行动者的
+必需步骤（守卫已出局）视为自动满足；互斥备选组（猎人的开枪与不开枪）
+提交任一即算完成，只报一条。
 
 ## 扩展新角色
 
@@ -344,6 +355,40 @@ engine.AddCustomPlayer("wk", roleWolfKing, werewolf.CampEvil, werewolf.RoleCateg
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。
 完整可运行的例子见 [extension_test.go](extension_test.go)。
+
+## 命令行主持台
+
+`example/cli` 是一个能真的从头玩完一局的主持台，也是这个库的第一个真实使用者——
+超时、消息路由、存档落盘这些库刻意不管的事，都由它自己解决：
+
+```console
+$ go run ./example/cli
+狼人杀 · 命令行主持台
+9 人局：3 狼 + 预言家/女巫/守卫/猎人 + 2 民
+
+  [公告] 天黑请闭眼。守卫请睁眼，你要守护谁？
+  守卫: [6号]  可用技能 守护
+
+[第1回合 守卫] > act 6号 守 5号
+  已记下: 6号 守护 5号
+[第1回合 守卫] > end
+  守卫 结束 -> 狼人
+  [私信 [6号]] 6号 -> 5号 被守护
+[第1回合 狼人] > act 1号 刀 5号
+[第1回合 狼人] > end
+[第1回合 女巫] > view 2号
+  你是 2号，女巫，存活
+  解药 还在，毒药 还在
+  今晚被刀的是: 5号
+  你现在可以: 解药/毒药
+[第1回合 女巫] > act 2号 救 5号
+...
+  [全场] 5号 被刀，同守同救，依然死亡
+```
+
+`view <玩家>` 出来的内容可以原样发给他，`[私信]` / `[全场]` 的分发依据是
+`AudienceOf`。`run` 让它自己随机跑完一局，`save` / `load` 演示服务重启。
+也可以照脚本跑：`go run ./example/cli < example/cli/testdata/demo.txt`。
 
 ## 效果流与回放
 
@@ -418,7 +463,7 @@ func main() {
 输出：
 
 ```
-恢复后阶段=PHASE_TYPE_NIGHT_WITCH，女巫看到的刀口=v1
+恢复后阶段=NIGHT_WITCH，女巫看到的刀口=v1
 ```
 
 要点：
@@ -497,6 +542,7 @@ werewolf/
 ├── rules_test.go      # 以维基百科规则为基准的一致性测试
 ├── extension_test.go  # 第三方扩展契约（以狼王为例）
 ├── example/        # 可运行示例
+│   └── cli/        # 命令行主持台（真实使用者）
 └── docs/
     └── ARCHITECTURE.md
 ```

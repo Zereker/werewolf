@@ -42,19 +42,19 @@ func (v PhaseType) String() string {
 
 // phaseTypeNames 全部取值到名字的映射，遍历它即可枚举所有取值。
 var phaseTypeNames = map[PhaseType]string{
-	PhaseUnspecified:  "PHASE_TYPE_UNSPECIFIED",
-	PhaseStart:        "PHASE_TYPE_START",
-	PhaseNight:        "PHASE_TYPE_NIGHT",
-	PhaseNightGuard:   "PHASE_TYPE_NIGHT_GUARD",
-	PhaseNightWolf:    "PHASE_TYPE_NIGHT_WOLF",
-	PhaseNightWitch:   "PHASE_TYPE_NIGHT_WITCH",
-	PhaseNightSeer:    "PHASE_TYPE_NIGHT_SEER",
-	PhaseNightResolve: "PHASE_TYPE_NIGHT_RESOLVE",
-	PhaseNightHunter:  "PHASE_TYPE_NIGHT_HUNTER",
-	PhaseDay:          "PHASE_TYPE_DAY",
-	PhaseDayHunter:    "PHASE_TYPE_DAY_HUNTER",
-	PhaseVote:         "PHASE_TYPE_VOTE",
-	PhaseEnd:          "PHASE_TYPE_END",
+	PhaseUnspecified:  "UNSPECIFIED",
+	PhaseStart:        "START",
+	PhaseNight:        "NIGHT",
+	PhaseNightGuard:   "NIGHT_GUARD",
+	PhaseNightWolf:    "NIGHT_WOLF",
+	PhaseNightWitch:   "NIGHT_WITCH",
+	PhaseNightSeer:    "NIGHT_SEER",
+	PhaseNightResolve: "NIGHT_RESOLVE",
+	PhaseNightHunter:  "NIGHT_HUNTER",
+	PhaseDay:          "DAY",
+	PhaseDayHunter:    "DAY_HUNTER",
+	PhaseVote:         "VOTE",
+	PhaseEnd:          "END",
 }
 
 // Camp 阵营
@@ -78,9 +78,9 @@ func (v Camp) String() string {
 
 // campNames 全部取值到名字的映射，遍历它即可枚举所有取值。
 var campNames = map[Camp]string{
-	CampUnspecified: "CAMP_UNSPECIFIED",
-	CampGood:        "CAMP_GOOD",
-	CampEvil:        "CAMP_EVIL",
+	CampUnspecified: "UNSPECIFIED",
+	CampGood:        "GOOD",
+	CampEvil:        "EVIL",
 }
 
 // RoleType 角色类型
@@ -109,14 +109,14 @@ func (v RoleType) String() string {
 
 // roleTypeNames 全部取值到名字的映射，遍历它即可枚举所有取值。
 var roleTypeNames = map[RoleType]string{
-	RoleUnspecified: "ROLE_TYPE_UNSPECIFIED",
-	RoleGod:         "ROLE_TYPE_GOD",
-	RoleWerewolf:    "ROLE_TYPE_WEREWOLF",
-	RoleSeer:        "ROLE_TYPE_SEER",
-	RoleWitch:       "ROLE_TYPE_WITCH",
-	RoleHunter:      "ROLE_TYPE_HUNTER",
-	RoleVillager:    "ROLE_TYPE_VILLAGER",
-	RoleGuard:       "ROLE_TYPE_GUARD",
+	RoleUnspecified: "UNSPECIFIED",
+	RoleGod:         "GOD",
+	RoleWerewolf:    "WEREWOLF",
+	RoleSeer:        "SEER",
+	RoleWitch:       "WITCH",
+	RoleHunter:      "HUNTER",
+	RoleVillager:    "VILLAGER",
+	RoleGuard:       "GUARD",
 }
 
 // SkillType 技能类型
@@ -148,15 +148,15 @@ func (v SkillType) String() string {
 
 // skillTypeNames 全部取值到名字的映射，遍历它即可枚举所有取值。
 var skillTypeNames = map[SkillType]string{
-	SkillUnspecified: "SKILL_TYPE_UNSPECIFIED",
-	SkillKill:        "SKILL_TYPE_KILL",
-	SkillCheck:       "SKILL_TYPE_CHECK",
-	SkillProtect:     "SKILL_TYPE_PROTECT",
-	SkillAntidote:    "SKILL_TYPE_ANTIDOTE",
-	SkillPoison:      "SKILL_TYPE_POISON",
-	SkillVote:        "SKILL_TYPE_VOTE",
-	SkillSpeak:       "SKILL_TYPE_SPEAK",
-	SkillShoot:       "SKILL_TYPE_SHOOT",
-	SkillAnnounce:    "SKILL_TYPE_ANNOUNCE",
-	SkillSkip:        "SKILL_TYPE_SKIP",
+	SkillUnspecified: "UNSPECIFIED",
+	SkillKill:        "KILL",
+	SkillCheck:       "CHECK",
+	SkillProtect:     "PROTECT",
+	SkillAntidote:    "ANTIDOTE",
+	SkillPoison:      "POISON",
+	SkillVote:        "VOTE",
+	SkillSpeak:       "SPEAK",
+	SkillShoot:       "SHOOT",
+	SkillAnnounce:    "ANNOUNCE",
+	SkillSkip:        "SKIP",
 }

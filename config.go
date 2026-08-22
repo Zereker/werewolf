@@ -332,11 +332,11 @@ func (c *GameConfig) Validate() error {
 
 		// 悬空的 NextPhase 会让游戏走到一半无声结束。
 		//
-		// UNSPECIFIED 一并拒绝：想表达「到此结束」有 PHASE_TYPE_END，
+		// UNSPECIFIED 一并拒绝：想表达「到此结束」有 PhaseEnd，
 		// 留空只可能是漏填，而漏填的后果与悬空完全一样。
 		if pc.NextPhase == PhaseUnspecified {
 			return WrapError(CodeInvalidPhase,
-				"phase %v has no NextPhase (use PHASE_TYPE_END to end the game)", phaseType)
+				"phase %v has no NextPhase (use PhaseEnd to end the game)", phaseType)
 		}
 		if pc.NextPhase != PhaseEnd {
 			if _, ok := c.Phases[pc.NextPhase]; !ok {
@@ -361,7 +361,7 @@ func (c *GameConfig) Validate() error {
 // validateSteps 校验一个阶段的步骤声明。
 //
 // 重复声明会让 AllowedSkills 返回重复项、PhaseReadiness 重复计数
-// 「还差谁行动」。ROLE_TYPE_UNSPECIFIED 表示「所有角色」，因此它与任何
+// 「还差谁行动」。RoleUnspecified 表示「所有角色」，因此它与任何
 // 具体角色声明同一个技能都构成重复——键相同的那半只是同一个问题里
 // 比较显眼的一半。
 func validateSteps(phaseType PhaseType, steps []PhaseStep) error {
