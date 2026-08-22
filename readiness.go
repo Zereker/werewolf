@@ -61,13 +61,17 @@ func (e *Engine) PhaseReadiness() PhaseReadiness {
 		}
 	}
 
-	phaseConfig := e.phase.GetPhaseConfig(e.state.Phase)
+	phaseConfig := e.phase.phaseConfig(e.state.Phase)
 	if phaseConfig == nil {
 		return out
 	}
 
 	trigger, hasTrigger := e.state.peekTrigger()
 	triggerActive := hasTrigger && trigger.Phase == e.state.Phase
+
+	// 互斥备选组：同组的任一技能都算完成，逐步骤独立判定会把
+	// 「猎人已明确表示不开枪」记成「还欠着开枪」
+	groupSkills := groupSkillsOf(phaseConfig.Steps)
 
 	for _, step := range phaseConfig.Steps {
 		// 上帝是系统角色，没有玩家承担
@@ -81,9 +85,14 @@ func (e *Engine) PhaseReadiness() PhaseReadiness {
 			continue
 		}
 
+		accepted := groupSkills[step.Group]
+		if accepted == nil {
+			accepted = []pb.SkillType{step.Skill}
+		}
+
 		var missing []PendingAction
 		for _, id := range actors {
-			if !submitted[id][step.Skill] {
+			if !submittedAny(submitted[id], accepted) {
 				missing = append(missing, PendingAction{
 					PlayerID: id,
 					Role:     step.Role,
@@ -102,16 +111,96 @@ func (e *Engine) PhaseReadiness() PhaseReadiness {
 		}
 	}
 
+	// 同一个组会被组里每个步骤各报一次，去重后调用方看到的才是
+	// 「这个人还欠一次行动」而不是「他欠了开枪又欠了不开枪」
+	out.Pending = dedupPending(out.Pending, groupOfStep(phaseConfig.Steps))
+
+	return out
+}
+
+// groupSkillsOf 归拢互斥备选组：组名 -> 该组接受的全部技能。
+func groupSkillsOf(steps []PhaseStep) map[string][]pb.SkillType {
+	out := make(map[string][]pb.SkillType)
+	for _, step := range steps {
+		if step.Group == "" {
+			continue
+		}
+		out[step.Group] = append(out[step.Group], step.Skill)
+	}
+	return out
+}
+
+// groupOfStep 技能 -> 它所属的互斥备选组名。
+func groupOfStep(steps []PhaseStep) map[pb.SkillType]string {
+	out := make(map[pb.SkillType]string)
+	for _, step := range steps {
+		if step.Group != "" {
+			out[step.Skill] = step.Group
+		}
+	}
+	return out
+}
+
+// submittedAny 该玩家是否提交过其中任意一个技能。
+func submittedAny(done map[pb.SkillType]bool, skills []pb.SkillType) bool {
+	for _, skill := range skills {
+		if done[skill] {
+			return true
+		}
+	}
+	return false
+}
+
+// dedupPending 同一玩家在同一互斥备选组里只保留一条待办。
+func dedupPending(pending []PendingAction, group map[pb.SkillType]string) []PendingAction {
+	if len(pending) == 0 {
+		return pending
+	}
+
+	type key struct {
+		player string
+		group  string
+	}
+	seen := make(map[key]bool, len(pending))
+	out := pending[:0]
+	for _, p := range pending {
+		g, inGroup := group[p.Skill]
+		if !inGroup {
+			out = append(out, p)
+			continue
+		}
+		k := key{player: p.PlayerID, group: g}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, p)
+	}
 	return out
 }
 
 // actorsForStep 该步骤的合格行动者。调用前需持有 e.mu。
 func (e *Engine) actorsForStep(role pb.RoleType, triggerActive bool, trigger PendingTrigger) []string {
 	if triggerActive {
-		return []string{trigger.PlayerID}
+		// 死亡技能阶段只有触发者能行动，但他只承担与自己角色相符的步骤。
+		// 无视 role 一律返回触发者，会让复用了多角色阶段配置的自定义
+		// 死亡技能阶段声称「触发者要替所有角色行动」。
+		return e.triggerActorFor(role, trigger)
 	}
 	if role == pb.RoleType_ROLE_TYPE_UNSPECIFIED {
 		return sortedStrings(e.state.getAlivePlayerIDs())
 	}
 	return sortedStrings(e.state.getAlivePlayerIDsByRole(role))
+}
+
+// triggerActorFor 触发者是否承担该角色的步骤。调用前需持有 e.mu。
+func (e *Engine) triggerActorFor(role pb.RoleType, trigger PendingTrigger) []string {
+	if role == pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+		return []string{trigger.PlayerID}
+	}
+	p, ok := e.state.getPlayer(trigger.PlayerID)
+	if !ok || p.Role != role {
+		return nil
+	}
+	return []string{trigger.PlayerID}
 }

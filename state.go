@@ -29,8 +29,8 @@ type PendingTrigger struct {
 	Phase    pb.PhaseType // 该去哪个阶段结算
 }
 
-// NewRoundContext 创建新的回合上下文
-func NewRoundContext() *RoundContext {
+// newRoundContext 创建新的回合上下文
+func newRoundContext() *RoundContext {
 	return &RoundContext{
 		ProtectedPlayers: make(map[string]bool),
 		SavedPlayers:     make(map[string]bool),
@@ -123,8 +123,13 @@ type PlayerState struct {
 	HasAntidote bool // 是否有解药
 	HasPoison   bool // 是否有毒药
 
-	// 守卫连续保护限制
-	LastProtectedTarget string // 上一回合保护的目标
+	// 守卫连续保护限制。
+	//
+	// 只记「哪一回合守了谁」，不记「最后一次成功守护的目标」——
+	// 后者不会因为守卫弃权而失效，一旦命中就把那个目标永久锁死。
+	// 是否构成连守由 gameState.lastProtectedTarget 按回合号判定。
+	LastProtectedTarget string // 最近一次生效守护的目标
+	LastProtectedRound  int    // 那次守护发生在第几回合，0 表示从未守护
 }
 
 // gameState 游戏状态。
@@ -153,7 +158,7 @@ func newState() *gameState {
 		Phase:    pb.PhaseType_PHASE_TYPE_START,
 		Round:    0,
 		players:  make(map[string]*PlayerState),
-		RoundCtx: NewRoundContext(),
+		RoundCtx: newRoundContext(),
 	}
 }
 
@@ -227,15 +232,6 @@ func (s *gameState) countCamps() (good, evil int) {
 	return good, evil
 }
 
-// getPlayerSnapshot 返回玩家内部状态的值副本（包内使用）
-func (s *gameState) getPlayerSnapshot(id string) (PlayerState, bool) {
-	p, ok := s.players[id]
-	if !ok {
-		return PlayerState{}, false
-	}
-	return *p, true
-}
-
 // currentPhase 当前阶段（包内使用，自带锁）
 func (s *gameState) currentPhase() pb.PhaseType {
 	return s.Phase
@@ -248,26 +244,29 @@ func (s *gameState) currentRound() int {
 
 // getPlayer 获取玩家（包内使用）
 // 返回内部指针，仅限包内代码使用
-// 外部请使用 GetPlayerInfo(id) 获取只读副本
+// 外部请使用 PlayerInfo(id) 获取只读副本
 func (s *gameState) getPlayer(id string) (*PlayerState, bool) {
 	p, ok := s.players[id]
 	return p, ok
 }
 
-// PlayerInfo 玩家信息只读视图
+// PlayerInfo 玩家信息只读视图（上帝视角）。
+//
+// 含 Protected 这类只有上帝该知道的信息，不可整体转发给玩家——
+// 要发给玩家的内容用 Engine.PlayerView。
 type PlayerInfo struct {
-	ID          string
-	Role        pb.RoleType
-	Camp        pb.Camp
-	Category    RoleCategory
-	Alive       bool
-	Protected   bool // 今晚是否被保护（取自本回合上下文）
-	HasAntidote bool
-	HasPoison   bool
+	ID          string       `json:"id"`
+	Role        pb.RoleType  `json:"role"`
+	Camp        pb.Camp      `json:"camp"`
+	Category    RoleCategory `json:"category"`
+	Alive       bool         `json:"alive"`
+	Protected   bool         `json:"protected"` // 今晚是否被保护（取自本回合上下文）
+	HasAntidote bool         `json:"has_antidote"`
+	HasPoison   bool         `json:"has_poison"`
 }
 
-// GetPlayerInfo 获取玩家信息的只读副本
-func (s *gameState) GetPlayerInfo(id string) (PlayerInfo, bool) {
+// PlayerInfo 获取玩家信息的只读副本
+func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	p, ok := s.players[id]
 	if !ok {
 		return PlayerInfo{}, false
@@ -325,6 +324,11 @@ func (s *gameState) getAlivePlayerIDs() []string {
 // 不会报错也不会改变状态。扩展时请复用已有类型，或让 Resolver 自己把
 // 语义拆解成引擎认识的效果。
 func (s *gameState) applyEffect(effect *Effect) {
+	// 第三方 Resolver 返回的切片里可能混进 nil，不值得为此让整局崩掉
+	if effect == nil {
+		return
+	}
+
 	// 被取消的效果不改变状态，但仍会出现在 EndPhase 的返回值里，
 	// 好让调用方知道「某人试了但没成」以及原因
 	if effect.Canceled {
@@ -333,7 +337,7 @@ func (s *gameState) applyEffect(effect *Effect) {
 
 	// 确保 RoundCtx 已初始化
 	if s.RoundCtx == nil {
-		s.RoundCtx = NewRoundContext()
+		s.RoundCtx = newRoundContext()
 	}
 
 	switch effect.Type {
@@ -365,15 +369,19 @@ func (s *gameState) applyEffect(effect *Effect) {
 	case pb.EventType_EVENT_TYPE_CLEAR_NIGHT_KILL:
 		s.RoundCtx.KillTarget = ""
 	case pb.EventType_EVENT_TYPE_SET_LAST_PROTECTED:
-		if guard, ok := s.players[effect.SourceID]; ok && guard.Role == pb.RoleType_ROLE_TYPE_GUARD {
+		if guard, ok := s.players[effect.SourceID]; ok {
 			guard.LastProtectedTarget = effect.TargetID
+			guard.LastProtectedRound = s.Round
 		}
+	// 药剂与守护记录不按角色设限：这里是状态的写入点，谁有资格用药
+	// 是规则问题，由 Resolver 判定（内置的 WitchResolver 会查 Role）。
+	// 在这里再写死一遍角色，等于第三方的「女巫类」角色改不动自己的状态。
 	case pb.EventType_EVENT_TYPE_USE_ANTIDOTE:
-		if witch, ok := s.players[effect.SourceID]; ok && witch.Role == pb.RoleType_ROLE_TYPE_WITCH {
+		if witch, ok := s.players[effect.SourceID]; ok {
 			witch.HasAntidote = false
 		}
 	case pb.EventType_EVENT_TYPE_USE_POISON:
-		if witch, ok := s.players[effect.SourceID]; ok && witch.Role == pb.RoleType_ROLE_TYPE_WITCH {
+		if witch, ok := s.players[effect.SourceID]; ok {
 			witch.HasPoison = false
 			s.RoundCtx.PoisonedPlayers[effect.TargetID] = true
 		}
@@ -394,7 +402,7 @@ func (s *gameState) resetRoundState() {
 // resetRoundStateUnlocked 内部方法，不获取锁
 func (s *gameState) resetRoundStateUnlocked() {
 	// 创建新的回合上下文
-	s.RoundCtx = NewRoundContext()
+	s.RoundCtx = newRoundContext()
 }
 
 // startAt 把状态置到开局：指定阶段、第一回合、干净的回合上下文
@@ -414,22 +422,39 @@ func (s *gameState) nextPhase(phase pb.PhaseType) {
 	}
 }
 
-// getWolfTeammates 获取狼人队友（不包括自己）
-// 只有狼人才能查询队友，非狼人返回空列表
+// getWolfTeammates 获取狼队队友（不包括自己），按 ID 排序。
+//
+// 按阵营而不是按角色判定：狼王、白狼王、狼美人这些角色经
+// AddCustomPlayer 加进来时 Camp 是 EVIL、Role 却不是 WEREWOLF，
+// 按角色判会让他们既看不到队友、也不被真狼看到，等于自定义狼队角色
+// 实际不可用。狼队内部视野不对称的变体（如某些板子的隐狼）需要调用方
+// 自行过滤，引擎给的是「同阵营即队友」这个默认。
+//
+// 非狼队成员返回空列表。
 func (s *gameState) getWolfTeammates(playerID string) []string {
-	// 检查请求者是否是狼人
 	player, ok := s.players[playerID]
-	if !ok || player.Role != pb.RoleType_ROLE_TYPE_WEREWOLF {
+	if !ok || player.Camp != pb.Camp_CAMP_EVIL {
 		return []string{}
 	}
 
 	result := make([]string, 0)
 	for _, p := range s.players {
-		if p.Role == pb.RoleType_ROLE_TYPE_WEREWOLF && p.ID != playerID {
+		if p.Camp == pb.Camp_CAMP_EVIL && p.ID != playerID {
 			result = append(result, p.ID)
 		}
 	}
-	return result
+	return sortedStrings(result)
+}
+
+// alivePlayerIDsByCamp 指定阵营的存活玩家 ID，按 ID 排序（包内使用）
+func (s *gameState) alivePlayerIDsByCamp(camp pb.Camp) []string {
+	result := make([]string, 0)
+	for id, p := range s.players {
+		if p.Alive && p.Camp == camp {
+			result = append(result, id)
+		}
+	}
+	return sortedStrings(result)
 }
 
 // checkVictory 按指定方式检查胜利条件。
@@ -442,22 +467,28 @@ func (s *gameState) getWolfTeammates(playerID string) []string {
 //
 // 屠边判定只对开局就存在的类别生效：没有神职的板子不会因
 // 「神职全灭」在开局瞬间判负，平民同理。
+//
+// 「平民」「神職人員」说的都是好人阵营的那一半。狼队也可以有自己的神
+// （隐狼、狼美人，经 AddCustomPlayer 标成 RoleCategoryGod），把它们一起
+// 计进总数会让一名活着的隐狼把「好人的神已经死光」这个事实一直挡住。
 func (s *gameState) checkVictory(mode VictoryMode) (bool, pb.Camp) {
 	var goodAlive, evilAlive int
 	var godsTotal, godsAlive int
 	var villagersTotal, villagersAlive int
 
 	for _, p := range s.players {
-		switch p.Category {
-		case RoleCategoryGod:
-			godsTotal++
-			if p.Alive {
-				godsAlive++
-			}
-		case RoleCategoryVillager:
-			villagersTotal++
-			if p.Alive {
-				villagersAlive++
+		if p.Camp == pb.Camp_CAMP_GOOD {
+			switch p.Category {
+			case RoleCategoryGod:
+				godsTotal++
+				if p.Alive {
+					godsAlive++
+				}
+			case RoleCategoryVillager:
+				villagersTotal++
+				if p.Alive {
+					villagersAlive++
+				}
 			}
 		}
 
@@ -502,6 +533,19 @@ func (s *gameState) checkVictory(mode VictoryMode) (bool, pb.Camp) {
 	return false, pb.Camp_CAMP_UNSPECIFIED
 }
 
+// lastProtectedTarget 该守卫在**上一回合**守护的目标，无则为空。
+//
+// 连守判定问的是「上一晚是不是守的同一个人」，而不是「上一次守的是谁」：
+// 守卫空守一晚就打断了连续性，被判连守而取消的那一次也从来没生效过。
+// 两者都不会写进 LastProtectedRound，因此按回合号一比就都对了。
+func (s *gameState) lastProtectedTarget(guardID string) string {
+	p, ok := s.players[guardID]
+	if !ok || p.LastProtectedRound != s.Round-1 {
+		return ""
+	}
+	return p.LastProtectedTarget
+}
+
 // anyAliveWitchHasAntidote 是否还有存活女巫持有解药。
 //
 // 用于规则「解藥未使用時可以得知狼人的殺害對象」：解药用完后，
@@ -532,14 +576,28 @@ func (s *gameState) popTrigger() {
 	s.RoundCtx.PendingTriggers = s.RoundCtx.PendingTriggers[1:]
 }
 
+// consumeTriggerFor 若队首的待结算技能正是 phase，则出队。
+//
+// 待结算队列是「一次性」的：由死亡结算入队，进入对应阶段后必须出队。
+// 不出队的话它会在整个回合内持续非空，同一个玩家会被反复拉回来再用一次技能。
+//
+// 正常推进（calculateNextPhase）与效果流回放（replayEffect 处理
+// PHASE_CHANGED）都要做这一步，且必须做得一模一样，否则回放出来的引擎
+// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉。
+func (s *gameState) consumeTriggerFor(phase pb.PhaseType) {
+	if t, ok := s.peekTrigger(); ok && t.Phase == phase {
+		s.popTrigger()
+	}
+}
+
 // hasPendingTrigger 是否还有未结算的死亡技能
 func (s *gameState) hasPendingTrigger() bool {
 	_, ok := s.peekTrigger()
 	return ok
 }
 
-// GetRoundContext 获取回合上下文的只读副本
-func (s *gameState) GetRoundContext() *RoundContext {
+// RoundContext 获取回合上下文的只读副本
+func (s *gameState) RoundContext() *RoundContext {
 	if s.RoundCtx == nil {
 		return nil
 	}

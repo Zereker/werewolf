@@ -2,6 +2,7 @@ package werewolf
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -129,7 +130,7 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	}
 
 	t.Run("女巫药剂", func(t *testing.T) {
-		wi, _ := restored.GetPlayerInfo("wi")
+		wi, _ := restored.PlayerInfo("wi")
 		if wi.HasAntidote {
 			t.Error("第一夜用掉的解药不应恢复回来")
 		}
@@ -159,11 +160,11 @@ func TestSnapshot_PreservesDetailedState(t *testing.T) {
 	})
 
 	t.Run("阶段与回合", func(t *testing.T) {
-		if restored.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
-			t.Errorf("阶段: 期望 NIGHT_GUARD，实际 %v", restored.GetCurrentPhase())
+		if restored.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+			t.Errorf("阶段: 期望 NIGHT_GUARD，实际 %v", restored.Phase())
 		}
-		if restored.GetCurrentRound() != 2 {
-			t.Errorf("回合: 期望 2，实际 %d", restored.GetCurrentRound())
+		if restored.Round() != 2 {
+			t.Errorf("回合: 期望 2，实际 %d", restored.Round())
 		}
 	})
 
@@ -334,5 +335,120 @@ func TestSnapshot_EndedGame(t *testing.T) {
 	}
 	if _, err := restored.EndPhase(); err != ErrGameEnded {
 		t.Errorf("已结束的对局再推进应返回 ErrGameEnded，实际 %v", err)
+	}
+}
+
+// TestRestoreEngine_WithCustomResolver 恢复出来的引擎也要能带上自定义解析器。
+//
+// RegisterResolver 只在 START 阶段可用，而恢复出来的引擎已经在局中，
+// 于是「用了自定义角色的对局存了档就再也恢复不回来」——恢复能成功，
+// 但那个阶段的技能会被静默丢弃，一个效果都产不出来。
+func TestRestoreEngine_WithCustomResolver(t *testing.T) {
+	const customPhase = pb.PhaseType(77)
+
+	cfg := DefaultGameConfig()
+	cfg.Phases[customPhase] = &PhaseConfig{
+		Type:      customPhase,
+		NextPhase: pb.PhaseType_PHASE_TYPE_DAY,
+		Steps: []PhaseStep{
+			{Role: pb.RoleType_ROLE_TYPE_VILLAGER, Skill: pb.SkillType_SKILL_TYPE_SKIP},
+		},
+	}
+	cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE].NextPhase = customPhase
+
+	marker := &markerResolver{}
+
+	engine, err := NewEngine(cfg, WithResolver(customPhase, marker))
+	if err != nil {
+		t.Fatalf("NewEngine 失败: %v", err)
+	}
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	if err := engine.Start(); err != nil {
+		t.Fatalf("Start 失败: %v", err)
+	}
+
+	// 推到自定义阶段再存档
+	for engine.Phase() != customPhase {
+		if _, err := engine.EndPhase(); err != nil {
+			t.Fatalf("推进失败: %v", err)
+		}
+	}
+	snap := engine.Snapshot()
+
+	// 忘了带解析器：必须直接报错，而不是给一个会静默丢技能的引擎
+	if _, err := RestoreEngine(cfg, snap); err == nil {
+		t.Fatal("缺少自定义阶段的解析器时，恢复应当报错")
+	}
+
+	restored, err := RestoreEngine(cfg, snap, WithResolver(customPhase, marker))
+	if err != nil {
+		t.Fatalf("RestoreEngine 失败: %v", err)
+	}
+	if err := restored.SubmitSkillUse(&SkillUse{
+		PlayerID: "v1", Skill: pb.SkillType_SKILL_TYPE_SKIP,
+	}); err != nil {
+		t.Fatalf("提交技能失败: %v", err)
+	}
+	effects, err := restored.EndPhase()
+	if err != nil {
+		t.Fatalf("EndPhase 失败: %v", err)
+	}
+	if len(effects) == 0 {
+		t.Error("自定义解析器没有被调用，技能被静默丢弃了")
+	}
+}
+
+// markerResolver 一个只产出可辨认效果的解析器，用于验证它确实被调用了。
+type markerResolver struct{}
+
+func (r *markerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect {
+	out := make([]*Effect, 0, len(uses))
+	for _, use := range uses {
+		out = append(out, NewEffect(pb.EventType_EVENT_TYPE_SKIP, use.PlayerID, ""))
+	}
+	return out
+}
+
+// TestRestoreEngine_RejectsInvalidPlayers 恢复不该放行 AddPlayer 会拒绝的东西。
+//
+// restorePlayer 刻意不走 AddPlayer（要原样还原存活状态与药剂），
+// 但角色校验也跟着一起绕过去了；技能引用的目标同样没有校验，
+// 指向一个不存在的人时会在结算时被静默丢弃。
+func TestRestoreEngine_RejectsInvalidPlayers(t *testing.T) {
+	base := func() *Snapshot {
+		return &Snapshot{
+			Version: SnapshotVersion,
+			Phase:   pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+			Round:   1,
+			Players: []PlayerSnapshot{
+				{ID: "w1", Role: pb.RoleType_ROLE_TYPE_WEREWOLF, Camp: pb.Camp_CAMP_EVIL, Alive: true},
+				{ID: "v1", Role: pb.RoleType_ROLE_TYPE_VILLAGER, Camp: pb.Camp_CAMP_GOOD, Alive: true},
+			},
+		}
+	}
+
+	// 正常快照能恢复
+	if _, err := RestoreEngine(nil, base()); err != nil {
+		t.Fatalf("前置条件：正常快照应能恢复，实际 %v", err)
+	}
+
+	snap := base()
+	snap.Players[0].Role = pb.RoleType_ROLE_TYPE_GOD
+	if _, err := RestoreEngine(nil, snap); !errors.Is(err, ErrInvalidRole) {
+		t.Errorf("上帝不是玩家身份，恢复应当被拒，实际 %v", err)
+	}
+
+	snap = base()
+	snap.PendingUses = []SkillUseSnapshot{{
+		PlayerID: "w1",
+		Skill:    pb.SkillType_SKILL_TYPE_KILL,
+		TargetID: "查无此人",
+		Phase:    pb.PhaseType_PHASE_TYPE_NIGHT_WOLF,
+		Round:    1,
+	}}
+	if _, err := RestoreEngine(nil, snap); err == nil {
+		t.Error("技能指向不存在的目标，恢复应当被拒")
 	}
 }

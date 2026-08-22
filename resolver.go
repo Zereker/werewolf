@@ -14,8 +14,8 @@ type Resolver interface {
 	Resolve(uses []*SkillUse, view GameView, config *GameConfig) []*Effect
 }
 
-// VoteResult 投票结果
-type VoteResult struct {
+// voteResult 投票结果（包内使用）
+type voteResult struct {
 	Winner  string              // 得票最多的目标（平票时为空）
 	Tied    bool                // 是否平票
 	Votes   map[string]int      // 各目标得票数
@@ -24,7 +24,7 @@ type VoteResult struct {
 }
 
 // countVotes 统计投票结果（公共函数，消除重复逻辑）
-func countVotes(uses []*SkillUse, skillType pb.SkillType) VoteResult {
+func countVotes(uses []*SkillUse, skillType pb.SkillType) voteResult {
 	votes := make(map[string]int)
 	voters := make(map[string][]string)
 	votedPlayers := make(map[string]bool)
@@ -68,7 +68,7 @@ func countVotes(uses []*SkillUse, skillType pb.SkillType) VoteResult {
 		winner = ""
 	}
 
-	return VoteResult{
+	return voteResult{
 		Winner:  winner,
 		Tied:    tied,
 		Votes:   votes,
@@ -106,9 +106,13 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 
 	result := countVotes(uses, pb.SkillType_SKILL_TYPE_VOTE)
 
-	// 如果平票或无票，不处决任何人
+	// 如果平票或无票，不处决任何人。
+	//
+	// 用专门的 VOTE_TIED 而不是 UNSPECIFIED：平票是最常见的一种投票结局，
+	// 全场都得知道「今天没人出局」。挂在 UNSPECIFIED 上的事件既没法分类，
+	// 也拿不到受众划分。
 	if result.Tied || result.Winner == "" {
-		effect := NewEffect(pb.EventType_EVENT_TYPE_UNSPECIFIED, "", "").
+		effect := NewEffect(pb.EventType_EVENT_TYPE_VOTE_TIED, "", "").
 			WithData("result", "tied").
 			WithData("votes", result.Votes)
 		effects = append(effects, effect)
@@ -122,13 +126,9 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 		WithData("allVotes", result.Votes)
 	effects = append(effects, effect)
 
-	// 检查被处决者是否是猎人
-	if target, ok := view.Player(result.Winner); ok {
-		if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-			effects = append(effects,
-				NewAbilityTriggerEffect(result.Winner, pb.PhaseType_PHASE_TYPE_DAY_HUNTER))
-		}
-	}
+	// 被投票出局的猎人可以开枪
+	effects = append(effects,
+		hunterTrigger(view, result.Winner, pb.PhaseType_PHASE_TYPE_DAY_HUNTER)...)
 
 	return effects
 }
@@ -152,6 +152,10 @@ func (r *DayResolver) Resolve(uses []*SkillUse, view GameView, config *GameConfi
 // GuardResolver 守卫阶段解析器
 type GuardResolver struct{}
 
+// NewGuardResolver 创建守卫阶段解析器。
+//
+// 内置解析器都是导出的，扩展可以包装它们复用已有逻辑，
+// 再经 Engine.RegisterResolver 换上——参见 extension_test.go。
 func NewGuardResolver() *GuardResolver {
 	return &GuardResolver{}
 }
@@ -187,6 +191,7 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView, config *GameCon
 // WolfResolver 狼人阶段解析器
 type WolfResolver struct{}
 
+// NewWolfResolver 创建狼人阶段解析器。
 func NewWolfResolver() *WolfResolver {
 	return &WolfResolver{}
 }
@@ -217,6 +222,7 @@ func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 // WitchResolver 女巫阶段解析器
 type WitchResolver struct{}
 
+// NewWitchResolver 创建女巫阶段解析器。
 func NewWitchResolver() *WitchResolver {
 	return &WitchResolver{}
 }
@@ -331,6 +337,7 @@ func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool)
 // 仅处理预言家查验，夜晚结算由 NightResolveResolver 处理
 type SeerResolver struct{}
 
+// NewSeerResolver 创建预言家阶段解析器。
 func NewSeerResolver() *SeerResolver {
 	return &SeerResolver{}
 }
@@ -360,6 +367,7 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView, config *GameConf
 // 处理狼人击杀结算、女巫毒杀结算、猎人触发检测等
 type NightResolveResolver struct{}
 
+// NewNightResolveResolver 创建夜晚结算解析器。
 func NewNightResolveResolver() *NightResolveResolver {
 	return &NightResolveResolver{}
 }
@@ -405,12 +413,11 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 			}
 			effects = append(effects, killEffect)
 
-			// 检查被杀者是否是猎人，如果是则触发猎人技能
-			if target, ok := view.Player(killTarget); ok {
-				if target.Role == pb.RoleType_ROLE_TYPE_HUNTER {
-					effects = append(effects,
-						NewAbilityTriggerEffect(killTarget, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER))
-				}
+			// 「除殉情或被毒殺外」是对死因的排除。同一晚既被刀又被毒的猎人
+			// 身上有毒，即便这里走的是刀口这条通道，也不能开枪。
+			if !rc.IsPoisoned(killTarget) {
+				effects = append(effects,
+					hunterTrigger(view, killTarget, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)...)
 			}
 		} else {
 			// 刀口未生效，清除击杀目标
@@ -424,7 +431,9 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 	//
 	// 规则「除殉情或被毒殺外，以任何其他方式被淘汰時可以…開槍」：
 	// 被毒死的猎人不触发开枪，这正是毒药相对于狼刀的战术价值所在。
-	for playerID := range rc.PoisonedPlayers {
+	// 按 ID 排序遍历：map 的遍历顺序是随机的，同一个局面每次结算
+	// 产出的效果顺序都不一样，效果流的回放与比对就没了确定性
+	for _, playerID := range sortedKeys(rc.PoisonedPlayers) {
 		poisonKillEffect := NewEffect(pb.EventType_EVENT_TYPE_POISON, "", playerID)
 		effects = append(effects, poisonKillEffect)
 	}
@@ -435,6 +444,7 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView, config *
 // HunterResolver 猎人阶段解析器
 type HunterResolver struct{}
 
+// NewHunterResolver 创建猎人阶段解析器。
 func NewHunterResolver() *HunterResolver {
 	return &HunterResolver{}
 }
@@ -448,6 +458,11 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameCo
 			if use.TargetID != "" {
 				effects = append(effects,
 					NewEffect(pb.EventType_EVENT_TYPE_SHOOT, use.PlayerID, use.TargetID))
+				// 枪口下的另一名猎人同样可以回枪：规则排除的只有
+				// 殉情与毒杀，被枪打死属于「其他方式」。
+				// 死亡触发的入队分散在狼刀、投票、开枪三条通道上，
+				// 少一条这类连锁就断在那里。
+				effects = append(effects, hunterTrigger(view, use.TargetID, use.Phase)...)
 			}
 		case pb.SkillType_SKILL_TYPE_SKIP:
 			// 猎人选择不开枪
@@ -457,6 +472,21 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView, config *GameCo
 	})
 
 	return effects
+}
+
+// hunterTrigger 目标若是猎人，产出一个把他拉进 phase 结算开枪的触发效果。
+//
+// 猎人可以死于狼刀、投票、另一名猎人的枪口，三条通道各自都要记得入队。
+// 收在一处是为了让「又多了一条死亡通道」时只有一个地方需要改。
+func hunterTrigger(view GameView, playerID string, phase pb.PhaseType) []*Effect {
+	if playerID == "" {
+		return nil
+	}
+	target, ok := view.Player(playerID)
+	if !ok || target.Role != pb.RoleType_ROLE_TYPE_HUNTER {
+		return nil
+	}
+	return []*Effect{NewAbilityTriggerEffect(playerID, phase)}
 }
 
 // potionKind 女巫的两种药

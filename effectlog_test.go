@@ -180,8 +180,55 @@ func TestReplayEngine_Rejects(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if e.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_START {
-			t.Errorf("期望 START，实际 %v", e.GetCurrentPhase())
+		if e.Phase() != pb.PhaseType_PHASE_TYPE_START {
+			t.Errorf("期望 START，实际 %v", e.Phase())
 		}
 	})
+}
+
+// TestReplayEngine_MidRoundTriggerQueue 回合中途停下来回放，待结算队列要一致。
+//
+// 触发的入队走 ABILITY_TRIGGERED 效果，回放时能重建；出队却发生在
+// calculateNextPhase 里，不产生任何效果。回放因此会留下一条本该消费掉的
+// 触发，从下一步起原引擎与回放引擎流转到不同的阶段。
+//
+// 已有的回放测试都停在回合边界上，那里 resetRoundState 会把整个
+// RoundCtx 换掉，正好把这个分叉盖住。
+func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	// 夜里刀死猎人，他开枪打死一名平民，停在白天（回合中途）
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	g.mustUse("h", pb.SkillType_SKILL_TYPE_SHOOT, "v1")
+	g.end(pb.PhaseType_PHASE_TYPE_DAY)
+
+	replayed, err := ReplayEngine(nil, g.e.EffectLog())
+	if err != nil {
+		t.Fatalf("ReplayEngine 失败: %v", err)
+	}
+
+	origin := g.e.RoundContext().PendingTriggers
+	copyOf := replayed.RoundContext().PendingTriggers
+	if len(origin) != len(copyOf) {
+		t.Fatalf("待结算队列不一致: 原引擎 %v，回放 %v", origin, copyOf)
+	}
+
+	// 再各推进一步，两边必须走到同一个阶段
+	if _, err := g.e.EndPhase(); err != nil {
+		t.Fatalf("原引擎推进失败: %v", err)
+	}
+	if _, err := replayed.EndPhase(); err != nil {
+		t.Fatalf("回放引擎推进失败: %v", err)
+	}
+	if g.e.Phase() != replayed.Phase() {
+		t.Errorf("推进一步后分叉: 原引擎 %v，回放 %v", g.e.Phase(), replayed.Phase())
+	}
 }

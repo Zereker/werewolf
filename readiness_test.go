@@ -184,3 +184,73 @@ func TestPhaseReadiness_DoesNotBlockEndPhase(t *testing.T) {
 		t.Errorf("未就绪时 EndPhase 仍应放行（超时推进由调用方决定），实际 %v", err)
 	}
 }
+
+// TestPhaseReadiness_MutuallyExclusiveGroup 互斥备选组里提交任意一项即算完成。
+//
+// 猎人的「开枪」与「不开枪」是二选一。逐步骤独立判定会认为明确表示
+// 不开枪的猎人仍欠着开枪，一旦按 Required 的文档字面把两步都标上，
+// 这个阶段就永远不会就绪。
+func TestPhaseReadiness_MutuallyExclusiveGroup(t *testing.T) {
+	cfg := DefaultGameConfig()
+	for _, phase := range []pb.PhaseType{
+		pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER,
+		pb.PhaseType_PHASE_TYPE_DAY_HUNTER,
+	} {
+		for i := range cfg.Phases[phase].Steps {
+			cfg.Phases[phase].Steps[i].Required = true
+		}
+	}
+
+	g := newRuleGame(t, cfg, seats(
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+
+	// 还没表态：欠一次行动，且只报一条（不是开枪、不开枪各一条）
+	before := g.e.PhaseReadiness()
+	if before.Ready {
+		t.Fatal("猎人尚未表态，不应就绪")
+	}
+	if len(before.Pending) != 1 {
+		t.Errorf("同一组只该报一条待办，实际 %v", before.Pending)
+	}
+
+	// 明确表示不开枪之后就该就绪
+	g.mustUse("h", pb.SkillType_SKILL_TYPE_SKIP, "")
+	after := g.e.PhaseReadiness()
+	if !after.Ready {
+		t.Errorf("猎人已表示不开枪，应当就绪，实际还差 %v", after.Pending)
+	}
+}
+
+// TestPhaseReadiness_TriggerActorMatchesRole 死亡技能阶段的触发者只承担自己角色的步骤。
+func TestPhaseReadiness_TriggerActorMatchesRole(t *testing.T) {
+	g := newRuleGame(t, nil, seats(
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+
+	info := g.e.PhaseInfo()
+	if ri := info.RoleInfos[pb.RoleType_ROLE_TYPE_HUNTER]; ri == nil ||
+		len(ri.PlayerIDs) != 1 || ri.PlayerIDs[0] != "h" {
+		t.Fatalf("猎人步骤的行动者应当是 h，实际 %+v", info.RoleInfos)
+	}
+	// 触发者不是预言家，预言家的步骤（本阶段没有）不该落到他头上
+	if ri := info.RoleInfos[pb.RoleType_ROLE_TYPE_SEER]; ri != nil && len(ri.PlayerIDs) > 0 {
+		t.Errorf("本阶段不该有预言家的行动者，实际 %v", ri.PlayerIDs)
+	}
+}

@@ -13,6 +13,10 @@ import (
 // 一旦这些调用开始返回错误（板子不合法、重复 ID、配置残缺），测试不会
 // 在出错处停下，而是带着一个没开局的引擎继续往下跑——最后要么在某个
 // 无关的断言上失败、要么直接在空切片上取下标 panic，两种都极难定位。
+//
+// 按脚本推进一整局的用例现在统一走 rules_test.go 的 newRuleGame / ruleGame，
+// 那套辅助连阶段流转一起断言。这里只剩下不适合 newRuleGame 的场景仍在使用：
+// 期待 Start()/AddPlayer() 报错的、断言开局前状态或内部字段的、以及并发用例。
 
 // mustAdd 添加玩家，失败即终止
 func mustAdd(t *testing.T, e *Engine, id string, role pb.RoleType) {
@@ -30,22 +34,12 @@ func mustStart(t *testing.T, e *Engine) {
 	}
 }
 
-// mustEnd 结束当前阶段，失败即终止，返回本阶段产生的效果
-func mustEnd(t *testing.T, e *Engine) []*Effect {
-	t.Helper()
-	effects, err := e.EndPhase()
-	if err != nil {
-		t.Fatalf("EndPhase() 于 %v: %v", e.GetCurrentPhase(), err)
-	}
-	return effects
-}
-
 // mustSubmit 提交技能，失败即终止
 func mustSubmit(t *testing.T, e *Engine, use *SkillUse) {
 	t.Helper()
 	if err := e.SubmitSkillUse(use); err != nil {
 		t.Fatalf("SubmitSkillUse(player=%s skill=%v target=%s) 于 %v: %v",
-			use.PlayerID, use.Skill, use.TargetID, e.GetCurrentPhase(), err)
+			use.PlayerID, use.Skill, use.TargetID, e.Phase(), err)
 	}
 }
 

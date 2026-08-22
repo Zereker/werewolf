@@ -113,7 +113,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	engine := newWolfKingGame(t)
 
 	// 走完第一夜（狼人空刀）
-	for engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
+	for engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
 		if _, err := engine.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +135,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	}
 
 	// 引擎应当自动流转到自定义的狼王阶段
-	if got := engine.GetCurrentPhase(); got != phaseWolfKing {
+	if got := engine.Phase(); got != phaseWolfKing {
 		t.Fatalf("期望进入狼王阶段，实际 %v", got)
 	}
 
@@ -159,7 +159,7 @@ func TestExtension_WolfKing(t *testing.T) {
 	if alive := mustInfo(t, engine, "s").Alive; alive {
 		t.Error("狼王开枪带走的预言家应当出局")
 	}
-	if got := engine.GetCurrentPhase(); got != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
+	if got := engine.Phase(); got != pb.PhaseType_PHASE_TYPE_NIGHT_GUARD {
 		t.Errorf("狼王阶段结束后应进入下一夜，实际 %v", got)
 	}
 }
@@ -202,7 +202,7 @@ func TestExtension_RegisterResolverRejects(t *testing.T) {
 
 func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
 	t.Helper()
-	p, ok := e.GetPlayerInfo(id)
+	p, ok := e.PlayerInfo(id)
 	if !ok {
 		t.Fatalf("玩家不存在: %s", id)
 	}
@@ -211,12 +211,12 @@ func mustInfo(t *testing.T, e *Engine, id string) PlayerInfo {
 
 // TestExtension_CustomPhaseGetsPhaseInfo 自定义阶段也能拿到阶段信息。
 //
-// 此前 GetPhaseInfo 是一个写死内置阶段的 switch，自定义阶段返回空，
+// 此前 PhaseInfo 是一个写死内置阶段的 switch，自定义阶段返回空，
 // 调用方无从得知该让谁行动。
 func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	engine := newWolfKingGame(t)
 
-	for engine.GetCurrentPhase() != pb.PhaseType_PHASE_TYPE_DAY {
+	for engine.Phase() != pb.PhaseType_PHASE_TYPE_DAY {
 		if _, err := engine.EndPhase(); err != nil {
 			t.Fatal(err)
 		}
@@ -234,11 +234,11 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	if _, err := engine.EndPhase(); err != nil {
 		t.Fatal(err)
 	}
-	if engine.GetCurrentPhase() != phaseWolfKing {
-		t.Fatalf("期望进入狼王阶段，实际 %v", engine.GetCurrentPhase())
+	if engine.Phase() != phaseWolfKing {
+		t.Fatalf("期望进入狼王阶段，实际 %v", engine.Phase())
 	}
 
-	info := engine.GetPhaseInfo()
+	info := engine.PhaseInfo()
 	ri := info.RoleInfos[roleWolfKing]
 	if ri == nil {
 		t.Fatal("自定义角色应当出现在 RoleInfos 中")
@@ -254,11 +254,110 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 	}
 
 	// 视角同样对自定义角色生效
-	v := engine.GetPlayerView("wk")
+	v := engine.PlayerView("wk")
 	if len(v.AllowedSkills) != 2 {
 		t.Errorf("狼王视角应当看到自己的两个技能，实际 %v", v.AllowedSkills)
 	}
-	if got := engine.GetPlayerView("v3").AllowedSkills; len(got) != 0 {
+	if got := engine.PlayerView("v3").AllowedSkills; len(got) != 0 {
 		t.Errorf("非触发者不应有可用技能，实际 %v", got)
 	}
+}
+
+// TestExtension_CustomWolfCampRoleIsPartOfTheTeam 自定义的狼队角色要真的算进狼队。
+//
+// 狼队的判定此前写死 ROLE_TYPE_WEREWOLF，而狼王、白狼王、狼美人经
+// AddCustomPlayer 加进来时 Camp 是 EVIL、Role 不是 WEREWOLF：
+// 他们看不到队友、不被真狼看到、夜里也发不出话——自定义狼队角色实际不可用。
+func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
+	const roleWolfKing = pb.RoleType(1000)
+
+	engine := MustNewEngine(nil)
+	mustAdd(t, engine, "w1", pb.RoleType_ROLE_TYPE_WEREWOLF)
+	if err := engine.AddCustomPlayer("wk", roleWolfKing,
+		pb.Camp_CAMP_EVIL, RoleCategoryWolf); err != nil {
+		t.Fatalf("AddCustomPlayer 失败: %v", err)
+	}
+	mustAdd(t, engine, "s", pb.RoleType_ROLE_TYPE_SEER)
+	mustAdd(t, engine, "v1", pb.RoleType_ROLE_TYPE_VILLAGER)
+	mustAdd(t, engine, "v2", pb.RoleType_ROLE_TYPE_VILLAGER)
+	if err := engine.Start(); err != nil {
+		t.Fatalf("Start 失败: %v", err)
+	}
+
+	// 互为队友
+	if got := engine.WolfTeammates("wk"); len(got) != 1 || got[0] != "w1" {
+		t.Errorf("狼王应当看到队友 w1，实际 %v", got)
+	}
+	if got := engine.WolfTeammates("w1"); len(got) != 1 || got[0] != "wk" {
+		t.Errorf("真狼应当看到队友 wk，实际 %v", got)
+	}
+	if got := engine.WolfTeammates("s"); got != nil {
+		t.Errorf("好人不该有狼队友，实际 %v", got)
+	}
+
+	// 视图里互相翻牌
+	view := engine.PlayerView("wk")
+	roles := make(map[string]pb.RoleType, len(view.Players))
+	for _, p := range view.Players {
+		roles[p.ID] = p.Role
+	}
+	if roles["w1"] != pb.RoleType_ROLE_TYPE_WEREWOLF {
+		t.Errorf("狼王的视图里应能看到 w1 的身份，实际 %v", roles["w1"])
+	}
+	if roles["s"] != pb.RoleType_ROLE_TYPE_UNSPECIFIED {
+		t.Errorf("狼王不该看到预言家的身份，实际 %v", roles["s"])
+	}
+
+	// 夜里能和狼队互通
+	for engine.Phase() != pb.PhaseType_PHASE_TYPE_NIGHT_WOLF {
+		if _, err := engine.EndPhase(); err != nil {
+			t.Fatalf("推进失败: %v", err)
+		}
+	}
+	if got := engine.MessageReceivers("wk"); len(got) != 2 {
+		t.Errorf("狼王夜里应能与整个狼队互通，实际 %v", got)
+	}
+	if err := engine.SendMessage("wk", "刀预言家"); err != nil {
+		t.Errorf("狼王夜里应当能发言，实际 %v", err)
+	}
+	if err := engine.SendMessage("s", "?"); err == nil {
+		t.Error("好人夜里不该能发言")
+	}
+}
+
+// TestExtension_TriggerToUnconfiguredPhaseIsRejected 指向未配置阶段的死亡触发要被就地否决。
+//
+// 这条边是运行期才成形的，GameConfig.Validate 看不见它。放任不管的话，
+// 引擎会流转到一个没有配置、没有解析器的阶段，玩家提交什么都不允许，
+// 下一次推进直接进 END——游戏在第一夜无声收场，连 GAME_ENDED 都没有。
+func TestExtension_TriggerToUnconfiguredPhaseIsRejected(t *testing.T) {
+	cfg := DefaultGameConfig()
+	delete(cfg.Phases, pb.PhaseType_PHASE_TYPE_NIGHT_HUNTER)
+	// 原本指向猎人阶段的静态边也要改掉，否则配置本身就不自洽
+	cfg.Phases[pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE].NextPhase = pb.PhaseType_PHASE_TYPE_DAY
+
+	g := newRuleGame(t, cfg, seats(
+		wolf("w1"), wolf("w2"), hunter("h"), seer("s"),
+		villagers("v1", "v2", "v3", "v4"),
+	)...)
+
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WOLF)
+	g.mustUse("w1", pb.SkillType_SKILL_TYPE_KILL, "h")
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_WITCH)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_SEER)
+	g.end(pb.PhaseType_PHASE_TYPE_NIGHT_RESOLVE)
+
+	// 猎人死了，触发指向已被删掉的阶段：应当照常进白天，且触发被否决
+	effects := g.end(pb.PhaseType_PHASE_TYPE_DAY)
+	trigger := findEffect(effects, pb.EventType_EVENT_TYPE_ABILITY_TRIGGERED)
+	if trigger == nil {
+		t.Fatal("期望产生 ABILITY_TRIGGERED 效果（即便被否决）")
+	}
+	if !trigger.Canceled {
+		t.Error("目标阶段不在配置里，触发应当被否决")
+	}
+	if got := g.e.RoundContext().PendingTriggers; len(got) != 0 {
+		t.Errorf("被否决的触发不该入队，实际 %v", got)
+	}
+	g.assertAlive("h", false, "猎人被刀")
 }

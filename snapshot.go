@@ -10,7 +10,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 2
+const SnapshotVersion = 3
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -46,6 +46,7 @@ type PlayerSnapshot struct {
 	HasPoison   bool `json:"has_poison"`
 
 	LastProtectedTarget string `json:"last_protected_target,omitempty"`
+	LastProtectedRound  int    `json:"last_protected_round,omitempty"`
 }
 
 // RoundCtxSnapshot 回合上下文的快照
@@ -110,8 +111,12 @@ func (e *Engine) Snapshot() *Snapshot {
 // config 为 nil 时使用默认配置。**恢复时必须提供与保存时一致的规则配置**——
 // 快照只记录局面，不记录规则；用不同的配置恢复会得到一局规则被中途换掉的游戏。
 //
-// 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中。
-func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
+// 自定义角色的解析器必须经 opts 传入：恢复出来的引擎已经不在 START
+// 阶段，RegisterResolver 对它无效，漏掉就会让该阶段的技能被静默丢弃。
+//
+// 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中、
+// 有阶段缺少解析器。
+func RestoreEngine(config *GameConfig, snap *Snapshot, opts ...EngineOption) (*Engine, error) {
 	if snap == nil {
 		return nil, ErrNilSnapshot
 	}
@@ -120,8 +125,14 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 			"unsupported snapshot version %d (expected %d)", snap.Version, SnapshotVersion)
 	}
 
-	engine, err := NewEngine(config)
+	engine, err := NewEngine(config, opts...)
 	if err != nil {
+		return nil, err
+	}
+
+	// 与 Start 同一条校验：缺解析器的阶段会把收到的技能悄悄丢掉，
+	// 这种失败在对局中几乎无法定位，必须在把引擎交出去之前拦下
+	if err := engine.phase.validateResolvers(); err != nil {
 		return nil, err
 	}
 
@@ -134,7 +145,7 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 	// START 与 END 是流程的两端，不出现在阶段配置中，单独放行。
 	if snap.Phase != pb.PhaseType_PHASE_TYPE_START &&
 		snap.Phase != pb.PhaseType_PHASE_TYPE_END &&
-		engine.phase.GetPhaseConfig(snap.Phase) == nil {
+		engine.phase.phaseConfig(snap.Phase) == nil {
 		return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 			"phase %v is not present in the supplied config", snap.Phase)
 	}
@@ -143,6 +154,12 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 		if p.ID == "" {
 			return nil, ErrInvalidPlayerID
 		}
+		// 与 AddPlayer 同一条角色校验：恢复要还原快照里的存活状态与药剂，
+		// 但不该顺带放行 AddPlayer 会拒绝的身份
+		if p.Role == pb.RoleType_ROLE_TYPE_UNSPECIFIED || p.Role == pb.RoleType_ROLE_TYPE_GOD {
+			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_ROLE,
+				"role %v cannot be assigned to a player", p.Role)
+		}
 		if _, exists := engine.state.getPlayer(p.ID); exists {
 			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 				"duplicate player %q in snapshot", p.ID)
@@ -150,11 +167,17 @@ func RestoreEngine(config *GameConfig, snap *Snapshot) (*Engine, error) {
 		engine.state.restorePlayer(p)
 	}
 
-	// 技能引用的玩家必须存在，否则结算时会静默丢弃
+	// 技能引用的玩家与目标都必须存在，否则结算时会静默丢弃
 	for _, u := range snap.PendingUses {
 		if _, ok := engine.state.getPlayer(u.PlayerID); !ok {
 			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
 				"pending skill references unknown player %q", u.PlayerID)
+		}
+		if u.TargetID != "" {
+			if _, ok := engine.state.getPlayer(u.TargetID); !ok {
+				return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+					"pending skill references unknown target %q", u.TargetID)
+			}
 		}
 		engine.pendingUses = append(engine.pendingUses, &SkillUse{
 			PlayerID: u.PlayerID,
@@ -220,6 +243,7 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 		HasAntidote:         p.HasAntidote,
 		HasPoison:           p.HasPoison,
 		LastProtectedTarget: p.LastProtectedTarget,
+		LastProtectedRound:  p.LastProtectedRound,
 	}
 }
 

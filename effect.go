@@ -66,20 +66,32 @@ func (e *Effect) Cancel(reason string) {
 	e.Reason = reason
 }
 
-// WithData 添加附加数据
+// WithData 添加附加数据。
+//
+// Data 为 nil 时就地建好：Effect 是导出类型、字段全导出，
+// 第三方 Resolver 用字面量构造它是被文档鼓励的写法，
+// 不该在这里撞上一个「assignment to entry in nil map」。
 func (e *Effect) WithData(key string, value interface{}) *Effect {
+	if e.Data == nil {
+		e.Data = make(map[string]interface{}, 1)
+	}
 	e.Data[key] = value
 	return e
 }
 
-// ToEvent 转换为事件（用于通知外部）
-// 将 Effect.Data (map[string]interface{}) 转换为 Event.Data (map[string]string)
+// ToEvent 转换为事件（用于通知外部）。
+//
+// Data 从 map[string]interface{} 折成 map[string]string；
+// Canceled / Reason 原样带上——被规则否决的行动如果在这里丢掉标记，
+// 到了调用方手里就与真的发生过的一模一样。
 func (e *Effect) ToEvent() *pb.Event {
 	event := &pb.Event{
 		Type:     e.Type,
 		SourceId: e.SourceID,
 		TargetId: e.TargetID,
 		Data:     make(map[string]string),
+		Canceled: e.Canceled,
+		Reason:   e.Reason,
 	}
 
 	// 转换 Data: interface{} -> string

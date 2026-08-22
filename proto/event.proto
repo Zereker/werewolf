@@ -76,6 +76,7 @@ enum EventType {
   EVENT_TYPE_ELIMINATE = 8;  // 投票出局
   EVENT_TYPE_SHOOT = 9;      // 猎人开枪
   EVENT_TYPE_SKIP = 10;      // 跳过行动
+  EVENT_TYPE_VOTE_TIED = 11; // 投票平票或无人得票，本轮无人出局
   // 内部状态变更（不对外发布）
   EVENT_TYPE_SET_NIGHT_KILL = 100;      // 设置夜晚击杀目标
   EVENT_TYPE_CLEAR_NIGHT_KILL = 101;    // 清除夜晚击杀目标（被救）
@@ -105,6 +106,8 @@ enum ErrorCode {
   ERROR_CODE_GAME_ALREADY_STARTED = 13; // 游戏已开始
   ERROR_CODE_INVALID_BOARD = 14;        // 板子配置不合法
   ERROR_CODE_INVALID_SNAPSHOT = 15;     // 快照不合法或版本不兼容
+  ERROR_CODE_INVALID_CONFIG = 16;       // 游戏配置不合法
+  ERROR_CODE_INVALID_EFFECT_LOG = 17;   // 效果流不合法，无法回放
 }
 
 // ==================== 消息定义 ====================
@@ -115,4 +118,12 @@ message Event {
   string source_id = 2;          // 事件来源玩家
   string target_id = 3;          // 事件目标玩家
   map<string, string> data = 4;  // 附加数据
+
+  // 该行动是否被规则否决，以及原因。
+  //
+  // 「女巫点了毒药但今晚已经用过解药」这类事情必须能表达出来：
+  // 少了这两个字段，被否决的行动到了调用方手里与成功的一模一样，
+  // 会被当成真的发生过而广播出去。
+  bool canceled = 5;
+  string reason = 6;
 }

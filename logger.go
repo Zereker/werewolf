@@ -80,7 +80,10 @@ type Metrics interface {
 	IncPhaseEnded(phase pb.PhaseType)
 	// IncGameEnded 游戏结束计数
 	IncGameEnded(winner pb.Camp)
-	// IncEffectApplied 效果应用计数
+	// IncEffectApplied 效果应用计数。
+	//
+	// 含内部效果（SET_NIGHT_KILL、USE_POISON 这类真正的状态变更）
+	// 与被规则否决的效果——夜晚结算出了什么问题，恰恰要靠它们才看得出来。
 	IncEffectApplied(eventType pb.EventType)
 }
 

@@ -61,9 +61,15 @@ func (e *Engine) EffectLog() []*Effect {
 // 重建结果与录制结束时的引擎在玩家状态、阶段、回合上一致；
 // 但当前阶段尚未提交的技能不在效果流里（它们还没变成效果），
 // 需要那部分请用 Snapshot。
-func ReplayEngine(config *GameConfig, log []*Effect) (*Engine, error) {
-	engine, err := NewEngine(config)
+//
+// 自定义角色的解析器必须经 opts 传入，理由同 RestoreEngine。
+func ReplayEngine(config *GameConfig, log []*Effect, opts ...EngineOption) (*Engine, error) {
+	engine, err := NewEngine(config, opts...)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := engine.phase.validateResolvers(); err != nil {
 		return nil, err
 	}
 
@@ -72,7 +78,7 @@ func ReplayEngine(config *GameConfig, log []*Effect) (*Engine, error) {
 
 	for i, effect := range log {
 		if effect == nil {
-			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+			return nil, WrapError(pb.ErrorCode_ERROR_CODE_INVALID_EFFECT_LOG,
 				"effect log contains a nil entry at index %d", i)
 		}
 		if err := engine.replayEffect(effect); err != nil {
@@ -99,7 +105,7 @@ func (e *Engine) replayEffect(effect *Effect) error {
 	case pb.EventType_EVENT_TYPE_GAME_STARTED:
 		phase, ok := effect.Data[phaseKey].(pb.PhaseType)
 		if !ok {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_EFFECT_LOG,
 				"game started effect carries no phase")
 		}
 		e.state.startAt(phase)
@@ -107,9 +113,13 @@ func (e *Engine) replayEffect(effect *Effect) error {
 	case pb.EventType_EVENT_TYPE_PHASE_CHANGED:
 		phase, ok := effect.Data[phaseKey].(pb.PhaseType)
 		if !ok {
-			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_SNAPSHOT,
+			return WrapError(pb.ErrorCode_ERROR_CODE_INVALID_EFFECT_LOG,
 				"phase changed effect carries no phase")
 		}
+		// 离开一个阶段时消费掉它对应的待结算技能，与正常推进
+		// （calculateNextPhase）做同样的事。少了这一步，回放出来的引擎
+		// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉
+		e.state.consumeTriggerFor(e.state.Phase)
 		e.state.nextPhase(phase)
 
 	case pb.EventType_EVENT_TYPE_GAME_ENDED:
