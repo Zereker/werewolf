@@ -26,12 +26,12 @@
 |---|---|---|---|
 | 状态怎么改 | 单一 reducer，move 用 immer 改 `G` | 单一写入点 `applyEffect`，规则只能返回 `[]*Effect` | **我们更强** |
 | 发生过什么怎么记 | `deltalog` + `_undo/_redo` 栈 + `_stateID` | `EffectLog`（进出都是副本）+ 快照 + 回放 | 相当 |
-| **谁可以行动** | `ctx.activePlayers` 运行时集合，在状态里 | `PhaseStep.Role` 静态匹配 + 单人特例 | **我们欠债** |
-| 能做什么 | `GetMove` 分层：stage → phase → 全局 | `PhaseStep.Skill` 按阶段列举，绑在 Role 上 | 我们更弱（同源） |
+| **谁可以行动** | `ctx.activePlayers` 运行时集合，在状态里 | `SetActors` 运行时名单，在状态里 | 已补，形状相同 |
+| 能做什么 | `GetMove` 分层：stage → phase → 全局 | `PhaseStep.Skill` 按阶段列举 | 相当 |
 | 下一步去哪 | `next` 可以是字符串或函数 | `NextPhase` 默认 + `GOTO_PHASE` 效果改写 | 相当（我们刚补） |
 | 一回合是什么 | **没有这个概念**，只有 turn 与 phase | `Round`，由 `EndsRound` 声明 | 我们多一个，存疑 |
 | 谁能看到什么 | `playerView(G, ctx, playerID) -> G'` 一个函数 | 结构化 `PlayerView` + `AudienceOf` + 不可配置底线 | **我们明显更强** |
-| 随机怎么办 | PRNG 状态进游戏状态，回放确定 | **没有** | **我们欠债** |
+| 随机怎么办 | PRNG 状态进游戏状态，回放确定 | 流由「种子+回合+阶段」推导，不存进度 | 已补，做法更小 |
 | 阶段何时结束 | `endIf` / `maxMoves` 自动结束，框架管 | 不管，`EndPhase` 由调用方调 | 刻意不同，我们对 |
 | 扩展怎么加 | plugin 系统 + 配置 | 七个具体扩展点 + 效果原语 | 不同路子 |
 | 谁在跑 | 自带 client/server/master + transport | 不做 | 刻意不同 |

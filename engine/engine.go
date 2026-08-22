@@ -196,6 +196,7 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 	}
 
 	start := e.config.startPhase()
+	e.state.Seed = e.config.Seed
 	e.state.startAt(start)
 
 	effect := newGameStartedEffect(start)

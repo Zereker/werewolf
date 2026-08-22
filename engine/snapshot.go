@@ -37,6 +37,10 @@ type Snapshot struct {
 	Phase PhaseType `json:"phase"`
 	Round int       `json:"round"`
 
+	// Seed 随机流的种子。它决定对局结果，因此随快照走——恢复出来的对局
+	// 摇出同一串数，不必指望调用方记得传对配置。
+	Seed int64 `json:"seed,omitempty"`
+
 	// Vars 整局有效、不属于任何玩家的状态。
 	Vars map[string]string `json:"vars,omitempty"`
 
@@ -106,6 +110,7 @@ func (e *Engine) Snapshot() *Snapshot {
 		Version:      SnapshotVersion,
 		Phase:        e.state.Phase,
 		Round:        e.state.Round,
+		Seed:         e.state.Seed,
 		Vars:         copyVars(e.state.Vars),
 		Actors:       copyActors(e.state.Actors),
 		Players:      e.state.snapshotPlayers(),
@@ -171,6 +176,7 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 		return nil, err
 	}
 
+	engine.state.Seed = snap.Seed
 	engine.state.Vars = copyVars(snap.Vars)
 	engine.state.Actors = copyActors(snap.Actors)
 	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)

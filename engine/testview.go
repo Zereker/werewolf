@@ -22,6 +22,9 @@ type Board struct {
 
 	// RoundVars 本回合的状态，不属于任何玩家。
 	RoundVars map[string]string
+
+	// Seed 随机流的种子，供单测用到 GameView.Rand 的解析器。
+	Seed int64
 }
 
 // Apply 把一批效果折进局面，返回改过的副本。
@@ -66,6 +69,7 @@ func (b Board) state() *gameState {
 	s := newState()
 	s.Round = round
 	s.Phase = b.Phase
+	s.Seed = b.Seed
 	s.RoundCtx = newRoundContext()
 	s.RoundCtx.Vars = copyVars(b.RoundVars)
 	for _, p := range b.Players {
