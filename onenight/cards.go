@@ -106,12 +106,14 @@ func swapWithCenter(view engine.GameView, playerID string, i int) []*engine.Effe
 	}
 }
 
-// campOf 一张牌属于哪一边。
+// CampOf 一张牌属于哪一边。
 //
-// 内核不知道有哪些边，也不知道 WOLF 意味着什么——它只负责把 VarCamp 的值
-// 搬进 SelfInfo.Camp。而这一套规则**不能让它搬**：酒鬼不知道自己现在拿的
-// 是什么牌，把当前阵营填进他自己的视图等于直接告诉他。见 SCARS.md 疤 4。
-func campOf(role engine.RoleType) engine.Camp {
+// 它是**给宿主翻牌用的**，不是给内核用的：内核认得一个标准键 VarCamp，
+// 会把它的值搬进 SelfInfo.Camp——而这一套规则**不能让它搬**。酒鬼不知道
+// 自己现在拿的是什么牌，把当前阵营填进他自己的视图等于直接告诉他。
+// 所以本包整局都不写 VarCamp，阵营在翻牌那一刻由宿主自己算。
+// 见 SCARS.md 疤 4。
+func CampOf(role engine.RoleType) engine.Camp {
 	switch role {
 	case RoleWerewolf, RoleMinion:
 		return CampWolf
