@@ -981,7 +981,7 @@ func TestEngine_EndPhase_ReturnsGameEnded(t *testing.T) {
 	}
 
 	// 而且它得有受众——不然调用方还是不知道该发给谁
-	audience, known := g.e.AudienceOf(ended)
+	audience, known := g.e.AudienceOf(ended.ToEvent())
 	if !known || len(audience) == 0 {
 		t.Errorf("GAME_ENDED 应当是全场可见，实际 (%v, %v)", audience, known)
 	}

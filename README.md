@@ -277,15 +277,21 @@ v.KillTarget      // 女巫可见：今晚刀口（解药用完即为空）
 配套的 `AudienceOf` 回答「发生的事该告诉谁」：
 
 ```go
-for _, effect := range effects {
-    audience, known := engine.AudienceOf(effect)
+// 推的一路：OnEvent 给的就是 Event，直接问
+engine.OnEvent(func(ev *werewolf.Event) {
+    audience, known := engine.AudienceOf(ev)
     if !known {
-        // 第三方角色自定义的事件类型，引擎无从判断可见性，调用方自己路由
-        continue
+        return // 第三方角色自定义的事件类型，引擎无从判断，调用方自己路由
     }
     for _, id := range audience {
-        send(id, effect)   // 死亡全场可见；查验/守护/解药只给行动者
+        send(id, ev)   // 死亡全场可见；查验/守护/解药只给行动者
     }
+})
+
+// 拉的一路：EndPhase 给的是内部的 Effect，转一下
+for _, effect := range effects {
+    audience, _ := engine.AudienceOf(effect.ToEvent())
+    ...
 }
 ```
 

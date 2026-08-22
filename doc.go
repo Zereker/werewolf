@@ -39,8 +39,8 @@
 //
 // 狼人杀真正难的部分是信息边界，所以引擎把它收在库内，分成两半：
 //
-//	Engine.PlayerView(id)      某个玩家有权知道的一切，可以原样发给他
-//	Engine.AudienceOf(effect)  一件事该发给哪些玩家
+//	Engine.PlayerView(id)     某个玩家有权知道的一切，可以原样发给他
+//	Engine.AudienceOf(event)  一件事该发给哪些玩家
 //
 // 与之相对，PhaseInfo、PlayerInfo、WolfTeammates、NightKillTarget 是
 // 上帝视角：调用方作为主持人需要它们来组织流程，但它们的内容

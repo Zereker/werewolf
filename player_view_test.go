@@ -242,7 +242,7 @@ func TestAudienceOf(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, known := e.AudienceOf(tc.effect)
+			got, known := e.AudienceOf(tc.effect.ToEvent())
 			if !known {
 				t.Fatalf("引擎应当认得 %v", tc.effect.Type)
 			}
@@ -264,7 +264,7 @@ func TestAudienceOf(t *testing.T) {
 	// 第三方自定义的外部事件类型：引擎无从判断可见性，必须说「不知道」，
 	// 而不是给出一个看起来权威的空受众
 	custom := NewEffect(EventType(50), "w1", "v1")
-	if got, known := e.AudienceOf(custom); known || got != nil {
+	if got, known := e.AudienceOf(custom.ToEvent()); known || got != nil {
 		t.Errorf("未知外部类型应返回 (nil, false)，实际 (%v, %v)", got, known)
 	}
 }
@@ -289,7 +289,7 @@ func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 			continue
 		}
 		ef := NewEffect(typ, "s", "v1")
-		got, known := e.AudienceOf(ef)
+		got, known := e.AudienceOf(ef.ToEvent())
 		if !known {
 			t.Errorf("外部事件 %s 没有划分受众", name)
 			continue
@@ -306,12 +306,12 @@ func TestAudienceOf_UnknownActorGetsNobody(t *testing.T) {
 
 	canceled := NewEffect(EventPoison, "查无此人", "v1")
 	canceled.Cancel("no poison")
-	if got, known := e.AudienceOf(canceled); len(got) != 0 || !known {
+	if got, known := e.AudienceOf(canceled.ToEvent()); len(got) != 0 || !known {
 		t.Errorf("被否决效果的 source 不在场上，受众应为空，实际 (%v, %v)", got, known)
 	}
 
 	private := NewEffect(EventCheck, "查无此人", "v1")
-	if got, _ := e.AudienceOf(private); len(got) != 0 {
+	if got, _ := e.AudienceOf(private.ToEvent()); len(got) != 0 {
 		t.Errorf("私密效果的 source 不在场上，受众应为空，实际 %v", got)
 	}
 }

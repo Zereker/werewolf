@@ -360,7 +360,8 @@ func (t *table) end() {
 // 同一件事，全场可见的公告一份，只给行动者本人的私信一份。
 func (t *table) deliver(effects []*werewolf.Effect) {
 	for _, ef := range effects {
-		audience, known := t.engine.AudienceOf(ef)
+		// EndPhase 给的是内部的 Effect，AudienceOf 问的是对外的事件
+		audience, known := t.engine.AudienceOf(ef.ToEvent())
 		if !known {
 			// 第三方角色自定义的事件类型，引擎无从判断可见性
 			fmt.Printf("  [?] %s（引擎不认得这个类型，需自行路由）\n", describe(ef))

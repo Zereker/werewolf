@@ -348,7 +348,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 
 		// 不变量 F：AudienceOf 给出的受众必须都在场上；私密/被否决的效果不得外扩
 		for _, ef := range lastEffects {
-			aud, known := e.AudienceOf(ef)
+			aud, known := e.AudienceOf(ef.ToEvent())
 			if !known {
 				t.Fatalf("seed=%d step=%d 引擎不认得自己产出的效果 %v", seed, step, ef.Type)
 			}

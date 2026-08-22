@@ -8,7 +8,7 @@ import (
 //
 // 每次对快照结构做出不向后兼容的改动时递增，Restore 会拒绝无法识别的版本，
 // 以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
-const SnapshotVersion = 3
+const SnapshotVersion = 4
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -19,8 +19,9 @@ const SnapshotVersion = 3
 // 快照**不包含** GameConfig、Logger、Metrics 与回调：
 // 这些由调用方在恢复时提供，规则配置本身也应由调用方掌握版本。
 //
-// 枚举以数值形式序列化。protobuf 的枚举编号是稳定契约，
-// 而名称可能被重命名，故不用名称。
+// 枚举以**名字**序列化（"NIGHT_GUARD" 而不是 21）。存档是要给人看、
+// 也可能被别的语言读的东西，编号对不上号；名字一旦定下就不再改，
+// 与编号一样稳定。第三方的自定义取值没有名字，按编号写。
 type Snapshot struct {
 	Version int `json:"version"`
 

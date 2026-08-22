@@ -165,21 +165,26 @@ func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []Skil
 
 // ==================== 效果的接收者 ====================
 
-// AudienceOf 返回一个效果应该发给哪些玩家。
+// AudienceOf 返回一件事应该发给哪些玩家。
 //
 // 这是配套 PlayerView 的另一半：视图解决「玩家该看到什么状态」，
 // 这里解决「发生的事该告诉谁」。引擎给出默认的可见性划分，
 // 调用方可以据此路由，而不必自己去记「查验结果只能给预言家」。
 //
+// 参数是对外的 Event 而不是内部的 Effect：这个问题问的是「外面的人
+// 该看到什么」，而 OnEvent 推给调用方的正是 Event。手里拿着 Effect
+// （EndPhase 的返回值）时用 Effect.ToEvent() 转一下。
+//
 // 引擎内部事件（SET_NIGHT_KILL 等）返回空——它们不该出现在任何玩家面前。
 //
 // 第二个返回值表示引擎是否认得这个事件类型。第三方 Resolver 可以产出
-// 自定义类型的效果，引擎对它们的可见性无从判断，此时返回 (nil, false)：
+// 自定义类型的事件，引擎对它们的可见性无从判断，此时返回 (nil, false)：
 // 调用方需要自己路由，而不该把「引擎不知道」当成「不给任何人看」。
-func (e *Engine) AudienceOf(effect *Effect) ([]string, bool) {
-	if effect == nil {
+func (e *Engine) AudienceOf(event *Event) ([]string, bool) {
+	if event == nil {
 		return nil, false
 	}
+	effect := event
 	if isInternalEvent(effect.Type) {
 		// 内部事件是引擎的状态变更，不给任何玩家看——这是明确的判断
 		return nil, true

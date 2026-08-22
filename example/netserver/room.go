@@ -243,7 +243,7 @@ func (r *room) phaseMsg() serverMsg {
 // 在房间的 goroutine 上被调用（EndPhase 就在这条 goroutine 上），
 // 因此这里读引擎是安全的。
 func (r *room) onEvent(ev *werewolf.Event) {
-	audience, known := r.engine.AudienceOf(effectOf(ev))
+	audience, known := r.engine.AudienceOf(ev)
 	if !known {
 		// 第三方角色自定义的事件类型，引擎无从判断可见性
 		log.Printf("[%s] 引擎不认得事件类型 %v，未路由", r.name, ev.Type)
@@ -251,21 +251,6 @@ func (r *room) onEvent(ev *werewolf.Event) {
 	}
 	for _, id := range audience {
 		r.sendTo(id, serverMsg{Type: "event", Event: ev})
-	}
-}
-
-// effectOf 把事件还原成 AudienceOf 认得的形状。
-//
-// AudienceOf 吃的是 *Effect 而不是 *Event，而 OnEvent 给的是后者——
-// 想按受众路由推送，就得在这里手工搭一个回去。这是这个 API 在真实
-// 使用中的一处硌手：两个本该配套的东西，参数类型对不上。
-func effectOf(ev *werewolf.Event) *werewolf.Effect {
-	return &werewolf.Effect{
-		Type:     ev.Type,
-		SourceID: ev.SourceID,
-		TargetID: ev.TargetID,
-		Canceled: ev.Canceled,
-		Reason:   ev.Reason,
 	}
 }
 
