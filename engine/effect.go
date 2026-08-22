@@ -197,6 +197,28 @@ func (e *Effect) WithData(key string, value interface{}) *Effect {
 	return e
 }
 
+// clone 深拷贝一条效果，连同它的 Data。
+//
+// 效果流是这个引擎的历史，「历史不可改写」不能只靠文档：此前
+// EndPhase 返回的与 EffectLog 返回的，都是引擎内部那份历史的同一批
+// 指针，调用方随手改一个字段（或者调一下 Cancel，它是导出的）就把
+// 历史改了，而回放会照着被改过的历史重建出另一局游戏。
+//
+// 现在进日志的是副本、出日志的也是副本，两侧都不与调用方共享对象。
+func (e *Effect) clone() *Effect {
+	if e == nil {
+		return nil
+	}
+	c := *e
+	if e.Data != nil {
+		c.Data = make(map[string]interface{}, len(e.Data))
+		for k, v := range e.Data {
+			c.Data[k] = v
+		}
+	}
+	return &c
+}
+
 // ToEvent 转换为事件（用于通知外部）。
 //
 // Data 从 map[string]interface{} 折成 map[string]string；

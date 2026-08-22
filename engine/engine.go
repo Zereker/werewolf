@@ -126,7 +126,7 @@ func (e *Engine) AddPlayer(id string, role RoleType) error {
 	if err := e.seatPlayer(id, role, vars); err != nil {
 		return err
 	}
-	e.effectLog = append(e.effectLog, newPlayerAddedEffect(id, role, vars))
+	e.recordEffects(newPlayerAddedEffect(id, role, vars))
 	return nil
 }
 
@@ -193,7 +193,7 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 	e.state.startAt(start)
 
 	effect := newGameStartedEffect(start)
-	e.effectLog = append(e.effectLog, effect)
+	e.recordEffects(effect)
 	e.logger.Info("game started", roundField(1), phaseField(start))
 
 	return effect, e.snapshotEventHandlersLocked(), nil
@@ -280,7 +280,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	// 2. 应用效果，收集对外可见的事件
 	out.effects, out.events = e.applyEffects(out.effects)
-	e.effectLog = append(e.effectLog, out.effects...)
+	e.recordEffects(out.effects...)
 
 	// 3. 清空待处理列表
 	e.pendingUses = nil
@@ -311,14 +311,14 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 		endEffect := NewEffect(EventGameEnded, "", "").
 			WithData("winner", winner)
 		out.effects = append(out.effects, endEffect)
-		e.effectLog = append(e.effectLog, endEffect)
+		e.recordEffects(endEffect)
 		out.events = append(out.events, endEffect.ToEvent())
 
 		e.winner = winner
 		e.logger.Info("game ended", logField("winner", winner.String()))
 		e.metrics.IncGameEnded(winner)
 	} else {
-		e.effectLog = append(e.effectLog, newPhaseChangedEffect(nextPhase))
+		e.recordEffects(newPhaseChangedEffect(nextPhase))
 		e.logger.Debug("phase transition",
 			logField("from", currentPhase.String()),
 			logField("to", nextPhase.String()))
@@ -378,7 +378,7 @@ func (e *Engine) View() GameView {
 func (e *Engine) Apply(effects ...*Effect) []*Effect {
 	e.mu.Lock()
 	kept, events := e.applyEffects(effects)
-	e.effectLog = append(e.effectLog, kept...)
+	e.recordEffects(kept...)
 	handlers := e.snapshotEventHandlersLocked()
 	e.mu.Unlock()
 
