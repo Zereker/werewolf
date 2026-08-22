@@ -392,8 +392,8 @@ g.AddPlayer("wk", roleWolfKing)
 这八个 `With*` 都住在内核包（`engine.WithResolver`、`engine.WithRoleSetup`……），
 用它们就得 import `werewolf/engine`——扩展规则本来就是在动内核的接线。
 它们是构造选项，`New` / `NewWith` / `Restore` / `Replay` 四个入口都接受，
-`engine.WithLogger` / `engine.WithMetrics` 同理。解析器、日志与指标
-都只能在构造时给出：引擎交到调用方手上之后，这些就不再变了。
+`engine.WithLogger` 同理。解析器与日志都只能在构造时给出：
+引擎交到调用方手上之后，这些就不再变了。
 
 扩展能改动的八处，都由构造选项给出：
 
@@ -687,7 +687,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 │   ├── event.go / events.go # 对外事件与通知
 │   ├── messaging.go         # 玩家发言的路由
 │   ├── errors.go            # 错误码与哨兵错误
-│   ├── logger.go            # 日志与指标接口
+│   ├── logger.go            # 日志接口
 │   ├── testview.go          # Board：单测解析器用的手摆局面
 │   └── types.go             # 词汇表的类型（取值在规则包）
 │
@@ -786,7 +786,7 @@ API 是承诺。
 是同一个类型。
 
 **一旦要改规则，就会写出 `engine.` 这个前缀**：自己写解析器、换胜负判定、
-接日志与指标、按错误码分支、拆快照——都从 `werewolf/engine` 取。这不是
+接日志、按错误码分支、拆快照——都从 `werewolf/engine` 取。这不是
 遗漏，是想让边界在调用点上看得见。本包自己的 `resolver.go`、`rolesetup.go`
 就是这么写的。内核的完整 API 见 [engine/README.md](engine/README.md)。
 

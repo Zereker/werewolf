@@ -21,7 +21,7 @@ const SnapshotVersion = 11
 // 而快照是写进存储的格式，字段名必须稳定。两者之间的转换集中在本文件，
 // 增减字段时这里会显式报错，不会悄悄丢数据。
 //
-// 快照**不包含** Config、Logger、Metrics 与回调：
+// 快照**不包含** Config、Logger 与回调：
 // 这些由调用方在恢复时提供，规则配置本身也应由调用方掌握版本。
 //
 // 枚举以**名字**序列化（"NIGHT_GUARD" 而不是 21）。存档是要给人看、
@@ -36,10 +36,6 @@ type Snapshot struct {
 
 	Phase PhaseType `json:"phase"`
 	Round int       `json:"round"`
-
-	// Seed 随机流的种子。它决定对局结果，因此随快照走——恢复出来的对局
-	// 摇出同一串数，不必指望调用方记得传对配置。
-	Seed int64 `json:"seed,omitempty"`
 
 	// Vars 整局有效、不属于任何玩家的状态。
 	Vars map[string]string `json:"vars,omitempty"`
@@ -110,7 +106,6 @@ func (e *Engine) Snapshot() *Snapshot {
 		Version:      SnapshotVersion,
 		Phase:        e.state.Phase,
 		Round:        e.state.Round,
-		Seed:         e.state.Seed,
 		Vars:         copyVars(e.state.Vars),
 		Actors:       copyActors(e.state.Actors),
 		Players:      e.state.snapshotPlayers(),
@@ -176,7 +171,6 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 		return nil, err
 	}
 
-	engine.state.Seed = snap.Seed
 	engine.state.Vars = copyVars(snap.Vars)
 	engine.state.Actors = copyActors(snap.Actors)
 	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)

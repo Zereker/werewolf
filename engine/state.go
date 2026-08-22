@@ -101,12 +101,6 @@ type gameState struct {
 	// 写走 NewSetVarEffect(ScopeGame, ...)，读走 GameView.Var / Engine.Var。
 	Vars map[string]string
 
-	// Seed 随机流的种子。开局时由 Config.Seed 定下，此后不变。
-	//
-	// 放在状态里而不是只留在配置里：它决定对局结果，就是局面的一部分。
-	// 随快照走，恢复出来的对局因此摇出同一串数，不必指望调用方记得传对配置。
-	Seed int64
-
 	// Actors 「哪些玩家可以在某个阶段行动」，由规则在运行时指定。
 	//
 	// 内核判定行动者此前只有一条路：拿 PhaseStep.Role 去比对玩家的角色。
@@ -313,7 +307,6 @@ func (s *gameState) clone() *gameState {
 	out := newState()
 	out.Phase = s.Phase
 	out.Round = s.Round
-	out.Seed = s.Seed
 	out.Vars = copyVars(s.Vars)
 	out.Actors = copyActors(s.Actors)
 	out.RoundCtx = &RoundContext{

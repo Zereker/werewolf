@@ -29,9 +29,6 @@ type Board struct {
 	// 任意一个局面——这里此前少了上面那格，理由与内核少那一格一样：
 	// 狼人杀用不到，所以没人发现。
 	RoundVars map[string]string
-
-	// Seed 随机流的种子，供单测用到 GameView.Rand 的解析器。
-	Seed int64
 }
 
 // Apply 把一批效果折进局面，返回改过的副本。
@@ -76,7 +73,6 @@ func (b Board) state() *gameState {
 	s := newState()
 	s.Round = round
 	s.Phase = b.Phase
-	s.Seed = b.Seed
 	s.Vars = copyVars(b.Vars)
 	s.RoundCtx = newRoundContext()
 	s.RoundCtx.Vars = copyVars(b.RoundVars)
@@ -92,7 +88,7 @@ func (b Board) state() *gameState {
 // boardOf 把内部状态导回局面。
 func boardOf(s *gameState) Board {
 	b := Board{
-		Round: s.Round, Phase: s.Phase, Seed: s.Seed,
+		Round: s.Round, Phase: s.Phase,
 		Vars: copyVars(s.Vars), RoundVars: copyVars(s.RoundCtx.Vars),
 	}
 	for _, id := range s.allPlayerIDs() {

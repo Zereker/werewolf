@@ -1,9 +1,5 @@
 package engine
 
-import (
-	"math/rand"
-)
-
 // GameView 只读的游戏视图。
 //
 // Resolver 拿到的是它而不是 *gameState：架构上「状态变更一律经由 Effect」
@@ -47,15 +43,6 @@ type GameView interface {
 	// 规则把自己的状态全放在这里，内置角色与第三方角色同一条路。
 	// 写入走 NewSetVarEffect，玩家的初始状态由 RoleSetup 发放。
 	Var(scope VarScope, key string) string
-
-	// Rand 这一刻的随机流。
-	//
-	// 由 (Config.Seed, 当前回合, 当前阶段) 唯一决定：同一个局面拿到的永远是
-	// 同一条流，因此回放能重现完全相同的结果，而 Resolver 仍然是局面的纯函数。
-	//
-	// 每次调用返回一条**新的、从头开始**的流——不要把它存起来跨阶段用，
-	// 那会让结果依赖调用次序而不是局面。
-	Rand() *rand.Rand
 
 	// Round 返回当前回合数
 	Round() int
@@ -114,10 +101,6 @@ func (v stateView) RoundContext() RoundContext {
 
 func (v stateView) Var(scope VarScope, key string) string {
 	return v.s.varOf(scope, key)
-}
-
-func (v stateView) Rand() *rand.Rand {
-	return randStream(v.s.Seed, v.s.currentRound(), v.s.currentPhase())
 }
 
 func (v stateView) Round() int { return v.s.currentRound() }

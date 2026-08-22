@@ -73,32 +73,3 @@ func (l *nopLogger) Error(msg string, fields ...Field) {}
 func newNopLogger() *nopLogger {
 	return &nopLogger{}
 }
-
-// Metrics 指标收集接口
-// 允许外部注入指标实现，用于生产环境监控
-type Metrics interface {
-	// IncSkillSubmitted 技能提交计数
-	IncSkillSubmitted(skill SkillType)
-	// IncPhaseEnded 阶段结束计数
-	IncPhaseEnded(phase PhaseType)
-	// IncGameEnded 游戏结束计数
-	IncGameEnded(winner Camp)
-	// IncEffectApplied 效果应用计数。
-	//
-	// 含内部效果（SET_NIGHT_KILL、USE_POISON 这类真正的状态变更）
-	// 与被规则否决的效果——夜晚结算出了什么问题，恰恰要靠它们才看得出来。
-	IncEffectApplied(eventType EventType)
-}
-
-// nopMetrics 空指标实现（默认）
-type nopMetrics struct{}
-
-func (m *nopMetrics) IncSkillSubmitted(skill SkillType)    {}
-func (m *nopMetrics) IncPhaseEnded(phase PhaseType)        {}
-func (m *nopMetrics) IncGameEnded(winner Camp)             {}
-func (m *nopMetrics) IncEffectApplied(eventType EventType) {}
-
-// newNopMetrics 创建空指标收集器
-func newNopMetrics() *nopMetrics {
-	return &nopMetrics{}
-}

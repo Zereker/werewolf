@@ -31,16 +31,6 @@ type Config struct {
 	// 阶段配置
 	Phases map[PhaseType]*PhaseConfig
 
-	// Seed 随机流的种子。
-	//
-	// 规则要摇随机数（掷骰、摸牌、随机事件）时经 GameView.Rand 取，
-	// 而那条流由 (Seed, 回合, 阶段) 唯一决定——因此同一个局面摇出来的永远
-	// 是同一串数，回放与快照比对不受影响。
-	//
-	// 留 0 也能跑，只是每一局都摇出同样的结果。真要每局不同，
-	// 建局时给一个不同的值，并把它与快照一起存好——它是局面的一部分。
-	Seed int64
-
 	// DefaultTimeout 未给出 PhaseConfig.Timeout 时的建议超时。
 	// 建议值，引擎不据此计时，详见超时常量的说明；
 	// 用 Config.PhaseTimeout(phase) 取某个阶段的最终建议值。

@@ -14,8 +14,7 @@ type Engine struct {
 	// logger 与 metrics 在构造时定好，此后不再改变，因此可以在锁外读。
 	// 它们此前有各自的 setter，于是每一处锁外使用都得先在锁内复制一份；
 	// 收进构造选项之后这层防御就没有必要了。
-	logger  Logger
-	metrics Metrics
+	logger Logger
 
 	// victory 胜负判定。内核的缺省是「永不结束」——它不知道什么叫赢；
 	// 规则包用 WithVictoryChecker 装上自己的那一套。
@@ -83,7 +82,6 @@ func NewEngine(config *Config, opts ...EngineOption) (*Engine, error) {
 		state:           newState(),
 		phase:           newPhaseManager(config),
 		logger:          newNopLogger(),
-		metrics:         newNopMetrics(),
 		victory:         neverEnds{},
 		roleInfo:        make(map[RoleType]RoleInfoProvider, 4),
 		roleSetup:       make(map[RoleType]RoleSetup, 8),
@@ -196,7 +194,6 @@ func (e *Engine) startLocked() (*Effect, []EventHandler, error) {
 	}
 
 	start := e.config.startPhase()
-	e.state.Seed = e.config.Seed
 	e.state.startAt(start)
 
 	effect := newGameStartedEffect(start)
@@ -236,7 +233,6 @@ func (e *Engine) SubmitSkillUse(use *SkillUse) error {
 		playerField(use.PlayerID),
 		skillField(use.Skill),
 		targetField(use.Target()))
-	e.metrics.IncSkillSubmitted(use.Skill)
 
 	return nil
 }
@@ -298,7 +294,6 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 	// 3. 清空待处理列表
 	e.pendingUses = nil
-	e.metrics.IncPhaseEnded(currentPhase)
 
 	// 4. 计算下一阶段。
 	//    死亡技能可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
@@ -349,7 +344,6 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 
 		e.winner = winner
 		e.logger.Info("game ended", logField("winner", winner.String()))
-		e.metrics.IncGameEnded(winner)
 	} else {
 		e.recordEffects(newPhaseChangedEffect(nextPhase))
 		e.logger.Debug("phase transition",
@@ -536,7 +530,6 @@ func (e *Engine) applyEffects(effects []*Effect) ([]*Effect, []*Event) {
 			playerField(effect.SourceID),
 			targetField(effect.TargetID),
 			logField("canceled", effect.Canceled))
-		e.metrics.IncEffectApplied(effect.Type)
 
 		if !isInternalEvent(effect.Type) {
 			events = append(events, effect.ToEvent())

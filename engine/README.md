@@ -194,7 +194,7 @@ e.AudienceOf(event)   // 一件事该发给哪些玩家
 | 一件事该告诉谁 | `WithAudience(provider)` |
 | 谁和谁是一边的 | `WithTeammates(provider)` |
 | 发言谁能听到 | `WithSpeech(provider)` |
-| 日志与指标 | `WithLogger(l)` / `WithMetrics(m)` |
+| 日志 | `WithLogger(l)` |
 
 外加两个不走选项的：局中的状态变更走 `Effect` 原语，宿主级的
 状态修改走 `Engine.Apply`（同样经唯一写入点，但绕开阶段结算——是把

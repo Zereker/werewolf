@@ -48,16 +48,6 @@ func WithLogger(logger Logger) EngineOption {
 	}
 }
 
-// WithMetrics 设置指标收集器。metrics 为 nil 时保持默认的空实现。
-func WithMetrics(metrics Metrics) EngineOption {
-	return func(e *Engine) error {
-		if metrics != nil {
-			e.metrics = metrics
-		}
-		return nil
-	}
-}
-
 // applyOptions 依次应用构造选项。
 // 调用时引擎尚未交给调用方，不需要加锁。
 func (e *Engine) applyOptions(opts []EngineOption) error {
