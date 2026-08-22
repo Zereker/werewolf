@@ -101,6 +101,11 @@ type PhaseConfig struct {
 }
 ```
 
+**只有会转圈的阶段图才需要回合边界。** `Validate()` 沿 `NextPhase` 从
+`StartPhase` 走一遍：走得到 `PhaseEnd` 就是一条直线，每个阶段只经过一次，
+第二个回合根本不存在，也就不要求声明。一夜狼人就是这样一副图（整局一个
+夜晚、一次讨论、一次投票）。转圈的图仍然两者各至少要有一个。
+
 **`EndsRound` 与 `ClearsRoundVars` 是两件事，分开声明。** 绝大多数板子两者
 重合（狼人杀：投票阶段结束既是新回合、也该清空），阿瓦隆不重合——队伍标记
 要活到下一次提名，而回合数跟着第几轮任务走。`Validate()` 要求两者**各至少
@@ -502,9 +507,9 @@ type Event struct { /* 类型、来源、目标、数据、阶段、回合 */ }
 ## 10. 存档
 
 ```go
-const SnapshotVersion = 11
+const SnapshotVersion = 13
 
-type Snapshot struct { /* 版本、阶段、回合、整局变量、行动者、玩家、回合上下文、未结算提交 */ }
+type Snapshot struct { /* 版本、阶段、回合、整局变量、行动者、赢家、玩家、回合上下文、未结算提交 */ }
 type PlayerSnapshot struct{ ... }
 type RoundCtxSnapshot struct{ ... }
 type SkillUseSnapshot struct{ ... }
@@ -516,6 +521,11 @@ type DetourSnapshot struct{ ... }
 认可的地方。
 
 **快照不含** `Config`、`Logger` 与回调——恢复时要把同一批选项传回去。
+
+**快照含赢家**（v13 起）。谁赢是结束那一刻由 `VictoryChecker` 定下的、此后
+不再变，而恢复出来的引擎不会再跑一次判定——不带它的话，一局已经结束的对局
+恢复出来是 `Over=true` 而 `Winner` 为空，`Status` 那四项号称来自同一个瞬间，
+在这条路上却对不上。这是一个真 bug，v13 修掉。
 
 ---
 
@@ -608,7 +618,7 @@ b = b.Apply(resolver.Resolve(uses, b.View()))
 |---|---|---|
 | 1 | `CodeInvalidPlayerId` 与 `ErrInvalidPlayerID` 大小写不一致 | 统一为 `CodeInvalidPlayerID` |
 | 2 | `PlayerInfo.Var(key)` / `.RoundVar(key)` 不吃 `VarScope`，与其他读法不一致 | **两个方法删掉**。`Vars` / `RoundVars` 是导出字段，读 nil map 在 Go 里本来就安全，这两个方法是零价值的糖——它们唯一的作用是让 `Var` 在两个类型上意思不同 |
-| 3 | `Detour` / `NewDetourEffect` 的文档还在说「死亡技能」 | 改名 `Detour` / `NewDetourEffect`，事件值 `DETOUR` → `DETOUR`，快照字段 `pending_triggers` → `detours`，`SnapshotVersion` 11 → 12 |
+| 3 | `PendingTrigger` / `NewAbilityTriggerEffect` 的文档还在说「死亡技能」 | 改名 `Detour` / `NewDetourEffect`，事件值 `ABILITY_TRIGGERED` → `DETOUR`，快照字段 `pending_triggers` → `detours`，`SnapshotVersion` 11 → 12 |
 | 4 | `RoleGod` 的名字暗示「主持人」这个身份 | 内核改名 `RoleSystem`（值 `"GOD"` → `"SYSTEM"`）。「上帝」是狼人杀给这个标记起的名字，定在规则包（`werewolf.RoleGod`） |
 | 5 | `Engine.SendMessage` 的文档说「玩家已死亡」会报错 | 改写：那是**没装 `SpeechProvider` 时的默认**，装了就由 provider 说了算 |
 | 6 | `Engine.PlayerInfo` 的注释写着「（推荐使用）」 | 改写成它实际的语义：上帝视角，含 `Vars`，**不是**给玩家看的 |
@@ -618,6 +628,10 @@ b = b.Apply(resolver.Resolve(uses, b.View()))
 
 没有它，这份文档一定会和代码漂移——与这个项目其他「规矩只写在注释里」的
 伤口是同一类问题。
+
+钉住的是**名字加签名**（含接口的方法集）。只钉名字的话，「把 `CheckVictory`
+的返回值从一个 `Camp` 改成一组」这种改动会溜过去——导出名一个都不增不减，
+而所有实现者都会编译不过。参数改名不算变更，参数**类型**改了才算。
 
 它不判断 API 好不好，只保证**变更不会悄悄发生**：
 
@@ -634,17 +648,20 @@ $ go test ./engine
       2. 更新 docs/API.md（正文与附录 A）
 ```
 
-「悄悄新增」与「悄悄删除」两个方向都验证过会变红。
+「悄悄新增」「悄悄删除」「悄悄改签名」三个方向都验证过会变红——最后那个
+用的是一个**能编译通过**的变异（给 `CodeOf` 加一个可变参，所有现有调用照样
+编译），因为编译不过的变异证明不了这个测试本身。
 
 ---
 
 ## 附录 A：完整导出名清单
 
 **冻结基线。** 由 `TestAPI_SurfaceIsPinned` 与 `engine/testdata/api.golden`
-守着——这份清单变了，测试就变红。
+守着——**名字或签名**变了，测试就变红。
 
 合计 **55 类型 / 24 包级函数 / 56 方法 /
-62 常量与变量**。
+20 个接口方法 / 62 常量与变量**。
+下面按名字列出；带签名的完整清单在 `engine/testdata/api.golden`。
 
 ### 类型（55）
 

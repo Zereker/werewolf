@@ -127,8 +127,7 @@ func TestConfig_IsValid(t *testing.T) {
 // TestRoundNeverAdvances 这一套规则整局只有一个回合。
 //
 // 前两套的阶段图都是环，回合数会一路涨。这一套是直线，Round 从头到尾是 1
-// ——而内核的 Config.Validate 却**要求**必须有阶段标 EndsRound。
-// 见 SCARS.md 疤 2。
+// ——而这份配置一个回合边界都没声明，正因为它不需要（SCARS.md 疤 2）。
 func TestRoundNeverAdvances(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},

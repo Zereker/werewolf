@@ -13,7 +13,7 @@ import (
 // 而那恰恰是这个版本号想防的事。现在规则包里有一个 golden 测试
 // （TestSnapshot_ShapeIsPinnedToVersion）把序列化形状钉住，字段增删改名
 // 都会让它变红，红了之后再判断该不该递增。
-const SnapshotVersion = 12
+const SnapshotVersion = 13
 
 // Snapshot 引擎的完整可序列化快照。
 //
@@ -44,6 +44,14 @@ type Snapshot struct {
 	// （阿瓦隆的任务队伍是提名阶段选的），因此必须随快照走，
 	// 否则从提名与任务之间恢复出来的对局会丢掉队伍。
 	Actors map[PhaseType][]string `json:"actors,omitempty"`
+
+	// Winner 这一局的赢家，还没分出胜负时为空。
+	//
+	// 它不是从别处推得出来的：谁赢是**结束那一刻**由 VictoryChecker 定下的，
+	// 此后不再变，而恢复出来的引擎不会再跑一次判定。漏了它，一局已经结束的
+	// 对局恢复出来会是 Over=true 而 Winner 为空——Status 那四项号称来自同一
+	// 个瞬间，在这条路上却对不上。
+	Winner Camp `json:"winner,omitempty"`
 
 	Players      []PlayerSnapshot   `json:"players"`
 	RoundContext RoundCtxSnapshot   `json:"round_context"`
@@ -108,6 +116,7 @@ func (e *Engine) Snapshot() *Snapshot {
 		Round:        e.state.Round,
 		Vars:         copyVars(e.state.Vars),
 		Actors:       copyActors(e.state.Actors),
+		Winner:       e.winner,
 		Players:      e.state.snapshotPlayers(),
 		RoundContext: e.state.snapshotRoundCtx(),
 		PendingUses:  make([]SkillUseSnapshot, 0, len(e.pendingUses)),
@@ -173,6 +182,7 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 
 	engine.state.Vars = copyVars(snap.Vars)
 	engine.state.Actors = copyActors(snap.Actors)
+	engine.winner = snap.Winner
 	engine.state.restoreProgress(snap.Phase, snap.Round, snap.RoundContext)
 
 	return engine, nil

@@ -200,13 +200,16 @@ func (c *Config) Validate() error {
 		return WrapError(CodeInvalidConfig,
 			"config must declare StartPhase: the kernel has no default")
 	}
-	if !c.hasRoundBoundary() {
-		return WrapError(CodeInvalidConfig,
-			"no phase declares EndsRound: the round would never advance")
-	}
-	if !c.hasVarReset() {
-		return WrapError(CodeInvalidConfig,
-			"no phase declares ClearsRoundVars: round-scoped state would never reset")
+	// 回合边界只对**会转圈**的阶段图是必需的，见 loops()。
+	if c.loops() {
+		if !c.hasRoundBoundary() {
+			return WrapError(CodeInvalidConfig,
+				"no phase declares EndsRound: the round would never advance")
+		}
+		if !c.hasVarReset() {
+			return WrapError(CodeInvalidConfig,
+				"no phase declares ClearsRoundVars: round-scoped state would never reset")
+		}
 	}
 	if _, ok := c.Phases[c.StartPhase]; !ok {
 		return WrapError(CodeInvalidPhase,
@@ -318,6 +321,45 @@ func (c *Config) endsRound(phase PhaseType) bool {
 func (c *Config) clearsRoundVars(phase PhaseType) bool {
 	pc := c.Phases[phase]
 	return pc != nil && pc.ClearsRoundVars
+}
+
+// loops 阶段图会不会转圈：沿默认出口走下去，能不能回到走过的阶段。
+//
+// 这道判断存在的理由是**一夜狼人撞出来的**：那一套规则整局只有一个夜晚、
+// 一次讨论、一次投票，走到 VOTE 就结束——阶段图是一条**直线**，回合数
+// 从头到尾是 1，而那恰恰是对的。
+//
+// 而 hasRoundBoundary / hasVarReset 那两道检查此前是无条件的，于是内核为了
+// 防一类配置错误，逼一个正确的配置去撒谎：只好把 EndsRound 挂在 VOTE 上，
+// 虽然它之后没有下一个回合。配置因此在骗读代码的人。
+//
+// 现在的口径是：**转圈的图才需要回合边界**。理由是那两道检查真正防的是
+// 「回合级状态永远不清」——而不转圈的图里每个阶段只经过一次，第二个回合
+// 根本不存在，风险也就不存在。
+//
+// 只沿 NextPhase 走。GOTO_PHASE 与绕道队列都能在运行时把流转拐到别处，
+// 但那是规则的运行期决定，静态配置里看不见——这里判的是**声明出来的**
+// 阶段图，与 Validate 其余各条同一个口径。
+func (c *Config) loops() bool {
+	// 不转圈的走法**至多**经过每个阶段一次，因此 len(Phases) 步之内一定
+	// 走到 END（或者走进一个配置里没有的阶段，那由别的检查报出来）。
+	// 走满了还没到头，只可能是在转圈。
+	//
+	// 这么写而不是拿一张 seen 表记走过哪些：两者答案完全一样，而步数封顶
+	// 同时保证了**这个函数一定会停**。Validate 是建局路径上的第一道关，
+	// 它自己绝不能因为一份写坏的配置而挂住。
+	phase := c.StartPhase
+	for i := 0; i <= len(c.Phases); i++ {
+		if phase == PhaseUnspecified || phase == PhaseEnd {
+			return false
+		}
+		pc, ok := c.Phases[phase]
+		if !ok || pc == nil {
+			return false // 图断了，别的检查会报出来
+		}
+		phase = pc.NextPhase
+	}
+	return true
 }
 
 // hasRoundBoundary 配置里有没有阶段声明自己是回合的终点。

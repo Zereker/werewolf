@@ -24,6 +24,10 @@ var updateAPIGolden = flag.Bool("update-api-golden", false, "重写 testdata/api
 // 它不判断 API 好不好，只保证**变更不会悄悄发生**：改了导出面就必须同时
 // 更新基准文件与 API.md，这一步是显式的。
 //
+// 钉住的是**名字加签名**。只钉名字的话，「把 CheckVictory 的返回值从一个
+// Camp 改成一组」这种改动会溜过去——导出名一个都不增不减，而所有实现者
+// 都会编译不过。
+//
 //	go test ./engine -run TestAPI_SurfaceIsPinned -update-api-golden
 func TestAPI_SurfaceIsPinned(t *testing.T) {
 	got := strings.Join(exportedNames(t), "\n") + "\n"
@@ -89,9 +93,15 @@ func exportedNames(t *testing.T) []string {
 	return names
 }
 
-// exportedIn 一个文件里的导出名。方法记成 Receiver.Method，
-// 结构体字段不记——字段的增删由快照 golden 与各自的测试守着，
-// 这里盯的是「有哪些名字能被外面叫到」。
+// exportedIn 一个文件里的导出名**与签名**。方法记成 Receiver.Method。
+//
+// 记签名而不只记名字，是因为「名字没变、参数或返回值变了」同样是一次
+// 破坏性变更——把 VictoryChecker.CheckVictory 的返回值从一个 Camp 改成
+// 一组，导出名一个都不增不减。只钉名字的话那种改动会**悄悄溜过去**，
+// 而这个测试的全部意义就是不让变更悄悄发生。
+//
+// 结构体字段不在这里记：字段的增删由快照 golden 与各自的测试守着。
+// 接口的方法集要记——接口是契约，加一个方法就是让所有实现者编译不过。
 func exportedIn(f *ast.File) []string {
 	var out []string
 	for _, decl := range f.Decls {
@@ -101,21 +111,34 @@ func exportedIn(f *ast.File) []string {
 				continue
 			}
 			if d.Recv == nil || len(d.Recv.List) == 0 {
-				out = append(out, "func "+d.Name.Name)
+				out = append(out, "func "+d.Name.Name+signatureOf(d.Type))
 				continue
 			}
 			recv := receiverName(d.Recv.List[0].Type)
 			if !ast.IsExported(recv) {
 				continue // 未导出类型的方法出不了包
 			}
-			out = append(out, "method "+recv+"."+d.Name.Name)
+			out = append(out, "method "+recv+"."+d.Name.Name+signatureOf(d.Type))
 
 		case *ast.GenDecl:
 			for _, spec := range d.Specs {
 				switch s := spec.(type) {
 				case *ast.TypeSpec:
-					if s.Name.IsExported() {
-						out = append(out, "type "+s.Name.Name)
+					if !s.Name.IsExported() {
+						continue
+					}
+					out = append(out, "type "+s.Name.Name+typeShapeOf(s.Type))
+					// 接口的方法集也钉住：加一个方法就是让所有实现者
+					// 编译不过，那是最硬的一种破坏性变更。
+					if iface, ok := s.Type.(*ast.InterfaceType); ok {
+						for _, m := range iface.Methods.List {
+							fn, ok := m.Type.(*ast.FuncType)
+							if !ok || len(m.Names) == 0 {
+								continue
+							}
+							out = append(out,
+								"iface "+s.Name.Name+"."+m.Names[0].Name+signatureOf(fn))
+						}
 					}
 				case *ast.ValueSpec:
 					kind := "const "
@@ -132,6 +155,96 @@ func exportedIn(f *ast.File) []string {
 		}
 	}
 	return out
+}
+
+// signatureOf 把一个函数类型打成一行，只保留类型、不保留参数名。
+//
+// 参数改名不是破坏性变更，参数**类型**改了才是。
+func signatureOf(fn *ast.FuncType) string {
+	return "(" + fieldTypes(fn.Params) + ")" + resultTypes(fn.Results)
+}
+
+// typeShapeOf 类型声明的形状。
+//
+// 只对「本身就是一个函数类型」的那些有意义（ResolverFunc、VictoryFunc
+// 这类适配器）——它们的签名改了，导出名不会动。其余类型返回空串：
+// 结构体字段与接口方法各有各的记法。
+func typeShapeOf(expr ast.Expr) string {
+	if fn, ok := expr.(*ast.FuncType); ok {
+		return " func" + signatureOf(fn)
+	}
+	return ""
+}
+
+// fieldTypes 参数或返回值的类型列表。
+func fieldTypes(list *ast.FieldList) string {
+	if list == nil || len(list.List) == 0 {
+		return ""
+	}
+	var out []string
+	for _, f := range list.List {
+		t := exprString(f.Type)
+		n := len(f.Names)
+		if n == 0 {
+			n = 1
+		}
+		for i := 0; i < n; i++ {
+			out = append(out, t)
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+// resultTypes 返回值，零个不写，一个不加括号。
+func resultTypes(list *ast.FieldList) string {
+	s := fieldTypes(list)
+	switch {
+	case s == "":
+		return ""
+	case list != nil && len(list.List) == 1 && len(list.List[0].Names) <= 1:
+		return " " + s
+	default:
+		return " (" + s + ")"
+	}
+}
+
+// exprString 把一个类型表达式打成源码的样子。
+//
+// 手写而不是用 go/printer：这里要的是**稳定**的一行，不是好看的排版，
+// 而且不想让 golden 因为格式化器的版本而变。
+func exprString(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		return "*" + exprString(t.X)
+	case *ast.SelectorExpr:
+		return exprString(t.X) + "." + t.Sel.Name
+	case *ast.ArrayType:
+		if t.Len == nil {
+			return "[]" + exprString(t.Elt)
+		}
+		return "[" + exprString(t.Len) + "]" + exprString(t.Elt)
+	case *ast.Ellipsis:
+		return "..." + exprString(t.Elt)
+	case *ast.MapType:
+		return "map[" + exprString(t.Key) + "]" + exprString(t.Value)
+	case *ast.FuncType:
+		return "func" + signatureOf(t)
+	case *ast.InterfaceType:
+		if t.Methods == nil || len(t.Methods.List) == 0 {
+			return "interface{}"
+		}
+		return "interface{...}"
+	case *ast.StructType:
+		return "struct{...}"
+	case *ast.ChanType:
+		return "chan " + exprString(t.Value)
+	case *ast.BasicLit:
+		return t.Value
+	default:
+		return "?"
+	}
 }
 
 // receiverName 取接收者的类型名，剥掉指针。

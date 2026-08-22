@@ -14,10 +14,13 @@ const CenterCount = 3
 // 前两套规则包的阶段图都是环：狼人杀绕回守卫、阿瓦隆绕回提名。这一套走到
 // VOTE 就结束，一个回合都不需要。Round 从头到尾是 1，回合级变量一次都不清。
 //
-// 内核的 Config.Validate 要求「至少有一个阶段标 EndsRound、至少有一个标
-// ClearsRoundVars」——那两条是为了防「回合永远是 1、回合变量永远不清」这类
-// 配置错误。而对这一套规则，回合永远是 1 **恰恰是对的**。只好把两个标记都
-// 挂在 VOTE 上，虽然它之后没有下一个回合。见 SCARS.md 疤 2。
+// 因此这副图**一个回合边界都不声明**：没有 EndsRound，也没有
+// ClearsRoundVars。内核的 Config.Validate 只对**会转圈**的阶段图要求它们
+// ——不转圈的图里每个阶段只经过一次，第二个回合根本不存在。
+//
+// 这一条是本包撞出来的（SCARS.md 疤 2）：那两道检查此前是无条件的，
+// 于是内核为了防一类配置错误，逼这份正确的配置去撒谎——只好把 EndsRound
+// 挂在 VOTE 上，虽然它之后没有下一个回合。现在不必了。
 //
 // # 夜晚次序是规则的一部分
 //
@@ -113,9 +116,8 @@ func GameConfig() *engine.Config {
 					// 投票指向的是活人，这一局里所有人都活着，
 					// 但写明白比依赖默认好。
 				}},
-				NextPhase:       engine.PhaseEnd,
-				EndsRound:       true,
-				ClearsRoundVars: true,
+				// 不标 EndsRound / ClearsRoundVars：这一套规则没有第二个回合。
+				NextPhase: engine.PhaseEnd,
 			},
 		},
 	}
