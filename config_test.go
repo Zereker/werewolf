@@ -212,7 +212,7 @@ func TestStartPhase_Configurable(t *testing.T) {
 // 静默收场，连 GAME_ENDED 都不会发。
 func TestValidate_RejectsMissingNextPhase(t *testing.T) {
 	cfg := DefaultGameConfig()
-	cfg.Phases[PhaseType(77)] = &PhaseConfig{Type: PhaseType(77)}
+	cfg.Phases[PhaseType("ORPHAN")] = &PhaseConfig{Type: PhaseType("ORPHAN")}
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("漏填 NextPhase 应当被拒")
@@ -258,12 +258,12 @@ func TestGameConfig_PhaseTimeout(t *testing.T) {
 		t.Errorf("DAY: 期望 %v，实际 %v", DayPhaseTimeout, got)
 	}
 	// 未配置的阶段退回 DefaultTimeout
-	if got := cfg.PhaseTimeout(PhaseType(999)); got != cfg.DefaultTimeout {
+	if got := cfg.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != cfg.DefaultTimeout {
 		t.Errorf("未知阶段: 期望 %v，实际 %v", cfg.DefaultTimeout, got)
 	}
 	// DefaultTimeout 也没配时退回常量
 	bare := &GameConfig{Phases: cfg.Phases}
-	if got := bare.PhaseTimeout(PhaseType(999)); got != DefaultPhaseTimeout {
+	if got := bare.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != DefaultPhaseTimeout {
 		t.Errorf("兜底: 期望 %v，实际 %v", DefaultPhaseTimeout, got)
 	}
 }

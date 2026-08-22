@@ -15,26 +15,28 @@ type Effect struct {
 	Reason   string                 // 取消原因
 }
 
-// EventType 的编号分三段：
+// kernelPrimitives 内核自己的状态原语。
 //
-//	  1 ..  99   引擎的外部可见事件，通过 OnEvent 推给调用方
-//	100 .. 999   引擎的内部状态变更，不外发
-//	1000 起      第三方扩展自己的事件类型
+// 它们是状态机的记账（谁的存活位翻了、谁身上多了个标记），不该出现在
+// 任何玩家面前——AudienceOf 对它们的回答是「明确不给任何人看」，
+// 且这一条不可配置。
 //
-// 内部段此前写成「>= 100」而不是一个区间，与「自定义取值从 1000 起」
-// 这条约定直接打架：第三方定义的每一个事件类型都会被判成引擎内部事件，
-// 于是白痴翻牌、狼王自爆这类本该全场可见的事情，扩展根本发不出去。
-const (
-	internalEventStart = 100
-	customEventStart   = 1000
-)
+// 判断依据是这张表，不是编号区间。此前写成「>= 100 即内部」，与
+// 「第三方取值从 1000 起」那条约定直接打架：扩展定义的每一个事件类型
+// 都被判成内部事件，于是扩展的事件根本发不出去。
+var kernelPrimitives = map[EventType]bool{
+	EventSetAlive:          true,
+	EventSetPlayerVar:      true,
+	EventSetRoundVar:       true,
+	EventSetPlayerRoundVar: true,
+	EventAbilityTriggered:  true,
+	EventPlayerAdded:       true,
+	EventPhaseChanged:      true,
+}
 
-// isInternalEvent 判断事件是否为引擎内部状态变更。
-//
-// 只有中间那一段是内部的。1000 以上是第三方的地盘，引擎不认识它们，
-// 但也不替它们决定「不该外发」——那由 AudienceOf 回答成「我不知道」。
+// isInternalEvent 判断事件是否为内核的状态原语。
 func isInternalEvent(t EventType) bool {
-	return t >= internalEventStart && t < customEventStart
+	return kernelPrimitives[t]
 }
 
 // triggerPhaseKey 触发效果中记录「该去哪个阶段结算」的键

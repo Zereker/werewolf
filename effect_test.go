@@ -161,7 +161,7 @@ func TestEventType_AllTypes(t *testing.T) {
 	seen := make(map[EventType]bool)
 	for _, et := range types {
 		if seen[et] {
-			t.Errorf("duplicate EventType: %d", et)
+			t.Errorf("duplicate EventType: %v", et)
 		}
 		seen[et] = true
 	}
@@ -241,29 +241,31 @@ func TestConvertToString(t *testing.T) {
 	}
 }
 
-// TestEventType_CustomRangeIsExternal 第三方自定义的事件类型不是引擎内部事件。
+// TestEventType_KernelPrimitivesAreTheOnlyInternalOnes 只有内核自己的状态原语算内部事件。
 //
-// 编号分三段：1..99 引擎外部事件、100..999 引擎内部状态变更、1000 起第三方。
-// 内部段此前写成「>= 100」，与「自定义取值从 1000 起」这条约定直接打架——
-// 第三方定义的每一个事件类型都会被判成引擎内部事件，于是白痴翻牌、
-// 狼王自爆这类本该全场可见的事情，扩展根本发不出去。
-func TestEventType_CustomRangeIsExternal(t *testing.T) {
+// 这条判定此前按编号区间做：「>= 100 即内部」。它与另一条约定
+// 「第三方取值从 1000 起」直接打架——第三方定义的每一个事件类型都被判成
+// 内部事件，于是白痴翻牌、狼王自爆这类本该全场可见的事，扩展根本发不出去。
+//
+// 枚举改成字符串之后不再有「区间」这回事，判定依据是内核自己那张表：
+// 表里的是记账，表外的一律是规则的事件，推给 OnEvent。
+func TestEventType_KernelPrimitivesAreTheOnlyInternalOnes(t *testing.T) {
 	cases := []struct {
 		typ      EventType
 		internal bool
 		why      string
 	}{
-		{EventKill, false, "引擎的外部事件"},
-		{EventVoteTied, false, "引擎的外部事件"},
+		{EventKill, false, "规则给「发生了什么」起的名字"},
+		{EventVoteTied, false, "规则给「发生了什么」起的名字"},
 		{EventSetRoundVar, true, "内核的状态原语"},
-		{EventPhaseChanged, true, "引擎的内部状态变更"},
-		{EventType(999), true, "内部段的上界之内"},
-		{EventType(1000), false, "第三方的地盘"},
-		{EventType(1001), false, "第三方的地盘"},
+		{EventSetAlive, true, "内核的状态原语"},
+		{EventPhaseChanged, true, "内核的记账"},
+		{EventType("IDIOT_REVEALED"), false, "第三方的事件"},
+		{EventType("SET_ALIVE_BUT_NOT_REALLY"), false, "名字像也不算，判的是表不是前缀"},
 	}
 	for _, c := range cases {
 		if got := isInternalEvent(c.typ); got != c.internal {
-			t.Errorf("isInternalEvent(%d) = %v，期望 %v（%s）", c.typ, got, c.internal, c.why)
+			t.Errorf("isInternalEvent(%v) = %v，期望 %v（%s）", c.typ, got, c.internal, c.why)
 		}
 	}
 }
@@ -275,7 +277,7 @@ func TestEventType_CustomRangeIsExternal(t *testing.T) {
 func TestAudienceOf_CustomEventIsUnknownNotHidden(t *testing.T) {
 	e := newViewGame(t)
 
-	custom := NewEffect(EventType(1001), "s", "v1")
+	custom := NewEffect(EventType("CUSTOM_EVENT"), "s", "v1")
 	audience, known := e.AudienceOf(custom.ToEvent())
 	if known {
 		t.Error("引擎不该声称认得第三方的事件类型")
@@ -293,8 +295,8 @@ func TestAudienceOf_CustomEventIsUnknownNotHidden(t *testing.T) {
 
 // TestCustomEventReachesOnEvent 第三方的事件要能真的推给订阅者。
 func TestCustomEventReachesOnEvent(t *testing.T) {
-	const customPhase = PhaseType(1000)
-	const customEvent = EventType(1001)
+	const customPhase = PhaseType("CUSTOM_PHASE")
+	const customEvent = EventType("CUSTOM_EVENT")
 
 	cfg := DefaultGameConfig()
 	cfg.Phases[customPhase] = &PhaseConfig{

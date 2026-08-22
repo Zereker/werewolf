@@ -12,9 +12,9 @@ import (
 
 const (
 	// 自定义取值从 1000 起，避免与后续内置枚举撞号
-	roleWolfKing  = RoleType(1000)
-	skillWolfClaw = SkillType(1000)
-	phaseWolfKing = PhaseType(1000)
+	roleWolfKing  = RoleType("WOLF_KING")
+	skillWolfClaw = SkillType("WOLF_CLAW")
+	phaseWolfKing = PhaseType("PHASE_WOLF_KING")
 
 	// 狼王的枪：开局一发，打出去就没了。存在 PlayerVar 里、由
 	// RoleSetup 发放，走的是与女巫的药完全相同的两条路。
@@ -289,7 +289,7 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 // 它的 Camp 是 EVIL 而 Role 不是 WEREWOLF：
 // 他们看不到队友、不被真狼看到、夜里也发不出话——自定义狼队角色实际不可用。
 func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
-	const roleWolfKing = RoleType(1000)
+	const roleWolfKing = RoleType("WOLF_KING")
 
 	engine := MustNewEngine(nil, WithRoleSetup(roleWolfKing, RoleSetupFunc(
 		func(string, RoleType) map[string]string {

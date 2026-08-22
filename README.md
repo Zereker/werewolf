@@ -351,9 +351,10 @@ engine.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用
 
 ```go
 const (
-    roleWolfKing  = werewolf.RoleType(1000)   // 自定义取值一律从 1000 起
-    skillWolfClaw = werewolf.SkillType(1000)
-    phaseWolfKing = werewolf.PhaseType(1000)
+    // 枚举的底层是字符串，用自己的名字即可，不会与内置的撞号
+    roleWolfKing  = werewolf.RoleType("WOLF_KING")
+    skillWolfClaw = werewolf.SkillType("WOLF_CLAW")
+    phaseWolfKing = werewolf.PhaseType("PHASE_WOLF_KING")
 )
 
 cfg := werewolf.DefaultGameConfig()
@@ -408,13 +409,19 @@ engine.AddPlayer("wk", roleWolfKing)
 「只能通过返回 Effect 表达状态变更」，存在字段里的东西快照带不上、回放
 也重建不出，恢复出来的对局是错的**还不会报错**。
 
-**事件类型的编号是分段的**，这一点关系到扩展的事件能不能发出去：
+**扩展的事件会不会发出去**，取决于它是不是内核的状态原语：
 
-| 段 | 归谁 | 会不会推给 `OnEvent` |
+| | 归谁 | 会不会推给 `OnEvent` |
 |---|---|---|
-| `1..99` | 引擎的外部可见事件 | 会 |
-| `100..999` | 引擎的内部状态变更 | 不会 |
-| **`1000` 起** | **第三方扩展** | **会**；`AudienceOf` 回答「不知道」，路由由扩展自己决定 |
+| `SET_ALIVE` 等七个 | 内核的状态原语 | 不会，且不可配置 |
+| 其余一切 | 规则给「发生了什么」起的名字 | 会 |
+
+第三方定义的事件类型落在第二行：照常推给 `OnEvent`，`AudienceOf` 回答
+「不知道」，路由由扩展自己决定。
+
+这里此前按编号分三段（`1..99` 外部、`100..999` 内部、`1000` 起第三方），
+而那个约定自己咬到过自己——第三方的取值从 1000 起，却全都落进「内部」段，
+于是扩展的事件根本发不出去。
 
 死亡时触发的能力由 Resolver 产出 `NewAbilityTriggerEffect(playerID, phase)`，
 引擎会自动流转到该阶段，并把胜负判定推迟到技能结算之后。

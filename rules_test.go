@@ -1097,7 +1097,7 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 
 	// 隐狼是一个自己的角色，不是「换了阵营的狼人」——阵营与类别写在
 	// 它的 setup 里，与内置角色走同一张表
-	const roleHiddenWolf = RoleType(1010)
+	const roleHiddenWolf = RoleType("HIDDEN_WOLF")
 
 	e := MustNewEngine(nil, WithRoleSetup(roleHiddenWolf,
 		sideSetup(CampEvil, RoleCategoryGod)))
@@ -1230,7 +1230,7 @@ func TestRule_R10_RoleCategories(t *testing.T) {
 
 	// 没有登记的角色不属于任何阵营——这是刻意的：内核没有默认阵营可给，
 	// 而「悄悄算作好人」比「不算」更难查
-	const roleUnregistered = RoleType(1011)
+	const roleUnregistered = RoleType("UNREGISTERED")
 	e2 := MustNewEngine(nil)
 	if err := e2.AddPlayer("x", roleUnregistered); err != nil {
 		t.Fatalf("AddPlayer 失败: %v", err)

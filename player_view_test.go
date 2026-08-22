@@ -3,6 +3,8 @@ package werewolf
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"regexp"
 	"testing"
 )
 
@@ -263,7 +265,7 @@ func TestAudienceOf(t *testing.T) {
 
 	// 第三方自定义的外部事件类型：引擎无从判断可见性，必须说「不知道」，
 	// 而不是给出一个看起来权威的空受众
-	custom := NewEffect(EventType(50), "w1", "v1")
+	custom := NewEffect(EventType("THIRD_PARTY_EVENT"), "w1", "v1")
 	if got, known := e.AudienceOf(custom.ToEvent()); known || got != nil {
 		t.Errorf("未知外部类型应返回 (nil, false)，实际 (%v, %v)", got, known)
 	}
@@ -278,24 +280,37 @@ func canceledEffect(e *Effect) *Effect {
 // TestAudienceOf_CoversEveryPublicEvent 每个外部可见的事件类型都要有明确受众，
 // 新增事件类型时不能忘了在这里划分可见性。
 //
-// 遍历 proto 里的全部枚举值，而不是手写一份清单：手写清单挡不住
+// 直接从 event.go 的源码里扫出全部取值，而不是手写一份清单：手写清单挡不住
 // 「新加了类型但忘了同步清单」——它恰恰是这个测试声称要挡的那类问题。
+//
+// 枚举还是整数的时候，这里遍历的是「取值到名字」那张对照表。改成字符串
+// 之后那张表没有了（名字直接就是值），于是换成读源码。读的是本包自己的
+// 文件，路径稳定；扫不到取值会直接报错，不会安静地退化成一个空循环。
 func TestAudienceOf_CoversEveryPublicEvent(t *testing.T) {
 	e := newViewGame(t)
 
-	for num, name := range eventTypeNames {
-		typ := EventType(num)
-		if typ == EventUnspecified || isInternalEvent(typ) {
+	src, err := os.ReadFile("event.go")
+	if err != nil {
+		t.Fatalf("读不到 event.go: %v", err)
+	}
+	found := regexp.MustCompile(`EventType = "([A-Z_]+)"`).FindAllStringSubmatch(string(src), -1)
+	if len(found) < 12 {
+		t.Fatalf("只从 event.go 扫到 %d 个事件类型，取值的写法变了？", len(found))
+	}
+
+	for _, m := range found {
+		typ := EventType(m[1])
+		if isInternalEvent(typ) {
 			continue
 		}
 		ef := NewEffect(typ, "s", "v1")
 		got, known := e.AudienceOf(ef.ToEvent())
 		if !known {
-			t.Errorf("外部事件 %s 没有划分受众", name)
+			t.Errorf("外部事件 %s 没有划分受众", typ)
 			continue
 		}
 		if len(got) == 0 {
-			t.Errorf("外部事件 %s 的受众为空", name)
+			t.Errorf("外部事件 %s 的受众为空", typ)
 		}
 	}
 }

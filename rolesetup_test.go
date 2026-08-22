@@ -13,7 +13,7 @@ import (
 const (
 	// 骑士：好人，开局带一次决斗，用掉就没了。只为测初始状态而存在，
 	// 不实现决斗的结算——那是 Resolver 的事，另有测试覆盖。
-	roleKnight             = RoleType(1002)
+	roleKnight             = RoleType("KNIGHT")
 	varKnightDuel          = "knight.duel"
 	roleInfoKnightDuelLeft = "duel"
 )

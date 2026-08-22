@@ -12,7 +12,8 @@ package werewolf
 // VictoryChecker 判定这一刻胜负是否已分。
 //
 // 返回 (false, CampUnspecified) 表示还没分出胜负。
-// winner 可以是自定义阵营（Camp 从 1000 起），引擎只负责把它原样报出去。
+// winner 可以是任何自定义阵营——Camp 的底层是字符串，内核不预设取值，
+// 只负责把结论原样报出去。
 //
 // 与 Resolver 一样：只能读 GameView，在引擎持锁期间被调用，
 // 实现中不要回调 Engine 的任何方法。

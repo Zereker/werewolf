@@ -6,57 +6,38 @@ import (
 )
 
 // ErrorCode 错误码，用于把错误分类。
-type ErrorCode int32
+//
+// 与其他枚举一样，底层是字符串——错误码会出现在日志与 JSON 里，
+// 名字本身就是最稳定、也最能读懂的表示。
+type ErrorCode string
 
 const (
-	CodeUnspecified        ErrorCode = 0
-	CodePlayerNotFound     ErrorCode = 1  // 玩家未找到
-	CodePlayerDead         ErrorCode = 2  // 玩家已死亡
-	CodeTargetNotFound     ErrorCode = 3  // 目标未找到
-	CodeTargetDead         ErrorCode = 4  // 目标已死亡
-	CodeSkillNotAllowed    ErrorCode = 5  // 技能不允许在此阶段使用
-	CodeGameNotStarted     ErrorCode = 6  // 游戏未开始
-	CodeGameEnded          ErrorCode = 7  // 游戏已结束
-	CodeInvalidPhase       ErrorCode = 8  // 无效阶段
-	CodeMessageNotAllowed  ErrorCode = 9  // 当前阶段不允许发言
-	CodePlayerExists       ErrorCode = 10 // 玩家ID已存在
-	CodeInvalidPlayerId    ErrorCode = 11 // 玩家ID非法
-	CodeInvalidRole        ErrorCode = 12 // 该角色不能作为玩家身份
-	CodeGameAlreadyStarted ErrorCode = 13 // 游戏已开始
-	CodeInvalidBoard       ErrorCode = 14 // 板子配置不合法
-	CodeInvalidSnapshot    ErrorCode = 15 // 快照不合法或版本不兼容
-	CodeInvalidConfig      ErrorCode = 16 // 游戏配置不合法
-	CodeInvalidEffectLog   ErrorCode = 17 // 效果流不合法，无法回放
+	CodeUnspecified        ErrorCode = ""
+	CodePlayerNotFound     ErrorCode = "PLAYER_NOT_FOUND"     // 玩家未找到
+	CodePlayerDead         ErrorCode = "PLAYER_DEAD"          // 玩家已死亡
+	CodeTargetNotFound     ErrorCode = "TARGET_NOT_FOUND"     // 目标未找到
+	CodeTargetDead         ErrorCode = "TARGET_DEAD"          // 目标已死亡
+	CodeSkillNotAllowed    ErrorCode = "SKILL_NOT_ALLOWED"    // 技能不允许在此阶段使用
+	CodeGameNotStarted     ErrorCode = "GAME_NOT_STARTED"     // 游戏未开始
+	CodeGameEnded          ErrorCode = "GAME_ENDED"           // 游戏已结束
+	CodeInvalidPhase       ErrorCode = "INVALID_PHASE"        // 无效阶段
+	CodeMessageNotAllowed  ErrorCode = "MESSAGE_NOT_ALLOWED"  // 当前阶段不允许发言
+	CodePlayerExists       ErrorCode = "PLAYER_EXISTS"        // 玩家ID已存在
+	CodeInvalidPlayerId    ErrorCode = "INVALID_PLAYER_ID"    // 玩家ID非法
+	CodeInvalidRole        ErrorCode = "INVALID_ROLE"         // 该角色不能作为玩家身份
+	CodeGameAlreadyStarted ErrorCode = "GAME_ALREADY_STARTED" // 游戏已开始
+	CodeInvalidBoard       ErrorCode = "INVALID_BOARD"        // 板子配置不合法
+	CodeInvalidSnapshot    ErrorCode = "INVALID_SNAPSHOT"     // 快照不合法或版本不兼容
+	CodeInvalidConfig      ErrorCode = "INVALID_CONFIG"       // 游戏配置不合法
+	CodeInvalidEffectLog   ErrorCode = "INVALID_EFFECT_LOG"   // 效果流不合法，无法回放
 )
 
-// String 实现 fmt.Stringer，输出沿用枚举全名。
+// String 实现 fmt.Stringer。
 func (v ErrorCode) String() string {
-	if s, ok := errorCodeNames[v]; ok {
-		return s
+	if v == CodeUnspecified {
+		return "UNSPECIFIED"
 	}
-	return fmt.Sprintf("ErrorCode(%d)", int32(v))
-}
-
-// errorCodeNames 全部取值到名字的映射，遍历它即可枚举所有取值。
-var errorCodeNames = map[ErrorCode]string{
-	CodeUnspecified:        "UNSPECIFIED",
-	CodePlayerNotFound:     "PLAYER_NOT_FOUND",
-	CodePlayerDead:         "PLAYER_DEAD",
-	CodeTargetNotFound:     "TARGET_NOT_FOUND",
-	CodeTargetDead:         "TARGET_DEAD",
-	CodeSkillNotAllowed:    "SKILL_NOT_ALLOWED",
-	CodeGameNotStarted:     "GAME_NOT_STARTED",
-	CodeGameEnded:          "GAME_ENDED",
-	CodeInvalidPhase:       "INVALID_PHASE",
-	CodeMessageNotAllowed:  "MESSAGE_NOT_ALLOWED",
-	CodePlayerExists:       "PLAYER_EXISTS",
-	CodeInvalidPlayerId:    "INVALID_PLAYER_ID",
-	CodeInvalidRole:        "INVALID_ROLE",
-	CodeGameAlreadyStarted: "GAME_ALREADY_STARTED",
-	CodeInvalidBoard:       "INVALID_BOARD",
-	CodeInvalidSnapshot:    "INVALID_SNAPSHOT",
-	CodeInvalidConfig:      "INVALID_CONFIG",
-	CodeInvalidEffectLog:   "INVALID_EFFECT_LOG",
+	return string(v)
 }
 
 // GameError 游戏错误（实现 error 接口）

@@ -3,7 +3,7 @@ package werewolf
 import "testing"
 
 const (
-	roleThief         = RoleType(1001)
+	roleThief         = RoleType("THIEF")
 	roleInfoSpareCard = "spare_card"
 )
 
@@ -46,7 +46,7 @@ func TestRoleInfo_ThirdPartyRoleCanShowItsOwnInfo(t *testing.T) {
 // 狼王在 PhaseInfo 这一份名单里拿不到队友——而 PlayerView 与 WolfTeammates
 // 那两条路都是对的，只有主持人照着组织流程的这一份漏了。
 func TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo(t *testing.T) {
-	const roleWolfKing2 = RoleType(1002)
+	const roleWolfKing2 = RoleType("WOLF_KING_2")
 
 	cfg := DefaultGameConfig()
 	// 让狼王和狼人在同一个阶段行动，才会出现在 PhaseInfo 里

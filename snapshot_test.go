@@ -80,11 +80,11 @@ func TestSnapshot_RestoredEngineContinuesIdentically(t *testing.T) {
 		skill  SkillType
 		target string
 	}{
-		{"", 0, ""}, // NIGHT_GUARD 结算（技能已在快照里）
+		{"", SkillUnspecified, ""}, // NIGHT_GUARD 结算（技能已在快照里）
 		{"w1", SkillKill, "s"},
 		{"wi", SkillPoison, "w2"},
 		{"s", SkillCheck, "w2"},
-		{"", 0, ""}, // NIGHT_RESOLVE
+		{"", SkillUnspecified, ""}, // NIGHT_RESOLVE
 	}
 
 	for i, st := range steps {
@@ -341,7 +341,7 @@ func TestSnapshot_EndedGame(t *testing.T) {
 // 解析器只能在构造时给出。漏掉的话恢复本身就会报错，
 // 而不是给出一个「那个阶段的技能被静默丢弃」的引擎。
 func TestRestoreEngine_WithCustomResolver(t *testing.T) {
-	const customPhase = PhaseType(77)
+	const customPhase = PhaseType("CUSTOM_RESOLVER_PHASE")
 
 	cfg := DefaultGameConfig()
 	cfg.Phases[customPhase] = &PhaseConfig{
@@ -520,7 +520,7 @@ func TestSnapshot_CarriesEveryPlayerField(t *testing.T) {
 // 住在 Resolver 自己的字段里的话，快照带不上、回放也重建不出——
 // 而 Resolver 接口本来就要求它无状态。
 func TestPlayerVar_SurvivesSnapshotAndReplay(t *testing.T) {
-	const customPhase = PhaseType(1000)
+	const customPhase = PhaseType("CUSTOM_PHASE")
 
 	cfg := DefaultGameConfig()
 	cfg.Phases[customPhase] = &PhaseConfig{

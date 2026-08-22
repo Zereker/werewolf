@@ -17,8 +17,8 @@ import (
 
 // 自定义取值从 1000 起，避免与后续内置枚举撞号。
 const (
-	roleIdiot     = werewolf.RoleType(1000)
-	eventRevealed = werewolf.EventType(1001) // 白痴翻牌
+	roleIdiot     = werewolf.RoleType("IDIOT")
+	eventRevealed = werewolf.EventType("IDIOT_REVEALED") // 白痴翻牌
 )
 
 // idiotRule 白痴的规则，包在内置投票解析器外面。
