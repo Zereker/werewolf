@@ -277,7 +277,9 @@ func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
 			if e.IsGameOver() {
 				t.Fatalf("才否决 %d 次就结束了，应当到 %d 次", i, HammerRejections)
 			}
-			mustEnd(t, e) // 空转的任务阶段
+			if got := e.Phase(); got != PhasePropose {
+				t.Fatalf("被否决之后该直接回 PROPOSE，实际 %v", got)
+			}
 		}
 	}
 

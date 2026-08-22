@@ -32,6 +32,7 @@ var kernelPrimitives = map[EventType]bool{
 	EventAbilityTriggered:  true,
 	EventPlayerAdded:       true,
 	EventPhaseChanged:      true,
+	EventGotoPhase:         true,
 }
 
 // isInternalEvent 判断事件是否为内核的状态原语。
@@ -49,6 +50,41 @@ const triggerPhaseKey = "trigger_phase"
 func NewAbilityTriggerEffect(playerID string, phase PhaseType) *Effect {
 	return NewEffect(EventAbilityTriggered, playerID, "").
 		WithData(triggerPhaseKey, phase)
+}
+
+// gotoPhaseKey 改写下一阶段的效果里记录目标阶段的键
+const gotoPhaseKey = "goto_phase"
+
+// NewGotoPhaseEffect 声明「这个阶段结算完之后去指定的阶段」。
+//
+// 它改写 PhaseConfig.NextPhase 那个默认出口。阶段流转此前是一张纯静态的图，
+// 唯一的动态跳转是死亡触发队列——于是所有条件分支都得从那个后门走，
+// 而那个后门的语义是「某人的技能待结算」，根本不是「往哪走」。
+//
+// 阿瓦隆的「表决通过就去任务、否则回提名」是这类分支最朴素的样子：
+// 结果由本阶段的结算算出来，静态图表达不了。
+//
+// 优先级：待结算的触发队列 > 本效果 > PhaseConfig.NextPhase。触发排在最前
+// 是因为队列必须排空——胜负判定与回合边界都等着它，中途跳走会把还没结算的
+// 死亡技能丢掉。
+//
+// 目标阶段不在配置里时，内核记一条错误日志并退回 NextPhase：一条效果写错了
+// 不该让整局崩掉，但也不能安静地跳去一个没人预期的地方。
+func NewGotoPhaseEffect(phase PhaseType) *Effect {
+	return NewEffect(EventGotoPhase, "", "").WithData(gotoPhaseKey, phase)
+}
+
+// gotoPhase 从改写效果里读出目标阶段
+func (e *Effect) gotoPhase() (PhaseType, bool) {
+	v, ok := e.Data[gotoPhaseKey]
+	if !ok {
+		return PhaseUnspecified, false
+	}
+	p, ok := v.(PhaseType)
+	if !ok {
+		return PhaseUnspecified, false
+	}
+	return p, true
 }
 
 // triggerPhase 从触发效果中读出目标阶段

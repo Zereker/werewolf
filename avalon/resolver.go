@@ -35,7 +35,21 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 		team = append(team, u.TargetID)
 	}
 
+	// 先清掉上一次提名留下的标记。
+	//
+	// 被否决的提名现在直接跳回本阶段（不再绕经任务阶段），因此不会跨过
+	// 回合边界，上一次的标记还在身上。这是「回合边界交给规则」之后规则
+	// 要自己承担的那部分：内核不再替它清，什么时候清由它说了算。
 	var effects []*engine.Effect
+	chosen := map[string]bool{}
+	for _, id := range team {
+		chosen[id] = true
+	}
+	for _, id := range teamIDs(view) {
+		if !chosen[id] {
+			effects = append(effects, engine.NewSetPlayerRoundVarEffect(id, varOnTeam, ""))
+		}
+	}
 	for _, id := range team {
 		effects = append(effects,
 			engine.NewEffect(EventProposed, leader, id),
@@ -86,7 +100,8 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 		return append(effects,
 			engine.NewEffect(EventTeamApproved, "", "").WithData("team", len(team)),
 			engine.NewSetRoundVarEffect(varApproved, engine.VarPresent),
-			setGameNum(view, varRejects, 0))
+			setGameNum(view, varRejects, 0),
+			engine.NewGotoPhaseEffect(PhaseMission))
 	}
 
 	n := rejects(view) + 1
@@ -97,7 +112,12 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 		// 连续五次否决，坏人直接获胜。胜负由 VictoryChecker 读这个数判定。
 		effects = append(effects, engine.NewEffect(EventHammerReached, "", ""))
 	}
-	return effects
+	// 被否决就直接回提名，不再空转一次任务阶段。
+	//
+	// 这是内核把「下一步去哪」交给规则之后立刻兑现的：条件分支的结果由
+	// 本阶段的结算算出来，静态的 NextPhase 表达不了。顺带把回合数也修对了
+	// ——任务阶段声明了 EndsRound，空转一次就多推一个回合。
+	return append(effects, engine.NewGotoPhaseEffect(PhasePropose))
 }
 
 // missionResolver 任务结算。

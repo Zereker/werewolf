@@ -46,62 +46,80 @@ func TestScar1_AllowedSkillsLiesToNonTeamMembers(t *testing.T) {
 	t.Logf("疤 1：PhaseReadiness 认为还差 %v（队伍其实只有 a、b）", r.Pending)
 }
 
-// TestScar2_RejectedProposalSpinsThroughAnEmptyMissionPhase 表决没通过，仍然要空转一次任务阶段。
+// TestRejectedProposalGoesStraightBackToPropose 提名被否决，直接回提名，不空转任务阶段。
 //
-// 阶段流转是静态的 NextPhase，没有「表决通过就去任务、否则回提名」这种
-// 条件分支。绕法是让任务阶段在没通过时什么都不做。
-func TestScar2_RejectedProposalSpinsThroughAnEmptyMissionPhase(t *testing.T) {
+// **这条曾经是疤 2**：阶段流转是一张静态图，没有「表决通过就去任务、否则
+// 回提名」这种条件分支，于是被否决的提名也要空转一次任务阶段。
+//
+// 内核把「下一步去哪」交给规则之后（NewGotoPhaseEffect），表决解析器自己
+// 说去哪，这条疤关掉了。这个测试从「断言缺陷」翻成了「断言修好」。
+func TestRejectedProposalGoesStraightBackToPropose(t *testing.T) {
 	e := fivePlayer(t)
 	propose(t, e, "a", "b")
-	// 全员否决
 	for _, id := range allPlayerIDs(e) {
 		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
 	}
 	mustEnd(t, e)
 
-	if got := e.Phase(); got != PhaseMission {
-		t.Fatalf("阶段 = %v，期望仍然被推到 MISSION（这正是疤）", got)
-	}
-	t.Log("疤 2：队伍被否决了，引擎还是把大家带进了任务阶段")
-
-	effects := mustEnd(t, e)
-	if len(effects) != 0 {
-		t.Logf("空转的任务阶段产出了 %v", typesOf(effects))
-	}
 	if got := e.Phase(); got != PhasePropose {
-		t.Fatalf("空转之后该回到 PROPOSE，实际 %v", got)
+		t.Fatalf("阶段 = %v，期望直接回到 PROPOSE（不再空转任务阶段）", got)
 	}
 }
 
-// TestScar3_RoundIsAProposalCounterNotAMission 引擎的「回合」对阿瓦隆玩家没有意义。
+// TestApprovedProposalGoesToMission 表决通过，进任务阶段。
 //
-// 内核把「回合数加一」与「阶段环绕回起始阶段」焊成同一件事。阿瓦隆每提名
-// 一次就绕一圈，于是 Engine.Round() 数的是提名次数——而阿瓦隆自己说的
-// 「第几轮」指的是第几个任务，两者可以差五倍。PlayerView.Round 直接把这个
-// 没意义的数发给玩家。
-func TestScar3_RoundIsAProposalCounterNotAMission(t *testing.T) {
+// 与上面一条成对：同一个解析器算出两个不同的出口，这正是静态图表达不了的。
+func TestApprovedProposalGoesToMission(t *testing.T) {
+	e := fivePlayer(t)
+	propose(t, e, "a", "b")
+	for _, id := range allPlayerIDs(e) {
+		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
+	}
+	mustEnd(t, e)
+
+	if got := e.Phase(); got != PhaseMission {
+		t.Fatalf("阶段 = %v，期望 MISSION", got)
+	}
+}
+
+// TestRoundEqualsMissionNumber 引擎的「回合」等于阿瓦隆的「第几轮任务」。
+//
+// **这条曾经是疤 3**：内核把「回合数加一」焊死在「阶段环绕回起始阶段」上，
+// 而阿瓦隆每提名一次就绕一圈，于是 Round 成了提名计数器，与「第几轮任务」
+// 最多差五倍，还被 PlayerView.Round 原样发给玩家。
+//
+// 两处改动合起来才关掉它，缺一不可：
+//   - PhaseConfig.EndsRound 让板子自己声明回合边界（阿瓦隆声明在任务阶段）；
+//   - NewGotoPhaseEffect 让被否决的提名直接跳回提名阶段，不再空转任务阶段
+//     ——只改前者的话，空转那一次照样推进回合，这条疤只关掉一半。
+//
+// 两条疤耦合这件事本身是个发现：它们同根，都是内核替规则做了只有规则知道
+// 答案的决定。
+func TestRoundEqualsMissionNumber(t *testing.T) {
 	e := fivePlayer(t)
 
-	// 连续否决两次，一个任务都没打
+	// 先连续否决两次：一个任务都没打，回合数就不该动
 	for i := 0; i < 2; i++ {
 		propose(t, e, "a", "b")
 		for _, id := range allPlayerIDs(e) {
 			mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
 		}
-		mustEnd(t, e) // -> MISSION
-		mustEnd(t, e) // -> PROPOSE，回合数 +1
+		mustEnd(t, e)
+	}
+	if got, want := e.Round(), 1; got != want {
+		t.Errorf("否决两次之后 Round = %d，期望仍是 %d——一个任务都没打", got, want)
 	}
 
-	engineRound := e.Round()
-	avalonMission := missionOf(e)
-	t.Logf("疤 3：引擎说第 %d 回合，阿瓦隆说还在第 %d 轮任务", engineRound, avalonMission)
-	if engineRound == avalonMission {
-		t.Skip("两者恰好相等——换个用例再看")
+	// 打完两轮任务，回合数跟着任务走
+	runMission(t, e, 0, "a", "b")
+	runMission(t, e, 0, "a", "b", "c")
+
+	if got, want := e.Round(), missionOf(e); got != want {
+		t.Errorf("Round = %d，阿瓦隆的第几轮 = %d，两者该相等", got, want)
 	}
-	if v := e.PlayerView("a"); v.Round != engineRound {
-		t.Fatalf("PlayerView.Round = %d，引擎 = %d", v.Round, engineRound)
+	if v := e.PlayerView("a"); v.Round != e.Round() {
+		t.Errorf("PlayerView.Round = %d，引擎 = %d", v.Round, e.Round())
 	}
-	t.Logf("疤 3：而 PlayerView.Round 把 %d 这个数原样发给了玩家", engineRound)
 }
 
 // TestScar4_GameProgressLivesOnSomeonesPrivateState 整局进度记在某个玩家身上。

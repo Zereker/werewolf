@@ -66,6 +66,7 @@ func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 		"EventSetRoundVar":       EventSetRoundVar,
 		"EventSetAlive":          EventSetAlive,
 		"EventSetPlayerRoundVar": EventSetPlayerRoundVar,
+		"EventGotoPhase":         EventGotoPhase,
 	}
 
 	for _, name := range declared {
@@ -96,6 +97,7 @@ func (primitiveSpewer) Resolve([]*SkillUse, GameView) []*Effect {
 		NewSetRoundVarEffect("probe.round", "1"),
 		NewSetPlayerRoundVarEffect("w1", "probe.mark", "1"),
 		NewAbilityTriggerEffect("w1", phaseNightHunter),
+		NewGotoPhaseEffect(phaseDay),
 		NewEffect(EventType("PROBE_PUBLIC"), "w1", "g"), // 一条普通的规则事件作对照
 	}
 }

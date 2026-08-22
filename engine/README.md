@@ -196,6 +196,35 @@ e.AudienceOf(event)   // 一件事该发给哪些玩家
 `NewEngine` / `MustNewEngine` / `RestoreEngine` / `ReplayEngine`
 四个入口都接受它们。
 
+## 内核不替规则做的两个决定
+
+一局游戏怎么推进，有两个决定**只有规则知道答案**：
+
+| 决定 | 谁说了算 |
+|---|---|
+| 下一步去哪个阶段 | `PhaseConfig.NextPhase` 是默认出口，规则可用 `NewGotoPhaseEffect` 在结算时改写 |
+| 这一步之后是不是新回合 | `PhaseConfig.EndsRound` 声明 |
+
+这两件事此前都是内核自己定的：出口查一张静态图，回合边界猜「绕回起始阶段
+就算」。狼人杀里两个猜测都恰好成立（夜→昼→夜），换一套规则就不成立。
+
+判据是一句话：**内核能不能在不知道这是什么游戏的情况下，独立判断这件事
+对不对？**「状态改了没有」能判断，归内核；「现在是不是新回合」判断不了，
+归规则。
+
+```go
+// 表决通过就去任务，否则回提名——结果由本阶段的结算算出来，静态图表达不了
+if approved {
+	effects = append(effects, engine.NewGotoPhaseEffect(phaseMission))
+} else {
+	effects = append(effects, engine.NewGotoPhaseEffect(phasePropose))
+}
+```
+
+出口的优先级：**待结算的触发队列 > `GOTO_PHASE` > `NextPhase`**。触发排最前
+是因为队列必须排空——胜负判定与回合边界都等着它，中途跳走会把还没结算的
+死亡技能丢掉。目标阶段不在配置里时记一条错误日志并退回默认出口。
+
 ## 扩展点不能回头找引擎
 
 七个扩展点全部在引擎**持锁期间**被同步调用。实现里回调 `Engine` 的任何

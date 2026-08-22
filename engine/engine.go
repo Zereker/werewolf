@@ -289,7 +289,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	// 4. 计算下一阶段。
 	//    死亡技能可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
 	//    因此只要还有待结算的死亡技能，就推迟胜负判定，先让它结算完。
-	nextPhase := e.calculateNextPhase(currentPhase)
+	nextPhase := e.calculateNextPhase(currentPhase, out.effects)
 
 	gameOver, winner := e.victory.CheckVictory(newStateView(e.state))
 	endNow := gameOver && !e.state.hasPendingTrigger()
@@ -542,15 +542,49 @@ func (e *Engine) vetTrigger(effect *Effect) {
 
 // calculateNextPhase 计算下一阶段，处理死亡技能带来的动态流转。
 // 调用前需持有 e.mu。
-func (e *Engine) calculateNextPhase(currentPhase PhaseType) PhaseType {
+func (e *Engine) calculateNextPhase(currentPhase PhaseType, effects []*Effect) PhaseType {
 	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队
 	e.state.consumeTriggerFor(currentPhase)
 
-	// 还有待结算的死亡技能，先去处理（可能有多个，逐个来）
+	// 还有待结算的死亡技能，先去处理（可能有多个，逐个来）。
+	//
+	// 它排在 GOTO_PHASE 前面：队列必须排空——胜负判定与回合边界都等着它，
+	// 中途跳走会把还没结算的死亡技能丢掉。
 	if t, ok := e.state.peekTrigger(); ok {
 		return t.Phase
 	}
 
-	// 使用声明式配置获取下一阶段
+	// 规则可以改写出口：本阶段产出了 GOTO_PHASE 就听它的。
+	// 多条以最后一条为准——与「同一个角色重复注册以最后一次为准」同一个口径。
+	if p, ok := e.gotoFrom(effects); ok {
+		return p
+	}
+
+	// 都没有，走声明式配置里的默认出口
 	return e.phase.nextSubPhase(currentPhase)
+}
+
+// gotoFrom 从本阶段产出的效果里找出规则指定的下一阶段。
+//
+// 被否决的效果不算数：规则自己把它 Cancel 掉了，说明那条指令不该生效。
+func (e *Engine) gotoFrom(effects []*Effect) (PhaseType, bool) {
+	var out PhaseType
+	var found bool
+	for _, ef := range effects {
+		if ef == nil || ef.Canceled || ef.Type != EventGotoPhase {
+			continue
+		}
+		p, ok := ef.gotoPhase()
+		if !ok {
+			continue
+		}
+		if e.config.Phases[p] == nil {
+			// 写错的目标不该让整局崩掉，但也不能安静地跳去没人预期的地方
+			e.logger.Error("goto phase not in config, falling back to NextPhase",
+				phaseField(p))
+			continue
+		}
+		out, found = p, true
+	}
+	return out, found
 }
