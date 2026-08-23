@@ -4,139 +4,172 @@ import (
 	"sort"
 )
 
-// RoundContext 回合上下文（每个回合重新创建）
-// 用于管理回合内各阶段之间共享的临时状态
-// 本回合内有效的状态，跨回合自动清零。
+// RoundContext is the round context, rebuilt each round.
+// It holds the temporary state shared between the phases of one round: valid
+// within this round, cleared automatically across rounds.
 type RoundContext struct {
-	// Detours 待结算的绕道，先进先出。
+	// Detours are the pending detours, first in first out.
 	//
-	// 此前这里是两个「某个具体角色专属」的字段，每加一个会在死亡时开枪的
-	// 角色就要再加两个字段、并在引擎的阶段流转里多一个分支。改成队列后
-	// 引擎不认识任何具体角色。
+	// This used to be two fields belonging to one specific role, so every
+	// role that shoots on death meant two more fields and one more branch in
+	// the engine's phase transitions. As a queue, the engine recognises no
+	// specific role.
 	Detours []Detour
 
-	// Vars 本回合的自定义状态，每回合自动清空，不属于任何玩家。
+	// Vars is this round's custom state, cleared automatically each round,
+	// belonging to no player.
 	//
-	// 狼人杀的「今晚刀口」就存在这里。它此前是上面一个
-	// 叫 KillTarget 的字段，与另外三张 map 一起，把「某一套规则有哪些
-	// 回合状态」写进了内核——换一套规则，那四样一个都用不上。
+	// Werewolf's "tonight's kill" is stored here. It used to be a field above
+	// called KillTarget which, together with three other maps, wrote "which
+	// round state one particular ruleset has" into the kernel -- change the
+	// ruleset and not one of the four is any use.
 	//
-	// 四格作用域（见 VarScope）：playerState.Vars 跟着玩家走一整局，这里每回合清零，
-	// playerState.RoundVars 是「某个玩家在本回合的标记」。
-	// 写走 NewSetVarEffect(ScopeRound, ...)，读走 GameView.Var(ScopeRound, ...)。
+	// The four scope cells (see VarScope): playerState.Vars follows a player
+	// for the whole game, this one is cleared each round, and
+	// playerState.RoundVars is "a marker on one player this round". Write
+	// with NewSetVarEffect(ScopeRound, ...), read with
+	// GameView.Var(ScopeRound, ...).
 	Vars map[string]string
 }
 
-// Detour 一次待结算的绕道：**为了某个人，去一趟某个阶段**。
+// Detour is one pending detour: **for the sake of someone, take a trip
+// through some phase**.
 //
-// 它此前叫 PendingTrigger，文档说的是「一个待结算的死亡技能」。那是狼人杀
-// 的说法——猎人被刀之后开枪。而内核认得的从来不是「死亡」也不是「技能」，
-// 只是「谁、去哪个阶段」：什么触发了它、他到了那儿要干什么，全是规则的事。
+// It used to be called PendingTrigger, documented as "a pending death
+// ability". That is werewolf's phrasing -- the hunter shooting after being
+// killed. What the kernel recognises was never death and was never a skill,
+// only "who, and to which phase": what triggered it and what they do once
+// there is entirely the rules' business.
 //
-// 它管三件事，后两件没有别的机制能替代：
+// It governs three things, the last two of which nothing else can provide:
 //
-//  1. 把阶段引到欠账的地方        —— GOTO_PHASE 也能做
-//  2. 排空之前拦住胜负判定与回合边界 —— 绕道可能翻盘（那一枪带走最后一只狼）
-//  3. 按队首一条一条来             —— 两个人同一夜欠账，各走各的
+//  1. routing the phase to where the debt is   -- GOTO_PHASE can do this too
+//  2. holding off the victory check and the round boundary until it drains
+//     -- a detour can turn the game around (that shot takes the last wolf)
+//  3. taking them one at a time from the head  -- two people owing on the
+//     same night each get their own trip
 //
-// 它**不**回答「谁能行动」：进入欠账的阶段时它写一份行动者名单
-// （见 gameState.nameDetourActor），之后走与 NewSetActorsEffect 完全相同的
-// 那条路。
+// It does **not** answer "who may act": on entering the phase owed to, it
+// writes an actor list (see gameState.nameDetourActor), and everything after
+// that takes exactly the same path as NewSetActorsEffect.
 type Detour struct {
-	PlayerID string    // 为谁绕这一趟
-	Phase    PhaseType // 绕到哪个阶段
+	PlayerID string    // whose sake this trip is for
+	Phase    PhaseType // which phase to visit
 }
 
-// newRoundContext 创建新的回合上下文
+// newRoundContext builds a new round context.
 func newRoundContext() *RoundContext {
 	return &RoundContext{}
 }
 
-// playerState 玩家状态
+// playerState is one player's state.
 type playerState struct {
 	ID    string
 	Role  RoleType
 	Alive bool
 
-	// Vars 角色私有的、会影响规则判定的状态。
+	// Vars is the role's private state, the state the rules judge on.
 	//
-	// 规则把角色私有的状态放在这里：狼人杀的女巫两瓶药、骑士的一次决斗，
-	// 都是同一件事。此前内核为内置角色写了专门的 bool 字段，于是第三方
-	// 角色改不动自己的状态，也没有任何办法给自己发初始状态——
-	// 那正是「加一个角色不该改引擎」要消灭的东西。
+	// The rules keep a role's private state here: werewolf's two witch
+	// potions and the knight's single duel are the same thing. The kernel
+	// used to have dedicated bool fields for the built-in roles, so a
+	// third-party role could neither change its own state nor give itself an
+	// initial one -- which is exactly what "adding a role should not require
+	// editing the engine" sets out to eliminate.
 	//
-	// 初始值由 RoleSetup 发放（见 WithRoleSetup），此后走
-	// NewSetVarEffect(ScopeGame.Of(id), ...) 改、GameView.Var 读，随快照走、回放能重建。
+	// The initial value is handed out by RoleSetup (see WithRoleSetup), and
+	// afterwards written with NewSetVarEffect(ScopeGame.Of(id), ...) and read
+	// with GameView.Var; it travels with the snapshot and can be rebuilt by
+	// replay.
 	//
-	// 需要跨回合的记录也在这里（狼人杀的「守卫上回合守了谁」就是）：
-	// 判定由规则自己做，内核只管存。
+	// Records that outlive a round live here too (werewolf's "who the guard
+	// protected last round" is one): the rules do the judging, the kernel
+	// only stores.
 	Vars map[string]string
 
-	// RoundVars 这名玩家在本回合的标记，每回合自动清空。
+	// RoundVars are this player's markers for the current round, cleared
+	// automatically each round.
 	//
-	// 今晚谁被守了、谁被救了、谁被毒了都是这一类，此前是 RoundContext
-	// 上三张 map[string]bool——第三方角色既改不了也读不到，而「本回合
-	// 标记了某人」是任何一套社会推理规则都会用到的形状。
-	// 写走 NewSetVarEffect(ScopeRound.Of(id), ...)，读走 GameView.Var。
+	// Who was guarded, healed or poisoned tonight are all of this kind. They
+	// used to be three map[string]bool fields on RoundContext, which a
+	// third-party role could neither write nor read -- and "a marker on
+	// someone this round" is a shape every social-deduction ruleset uses.
+	// Write with NewSetVarEffect(ScopeRound.Of(id), ...), read with
+	// GameView.Var.
 	RoundVars map[string]string
 }
 
-// gameState 游戏状态。
+// gameState is the game's state.
 //
-// # 并发
+// # Concurrency
 //
-// 本类型自身不加锁。它是 Engine 的内部状态，不导出、也不出现在任何
-// 导出签名里，全部访问都发生在 Engine 持锁期间；Resolver 拿到的是
-// 只读的 GameView，同样在锁内构造与使用。
+// This type does no locking of its own. It is the Engine's internal state,
+// unexported and absent from every exported signature, and every access
+// happens while the Engine holds its lock; a Resolver is handed a read-only
+// GameView, likewise built and used under the lock.
 //
-// 此前这里有一层自己的 RWMutex，与 Engine 的锁构成嵌套双锁，理由是
-// 「State 可以独立使用」——但收进包内之后这个前提不再成立，多出来的
-// 一层锁只剩开销与心智负担。
+// There used to be an RWMutex of its own here, nesting two locks with the
+// Engine's, on the grounds that "State can be used independently" -- a
+// premise that stopped holding once it moved inside the package, leaving the
+// extra lock as pure cost, in cycles and in reasoning.
 type gameState struct {
-	Phase   PhaseType               // 当前阶段
-	Round   int                     // 当前回合
-	players map[string]*playerState // 玩家状态（私有，通过方法访问）
+	Phase   PhaseType               // the current phase
+	Round   int                     // the current round
+	players map[string]*playerState // player state; private, reached through methods
 
-	// Vars 整局有效、不属于任何玩家的状态。
+	// Vars is state that lives for the whole game and belongs to no player.
 	//
-	// 变量作用域是一张 2x2 的表——时间尺度（整局 / 本回合）乘以有没有主人
-	// （无主 / 属于某个玩家）。此前只有三格：
+	// A variable's scope is a 2x2 table -- lifetime (whole game / this round)
+	// crossed with ownership (unowned / owned by a player). There used to be
+	// only three cells:
 	//
-	//	              无主          属于某个玩家
-	//	  整局有效     （缺）        playerState.Vars
-	//	  本回合有效   RoundCtx.Vars playerState.RoundVars
+	//	              unowned        owned by a player
+	//	  whole game   (missing)      playerState.Vars
+	//	  this round   RoundCtx.Vars  playerState.RoundVars
 	//
-	// 缺的那一格不是刻意留白，是漏了：狼人杀整局有效的状态恰好都挂在人身上
-	// （女巫的药、守卫上回合守了谁），所以一直没人撞到。任务制那一套撞到了——
-	// 「第几轮任务」「成功几次」「连续否决几次」「队长轮到谁」四样全是整局
-	// 有效且不属于任何玩家，只能挂到某个玩家的私有状态上当账本，
-	// 那个玩家的 PlayerView 里于是凭空多出四个与他无关的字段。
+	// The missing cell was not a deliberate gap, it was an oversight:
+	// werewolf's game-long state all happens to hang off a person (the
+	// witch's potions, who the guard protected last round), so nobody ran
+	// into it. The mission-based games did -- "which mission", "how many
+	// succeeded", "how many consecutive rejects", "whose turn to lead" are
+	// all game-long and belong to nobody, and could only be filed under some
+	// player's private state as a ledger, which made four fields that had
+	// nothing to do with them appear out of nowhere in that player's
+	// PlayerView.
 	//
-	// 写走 NewSetVarEffect(ScopeGame, ...)，读走 GameView.Var / Engine.Var。
+	// Write with NewSetVarEffect(ScopeGame, ...), read with GameView.Var or
+	// Engine.Var.
 	Vars map[string]string
 
-	// Actors 「哪些玩家可以在某个阶段行动」，由规则在运行时指定。
+	// Actors is "which players may act in which phase", named by the rules at
+	// runtime.
 	//
-	// 内核判定行动者此前只有一条路：拿 PhaseStep.Role 去比对玩家的角色。
-	// 而角色是入座时定死的——任何运行时才选出来的行动者集合都表达不了。
-	// 这个抽象已经被逃逸三次：狼人杀的猎人开枪（内核为它开了绕道队列这个
-	// 单人特例）、missions 包的队长提名、missions 包的任务队伍。后两处只能让所有人
-	// 都提交、再由解析器丢掉不该算的，代价是 AllowedSkills 对没资格的玩家
-	// 说谎、PhaseReadiness 等一群不可能行动的人。
+	// The kernel used to have one way of deciding actors: match
+	// PhaseStep.Role against a player's role. A role is fixed at seating
+	// time, so any actor set chosen at runtime was inexpressible. That
+	// abstraction had been escaped three times: werewolf's hunter shot (for
+	// which the kernel opened the detour queue as a one-player special case),
+	// the missions package's leader nomination, and its mission team. The
+	// latter two could only let everyone submit and have the resolver throw
+	// away what should not count, at the cost of AllowedSkills lying to
+	// unqualified players and PhaseReadiness waiting on a crowd who cannot
+	// possibly act.
 	//
-	// 现在规则可以直接说：「这几个人，在那个阶段行动」。写走
-	// NewSetActorsEffect，内核在 SubmitSkillUse 就拦，不是让规则事后过滤。
+	// The rules can now say it directly: "these people, in that phase". Write
+	// with NewSetActorsEffect, and the kernel enforces it at SubmitSkillUse
+	// rather than leaving the rules to filter afterwards.
 	//
-	// 按阶段存而不是只存「当前阶段」，是因为集合往往在**更早的阶段**算出来
-	// ——missions 包的任务队伍是提名阶段选的，到任务阶段才用。
-	// 某个阶段结算完，它的那一份就被消费掉。
+	// It is stored per phase rather than for "the current phase" only,
+	// because the set is often computed in an **earlier phase** -- the
+	// missions package picks its team during nomination and uses it in the
+	// mission phase. A phase's entry is consumed once that phase resolves.
 	Actors map[PhaseType][]string
 
-	// 回合临时上下文（每个回合重新创建）
+	// The round's temporary context, rebuilt each round.
 	RoundCtx *RoundContext
 }
 
-// newState 创建游戏状态
+// newState builds a game state.
 func newState() *gameState {
 	return &gameState{
 		Phase:    PhaseStart,
@@ -146,17 +179,19 @@ func newState() *gameState {
 	}
 }
 
-// addPlayer 添加玩家。
+// addPlayer adds a player.
 //
-// 内核只记 ID、角色与存活；阵营、类别这些是规则的分法，由 RoleSetup
-// 在入座时作为初始状态发放（见 seatPlayer）。
+// The kernel records only the ID, the role and aliveness; camp and category
+// are the rules' way of dividing things up, handed out as initial state by
+// RoleSetup at seating time (see seatPlayer).
 //
-// 返回错误：ID 为空、ID 已存在、角色不能作为玩家身份（如上帝）。
+// Errors: an empty ID; an ID already taken; a role that cannot be assigned to
+// a player (the system role).
 func (s *gameState) addPlayer(id string, role RoleType) error {
 	if id == "" {
 		return ErrInvalidPlayerID
 	}
-	// 上帝是系统角色，不是玩家身份
+	// The system role is a marker, not a player identity.
 	if role == RoleUnspecified || role == RoleSystem {
 		return WrapError(CodeInvalidRole,
 			"role %v cannot be assigned to a player", role)
@@ -176,10 +211,11 @@ func (s *gameState) addPlayer(id string, role RoleType) error {
 	return nil
 }
 
-// setPlayerVars 批量写入一名玩家的自定义状态，供入座时发放初始状态。
+// setPlayerVars writes a batch of custom state onto one player, for handing
+// out the initial state at seating time.
 //
-// 空值按删除处理，与 EventSetPlayerVar 的写入点保持一致——否则
-// 规则写出来的空串会留在快照里。
+// An empty value means deletion, matching the SET_VAR write point -- without
+// that, an empty string the rules wrote would sit in the snapshot.
 func (s *gameState) setPlayerVars(id string, vars map[string]string) {
 	if len(vars) == 0 {
 		return
@@ -203,50 +239,55 @@ func (s *gameState) setPlayerVars(id string, vars map[string]string) {
 	}
 }
 
-// currentPhase 当前阶段（包内使用，自带锁）
+// currentPhase is the current phase. Package-internal.
 func (s *gameState) currentPhase() PhaseType {
 	return s.Phase
 }
 
-// currentRound 当前回合（包内使用，自带锁）
+// currentRound is the current round. Package-internal.
 func (s *gameState) currentRound() int {
 	return s.Round
 }
 
-// getPlayer 获取玩家（包内使用）
-// 返回内部指针，仅限包内代码使用
-// 外部请使用 PlayerInfo(id) 获取只读副本
+// getPlayer returns a player. Package-internal.
+// It returns the internal pointer, for use by package code only; callers
+// outside should use PlayerInfo(id) for a read-only copy.
 func (s *gameState) getPlayer(id string) (*playerState, bool) {
 	p, ok := s.players[id]
 	return p, ok
 }
 
-// PlayerInfo 玩家信息只读视图（上帝视角）。
+// PlayerInfo is a read-only view of a player, from the god's point of view.
 //
-// 含 Protected 这类只有上帝该知道的信息，不可整体转发给玩家——
-// 要发给玩家的内容用 Engine.PlayerView。
+// It contains information only the god should know, and must not be forwarded
+// to players wholesale -- for what to send a player, use Engine.PlayerView.
 type PlayerInfo struct {
 	ID    string   `json:"id"`
 	Role  RoleType `json:"role"`
 	Alive bool     `json:"alive"`
 
-	// RoundVars 这名玩家在本回合的标记，每回合清零。
+	// RoundVars are this player's markers for the current round, cleared
+	// every round.
 	//
-	// 此前这里是一个叫 Protected 的 bool——「今晚是否被守卫守护」是
-	// 狼人杀的概念，内核不该认得。现在它只是规则自己定的一个键，
-	// 与其余标记同列。
+	// This used to be a bool called Protected -- "was this player guarded
+	// tonight" is a werewolf concept and the kernel has no business knowing
+	// it. It is now just a key the rules define, alongside every other
+	// marker.
 	RoundVars map[string]string `json:"round_vars,omitempty"`
 
-	// Vars 角色私有的状态，规则自己定键名。
+	// Vars is the role's private state, under keys the rules choose.
 	//
-	// 刻意只出现在这里（上帝视角），不出现在面向玩家的 SelfInfo 上：
-	// 往里放什么由角色决定，默认把它交给玩家等于让每个角色自己去想
-	// 「这一项能不能给他看」——那正是这个库要替调用方收掉的那类判断。
-	// 要给玩家看的，由角色经 RoleInfoProvider 显式投射。
+	// It deliberately appears only here, in the god's view, and not on the
+	// player-facing SelfInfo: what goes into it is up to the role, and
+	// handing it to the player by default would make every role work out for
+	// itself whether each entry may be shown -- exactly the class of
+	// judgement this library sets out to take off a caller's hands. What a
+	// player should see is projected explicitly by the role through a
+	// RoleInfoProvider.
 	Vars map[string]string `json:"vars,omitempty"`
 }
 
-// PlayerInfo 获取玩家信息的只读副本
+// PlayerInfo returns a read-only copy of a player's information.
 func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	p, ok := s.players[id]
 	if !ok {
@@ -262,7 +303,8 @@ func (s *gameState) PlayerInfo(id string) (PlayerInfo, bool) {
 	}, true
 }
 
-// getAlivePlayerIDsByRole 获取指定角色的存活玩家ID列表（包内使用）
+// getAlivePlayerIDsByRole returns the IDs of living players with the given
+// role. Package-internal.
 func (s *gameState) getAlivePlayerIDsByRole(role RoleType) []string {
 	result := make([]string, 0)
 	for id, p := range s.players {
@@ -273,8 +315,9 @@ func (s *gameState) getAlivePlayerIDsByRole(role RoleType) []string {
 	return result
 }
 
-// allPlayerIDs 返回全部玩家ID，按字典序排序（包内使用）。
-// 排序是为了让面向玩家的视图输出稳定，不受 map 遍历顺序影响。
+// allPlayerIDs returns every player ID, sorted lexicographically.
+// Package-internal. The sort keeps player-facing views stable regardless of
+// map iteration order.
 func (s *gameState) allPlayerIDs() []string {
 	result := make([]string, 0, len(s.players))
 	for id := range s.players {
@@ -284,11 +327,14 @@ func (s *gameState) allPlayerIDs() []string {
 	return result
 }
 
-// getAlivePlayerIDs 获取所有存活玩家ID列表，按字典序排序（包内使用）。
+// getAlivePlayerIDs returns the IDs of every living player, sorted
+// lexicographically. Package-internal.
 //
-// 排序不是可有可无的：这份名单会流进规则产出的效果里（发言受众、
-// 结算顺序），而 map 的遍历顺序每次都不一样——不排的话同一个局面
-// 两次结算产出的效果流不同，回放与逐字节比对就没了确定性。
+// The sort is not optional: this list flows into the effects the rules
+// produce (speech audiences, resolution order), and a map's iteration order
+// differs every time -- unsorted, resolving the same board twice would
+// produce different effect logs, and replay and byte-for-byte comparison
+// would lose their determinism.
 func (s *gameState) getAlivePlayerIDs() []string {
 	result := make([]string, 0, len(s.players))
 	for id, p := range s.players {
@@ -300,10 +346,11 @@ func (s *gameState) getAlivePlayerIDs() []string {
 	return result
 }
 
-// clone 复制一份状态，供 Engine.View 使用。
+// clone copies the state, for Engine.View.
 //
-// 视图必须与引擎脱钩：拿到视图之后引擎继续推进，那一份不该跟着变——
-// 否则「这一刻的局面」这个说法就不成立了。
+// A view has to be detached from the engine: play continues after a view is
+// taken and that copy must not follow along -- otherwise "the board at this
+// moment" means nothing.
 func (s *gameState) clone() *gameState {
 	out := newState()
 	out.Phase = s.Phase
@@ -323,41 +370,44 @@ func (s *gameState) clone() *gameState {
 	return out
 }
 
-// applyEffect 应用效果
-// applyEffect 应用一个效果。这是状态的唯一写入点。
+// applyEffect applies one effect. This is the single write point for state.
 //
-// 未知的效果类型会被静默忽略——第三方 Resolver 若发出引擎不认识的类型，
-// 不会报错也不会改变状态。扩展时请复用已有类型，或让 Resolver 自己把
-// 语义拆解成引擎认识的效果。
+// An unrecognised effect type is silently ignored -- a third-party Resolver
+// emitting a type the engine does not know raises no error and changes no
+// state. When extending, reuse an existing type, or have the Resolver break
+// its own semantics down into effects the engine does recognise.
 func (s *gameState) applyEffect(effect *Effect) {
-	// 第三方 Resolver 返回的切片里可能混进 nil，不值得为此让整局崩掉
+	// A third-party Resolver's slice may contain a nil; not worth bringing
+	// the game down for.
 	if effect == nil {
 		return
 	}
 
-	// 被取消的效果不改变状态，但仍会出现在 EndPhase 的返回值里，
-	// 好让调用方知道「某人试了但没成」以及原因
+	// A vetoed effect changes no state but still appears in EndPhase's return
+	// value, so the caller knows that someone tried and failed, and why.
 	if effect.Canceled {
 		return
 	}
 
-	// 确保 RoundCtx 已初始化
+	// Make sure RoundCtx exists.
 	if s.RoundCtx == nil {
 		s.RoundCtx = newRoundContext()
 	}
 
 	switch effect.Type {
-	// —— 以下是内核的全部状态原语 ——
+	// -- what follows is the kernel's complete set of state primitives --
 	//
-	// 引擎此前还认得 KILL / POISON / ELIMINATE / SHOOT（各种死法）、
-	// PROTECT / SAVE（今晚的标记）、SET_NIGHT_KILL / CLEAR_NIGHT_KILL、
-	// SET_LAST_PROTECTED、USE_ANTIDOTE / USE_POISON——十来条分支，
-	// 每一条都是狼人杀的规则。换一套规则，它们一条都用不上，而新规则
-	// 要表达自己的状态变更又只能来改这个 switch。
+	// The engine used to recognise KILL / POISON / ELIMINATE / SHOOT (ways to
+	// die), PROTECT / SAVE (tonight's markers), SET_NIGHT_KILL /
+	// CLEAR_NIGHT_KILL, SET_LAST_PROTECTED, USE_ANTIDOTE / USE_POISON -- a
+	// dozen branches, every one of them a werewolf rule. Change the ruleset
+	// and not one is any use, while a new rule wanting to express its own
+	// state change had no option but to come and edit this switch.
 	//
-	// 现在规则自己命名发生了什么（KILL、SHOOT、殉情、决斗），再产出
-	// 下面这几个原语之一来真正改状态。两个效果，两件事：前者给受众与
-	// 效果流看，后者给状态机看。
+	// The rules now name what happened themselves (KILL, SHOOT, heartbreak, a
+	// duel) and emit one of the primitives below to actually change the
+	// state. Two effects, two things: the first for the audience and the
+	// effect log, the second for the state machine.
 	case EventSetAlive:
 		if alive, ok := aliveOf(effect); ok {
 			if target, found := s.players[effect.TargetID]; found {
@@ -366,13 +416,16 @@ func (s *gameState) applyEffect(effect *Effect) {
 		}
 
 	case EventSetVar:
-		// 一项自定义状态，作用域在效果里。值为空即删除，免得快照里堆一堆空串。
+		// One piece of custom state, its scope carried in the effect. An
+		// empty value deletes, so that empty strings do not pile up in the
+		// snapshot.
 		if scope, key, value := varOf(effect); key != "" {
 			s.setVar(scope, key, value)
 		}
 
 	case EventSetActors:
-		// 规则指定某个阶段的行动者。不存在的玩家忽略掉。
+		// The rules name a phase's actors. Players who do not exist are
+		// ignored.
 		if phase, ids, ok := actorsOf(effect); ok {
 			kept := make([]string, 0, len(ids))
 			for _, id := range ids {
@@ -384,7 +437,7 @@ func (s *gameState) applyEffect(effect *Effect) {
 		}
 
 	case EventDetour:
-		// 绕道入队，等待流转到对应阶段结算
+		// Enqueue a detour, to be settled when play reaches its phase.
 		if phase, ok := effect.detourPhase(); ok && effect.SourceID != "" {
 			s.RoundCtx.Detours = append(s.RoundCtx.Detours,
 				Detour{PlayerID: effect.SourceID, Phase: phase})
@@ -392,59 +445,68 @@ func (s *gameState) applyEffect(effect *Effect) {
 	}
 }
 
-// resetRoundState 重置回合状态（每回合开始时调用）
+// resetRoundState resets the round state, called at the start of each round.
 func (s *gameState) resetRoundState() {
 	s.resetRoundStateUnlocked()
 }
 
-// resetRoundStateUnlocked 内部方法，不获取锁
+// resetRoundStateUnlocked is the internal form, taking no lock.
 func (s *gameState) resetRoundStateUnlocked() {
 	s.RoundCtx = newRoundContext()
-	// 玩家身上的回合级标记同属本回合，一起清掉——漏掉这一步，
-	// 上一夜的「被守」「被毒」会一直累积下去，与回合边界写死成
-	// NIGHT_GUARD 那次是同一类错误。
+	// The round markers on players belong to this round too, so clear them
+	// along with it -- miss this and last night's "guarded" and "poisoned"
+	// keep piling up, the same class of mistake as hard-coding the round
+	// boundary to NIGHT_GUARD.
 	for _, p := range s.players {
 		p.RoundVars = nil
 	}
 }
 
-// startAt 把状态置到开局：指定阶段、第一回合、干净的回合上下文
+// startAt puts the state at the start of play: the given phase, round one,
+// and a clean round context.
 func (s *gameState) startAt(phase PhaseType) {
 	s.Phase = phase
 	s.Round = 1
 	s.resetRoundStateUnlocked()
 }
 
-// leavePhase 离开当前阶段时，把一次性的东西消费掉。
+// leavePhase consumes the one-shot things on leaving the current phase.
 //
-// 两样：这个阶段的行动者名单、以及队首那笔指向这个阶段的绕道欠账。
-// 两样都是「用过就作废」——不清的话，下一次进同一个阶段会沿用上一轮的
-// 名单，或者同一个人被反复拉回来再用一次技能。
+// Two of them: this phase's actor list, and the detour at the head of the
+// queue pointing at this phase. Both are spent on use -- without clearing
+// them, the next visit to the same phase would inherit the previous round's
+// list, or the same person would be dragged back to use a skill again and
+// again.
 //
-// **收成一个函数，是因为它此前散在两条路上，而两条路漂移了三次。**
-// 正常推进（endPhaseInternal）与效果流回放（replayEffect）必须做得一模
-// 一样，否则回放出来的引擎从下一步起就与原局分叉。三次分叉全是随机对局
-// 的不变量抓出来的，每一次都是回放这条路少做了一样：
+// **It was gathered into one function because it used to be spread across two
+// paths, and those two paths drifted three times.** Normal progression
+// (endPhaseInternal) and effect-log replay (replayEffect) have to do exactly
+// the same thing, or the replayed engine diverges from the original on the
+// very next step. All three divergences were caught by the random-game
+// invariants, and each time the replay path had done one thing less:
 //
-//	少消费行动者名单        —— 回放带着上一个阶段的名单
-//	结束那一步少消费名单     —— GAME_ENDED 分支没走 consumeActors
-//	结束那一步少消费绕道     —— 同上，没走 consumeDetourFor
+//	the actor list not consumed        -- replay carried the previous phase's list
+//	the list not consumed on ending    -- the GAME_ENDED branch skipped consumeActors
+//	the detour not consumed on ending  -- likewise, it skipped consumeDetourFor
 //
-// 打第三块补丁不如把它收成一处。
+// Rather than apply a third patch, it was gathered into one place.
 func (s *gameState) leavePhase() {
 	s.consumeActors(s.Phase)
 	s.consumeDetourFor(s.Phase)
 }
 
-// nextPhase 切换到下一阶段。
+// nextPhase moves to the next phase.
 //
-// endsRound 由**刚结算完的那个阶段**声明（PhaseConfig.EndsRound）：
-// 它为真即这一回合到此为止，回合数加一、回合级状态全部清空。
+// endsRound is declared by the phase **just resolved**
+// (PhaseConfig.EndsRound): true means the round ends here, so the round
+// number goes up and all round-scoped state is cleared.
 //
-// 这件事此前是内核猜的——「绕回起始阶段就算新回合」。那个猜测对狼人杀
-// 成立（夜→昼→夜），对别的规则不成立：任务制那一套每提名一次就绕一圈，
-// 于是「回合」成了提名计数器。一局游戏的「一回合」是什么只有规则知道，
-// 内核不再替它决定。
+// The kernel used to guess this -- "looping back to the start phase counts as
+// a new round". That guess holds for werewolf (night -> day -> night) and not
+// for other rulesets: the mission-based games go round the loop once per
+// nomination, so "round" became a nomination counter. What one round of a
+// game is, only the rules know, and the kernel no longer decides it for
+// them.
 func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 	s.Phase = phase
 	if endsRound {
@@ -456,23 +518,29 @@ func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {
 	s.nameDetourActor()
 }
 
-// nameDetourActor 若刚进入的正是队首那笔欠账要去的阶段，把欠账的人写成
-// 这个阶段的行动者名单。
+// nameDetourActor writes the owed player as this phase's actor list, when the
+// phase just entered is the one the head of the queue is owed in.
 //
-// 这是「绕道队列」与「规则点名」的接缝。此前它们是两套并行的机制：
-// actorsForStep 与 validateSkillUse 各有一个三层判断，第一层问绕道队列、
-// 第二层问点名、第三层按角色算。而两条路回答的是同一个问题，实现也几乎
-// 逐字相同（triggerActorFor 与 namedActorsFor 都是「点到的人里，谁承担
-// 这个角色的步骤」）——一个概念，两份实现，两处都要记得对齐。
+// This is the seam between the detour queue and the rules naming actors. They
+// used to be two parallel mechanisms: actorsForStep and validateSkillUse each
+// had a three-layer decision, asking the detour queue first, the named actors
+// second, and computing by role third. Both paths answered the same question
+// with nearly word-for-word identical implementations (triggerActorFor and
+// namedActorsFor were both "of the players named, who carries this role's
+// step") -- one concept, two implementations, both to be kept in step.
 //
-// 现在队列不再回答「谁能行动」，它只**产出**一份名单，之后一切照点名走。
-// 层数从三降到二，triggerActorFor 与 isTriggerActor 一起删掉。
+// The queue no longer answers "who may act": it only **produces** a list, and
+// everything after that follows the naming path. Three layers became two, and
+// triggerActorFor and isTriggerActor were deleted together.
 //
-// 写在这里而不是 ABILITY_TRIGGERED 的写入点：队列里可以有多条指向同一个
-// 阶段的触发（两名猎人同一夜出局），在写入点各写一次会互相覆盖，只剩最后
-// 一个人开得了枪。进入阶段时按**队首**取，才是队列本来的语义。
+// It lives here rather than at the DETOUR write point: the queue may hold
+// several detours pointing at the same phase (two hunters eliminated on one
+// night), and writing at the enqueue point would have them overwrite each
+// other, leaving only the last one able to shoot. Taking the **head** on
+// entering the phase is what a queue means in the first place.
 //
-// 正常推进与效果流回放共用这一条路径（两者都经 nextPhase），因此不会分叉。
+// Normal progression and effect-log replay share this path (both go through
+// nextPhase), so they cannot diverge.
 func (s *gameState) nameDetourActor() {
 	t, ok := s.peekDetour()
 	if !ok || t.Phase != s.Phase {
@@ -481,17 +549,11 @@ func (s *gameState) nameDetourActor() {
 	s.setActors(s.Phase, []string{t.PlayerID})
 }
 
-// lastProtectedTarget 该守卫在**上一回合**守护的目标，无则为空。
+// varsFor locates the map a scope corresponds to, and whether it exists.
 //
-// 连守判定问的是「上一晚是不是守的同一个人」，而不是「上一次守的是谁」：
-// 守卫空守一晚就打断了连续性，被判连守而取消的那一次也从来没生效过。
-// 两者都不会写进 LastProtectedRound，因此按回合号一比就都对了。
-
-// varsFor 定位某个作用域对应的那张表，以及它是否存在。
-//
-// 四种作用域在这里收口：无主的两格挂在 gameState 与 RoundContext 上，
-// 有主的两格挂在 playerState 上。取不到（玩家不存在、回合上下文为空）
-// 时返回 nil 与一个不可用的写入器。
+// The four scopes converge here: the two unowned cells hang off gameState and
+// RoundContext, the two owned ones off playerState. When it cannot be reached
+// (no such player, no round context) it returns nil and an unusable writer.
 func (s *gameState) varsFor(scope VarScope) (read map[string]string, write func(map[string]string)) {
 	if scope.owner == "" {
 		if scope.perRound {
@@ -513,13 +575,14 @@ func (s *gameState) varsFor(scope VarScope) (read map[string]string, write func(
 	return p.Vars, func(m map[string]string) { p.Vars = m }
 }
 
-// varOf 读某个作用域下的一项自定义状态，没有则为空串。
+// varOf reads one piece of custom state in a scope, or the empty string.
 func (s *gameState) varOf(scope VarScope, key string) string {
 	vars, _ := s.varsFor(scope)
 	return vars[key]
 }
 
-// setVar 写某个作用域下的一项自定义状态。空串等同删除——四种作用域同一个口径。
+// setVar writes one piece of custom state in a scope. An empty string means
+// deletion, identically in all four scopes.
 func (s *gameState) setVar(scope VarScope, key, value string) {
 	vars, write := s.varsFor(scope)
 	if write == nil {
@@ -536,7 +599,7 @@ func (s *gameState) setVar(scope VarScope, key, value string) {
 	vars[key] = value
 }
 
-// peekDetour 查看队首那笔待结算的绕道
+// peekDetour looks at the pending detour at the head of the queue.
 func (s *gameState) peekDetour() (Detour, bool) {
 	if s.RoundCtx == nil || len(s.RoundCtx.Detours) == 0 {
 		return Detour{}, false
@@ -544,7 +607,7 @@ func (s *gameState) peekDetour() (Detour, bool) {
 	return s.RoundCtx.Detours[0], true
 }
 
-// popDetour 弹出队首那笔待结算的绕道
+// popDetour removes the pending detour at the head of the queue.
 func (s *gameState) popDetour() {
 	if s.RoundCtx == nil || len(s.RoundCtx.Detours) == 0 {
 		return
@@ -552,40 +615,43 @@ func (s *gameState) popDetour() {
 	s.RoundCtx.Detours = s.RoundCtx.Detours[1:]
 }
 
-// consumeDetourFor 若队首的待结算技能正是 phase，则出队。
+// consumeDetourFor dequeues the head detour when it is the one for phase.
 //
-// 待结算队列是「一次性」的：由死亡结算入队，进入对应阶段后必须出队。
-// 不出队的话它会在整个回合内持续非空，同一个玩家会被反复拉回来再用一次技能。
+// The pending queue is one-shot: a death resolution enqueues an entry, and it
+// must be dequeued once play enters the corresponding phase. Left in place it
+// stays non-empty for the whole round, and the same player is dragged back to
+// use a skill again and again.
 //
-// 正常推进（calculateNextPhase）与效果流回放（replayEffect 处理
-// PHASE_CHANGED）都要做这一步，且必须做得一模一样，否则回放出来的引擎
-// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉。
+// Both normal progression (calculateNextPhase) and effect-log replay
+// (replayEffect handling PHASE_CHANGED) do this step, and must do it
+// identically, or the replayed engine carries a detour that should have been
+// consumed and diverges from the original on the next step.
 func (s *gameState) consumeDetourFor(phase PhaseType) {
 	if t, ok := s.peekDetour(); ok && t.Phase == phase {
 		s.popDetour()
 	}
 }
 
-// hasPendingDetour 是否还有没结算完的绕道
+// hasPendingDetour reports whether any detour is still unsettled.
 func (s *gameState) hasPendingDetour() bool {
 	_, ok := s.peekDetour()
 	return ok
 }
 
-// RoundContext 获取回合上下文的只读副本
+// RoundContext returns a read-only copy of the round context.
 func (s *gameState) RoundContext() *RoundContext {
 	if s.RoundCtx == nil {
 		return nil
 	}
 
-	// 返回副本以避免外部修改
+	// A copy, so that outside code cannot modify it.
 	return &RoundContext{
 		Detours: append([]Detour(nil), s.RoundCtx.Detours...),
 		Vars:    copyVars(s.RoundCtx.Vars),
 	}
 }
 
-// copyActors 深拷一份行动者表。
+// copyActors deep-copies the actor table.
 func copyActors(in map[PhaseType][]string) map[PhaseType][]string {
 	if in == nil {
 		return nil
@@ -597,10 +663,12 @@ func copyActors(in map[PhaseType][]string) map[PhaseType][]string {
 	return out
 }
 
-// actorsFor 规则为某个阶段指定的行动者，没指定则为 nil。
+// actorsFor returns the actors the rules named for a phase, or nil when they
+// named none.
 //
-// nil 与空切片是两件事：nil 是「规则没说，按角色算」，空切片是
-// 「规则说了，这个阶段没有人能行动」。
+// nil and an empty slice are different things: nil is "the rules did not say,
+// compute by role", an empty slice is "the rules said, and nobody can act in
+// this phase".
 func (s *gameState) actorsFor(phase PhaseType) ([]string, bool) {
 	if s.Actors == nil {
 		return nil, false
@@ -609,7 +677,7 @@ func (s *gameState) actorsFor(phase PhaseType) ([]string, bool) {
 	return v, ok
 }
 
-// setActors 指定某个阶段的行动者。
+// setActors names a phase's actors.
 func (s *gameState) setActors(phase PhaseType, ids []string) {
 	if s.Actors == nil {
 		s.Actors = map[PhaseType][]string{}
@@ -617,10 +685,11 @@ func (s *gameState) setActors(phase PhaseType, ids []string) {
 	s.Actors[phase] = sortedStrings(ids)
 }
 
-// consumeActors 某个阶段结算完，它的行动者指定就用掉了。
+// consumeActors spends a phase's actor naming once that phase resolves.
 //
-// 不清的话，下一次进同一个阶段会沿用上一次的名单——那几乎总是错的：
-// 名单是上一轮算出来的。
+// Without clearing it, the next visit to the same phase would inherit the
+// previous list -- which is almost always wrong: it was computed for the
+// previous round.
 func (s *gameState) consumeActors(phase PhaseType) {
 	delete(s.Actors, phase)
 }
