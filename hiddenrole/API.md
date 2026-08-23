@@ -1,110 +1,121 @@
-# 内核 API
+# The kernel's API
 
-> ## 🔒 已冻结
+> ## 🔒 Frozen
 >
-> **冻结的对象就是这份文档 + [`testdata/api.golden`](testdata/api.golden)。**
-> 后者是机器可读的基线，由 `TestAPI_SurfaceIsPinned` 守着：名字或签名变了，
-> 测试就红。
+> **What is frozen is this document plus
+> [`testdata/api.golden`](testdata/api.golden).** The latter is the
+> machine-readable baseline, guarded by `TestAPI_SurfaceIsPinned`: change a
+> name or a signature and the test goes red.
 >
-> **冻结不是「永不改动」**，是三条纪律：
+> **Frozen does not mean "never changes"**, it means three disciplines:
 >
-> 1. **破坏性变更需要一条具体的、撞到过的理由**——某一套规则包因为它写不
->    下去，或者绕法会说谎。「觉得更好」不算。
-> 2. **加东西比删东西难**。加了撤不掉；删之前要能回答「谁在用它」。
-> 3. **变更不能悄悄发生**。改导出面就必须同时更新 golden 基线与这份文档，
->    这一步是显式的。
+> 1. **A breaking change needs a specific reason somebody ran into** -- some
+>    rules package could not be written because of it, or the way around it
+>    would tell a lie. "I think this is nicer" does not count.
+> 2. **Adding is harder than removing.** What is added cannot be taken back;
+>    before removing, you have to answer "who uses this".
+> 3. **A change cannot happen quietly.** Changing the exported surface means
+>    updating the golden baseline and this document at the same time, and that
+>    step is explicit.
 >
-> 冻结时的状态：**三套独立的规则包**（狼人杀、任务制、单夜换牌制），
-> 内核 55 类型 / 24 包级函数 / 56 方法 / 20 个接口方法 / 62 常量与变量，
-> **零个没有使用者的导出名**。
+> The state at the freeze: **three independent rules packages** (werewolf,
+> mission-based, one-night card swapping), a kernel of 55 types / 24
+> package-level functions / 56 methods / 20 interface methods / 62 constants
+> and variables, and **not one exported name without a user**.
 >
-> 什么情况下重开，见 [§15](#15-什么会让冻结重开)。
+> What would reopen it: see [§15](#15-what-would-reopen-the-freeze).
 
-> **这份文档就是冻结的对象。** 它列出 `github.com/Zereker/hiddenrole`
-> 的**全部**导出名，逐个说清它承诺什么。
+> **This document is the thing that is frozen.** It lists **every** exported
+> name in `github.com/Zereker/hiddenrole` and says what each one promises.
 >
-> 设计意图见 [DESIGN.md](DESIGN.md)，实施次序见 [ROADMAP.md](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md)。
-> 这里只说**契约**：有什么、怎么用、变不变。
+> The design intent is in [DESIGN.md](DESIGN.md) and the implementation order
+> in [ROADMAP.md](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md).
+> This document is about the **contract** only: what exists, how to use it,
+> and whether it changes.
 >
-> 当前规模：**55 个类型、24 个包级函数、56 个方法、62 个常量与变量**，
-> 外加公开子包 `enginetest` 的 6 个名字（见附录 B）。
-> 附录 A 是完整清单，用于冻结后的比对。
+> Current size: **55 types, 24 package-level functions, 56 methods, 62
+> constants and variables**, plus 6 names in the public sub-package
+> `enginetest` (see Appendix B). Appendix A is the complete listing, used for
+> comparison after the freeze.
 
 ---
 
-## 0. 两层，先搞清楚你在哪一层
+## 0. Two layers; work out which one you are on
 
-| 你要做的事 | import 什么 |
+| What you want to do | What to import |
 |---|---|
-| 开一局狼人杀、读它的状态 | 只要 `werewolf` |
-| **改规则**：写解析器、换胜负判定、加角色、拆快照、按错误码分支 | 还要 `Zereker/hiddenrole` |
+| run a game of werewolf and read its state | `werewolf` alone |
+| **change the rules**: write a resolver, replace the victory check, add a role, take a snapshot apart, branch on error codes | also `Zereker/hiddenrole` |
 
-`werewolf` 包的 `alias.go` 是一份**刻意很短**的别名清单——只收录本包导出
-API 用得到的名字。一旦要改规则，调用点上就会出现 `engine.` 这个前缀。
-**这不是遗漏，是想让边界在代码里看得见。**
+The `werewolf` package's `alias.go` is a **deliberately short** list of
+aliases -- only the names its own exported API needs. The moment you want to
+change the rules, the `hiddenrole.` prefix shows up at the call site. **That
+is not an omission, it is making the boundary visible in the code.**
 
-下面说的全部是 `hiddenrole` 包。
+Everything below is the `hiddenrole` package.
 
 ---
 
-## 1. 一眼看完
+## 1. The whole thing at a glance
 
-| 组 | 名字 | 什么时候用 |
+| Group | Names | When to use |
 |---|---|---|
-| **词汇表** | `PhaseType` `RoleType` `SkillType` `EventType` `Camp` | 定义你这套游戏有哪些阶段、角色、技能 |
-| **建局** | `Config` `PhaseConfig` `PhaseStep` | 描述阶段怎么流转、每个阶段谁该动 |
-| **开局** | `NewEngine` `MustNewEngine` `RestoreEngine` `ReplayEngine` `EngineOption` | 造一台引擎 |
-| **推进** | `Engine.AddPlayer` `.Start` `.SubmitSkillUse` `.EndPhase` `.Apply` | 把一局游戏跑起来 |
-| **读局面** | `Engine.Status` `.Var` `.PlayerInfo` `.AlivePlayerIDs` `.RoundContext` `.PhaseInfo` `.PhaseReadiness` `.View` | 问引擎「现在怎么样了」 |
-| **玩家视角** | `Engine.PlayerView` `.AllowedSkills` `.Teammates` `.AudienceOf` | 给玩家发什么 |
-| **发言** | `Engine.SendMessage` `.MessageReceivers` `Message` | 玩家说话 |
-| **回调** | `Engine.OnEvent` `.OnMessage` `EventHandler` `MessageHandler` `Event` | 事件推给宿主 |
-| **规则写的东西** | `Resolver` `GameView` `Effect` `VarScope` `SkillUse` | 一个阶段怎么结算 |
-| **八个扩展点** | `With*` 八个 + 八个接口 + 八个 `*Func` | 加角色、换判定、改边界 |
-| **存档回放** | `Engine.Snapshot` `.EffectLog` + 五个 `*Snapshot` 类型 | 存盘、复盘、审计 |
-| **错误** | `ErrorCode` `GameError` `Err*` 20 个 `Code*` 18 个 `HasCode` `CodeOf` `WrapError` | 按错误码分支 |
-| **测试辅助** | `Board` `Seat` `Mark` | 单测你自己的解析器 |
+| **vocabulary** | `PhaseType` `RoleType` `SkillType` `EventType` `Camp` | define which phases, roles and skills your game has |
+| **setup** | `Config` `PhaseConfig` `PhaseStep` | describe how phases flow and who acts in each |
+| **construction** | `NewEngine` `MustNewEngine` `RestoreEngine` `ReplayEngine` `EngineOption` | build an engine |
+| **driving** | `Engine.AddPlayer` `.Start` `.SubmitSkillUse` `.EndPhase` `.Apply` | run a game |
+| **reading the board** | `Engine.Status` `.Var` `.PlayerInfo` `.AlivePlayerIDs` `.RoundContext` `.PhaseInfo` `.PhaseReadiness` `.View` | ask the engine how things stand |
+| **player views** | `Engine.PlayerView` `.AllowedSkills` `.Teammates` `.AudienceOf` | what to send a player |
+| **speech** | `Engine.SendMessage` `.MessageReceivers` `Message` | players talking |
+| **callbacks** | `Engine.OnEvent` `.OnMessage` `EventHandler` `MessageHandler` `Event` | events pushed to the host |
+| **what the rules write** | `Resolver` `GameView` `Effect` `VarScope` `SkillUse` | how a phase resolves |
+| **the eight extension points** | eight `With*` + eight interfaces + eight `*Func` | add a role, replace a decision, change a boundary |
+| **saving and replay** | `Engine.Snapshot` `.EffectLog` + five `*Snapshot` types | save, review, audit |
+| **errors** | `ErrorCode` `GameError` 20 `Err*` 18 `Code*` `HasCode` `CodeOf` `WrapError` | branch on error codes |
+| **test helpers** | `Board` `Seat` `Mark` | unit-test your own resolver |
 
 ---
 
-## 2. 词汇表
+## 2. The vocabulary
 
-**五个类型，内核几乎不拥有取值。** 底层都是字符串。零值是空串，语义即「未指定」。
+**Five types, and the kernel owns almost no values.** All strings underneath.
+The zero value is the empty string and means "unspecified".
 
 ```go
-type PhaseType string   // 阶段：NIGHT_WOLF / PROPOSE / …
-type RoleType  string   // 角色：WEREWOLF / MERLIN / …
-type SkillType string   // 技能：KILL / APPROVE / …
-type EventType string   // 「发生了什么」：KILL / MISSION_FAIL / …
-type Camp      string   // 一个「边」：GOOD / EVIL / …
+type PhaseType string   // a phase: NIGHT_WOLF / PROPOSE / …
+type RoleType  string   // a role: WEREWOLF / MERLIN / …
+type SkillType string   // a skill: KILL / APPROVE / …
+type EventType string   // what happened: KILL / MISSION_FAIL / …
+type Camp      string   // one side: GOOD / EVIL / …
 ```
 
-五个都有 `String()`，未指定时打印 `"UNSPECIFIED"`。
+All five have `String()`, printing `"UNSPECIFIED"` when unset.
 
-### 内核自己拥有的取值
+### The values the kernel does own
 
-**只有这些。这张表只能变短。** 每一个的理由见 [DESIGN.md §7](DESIGN.md)。
+**Only these. This table may only get shorter.** The reason for each is in
+[DESIGN.md §7](DESIGN.md).
 
-| 取值 | 是什么 |
+| Value | What it is |
 |---|---|
-| `PhaseUnspecified` `PhaseStart` `PhaseEnd` | 状态机的生命周期。`AddPlayer` 只在 `START` 里允许 |
-| `RoleUnspecified` | 在 `PhaseStep` 上表示「所有角色」 |
-| `RoleSystem` + `SkillAnnounce` | 「这一步没有玩家承担」，一个标记而不是身份。就绪判定不数它。想要一个叫「上帝」的角色，在规则包里起名（`werewolf.RoleGod` 就是） |
-| `SkillUnspecified` `SkillSkip` | `SKIP` 是唯一不需要目标的动作 |
-| `CampUnspecified` | 还没分出胜负，或这名玩家不属于任何一边 |
-| `VarCamp = "camp"` | 标准键：值会填进 `PlayerInfo.Camp` / `SelfInfo.Camp` |
-| `VarPresent = "1"` | 「有 / 没有」这类状态的约定值（空串等同删除，所以要一个非空值） |
-| 九个 `Event*` | 内核自己的事件，见 §9 |
+| `PhaseUnspecified` `PhaseStart` `PhaseEnd` | the state machine's lifecycle. `AddPlayer` is only allowed inside `START` |
+| `RoleUnspecified` | on a `PhaseStep`, "every role" |
+| `RoleSystem` + `SkillAnnounce` | "no player carries this step" -- a marker, not an identity. Readiness does not count it. For a role literally named god, name it in your rules package (`werewolf.RoleGod` is exactly that) |
+| `SkillUnspecified` `SkillSkip` | `SKIP` is the one move that needs no target |
+| `CampUnspecified` | not decided yet, or this player belongs to no side |
+| `VarCamp = "camp"` | a canonical key: its value fills `PlayerInfo.Camp` / `SelfInfo.Camp` |
+| `VarPresent = "1"` | the agreed value for has-it/hasn't-it state (an empty string is deletion, so a non-empty one is needed) |
+| nine `Event*` | the kernel's own events, see §9 |
 
 ---
 
-## 3. 建局
+## 3. Setup
 
 ```go
 type Config struct {
-	StartPhase     PhaseType                   // 开局进哪个阶段
-	Phases         map[PhaseType]*PhaseConfig  // 全部阶段
-	DefaultTimeout time.Duration               // 建议值，引擎不据此计时
+	StartPhase     PhaseType                   // the phase play begins in
+	Phases         map[PhaseType]*PhaseConfig  // every phase
+	DefaultTimeout time.Duration               // advice; the engine does not time by it
 }
 func (c *Config) Validate() error
 func (c *Config) PhaseTimeout(phase PhaseType) time.Duration
@@ -115,53 +126,58 @@ type PhaseConfig struct {
 	Type      PhaseType
 	Steps     []PhaseStep
 	Timeout   time.Duration
-	NextPhase PhaseType   // 默认出口，可被 GOTO_PHASE 改写
+	NextPhase PhaseType   // the default exit, overridable by GOTO_PHASE
 
-	EndsRound       bool  // 这个阶段结束时，回合数 +1
-	ClearsRoundVars bool  // 进入这个阶段之前，回合级变量全部清空
+	EndsRound       bool  // when this phase ends, the round number goes up
+	ClearsRoundVars bool  // before entering this phase, round variables are cleared
 }
 ```
 
-**只有会转圈的阶段图才需要回合边界。** `Validate()` 沿 `NextPhase` 从
-`StartPhase` 走一遍：走得到 `PhaseEnd` 就是一条直线，每个阶段只经过一次，
-第二个回合根本不存在，也就不要求声明。一夜狼人就是这样一副图（整局一个
-夜晚、一次讨论、一次投票）。转圈的图仍然两者各至少要有一个。
+**Only a looping phase graph needs a round boundary.** `Validate()` walks
+`NextPhase` from `StartPhase`: reaching `PhaseEnd` means it is a straight
+line, each phase is visited once, there is no second round, and nothing is
+required. One Night has exactly such a graph (one night, one discussion, one
+vote in the whole game). A looping graph still needs at least one of each.
 
-**`EndsRound` 与 `ClearsRoundVars` 是两件事，分开声明。** 绝大多数板子两者
-重合（狼人杀：投票阶段结束既是新回合、也该清空），任务制那一套不重合——队伍标记
-要活到下一次提名，而回合数跟着第几轮任务走。`Validate()` 要求两者**各至少
-有一个阶段声明**，否则回合永远是 1、回合变量永远不清。
+**`EndsRound` and `ClearsRoundVars` are two things, declared separately.**
+Most boards have them coincide (in werewolf, the vote phase ending is both a
+new round and the right moment to clear); the mission-based games do not --
+team markers live until the next nomination while the round number tracks
+which mission it is. `Validate()` requires **at least one phase declaring
+each**, or the round stays at 1 forever and round variables are never
+cleared.
 
 ```go
 type PhaseStep struct {
-	Role  RoleType   // 哪个角色；RoleUnspecified 表示所有角色，RoleSystem 表示没有玩家承担
-	Skill SkillType  // **留空表示「他该醒了，但他没有行动」**，见下
+	Role  RoleType   // which role; RoleUnspecified means every role, RoleSystem means no player carries it
+	Skill SkillType  // **empty means "this role wakes, but takes no action"**, see below
 
-	Required bool    // 不满足就不就绪（只影响 PhaseReadiness，不影响 EndPhase）
-	Multiple bool    // true=所有合格行动者都要提交；false=任意一人即可
-	Group    string  // 互斥备选组：同组内提交任意一个即算完成（开枪 / 不开枪）
+	Required bool    // unsatisfied means not ready (affects PhaseReadiness only, never EndPhase)
+	Multiple bool    // true = every eligible actor must submit; false = any one of them
+	Group    string  // a mutually exclusive group: submitting any member completes it (shoot / do not shoot)
 
-	AllowDeadTarget bool  // 这个技能能否指向已出局的玩家（女巫的解药）
+	AllowDeadTarget bool  // may this skill target an eliminated player (the witch's antidote)
 }
 ```
 
-**`Skill` 留空表示「这个角色该醒了，但他没有行动」**——只接收信息，不提交
-任何东西。一夜狼人的爪牙睁眼看谁是狼、守夜人互认、失眠者看自己的牌都是
-这一类。
+**An empty `Skill` means "this role wakes, but takes no action"** -- it only
+receives information and submits nothing. The One Night minion opening their
+eyes to see the wolves, the masons recognising each other and the insomniac
+looking at their own card are all this kind of step.
 
-它与 `RoleSystem` 是一对镜像：那个是「这一步没有玩家」，这个是「这一步有
-玩家，但他不行动」。
+It mirrors `RoleSystem`: that one is "this step has no player", this one is
+"this step has a player, who does not act".
 
-| 留空的步骤 | |
+| An empty step | |
 |---|---|
-| `AllowedSkills` | **不含**它——他没有可提交的东西 |
-| `SubmitSkillUse` | **拒绝** `SkillUnspecified` 的提交 |
-| `PhaseReadiness` | **不进入**——没有东西可满足 |
-| `PhaseInfo.ActiveRoles` | **含**它——主持人得知道该叫醒谁 |
+| `AllowedSkills` | **excludes** it -- there is nothing they can submit |
+| `SubmitSkillUse` | **rejects** a `SkillUnspecified` submission |
+| `PhaseReadiness` | **does not enter** it -- there is nothing to satisfy |
+| `PhaseInfo.ActiveRoles` | **includes** it -- the host has to know who to wake |
 
 ---
 
-## 4. 开局
+## 4. Construction
 
 ```go
 func NewEngine(config *Config, opts ...EngineOption) (*Engine, error)
@@ -172,42 +188,49 @@ func ReplayEngine(config *Config, log []*Effect, opts ...EngineOption) (*Engine,
 type EngineOption func(*Engine) error
 ```
 
-四个入口都吃同一批选项。**选项只能在构造时给出**：引擎交到调用方手上之后，
-解析器、判定器、四个 provider 就不再变。
+All four entry points take the same options. **Options can only be given at
+construction**: once the engine is in the caller's hands, the resolvers, the
+victory checker and the four providers no longer change.
 
-`RestoreEngine` / `ReplayEngine` 的 `config` 与 `opts` **必须与录制时一致**
-——快照与效果流记的是「发生了什么」，不含规则。
+`RestoreEngine` and `ReplayEngine` **must** be given the same `config` and
+`opts` as were in force during recording -- a snapshot and an effect log
+record what happened, not the rules.
 
 ---
 
 ## 5. Engine
 
-23 个方法。**全部可并发调用。**
+23 methods. **All of them may be called concurrently.**
 
-### 5.1 推进
+### 5.1 Driving
 
 ```go
-func (e *Engine) AddPlayer(id string, role RoleType) error  // 只在 START 阶段
+func (e *Engine) AddPlayer(id string, role RoleType) error  // only in the START phase
 func (e *Engine) Start() error
 func (e *Engine) SubmitSkillUse(use *SkillUse) error
 func (e *Engine) EndPhase() ([]*Effect, error)
 func (e *Engine) Apply(effects ...*Effect) []*Effect
 ```
 
-`SubmitSkillUse` **在提交时就拦**，不是收下来再让规则事后丢掉——否则
-`AllowedSkills` 会对没资格的玩家说谎、`PhaseReadiness` 会等一群不可能行动的人。
+`SubmitSkillUse` **blocks at submission time** rather than accepting and
+leaving the rules to throw it away afterwards -- otherwise `AllowedSkills`
+lies to unqualified players and `PhaseReadiness` waits on a crowd who cannot
+possibly act.
 
-`EndPhase` 是一整套：解析技能 → 应用效果 → 判胜负 → 流转。返回本阶段产生
-的全部效果（含被否决的）。
+`EndPhase` is the whole cycle: resolve the skills -> apply the effects ->
+check for victory -> transition. It returns every effect this phase produced,
+vetoed ones included.
 
-`Apply` 绕开阶段结算，直接施加效果。**这是一把有刃的工具**，但必需：宿主真
-会遇到「玩家掉线判死」「管理员踢人」。它走的仍是**同一个写入点**——效果进
-效果流、被否决的不生效、内核原语不外发。
+`Apply` bypasses phase resolution and applies effects directly. **This is a
+tool with an edge**, and a necessary one: a host really does meet "the player
+disconnected, count them dead" and "an admin kicked someone". It still goes
+through the **same write point** -- effects enter the effect log, vetoed ones
+do not take hold, and kernel primitives are not sent out.
 
-### 5.2 读局面
+### 5.2 Reading the board
 
 ```go
-func (e *Engine) Status() Status   // 摘要，四项在同一个读锁里取出
+func (e *Engine) Status() Status   // the summary, all four read under one lock
 type Status struct {
 	Phase  PhaseType
 	Round  int
@@ -219,19 +242,22 @@ func (e *Engine) Var(scope VarScope, key string) string
 func (e *Engine) PlayerInfo(playerID string) (PlayerInfo, bool)
 func (e *Engine) AlivePlayerIDs() []string
 func (e *Engine) RoundContext() *RoundContext
-func (e *Engine) PhaseInfo() *PhaseInfo          // 上帝视角
-func (e *Engine) PhaseReadiness() PhaseReadiness // 还差谁行动
-func (e *Engine) View() GameView                 // 完整只读局面（会 clone）
+func (e *Engine) PhaseInfo() *PhaseInfo          // the god's view
+func (e *Engine) PhaseReadiness() PhaseReadiness // who has yet to act
+func (e *Engine) View() GameView                 // the whole read-only board (clones)
 ```
 
-**为什么 `Status` 是一个结构体而不是四个方法**：四个方法各取一次读锁，
-宿主要渲染「第 3 回合的白天」得连问两次，中间另一个 goroutine 结算掉一个
-阶段的话，读到的是一组**从来不曾同时成立**的值。四项标量、一次锁、不分配。
+**Why `Status` is one struct and not four methods**: four methods each take
+their own read lock, a host rendering "the day of round 3" has to ask twice,
+and if another goroutine resolves a phase in between, it reads a combination
+of values that **never held at the same time**. Four scalars, one lock, no
+allocation.
 
-**为什么 `View()` 之外还有便宜的读法**：`View()` 会 clone 整个局面，问一句
-「现在第几回合」不该付那个代价。这是性能分层，不是重复。
+**Why there are cheap readers besides `View()`**: `View()` clones the whole
+board, and asking "which round is it" should not cost that. This is a
+performance tier, not duplication.
 
-### 5.3 玩家视角与边界
+### 5.3 Player views and the boundary
 
 ```go
 func (e *Engine) PlayerView(playerID string) *PlayerView
@@ -240,26 +266,27 @@ func (e *Engine) Teammates(playerID string) []string
 func (e *Engine) AudienceOf(event *Event) ([]string, bool)
 ```
 
-`AudienceOf` 的第二个返回值区分两件必须分得开的事：
+`AudienceOf`'s second result separates two things that must stay separable:
 
-| 返回 | 意思 | 调用方该做什么 |
+| Returns | Means | What the caller should do |
 |---|---|---|
-| `(nil, true)` | **明确不给任何人看**（内核状态原语） | 什么都别发 |
-| `(ids, true)` | 明确给这些人 | 发给他们 |
-| `(nil, false)` | **不知道**（规则没装 provider） | 自己路由 |
+| `(nil, true)` | **definitely shown to nobody** (a kernel state primitive) | send nothing |
+| `(ids, true)` | definitely to these people | send it to them |
+| `(nil, false)` | **don't know** (the rules installed no provider) | route it yourself |
 
-### 5.4 发言
+### 5.4 Speech
 
 ```go
 func (e *Engine) SendMessage(senderID, content string) error
 func (e *Engine) MessageReceivers(senderID string) []string
-type Message struct { /* 发送者、内容、阶段、回合 */ }
+type Message struct { /* sender, content, phase, round */ }
 ```
 
-发言**不走技能通道**。可听范围由 `SpeechProvider` 决定；没装 provider 时
-退回「活人都能听到」。
+Speech **does not go through the skill channel**. The audible range is decided
+by a `SpeechProvider`; with no provider installed it falls back to "every
+living player hears it".
 
-### 5.5 回调
+### 5.5 Callbacks
 
 ```go
 func (e *Engine) OnEvent(handler EventHandler)
@@ -269,24 +296,28 @@ type EventHandler   func(event *Event)
 type MessageHandler func(msg *Message, receiverIDs []string)
 ```
 
-**回调一律在释放锁之后执行**，handler 列表在锁内快照——既不会死锁（回调里
-可以安全调用 `Engine` 的方法），也不会与并发注册产生竞争。单个 handler
-panic 被隔离并记 Error 日志，不影响其他 handler。
+**Callbacks always run after the lock is released**, and the handler list is
+snapshotted while it is held -- so there is no deadlock (a callback may safely
+call `Engine` methods) and no race with a concurrent registration. A panic in
+one handler is isolated, logged at error level, and does not affect the
+others.
 
-### 5.6 存档与回放
+### 5.6 Saving and replay
 
 ```go
-func (e *Engine) Snapshot() *Snapshot   // 纯数据，可直接 json.Marshal
-func (e *Engine) EffectLog() []*Effect  // 自建局以来的完整效果流
+func (e *Engine) Snapshot() *Snapshot   // plain data, json.Marshal it directly
+func (e *Engine) EffectLog() []*Effect  // the complete effect log since the game was created
 ```
 
-**两者分工**：快照是**状态**，效果流是**历史**。要持久化用快照——
-`Effect.Data` 是 `map[string]interface{}`，经 JSON 往返类型会退化，
-效果流的设计目标是进程内的回放与审计，不是存储格式。
+**The division of labour**: a snapshot is **state**, an effect log is
+**history**. For persistence use a snapshot -- `Effect.Data` is a
+`map[string]interface{}` whose types degrade on a JSON round trip, and the
+effect log is designed for in-process replay and auditing, not as a storage
+format.
 
 ---
 
-## 6. 规则写的东西
+## 6. What the rules write
 
 ### 6.1 Resolver
 
@@ -297,12 +328,14 @@ type Resolver interface {
 type ResolverFunc func(uses []*SkillUse, view GameView) []*Effect
 ```
 
-**这个签名是整个库最重要的一行**：只能读 `GameView`、只能返回 `Effect`。
-「状态变更一律经由 Effect」因此由**签名**保证，不靠约定。
+**This signature is the most important line in the library**: it can read
+`GameView` only and return `Effect`s only. "Every state change goes through an
+Effect" is therefore held up by the **signature**, not by convention.
 
-**不要在实现里回调 `Engine` 的任何方法**——扩展点在引擎持锁期间被同步调用，
-Go 的读写锁不可重入，后果是**挂住，不是报错**。签名是刻意收窄的：
-扩展点拿不到 `*Engine`。
+**Do not call any `Engine` method from an implementation** -- extension points
+are called synchronously while the engine holds its lock, Go's RWMutex is not
+reentrant, and the consequence is **a hang, not an error**. The signatures are
+deliberately narrow: an extension point never receives an `*Engine`.
 
 ### 6.2 GameView
 
@@ -310,7 +343,7 @@ Go 的读写锁不可重入，后果是**挂住，不是报错**。签名是刻�
 type GameView interface {
 	Player(id string) (PlayerInfo, bool)
 	AlivePlayers() []PlayerInfo
-	AllPlayers() []PlayerInfo          // 含已出局的：屠神判定要数死人
+	AllPlayers() []PlayerInfo          // the eliminated included: a wipe-out check has to count the dead
 	AlivePlayerIDsByRole(role RoleType) []string
 	RoundContext() RoundContext
 	Var(scope VarScope, key string) string
@@ -319,40 +352,44 @@ type GameView interface {
 }
 ```
 
-**视图只提供事实，不提供判断。** 「还剩几个神职」是规则的判断，自己数。
+**A view offers facts, never judgements.** "How many special roles are left"
+is the rules' judgement; count them yourself.
 
-### 6.3 VarScope：一张 2×2 的表
+### 6.3 VarScope: a 2x2 table
 
 ```go
-type VarScope struct{ /* 字段未导出 */ }
+type VarScope struct{ /* unexported fields */ }
 
-var ScopeGame  VarScope  // 整局有效、无主
-var ScopeRound VarScope  // 本回合有效、无主
+var ScopeGame  VarScope  // whole game, unowned
+var ScopeRound VarScope  // this round, unowned
 
-func (s VarScope) Of(playerID string) VarScope  // 绑到某个玩家，时间尺度不变
+func (s VarScope) Of(playerID string) VarScope  // bind to a player, lifetime unchanged
 func (s VarScope) String() string               // game / round / game:p1 / round:p1
 ```
 
-| | 无主 | 属于某个玩家 |
+| | unowned | owned by a player |
 |---|---|---|
-| **整局有效** | `ScopeGame` | `ScopeGame.Of(id)` |
-| **本回合有效** | `ScopeRound` | `ScopeRound.Of(id)` |
+| **whole game** | `ScopeGame` | `ScopeGame.Of(id)` |
+| **this round** | `ScopeRound` | `ScopeRound.Of(id)` |
 
 ```go
-// 写
+// write
 hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame,        "score",    "3")
 hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of(id), "antidote", "used")
 hiddenrole.NewSetVarEffect(hiddenrole.ScopeRound,       "kill",     target)
 hiddenrole.NewSetVarEffect(hiddenrole.ScopeRound.Of(id),"guarded",  hiddenrole.VarPresent)
 
-// 读
+// read
 view.Var(hiddenrole.ScopeRound.Of(id), "guarded")
 ```
 
-**值是字符串，空串等同删除，四格同一个口径。** 键名由规则自己定。
+**Values are strings, an empty string is deletion, identically in all four
+cells.** The keys are the rules' own.
 
-四格由两个值叉乘一个方法得出，**缺一格根本写不出来**——这张表此前只存在于
-注释里、代码里是八个平铺的名字，于是少了「整局·无主」那一格很久没人发现。
+The four cells fall out of two values crossed with one method, so **a missing
+cell is not expressible** -- the table used to exist only in a comment while
+the code had eight flat names, and "whole game, unowned" was missing for a
+long time before anyone noticed.
 
 ### 6.4 Effect
 
@@ -372,31 +409,34 @@ func (e *Effect) Cancel(reason string)
 func (e *Effect) ToEvent() *Event
 ```
 
-**六个构造器，两类东西：**
+**Six constructors, two kinds of thing:**
 
-| 构造器 | 类别 | 状态机认得吗 |
+| Constructor | Kind | Recognised by the state machine? |
 |---|---|---|
-| `NewEffect` | 规则给「发生了什么」起名字 | 不认得，推给 `OnEvent` |
-| `NewSetAliveEffect(id, alive)` | 改状态 | ✅ |
-| `NewSetVarEffect(scope, k, v)` | 改状态 | ✅ |
-| `NewSetActorsEffect(phase, ids...)` | 改状态（写行动者名单） | ✅ |
-| `NewDetourEffect(id, phase)` | 下指令（排一笔绕道的欠账） | ✅ |
-| `NewGotoPhaseEffect(phase)` | 下指令（改写下一阶段） | ✅ 但不改任何状态 |
+| `NewEffect` | the rules naming what happened | no; pushed to `OnEvent` |
+| `NewSetAliveEffect(id, alive)` | changes state | ✅ |
+| `NewSetVarEffect(scope, k, v)` | changes state | ✅ |
+| `NewSetActorsEffect(phase, ids...)` | changes state (writes the actor list) | ✅ |
+| `NewDetourEffect(id, phase)` | a directive (files a detour debt) | ✅ |
+| `NewGotoPhaseEffect(phase)` | a directive (overrides the next phase) | ✅ but changes no state |
 
-**「狼刀」不会让人死。** 一条 `KILL` 单独发出去，状态机不认得。规则要让人
-出局，就在它旁边产出一条 `SET_ALIVE`。两个效果，两件事——前者给受众与效果
-流看，后者给状态机看。
+**A wolf kill kills nobody.** A lone `KILL` means nothing to the state
+machine. For the rules to eliminate someone, they emit a `SET_ALIVE` alongside
+it. Two effects, two things -- the first for the audience and the effect log,
+the second for the state machine.
 
-**两个检视方法**，给想拦下某一类变更的扩展用：
+**Two inspection methods**, for an extension that wants to intercept a class
+of change:
 
 ```go
 func (e *Effect) SetsAlive() (alive, ok bool)
 func (e *Effect) SetsVar() (scope VarScope, key, value string, ok bool)
 ```
 
-白痴被投票放逐时翻牌不出局，靠的就是把那条致死的原语否决掉。**拦原语而不是
-拦「放逐」这个说法**，好处是与死因无关——同一段代码能挡住狼刀、毒杀、枪口
-和任何第三方规则的死法。
+The idiot surviving an exile by flipping their card works by vetoing the
+lethal primitive. **Intercepting the primitive rather than the word "exile"**
+makes it independent of the cause -- one piece of code stops a wolf kill, a
+poisoning, a gunshot and any third-party ruleset's way of dying.
 
 ### 6.5 SkillUse
 
@@ -405,46 +445,50 @@ type SkillUse struct {
 	PlayerID string
 	Skill    SkillType
 	Targets  []string
-	Phase    PhaseType  // 由引擎填
-	Round    int        // 由引擎填
+	Phase    PhaseType  // filled in by the engine
+	Round    int        // filled in by the engine
 }
-func (u *SkillUse) Target() string  // 单目标读法：Targets[0]，空则空串
+func (u *SkillUse) Target() string  // the single-target reader: Targets[0], or the empty string
 ```
 
 ---
 
-## 7. 八个扩展点
+## 7. The eight extension points
 
-**八个都能用一个普通函数装上。内置角色没有特权**——它们走同一批门。
+**All eight can be installed with a plain function. Built-in roles hold no
+privilege** -- they go through the same doors.
 
-| 想加什么 | 选项 | 接口 | 函数适配器 |
+| To add | Option | Interface | Function adapter |
 |---|---|---|---|
-| 某个阶段怎么结算 | `WithResolver(phase, r)` | `Resolver` | `ResolverFunc` |
-| 怎么算赢 | `WithVictoryChecker(c)` | `VictoryChecker` | `VictoryFunc` |
-| 某个角色带着什么入座 | `WithRoleSetup(role, s)` | `RoleSetup` | `RoleSetupFunc` |
-| 开局那一刻铺什么 | `WithGameSetup(s)` | `GameSetup` | `GameSetupFunc` |
-| 一件事该告诉谁 | `WithAudience(p)` | `AudienceProvider` | `AudienceFunc` |
-| 谁和谁是一边的 | `WithTeammates(p)` | `TeammateProvider` | `TeammateFunc` |
-| 发言谁能听到 | `WithSpeech(p)` | `SpeechProvider` | `SpeechFunc` |
-| 角色额外看到什么 | `WithRoleInfo(role, p)` | `RoleInfoProvider` | `RoleInfoFunc` |
+| how a phase resolves | `WithResolver(phase, r)` | `Resolver` | `ResolverFunc` |
+| how winning works | `WithVictoryChecker(c)` | `VictoryChecker` | `VictoryFunc` |
+| what a role sits down with | `WithRoleSetup(role, s)` | `RoleSetup` | `RoleSetupFunc` |
+| what the board looks like at the start | `WithGameSetup(s)` | `GameSetup` | `GameSetupFunc` |
+| who should be told about something | `WithAudience(p)` | `AudienceProvider` | `AudienceFunc` |
+| who is on whose side | `WithTeammates(p)` | `TeammateProvider` | `TeammateFunc` |
+| who hears a player speak | `WithSpeech(p)` | `SpeechProvider` | `SpeechFunc` |
+| what a role additionally sees | `WithRoleInfo(role, p)` | `RoleInfoProvider` | `RoleInfoFunc` |
 
-外加一个不算扩展点的：`WithLogger(l)` / `Logger` / `Field`——那是宿主的接线。
+Plus one that is not an extension point: `WithLogger(l)` / `Logger` / `Field`
+-- that is the host's wiring.
 
-**`RoleSetup` 与 `GameSetup` 的分工**：前者是「这个角色带着什么入座」
-（女巫的两瓶药），后者是「开局那一刻整个局面该铺成什么样」——它能看到
-`GameView`，因此做得了 `RoleSetup` 做不到的事，比如「第一个队长是几号座位」。
+**The division between `RoleSetup` and `GameSetup`**: the first is "what this
+role sits down with" (the witch's two potions), the second is "what the whole
+board should look like at the moment play begins" -- it can see a `GameView`,
+so it can do what `RoleSetup` cannot, such as "which seat leads first".
 
-**允许不对称**：恶魔认得爪牙、反过来不成立；missions 包的奥伯伦既不认识同伙也不
-被同伙认识。内核不假设对称。
+**Asymmetry is allowed**: the demon knows its minions and the reverse does not
+hold; the missions package's Oberon neither knows his fellows nor is known to
+them. The kernel does not assume symmetry.
 
 ---
 
-## 8. 信息边界的类型
+## 8. The information boundary's types
 
-### 一名玩家的三副面孔
+### One player's three faces
 
 ```go
-type PlayerInfo struct {           // 上帝 / 规则
+type PlayerInfo struct {           // god / the rules
 	ID    string
 	Role  RoleType
 	Alive bool
@@ -452,24 +496,26 @@ type PlayerInfo struct {           // 上帝 / 规则
 	RoundVars map[string]string
 }
 
-type SelfInfo struct {             // 他自己
+type SelfInfo struct {             // themselves
 	ID    string
 	Role  RoleType
 	Alive bool
 	Camp  Camp
-}                                  // 注意：没有 Vars
+}                                  // note: no Vars
 
-type PublicPlayerInfo struct {     // 别人
+type PublicPlayerInfo struct {     // everyone else
 	ID    string
 	Alive bool
-	Role  RoleType  // 仅在对本视角公开时填充
+	Role  RoleType  // filled in only where revealed to this view
 }
 ```
 
-**这三个不合并。** `PublicPlayerInfo` **在类型上就装不下 `Vars`**——
-「这一项该不该给他看」因此是签名问题，不是运行时判断。
+**These three do not get merged.** `PublicPlayerInfo` **structurally cannot
+hold `Vars`** -- so "should they be shown this" is a question about
+signatures, not a runtime judgement.
 
-要给玩家看的私有状态，由角色经 `RoleInfoProvider` **显式投射**。
+Private state a player should see is **projected explicitly** by the role
+through a `RoleInfoProvider`.
 
 ### PlayerView
 
@@ -479,92 +525,101 @@ type PlayerView struct {
 	Round    int
 	Phase    PhaseType
 	Self          SelfInfo
-	Players       []PublicPlayerInfo  // 按 ID 排序
-	AllowedSkills []SkillType         // 永不为 nil；空切片=还没轮到我
+	Players       []PublicPlayerInfo  // sorted by ID
+	AllowedSkills []SkillType         // never nil; an empty slice means it is not my turn
 	Teammates     []string
-	RoleInfo      map[string]string   // 角色显式投射的东西
+	RoleInfo      map[string]string   // what the role projected explicitly
 }
 ```
 
-### 上帝视角
+### The god's view
 
 ```go
-type PhaseInfo struct { /* 阶段、回合、活跃角色、每个角色的信息 */ }
+type PhaseInfo struct { /* phase, round, active roles, per-role information */ }
 func (p *PhaseInfo) NeedsGodAnnouncement() bool
 func (p *PhaseInfo) GodAnnouncementStep() *PhaseStep
 func (p *PhaseInfo) PlayerActionSteps() []PhaseStep
 
-type RolePhaseInfo struct { /* 可用技能、该行动的人、队友、角色专属信息 */ }
+type RolePhaseInfo struct { /* available skills, who acts, teammates, role information */ }
 
 type PhaseReadiness struct {
 	Phase    PhaseType
 	Round    int
-	Ready    bool             // 所有 Required 步骤都满足了吗
-	Pending  []PendingAction  // 还差谁「必须」动
-	Optional []PendingAction  // 谁「可以」动但还没动
+	Ready    bool             // is every Required step satisfied
+	Pending  []PendingAction  // who still **must** act
+	Optional []PendingAction  // who **may** act but has not
 	Acted    []string
 }
 type PendingAction struct { PlayerID string; Role RoleType; Skill SkillType }
 ```
 
-**`Pending` 与 `Optional` 分开**，因为「还差谁必须动」和「本阶段谁可以动」
-是两回事：默认配置里只有狼刀与投票是 `Required`，守卫、女巫、预言家、猎人
-全都可以不动。只看 `Pending` 驱动游戏的话，这几个角色一整局都不会被叫到。
+**`Pending` and `Optional` are separate** because "who still must act" and
+"who may act in this phase" are different questions: in a default
+configuration only the wolf kill and the vote are `Required`, while the guard,
+the witch, the seer and the hunter may all decline. Drive the game off
+`Pending` alone and those roles are never called on for a whole game.
 
-`Ready == false` **不会**让 `EndPhase` 拒绝——引擎不计时，是否按超时推进由
-调用方决定。
+`Ready == false` **does not** make `EndPhase` refuse -- the engine keeps no
+clock, and whether to advance on a timeout is the caller's decision.
 
 ---
 
-## 9. 事件
+## 9. Events
 
 ```go
-type Event struct { /* 类型、来源、目标、数据、阶段、回合 */ }
+type Event struct { /* type, source, target, data, cancelled, reason */ }
 ```
 
-**九个内核事件。前七个永不外发，且这一条不可配置。**
+**Nine kernel events. The first seven are never sent out, and that is not
+configurable.**
 
-| 事件 | 类别 |
+| Event | Class |
 |---|---|
-| `EventSetAlive` `EventSetVar` `EventSetActors` `EventAbilityTriggered` | 改状态 |
-| `EventGotoPhase` | 控制指令（不改任何状态） |
-| `EventPlayerAdded` `EventPhaseChanged` | 回放记账 |
-| `EventGameStarted` `EventGameEnded` | **公开**，玩家该看到 |
+| `EventSetAlive` `EventSetVar` `EventSetActors` `EventDetour` | changes state |
+| `EventGotoPhase` | a control directive (changes no state) |
+| `EventPlayerAdded` `EventPhaseChanged` | replay bookkeeping |
+| `EventGameStarted` `EventGameEnded` | **public**, players should see them |
 
-**判断依据是内核那张表，不是编号区间也不是名字前缀。** 早先写成
-「>= 100 即内部」，与「第三方取值从 1000 起」直接打架——扩展定义的每个事件
-都被判成内部事件，于是扩展的事件根本发不出去。
+**What decides is the kernel's table, not a numeric range and not a name
+prefix.** It used to read ">= 100 is internal", which collided head-on with
+"third-party values start at 1000" -- every event an extension defined was
+judged internal, so an extension's events could not be sent at all.
 
-规则定义的任何其他 `EventType` 一律是外部事件，受众交给 `AudienceProvider`。
+Any other `EventType` the rules define is an external event, and its audience
+goes to the `AudienceProvider`.
 
 ---
 
-## 10. 存档
+## 10. Saving
 
 ```go
 const SnapshotVersion = 13
 
-type Snapshot struct { /* 版本、阶段、回合、整局变量、行动者、赢家、玩家、回合上下文、未结算提交 */ }
+type Snapshot struct { /* version, phase, round, game vars, actors, winner, players, round context, unresolved submissions */ }
 type PlayerSnapshot struct{ ... }
 type RoundCtxSnapshot struct{ ... }
 type SkillUseSnapshot struct{ ... }
 type DetourSnapshot struct{ ... }
 ```
 
-**五个 `*Snapshot` 影子类型的存在是刻意的**：快照是写进存储的格式，字段名
-必须稳定，不能随内部重构漂移。这是唯一一处「同一批数据两个类型」被明确
-认可的地方。
+**The five `*Snapshot` shadow types exist deliberately**: a snapshot is a
+format written to storage, its field names must stay stable, and they must not
+drift with an internal refactor. This is the one place where "the same data in
+two types" is explicitly endorsed.
 
-**快照不含** `Config`、`Logger` 与回调——恢复时要把同一批选项传回去。
+**A snapshot does not contain** the `Config`, the `Logger` or the callbacks --
+the same options have to be passed back in on restore.
 
-**快照含赢家**（v13 起）。谁赢是结束那一刻由 `VictoryChecker` 定下的、此后
-不再变，而恢复出来的引擎不会再跑一次判定——不带它的话，一局已经结束的对局
-恢复出来是 `Over=true` 而 `Winner` 为空，`Status` 那四项号称来自同一个瞬间，
-在这条路上却对不上。这是一个真 bug，v13 修掉。
+**A snapshot does contain the winner** (since v13). Who won is settled by the
+`VictoryChecker` at the moment the game ends and does not change afterwards,
+and a restored engine does not run the check again -- without it, a finished
+game restores as `Over=true` with an empty `Winner`, and `Status`, which
+claims its four fields come from one instant, does not line up on this path.
+That was a real bug, fixed in v13.
 
 ---
 
-## 11. 错误
+## 11. Errors
 
 ```go
 type ErrorCode string
@@ -575,26 +630,27 @@ func HasCode(err error, code ErrorCode) bool
 func CodeOf(err error) ErrorCode
 ```
 
-18 个 `Code*`，20 个 `Err*` 哨兵。**两种用法都支持**：
+18 `Code*` values and 20 `Err*` sentinels. **Both styles are supported**:
 
 ```go
-if errors.Is(err, hiddenrole.ErrPlayerDead) { ... }        // 哨兵
-if hiddenrole.HasCode(err, hiddenrole.CodePlayerDead) { ... }  // 错误码（跨进程友好）
+if errors.Is(err, hiddenrole.ErrPlayerDead) { ... }            // by sentinel
+if hiddenrole.HasCode(err, hiddenrole.CodePlayerDead) { ... }  // by code (friendlier across processes)
 ```
 
-带上下文的错误经 `Unwrap()` 仍能被 `errors.Is` 穿透。
+An error carrying context is still seen through by `errors.Is`, via
+`Unwrap()`.
 
 ---
 
-## 12. 测试辅助
+## 12. Test helpers
 
 ```go
 type Board struct {
 	Players   []PlayerInfo
 	Round     int
 	Phase     PhaseType
-	Vars      map[string]string  // 整局·无主
-	RoundVars map[string]string  // 本回合·无主
+	Vars      map[string]string  // whole game, unowned
+	RoundVars map[string]string  // this round, unowned
 }
 func (b Board) View() GameView
 func (b Board) Apply(effects []*Effect) Board
@@ -605,129 +661,147 @@ func Seat(id string, role RoleType, alive bool, vars ...string) PlayerInfo
 func Mark(p PlayerInfo, keys ...string) PlayerInfo
 ```
 
-**名字不以 `Test` 开头，因为它是正经的公开 API**：规则包在内核之外，拿不到
-内部状态，没有这个入口它的解析器就只能整局跑起来才测得动——那测的是集成。
+**The names do not start with `Test` because this is genuine public API**: a
+rules package sits outside the kernel and cannot reach its internal state, and
+without this entry point its resolvers could only be exercised by running a
+whole game -- which tests the integration.
 
 ```go
 b = b.Apply(resolver.Resolve(uses, b.View()))
 ```
 
-走的是与引擎**完全相同**的那个写入点，因此「效果没生效」这类问题在单元测试
-里就会暴露。
+It goes through **exactly the same** write point as the engine, so "the effect
+never landed" shows up in a unit test.
 
 ---
 
-## 13. 稳定性承诺
+## 13. Stability promises
 
-### 不会变的（改它需要一条撞到过的具体理由）
+### What will not change (changing it needs a specific reason somebody ran into)
 
-1. **`Resolver` 的签名**——只能读 `GameView`、只能返回 `Effect`
-2. **信息边界的地板**——内核状态原语永不外发，不可配置
-3. **三副面孔不合并**——`PublicPlayerInfo` 装不下 `Vars` 是编译期保证
-4. **五个 `*Snapshot` 与内部结构解耦**
-5. **词汇表只有类型、取值在规则包**
-6. **扩展点只能在构造时给出**
-7. **`Effect` 是唯一的写入路径**（`Engine.Apply` 是同一个写入点，不是第二个）
+1. **`Resolver`'s signature** -- read `GameView` only, return `Effect`s only
+2. **The information boundary's floor** -- kernel state primitives are never
+   sent out, and that is not configurable
+3. **The three faces do not merge** -- `PublicPlayerInfo` not being able to
+   hold `Vars` is a compile-time guarantee
+4. **The five `*Snapshot` types stay decoupled from the internal structures**
+5. **The vocabulary has types only; the values live in the rules packages**
+6. **Extension points can only be given at construction**
+7. **`Effect` is the only write path** (`Engine.Apply` is the same write
+   point, not a second one)
 
-### 会变的（[ROADMAP.md 阶段二](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md)）
+### What will change ([ROADMAP.md phase 2](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md))
 
-| 会怎么变 | 影响谁 |
+| How it changes | Who it affects |
 |---|---|
-| `PlayerInfo.Alive` / `.Role` 从存储字段变成**派生字段** | 读法不变；写法从 `SET_ALIVE` 并入 `SET_VAR` |
-| `SnapshotVersion` 提升，快照格式变更 | 旧存档读不了（当前零使用者） |
-| ~~绕道队列相关的名字~~ | **已完成**（§14 第 3 条） |
+| `PlayerInfo.Alive` / `.Role` go from stored fields to **derived fields** | reading is unchanged; writing moves from `SET_ALIVE` into `SET_VAR` |
+| `SnapshotVersion` is bumped and the snapshot format changes | old saves become unreadable (currently zero users) |
+| ~~the detour queue's naming~~ | **done** (§14, item 3) |
 
-### 没有承诺的
+### What is not promised
 
-- **性能**。没有任何真实负载说它慢，优化在测量之后。
-- **`Effect.Data` 的具体键名**。它们是内核的内部约定，读效果请用
-  `SetsAlive()` / `SetsVar()` 这类方法，不要直接翻 `Data`。
+- **Performance.** No real workload says it is slow, and optimisation comes
+  after measurement.
+- **The specific keys in `Effect.Data`.** They are the kernel's internal
+  convention; read effects with methods like `SetsAlive()` / `SetsVar()`
+  rather than digging into `Data`.
 
 ---
 
-## 14. 冻结前的清账（**七条，已全部处理**）
+## 14. Clearing the books before the freeze (**seven items, all handled**)
 
-写这份文档时逐条过 API 才发现的七处不一致。全部已清。
+Seven inconsistencies found by going through the API line by line while
+writing this document. All cleared.
 
-| # | 问题 | 做法 |
+| # | Problem | What was done |
 |---|---|---|
-| 1 | `CodeInvalidPlayerId` 与 `ErrInvalidPlayerID` 大小写不一致 | 统一为 `CodeInvalidPlayerID` |
-| 2 | `PlayerInfo.Var(key)` / `.RoundVar(key)` 不吃 `VarScope`，与其他读法不一致 | **两个方法删掉**。`Vars` / `RoundVars` 是导出字段，读 nil map 在 Go 里本来就安全，这两个方法是零价值的糖——它们唯一的作用是让 `Var` 在两个类型上意思不同 |
-| 3 | `PendingTrigger` / `NewAbilityTriggerEffect` 的文档还在说「死亡技能」 | 改名 `Detour` / `NewDetourEffect`，事件值 `ABILITY_TRIGGERED` → `DETOUR`，快照字段 `pending_triggers` → `detours`，`SnapshotVersion` 11 → 12 |
-| 4 | `RoleGod` 的名字暗示「主持人」这个身份 | 内核改名 `RoleSystem`（值 `"GOD"` → `"SYSTEM"`）。「上帝」是狼人杀给这个标记起的名字，定在规则包（`werewolf.RoleGod`） |
-| 5 | `Engine.SendMessage` 的文档说「玩家已死亡」会报错 | 改写：那是**没装 `SpeechProvider` 时的默认**，装了就由 provider 说了算 |
-| 6 | `Engine.PlayerInfo` 的注释写着「（推荐使用）」 | 改写成它实际的语义：上帝视角，含 `Vars`，**不是**给玩家看的 |
-| 7 | 没有任何东西钉住这份导出清单 | **`TestAPI_SurfaceIsPinned`**：`go/ast` 解析包内全部非测试源码，收集导出名，与 `testdata/api.golden` 比对 |
+| 1 | `CodeInvalidPlayerId` and `ErrInvalidPlayerID` disagreed on case | unified as `CodeInvalidPlayerID` |
+| 2 | `PlayerInfo.Var(key)` / `.RoundVar(key)` did not take a `VarScope`, unlike every other reader | **both methods deleted**. `Vars` / `RoundVars` are exported fields, reading a nil map is safe in Go anyway, and these two were zero-value sugar -- their only effect was making `Var` mean different things on two types |
+| 3 | `PendingTrigger` / `NewAbilityTriggerEffect`'s docs still said "death ability" | renamed to `Detour` / `NewDetourEffect`, event value `ABILITY_TRIGGERED` -> `DETOUR`, snapshot field `pending_triggers` -> `detours`, `SnapshotVersion` 11 -> 12 |
+| 4 | `RoleGod`'s name implied the identity of a host | renamed in the kernel to `RoleSystem` (value `"GOD"` -> `"SYSTEM"`). "God" is werewolf's name for this marker, and it lives in the rules package (`werewolf.RoleGod`) |
+| 5 | `Engine.SendMessage`'s docs said a dead player is an error | rewritten: that is the **default when no `SpeechProvider` is installed**; with one, the provider decides |
+| 6 | `Engine.PlayerInfo`'s comment said "(recommended)" | rewritten to say what it actually means: the god's view, `Vars` included, **not** for showing a player |
+| 7 | Nothing pinned this listing of exported names | **`TestAPI_SurfaceIsPinned`**: `go/ast` parses every non-test source file in the package, collects the exported names, and compares against `testdata/api.golden` |
 
-### 第 7 条是执法机制
+### Item 7 is the enforcement mechanism
 
-没有它，这份文档一定会和代码漂移——与这个项目其他「规矩只写在注释里」的
-伤口是同一类问题。
+Without it this document would certainly drift away from the code -- the same
+wound as every other "rule that lives only in a comment" in this project.
 
-钉住的是**名字加签名**（含接口的方法集）。只钉名字的话，「把 `CheckVictory`
-的返回值从一个 `Camp` 改成一组」这种改动会溜过去——导出名一个都不增不减，
-而所有实现者都会编译不过。参数改名不算变更，参数**类型**改了才算。
+What is pinned is **names plus signatures**, interface method sets included.
+Pinning names alone would let a change like "`CheckVictory` returns a set of
+`Camp`s instead of one" slip through -- not one exported name added or
+removed, and every implementer fails to compile. Renaming a parameter is not a
+change; changing its **type** is.
 
-它不判断 API 好不好，只保证**变更不会悄悄发生**：
+It does not judge whether the API is good, only that **a change cannot happen
+quietly**:
 
 ```
-$ go test ./engine
+$ go test .
 --- FAIL: TestAPI_SurfaceIsPinned
-    内核的导出面变了。
-    新增：[func SneakyExport]
-    删除：[]
+    the kernel's exported surface changed.
+    added:   [func SneakyExport]
+    removed: []
 
-    这不是错误，是提醒：导出面是 docs/API.md 声称冻结的东西。
-    确认这次变更是有意的，然后一起做两件事——
-      1. go test ./engine -run TestAPI_SurfaceIsPinned -update-api-golden
-      2. 更新 docs/API.md（正文与附录 A）
+    This is not an error, it is a reminder: the exported surface is what
+    API.md declares frozen.
+    Confirm the change is intended, then do two things together --
+      1. go test . -run TestAPI_SurfaceIsPinned -update-api-golden
+      2. update API.md (the body and Appendix A)
 ```
 
-「悄悄新增」「悄悄删除」「悄悄改签名」三个方向都验证过会变红——最后那个
-用的是一个**能编译通过**的变异（给 `CodeOf` 加一个可变参，所有现有调用照样
-编译），因为编译不过的变异证明不了这个测试本身。
+All three directions -- a quiet addition, a quiet removal, a quiet signature
+change -- were verified to go red. The last used a mutation that **still
+compiles** (adding a variadic parameter to `CodeOf`, which leaves every
+existing call compiling), because a mutation that does not compile proves
+nothing about the test itself.
 
 ---
 
-## 15. 什么会让冻结重开
+## 15. What would reopen the freeze
 
-冻结要能被推翻，否则它只是一句口号。下面四条任意一条成立，就重新打开
-对应的那部分：
+A freeze has to be overturnable, or it is only a slogan. Any one of the four
+below reopens the corresponding part:
 
-| 触发条件 | 重开什么 | 现在的状态 |
+| Trigger | What reopens | Where it stands |
 |---|---|---|
-| **第二套规则包撞上「胜负只能有一个赢家」** | `VictoryChecker` 的签名改成 `winners []Camp` | 单夜换牌制已撞上一次（皮匠与村民同赢）。血染钟楼的旅行者单独结算大概率是第二次 |
-| **「目标必须是玩家」的编码开始说谎或组合爆炸** | `PhaseStep` 加 `TargetKind` | 单夜换牌制撞上过，但绕法丑而不假，代价 15 行 |
-| **某套规则因为「生死只有一位状态位」写不下去** | `Alive` 降为标准键 | 还没有。血染钟楼的中毒/醉酒是候选 |
-| **第四、第五套规则包仍然用不上 `RoleSystem`** | 把它挪进狼人杀包 | 三套里只有一套用 |
+| **a second rules package runs into "victory has exactly one winner"** | `VictoryChecker`'s signature becomes `winners []Camp` | one-night card swapping has run into it once (the tanner winning alongside the villagers). Blood on the Clocktower's travellers scoring separately is most likely the second |
+| **the "a target must be a player" encoding starts lying, or combinatorially explodes** | `PhaseStep` gains a `TargetKind` | one-night card swapping ran into it, but the way around it is ugly without being false, at a cost of 15 lines |
+| **some ruleset cannot be written because "aliveness is one bit"** | `Alive` is demoted to a canonical key | not yet. Blood on the Clocktower's poisoned/drunk are the candidates |
+| **a fourth and fifth rules package still cannot use `RoleSystem`** | it moves into the werewolf package | one of the three uses it |
 
-### 判据①还没被它自己检验过
+### The first criterion has not been tested by itself yet
 
-冻结的第一条判据是「**下一套规则包不再逼出破坏性 API 变更**」。这条判据是
-写第三套规则包之后才改成这样的——**第三套是在旧判据下写的**，所以严格说，
-新判据还没有被一套真实的规则包检验过。
+The freeze's first criterion is "**the next rules package no longer forces a
+breaking API change**". That criterion was only phrased this way after the
+third rules package was written -- **the third was written under the old
+criterion** -- so strictly speaking the new one has not yet been tested
+against a real rules package.
 
-写下来不是给冻结打折扣，是说清它的效力边界：**第四套规则包就是这条判据的
-第一次真考试**。它若逼出破坏性变更，说明冻结早了；它若只逼出零导出名变更
-（像第三套那样），冻结就站住了。
+Writing this down is not a discount on the freeze, it is being clear about its
+reach: **the fourth rules package is this criterion's first real exam**. If it
+forces a breaking change, the freeze came too early; if it forces only changes
+with zero exported names (as the third did), the freeze holds.
 
 ---
 
-## 附录 B：`enginetest` —— 给规则包的测试支架
+## Appendix B: `enginetest` -- the test harness for rules packages
 
-与 `engine` 同一个 module 的公开子包，位置同 `net/http/httptest`：
-**给使用者用的测试支架，不是被测对象。**
+A public sub-package of the same module, in the same position as
+`net/http/httptest`: **a test harness for users of the library, not the thing
+under test.**
 
 ```go
 func RunFuzz(t *testing.T, spec FuzzSpec)
 
 type FuzzSpec struct {
-    Games    int      // 跑多少局
-    MaxSteps int      // 单局最多推进多少步
-    Setup    Setup    // 怎么摆局（同一个 rng 必须摆出同一局）
-    Act      Act      // 怎么出招；nil 表示只推进阶段
-    WantEnd  bool     // 是否要求每局都在 MaxSteps 内结束
-    MustSee  []string // 这些标签一个都不能为零，否则随机化退化了
+    Games    int      // how many games to run
+    MaxSteps int      // most steps per game
+    Setup    Setup    // how to lay a game out (the same rng must lay out the same game)
+    Act      Act      // how to take a turn; nil means only advance phases
+    WantEnd  bool     // whether every game must finish within MaxSteps
+    MustSee  []string // none of these labels may be zero, or the randomisation has degenerated
 }
 
 type Game struct { Config *hiddenrole.Config; Options []hiddenrole.EngineOption; Seats []Seat; Labels []string }
@@ -736,39 +810,45 @@ type Setup func(rng *rand.Rand) Game
 type Act   func(e *hiddenrole.Engine, rng *rand.Rand)
 ```
 
-规则包提供「怎么摆局、怎么出招」，`RunFuzz` 提供**七条通用不变量**——
-一条都不认识任何游戏：
+The rules package supplies "how to lay a game out and how to take a turn", and
+`RunFuzz` supplies **seven general invariants**, not one of which knows any
+game:
 
 | | |
 |---|---|
-| 存档往返 | 逐字节比快照，**并且比行为**（谁能行动、就绪情况、上帝视角名单） |
-| 效果流回放 | 同上两条 |
-| 三条路一致 | `AllowedSkills` 与 `PlayerView.AllowedSkills` 必须相同 |
-| 名单稳定 | 同一个局面反复查询，顺序不变 |
-| `Status` 自洽 | 结束了就停在 `PhaseEnd` 且有赢家；没结束就没有赢家 |
-| 结束即定 | 结束之后局面不再变，且仍能存档往返 |
-| 原语不外发 | 内核状态原语一条都不到 `OnEvent` |
+| snapshot round trip | compare snapshots byte for byte, **and compare behaviour** (who may act, readiness, the god's-view lists) |
+| effect-log replay | the same two |
+| three paths agree | `AllowedSkills` and `PlayerView.AllowedSkills` must match |
+| lists are stable | querying the same board repeatedly gives the same order |
+| `Status` is coherent | over means stopped at `PhaseEnd` with a winner; not over means no winner |
+| over stays over | once the game is over the board stops changing, and it still survives a save round trip |
+| primitives are not sent out | not one kernel state primitive reaches `OnEvent` |
 
-**「并且比行为」那一条是变异验证逼出来的**：第一版只比快照字节，而快照
-序列化器自己漏字段时两边一起漏，比对是瞎的——「快照丢掉 `Actors`」那个
-变异当场存活了。加上比行为之后，第一次跑就抓出三个真 bug。
+**The "and compare behaviour" clause was forced out by mutation
+verification**: the first version compared snapshot bytes only, and when the
+snapshot serialiser itself drops a field it drops it on both sides, so the
+comparison is blind -- the "snapshot loses `Actors`" mutation survived on the
+spot. With behaviour comparison added, the first run caught three real bugs.
 
-它此前叫 `internal/gamefuzz`。`internal/` 只能被同一个 module import，
-而引擎要独立成库——规则包届时在另一个 module 里，一行都用不上它。
-公开了就一起被 `TestAPI_SurfaceIsPinned` 钉住，不然它是一个绕开冻结的后门。
+It used to be called `internal/gamefuzz`. `internal/` can only be imported
+from within the same module, and the engine had to become its own library --
+the rules packages then live in another module and could not use a line of it.
+Being public, it is pinned by `TestAPI_SurfaceIsPinned` along with everything
+else, or it would be a back door around the freeze.
 
 ---
 
-## 附录 A：完整导出名清单
+## Appendix A: the complete listing of exported names
 
-**冻结基线。** 由 `TestAPI_SurfaceIsPinned` 与 `testdata/api.golden`
-守着——**名字或签名**变了，测试就变红。
+**The freeze baseline.** Guarded by `TestAPI_SurfaceIsPinned` and
+`testdata/api.golden` -- change a **name or a signature** and the test goes
+red.
 
-合计 **55 类型 / 24 包级函数 / 56 方法 /
-20 个接口方法 / 62 常量与变量**。
-下面按名字列出；带签名的完整清单在 `testdata/api.golden`。
+In total **55 types / 24 package-level functions / 56 methods / 20 interface
+methods / 62 constants and variables**. They are listed by name below; the
+complete listing with signatures is in `testdata/api.golden`.
 
-### 类型（55）
+### Types (55)
 
 ```
 AudienceFunc  AudienceProvider  Board  Camp  Config  Detour
@@ -783,7 +863,7 @@ SkillUseSnapshot  Snapshot  SpeechFunc  SpeechProvider  Status
 TeammateFunc  TeammateProvider  VarScope  VictoryChecker  VictoryFunc
 ```
 
-### 包级函数（24）
+### Package-level functions (24)
 
 ```
 CodeOf  HasCode  Mark  MustNewEngine  NewDetourEffect  NewEffect
@@ -793,7 +873,7 @@ WithGameSetup  WithLogger  WithResolver  WithRoleInfo  WithRoleSetup
 WithSpeech  WithTeammates  WithVictoryChecker  WrapError
 ```
 
-### 方法（56，按接收者）
+### Methods (56, by receiver)
 
 ```
 Engine(23)  AddPlayer  AlivePlayerIDs  AllowedSkills  Apply  AudienceOf  EffectLog  EndPhase  MessageReceivers  OnEvent  OnMessage  PhaseInfo  PhaseReadiness  PlayerInfo  PlayerView  RoundContext  SendMessage  Snapshot  Start  Status  SubmitSkillUse  Teammates  Var  View
@@ -820,7 +900,7 @@ TeammateFunc(1)  Teammates
 VictoryFunc(1)  CheckVictory
 ```
 
-### 常量（41）
+### Constants (41)
 
 ```
 CampUnspecified  CodeGameAlreadyStarted  CodeGameEnded
@@ -836,7 +916,7 @@ RoleSystem  RoleUnspecified  SkillAnnounce  SkillSkip  SkillUnspecified
 SnapshotVersion  VarCamp  VarPresent
 ```
 
-### 变量（21）
+### Variables (21)
 
 ```
 ErrBoardAlreadyDecided  ErrGameAlreadyStarted  ErrGameEnded
