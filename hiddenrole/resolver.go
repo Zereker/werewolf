@@ -1,29 +1,34 @@
-// resolver.go 阶段结算的接口。
+// resolver.go is the phase-resolution extension point.
 //
-// 内核不知道任何阶段该怎么结算——它只知道「到点了，问一下这个阶段的
-// 解析器发生了什么」。狼人杀那七个解析器见根包 resolver.go。
+// The kernel does not know how any phase resolves -- only that "time is up,
+// go ask this phase's resolver what happened". Werewolf's seven resolvers
+// live in resolver.go of the root package.
 
 package hiddenrole
 
-// Resolver 冲突解析器接口。
+// Resolver resolves the conflicts of one phase.
 //
-// 实现者只能读 GameView、只能通过返回 Effect 表达状态变更——
-// 这是引擎最重要的不变量，由签名保证而非靠约定。
+// An implementation may read GameView only, and may express state changes
+// only by returning Effects -- the engine's most important invariant, held up
+// by the signature rather than by convention.
 //
-// 注意：Resolve 在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法
-// ——后果是挂住，不是报错。详见 doc.go「扩展点不能回头找引擎」。
+// Note: Resolve is called while the engine holds its lock, so an
+// implementation must not call back into any Engine method -- the consequence
+// is a hang, not an error. See "Extension points must not call back into the
+// engine" in doc.go.
 type Resolver interface {
 	Resolve(uses []*SkillUse, view GameView) []*Effect
 }
 
-// ResolverFunc 让普通函数满足 Resolver。
+// ResolverFunc lets a plain function satisfy Resolver.
 //
-// 与 AudienceFunc、RoleSetupFunc 那几个是同一个东西。此前八个扩展点里
-// 只有 Resolver 与 VictoryChecker 没有这层适配器——没有理由，只是历史，
-// 于是「装一个只有几行的解析器」得先声明一个空结构体。
+// Same thing as AudienceFunc and RoleSetupFunc. Of the eight extension
+// points, Resolver and VictoryChecker were the only two without this adapter
+// -- no reason, just history -- which meant that installing a three-line
+// resolver first required declaring an empty struct.
 type ResolverFunc func(uses []*SkillUse, view GameView) []*Effect
 
-// Resolve 实现 Resolver。
+// Resolve implements Resolver.
 func (f ResolverFunc) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	return f(uses, view)
 }

@@ -1,20 +1,22 @@
 package hiddenrole
 
-import ()
-
-// 效果流中用于重建局面的几个键
+// Keys used in the effect log to rebuild the board.
 //
-// 这里此前还有 camp 与 category：它们曾是内核状态的一部分，于是入座那一条
-// 效果要单独记。现在它们只是玩家身上的两项状态，跟着 vars 一起走。
+// There used to be camp and category here too: they were once part of kernel
+// state, so the seating effect had to record them separately. They are now
+// just two pieces of state on a player, and travel along with vars.
+
 const (
 	roleKey  = "role"
 	phaseKey = "phase"
 	varsKey  = "vars"
 )
 
-// newPlayerAddedEffect 记录一名玩家入座，连同该角色的初始状态。
+// newPlayerAddedEffect records a player taking a seat, along with the role's
+// initial state.
 //
-// 记下 vars 而不是在回放时重新问一遍 RoleSetup，理由见 Engine.seatPlayer。
+// It records vars rather than asking RoleSetup again during replay; see
+// Engine.seatPlayer for why.
 func newPlayerAddedEffect(id string, role RoleType, vars map[string]string) *Effect {
 	effect := NewEffect(EventPlayerAdded, "", id).
 		WithData(roleKey, role)
@@ -24,31 +26,35 @@ func newPlayerAddedEffect(id string, role RoleType, vars map[string]string) *Eff
 	return effect
 }
 
-// newPhaseChangedEffect 记录一次阶段流转
+// newPhaseChangedEffect records a phase transition.
 func newPhaseChangedEffect(phase PhaseType) *Effect {
 	return NewEffect(EventPhaseChanged, "", "").
 		WithData(phaseKey, phase)
 }
 
-// newGameStartedEffect 记录开局
+// newGameStartedEffect records the start of the game.
 func newGameStartedEffect(phase PhaseType) *Effect {
 	return NewEffect(EventGameStarted, "", "").
 		WithData(phaseKey, phase)
 }
 
-// EffectLog 返回自建局以来的完整效果流。
+// EffectLog returns the complete effect log since the game was created.
 //
-// 这套架构本来就在产出一条干净的事件流——Resolver 是纯函数，
-// 状态变更只经 ApplyEffect 一个写入点——把它累积下来几乎是白捡的：
-// 战报回放、复盘、「第三夜到底发生了什么」的排查全都有了依据。
+// This architecture already produces a clean event stream -- a Resolver is a
+// pure function, and every state change goes through the single write point
+// of applyEffect -- so accumulating it is nearly free, and it gives replays,
+// post-game analysis and "what actually happened on night three"
+// investigations something to stand on.
 //
-// 返回的是切片副本，其中的 *Effect 仍是引擎持有的对象，请勿修改。
+// The returned slice is a copy, but the *Effect values inside it are the
+// engine's own objects; do not modify them.
 //
-// # 与 Snapshot 的分工
+// # Division of labour with Snapshot
 //
-// 效果流是历史，快照是状态。要做持久化请用 Snapshot：
-// Effect.Data 是 map[string]interface{}，经 JSON 往返后类型会退化，
-// 效果流的设计目标是进程内的回放与审计，不是存储格式。
+// The effect log is history; a snapshot is state. For persistence use
+// Snapshot: Effect.Data is a map[string]interface{} whose types degrade on a
+// JSON round trip, and the effect log is designed for in-process replay and
+// auditing, not as a storage format.
 func (e *Engine) EffectLog() []*Effect {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -60,16 +66,19 @@ func (e *Engine) EffectLog() []*Effect {
 	return out
 }
 
-// ReplayEngine 按效果流重建引擎。
+// ReplayEngine rebuilds an engine from an effect log.
 //
-// config 需与录制时一致——效果流记录的是「发生了什么」，不含规则。
+// config must match the one used during recording -- the effect log records
+// what happened, not the rules.
 //
-// 重建结果与录制结束时的引擎在玩家状态、阶段、回合上一致；
-// 但当前阶段尚未提交的技能不在效果流里（它们还没变成效果），
-// 需要那部分请用 Snapshot。
+// The rebuilt engine matches the recorded one in player state, phase and
+// round; but skills submitted in the current phase and not yet resolved are
+// not in the effect log (they have not become effects yet), so use Snapshot
+// if you need those.
 //
-// 自定义角色的解析器必须经 opts 传入，理由同 RestoreEngine。
-// 初始状态不用：它记在效果流里的入座那一条上（见 Engine.seatPlayer）。
+// Resolvers for custom roles must be passed through opts, for the same reason
+// as with RestoreEngine. Initial state need not be: it is recorded on the
+// seating entry of the effect log (see Engine.seatPlayer).
 func ReplayEngine(config *Config, log []*Effect, opts ...EngineOption) (*Engine, error) {
 	engine, err := NewEngine(config, opts...)
 	if err != nil {
@@ -98,13 +107,15 @@ func ReplayEngine(config *Config, log []*Effect, opts ...EngineOption) (*Engine,
 	return engine, nil
 }
 
-// replayEffect 重放单个效果
+// replayEffect replays one effect.
 func (e *Engine) replayEffect(effect *Effect) error {
 	switch effect.Type {
 	case EventPlayerAdded:
 		role, _ := effect.Data[roleKey].(RoleType)
-		// 入座要连初始状态一起发。少了这一步，回放出来的女巫手里
-		// 没有药、狼人不属于任何阵营，而分叉要到用药或判胜负时才暴露。
+		// Seating has to hand out the initial state too. Without this the
+		// replayed witch holds no potions and the wolves belong to no camp,
+		// and the divergence only surfaces when a potion is used or victory is
+		// checked.
 		vars, _ := effect.Data[varsKey].(map[string]string)
 		if err := e.seatPlayer(effect.TargetID, role, vars); err != nil {
 			return err
@@ -124,34 +135,42 @@ func (e *Engine) replayEffect(effect *Effect) error {
 			return WrapError(CodeInvalidEffectLog,
 				"phase changed effect carries no phase")
 		}
-		// 离开一个阶段时消费掉它对应的待结算技能，与正常推进
-		// （calculateNextPhase）做同样的事。少了这一步，回放出来的引擎
-		// 会带着一条本该消费掉的触发，从下一步起与原引擎分叉
-		// 回合边界由**刚离开的**那个阶段声明，先取下来再流转。
-		// 与正常推进同一条规矩：还有待结算的绕道时不能落下，
-		// 否则会把住在回合上下文里的待结算队列一起抹掉。
+		// Leaving a phase consumes what belongs to it, exactly as normal
+		// progression does. Without this the replayed engine carries a detour
+		// that should have been consumed and diverges from the original on the
+		// very next step.
+		//
+		// The round boundary is declared by the phase **just left**, so read
+		// it before transitioning. Same rule as normal progression: it must
+		// not fall while a detour is still pending, or it would wipe out the
+		// pending queue that lives in the round context.
 		endsRound := e.config.endsRound(e.state.Phase)
-		// 行动者名单也是一次性的，与正常推进（endPhaseInternal 里的
-		// consumeActors）做同样的事。少了这一步，回放出来的引擎会带着
-		// 上一个阶段的名单，从下一步起与原引擎分叉——这条此前一直漏着，
-		// 只是狼人杀不用 SET_ACTORS、于是没有效果流走到过这里。
+		// The actor list is one-shot too, exactly as in normal progression.
+		// Without this the replayed engine carries the previous phase's list
+		// and diverges from the original on the next step -- which was missing
+		// here all along, only werewolf does not use SET_ACTORS, so no effect
+		// log had ever reached this line.
 		e.state.leavePhase()
 		settled := !e.state.hasPendingDetour()
 		e.state.nextPhase(phase, endsRound && settled,
 			settled && e.config.clearsRoundVars(phase))
 
 	case EventGameEnded:
-		// 结束这一步同样要离开当前阶段——正常推进那条路上，leavePhase 在
-		// 判定胜负**之前**就做了，结不结束都一样。漏了它，回放出来的引擎
-		// 会带着最后那个阶段的行动者名单与没消费掉的绕道，与原局分叉。
+		// Ending also leaves the current phase -- on the normal path
+		// leavePhase runs **before** the victory check, whether the game ends
+		// or not. Miss it and the replayed engine carries the last phase's
+		// actor list and an unconsumed detour, and diverges from the original.
 		e.state.leavePhase()
-		e.state.nextPhase(PhaseEnd, false, false) // 整局结束，不是新回合
-		// 赢家跟着效果流走。谁赢是结束那一刻由 VictoryChecker 定下的，
-		// 回放不会再跑一次判定——不读它的话，回放出来的引擎是
-		// Over=true 而 Winner 为空，与原局分叉。
+		e.state.nextPhase(PhaseEnd, false, false) // the game ends; this is not a new round
+		// The winner travels in the effect log. Who won was decided by the
+		// VictoryChecker at the moment the game ended, and replay does not run
+		// the check again -- without reading it the replayed engine has
+		// Over=true and an empty Winner, and diverges from the original.
 		//
-		// 与快照那条是同一个 bug 的两条路。上一轮只修了快照那条，
-		// 这一条是随机对局的不变量抓出来的（它比对回放与原局的快照字节）。
+		// This and the snapshot path were the same bug in two places. The
+		// previous round fixed only the snapshot one; this one was caught by
+		// the random-game invariants, which compare the replayed and original
+		// snapshots byte for byte.
 		if winner, ok := effect.Data[winnerKey].(Camp); ok {
 			e.winner = winner
 		}
@@ -162,11 +181,12 @@ func (e *Engine) replayEffect(effect *Effect) error {
 	return nil
 }
 
-// recordEffects 把一批效果记进历史。
+// recordEffects appends a batch of effects to the history.
 //
-// 存的是副本：out.effects 会原样返回给 EndPhase 的调用方，
-// 共用同一批指针的话，对方改一个字段就改了引擎的历史。
-// 这是效果流唯一的写入口，与 applyEffect 是状态唯一的写入口对称。
+// It stores copies: the same effects are returned verbatim to EndPhase's
+// caller, and were they to share pointers, the caller changing one field
+// would change the engine's history. This is the effect log's single write
+// point, mirroring applyEffect as the single write point for state.
 func (e *Engine) recordEffects(effects ...*Effect) {
 	for _, ef := range effects {
 		e.effectLog = append(e.effectLog, ef.clone())

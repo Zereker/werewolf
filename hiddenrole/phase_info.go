@@ -1,25 +1,28 @@
-// phase_info.go 阶段信息：告诉调用方本阶段该让谁行动、能用什么技能。
+// phase_info.go is phase information: it tells the caller who should act in
+// this phase and which skills they may use.
 //
-// 全部由阶段配置（PhaseConfig.Steps）派生，因此第三方经 WithResolver
-// 加入的自定义角色同样能拿到。
+// It is all derived from the phase configuration (PhaseConfig.Steps), so a
+// custom role added by a third party through WithResolver gets the same
+// treatment.
 
 package hiddenrole
 
-import ()
-
-// PhaseInfo 当前阶段的信息（上帝视角）。
+// PhaseInfo is information about the current phase, from the god's point of
+// view.
 //
-// 调用方据此组织本阶段的流程与公告。内容包含狼队名单、女巫可见的刀口
-// 等敏感信息，不可整体转发给玩家——面向玩家的内容用 Engine.PlayerView。
+// The caller uses it to run this phase and make its announcements. It
+// contains sensitive information -- the wolf roster, the kill the witch can
+// see -- and must not be forwarded to players wholesale; for player-facing
+// content use Engine.PlayerView.
 type PhaseInfo struct {
-	Phase       PhaseType                   // 当前阶段
-	Round       int                         // 当前回合
-	Steps       []PhaseStep                 // 当前阶段的步骤配置（包含上帝公告和玩家行动）
-	ActiveRoles []RoleType                  // 需要行动的玩家角色（不含上帝）
-	RoleInfos   map[RoleType]*RolePhaseInfo // 各角色的阶段信息
+	Phase       PhaseType                   // the current phase
+	Round       int                         // the current round
+	Steps       []PhaseStep                 // this phase's steps (both announcements and player actions)
+	ActiveRoles []RoleType                  // the roles that act, excluding the system role
+	RoleInfos   map[RoleType]*RolePhaseInfo // per-role information for this phase
 }
 
-// NeedsGodAnnouncement 判断当前阶段是否需要上帝公告
+// NeedsGodAnnouncement reports whether this phase opens with an announcement.
 func (p *PhaseInfo) NeedsGodAnnouncement() bool {
 	if len(p.Steps) == 0 {
 		return false
@@ -28,7 +31,7 @@ func (p *PhaseInfo) NeedsGodAnnouncement() bool {
 		p.Steps[0].Skill == SkillAnnounce
 }
 
-// GodAnnouncementStep 获取上帝公告步骤（如果存在）
+// GodAnnouncementStep returns the announcement step, if there is one.
 func (p *PhaseInfo) GodAnnouncementStep() *PhaseStep {
 	if p.NeedsGodAnnouncement() {
 		return &p.Steps[0]
@@ -36,7 +39,8 @@ func (p *PhaseInfo) GodAnnouncementStep() *PhaseStep {
 	return nil
 }
 
-// PlayerActionSteps 获取玩家行动步骤（不含上帝公告）
+// PlayerActionSteps returns the player action steps, excluding the
+// announcement.
 func (p *PhaseInfo) PlayerActionSteps() []PhaseStep {
 	if len(p.Steps) == 0 {
 		return nil
@@ -47,27 +51,32 @@ func (p *PhaseInfo) PlayerActionSteps() []PhaseStep {
 	return p.Steps
 }
 
-// RolePhaseInfo 角色阶段信息
+// RolePhaseInfo is one role's information for this phase.
 type RolePhaseInfo struct {
-	PlayerIDs     []string            // 该角色的玩家ID列表
-	AllowedSkills []SkillType         // 可用技能
-	Teammates     map[string][]string // 同阵营队友（玩家ID -> 队友IDs），好人阵营为空
+	PlayerIDs     []string            // the players holding this role
+	AllowedSkills []SkillType         // the skills they may use
+	Teammates     map[string][]string // teammates, player ID -> teammate IDs; empty when they know of none
 
-	// RoleInfo 角色专属信息：玩家ID -> 该玩家额外看得到的东西。
+	// RoleInfo is role-specific information: player ID -> what that player
+	// gets to see beyond the common facts.
 	//
-	// 由角色自己的 RoleInfoProvider 回答，引擎不认识任何具体角色。
-	// 内置女巫的刀口在这里的键是 RoleInfoKillTarget。
+	// Answered by the role's own RoleInfoProvider; the engine recognises no
+	// specific role. The built-in witch's kill target lives here under the
+	// key RoleInfoKillTarget.
 	RoleInfo map[string]map[string]string
 }
 
-// PhaseInfo 获取当前阶段信息（上帝视角）。
+// PhaseInfo returns information about the current phase, from the god's point
+// of view.
 //
-// 返回的内容包含狼队名单、女巫可见的刀口等敏感信息，供调用方作为主持人
-// 组织本阶段的流程与公告使用，**不可以整体转发给玩家**。
-// 要拿到可以直接发给某个玩家的内容，用 PlayerView。
+// What it returns contains sensitive information -- the wolf roster, the kill
+// the witch can see -- for the caller to run this phase as the host, and
+// **must not be forwarded to players wholesale**. For content that can be
+// sent straight to one player, use PlayerView.
 //
-// 各角色的信息由阶段配置（PhaseConfig.Steps）派生，因此第三方通过
-// WithResolver 加入的自定义角色同样能拿到。
+// Each role's information is derived from the phase configuration
+// (PhaseConfig.Steps), so a custom role added by a third party through
+// WithResolver gets the same treatment.
 func (e *Engine) PhaseInfo() *PhaseInfo {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -85,13 +94,14 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 		return info
 	}
 
-	// 返回副本：Steps 直接暴露会让调用方改到引擎内部的阶段配置
+	// Return a copy: exposing Steps directly would let a caller mutate the
+	// engine's own phase configuration.
 	info.Steps = make([]PhaseStep, len(phaseConfig.Steps))
 	copy(info.Steps, phaseConfig.Steps)
 
 	seen := make(map[RoleType]bool)
 	for _, step := range phaseConfig.Steps {
-		// 上帝是系统角色，不是需要行动的玩家
+		// The system role is not a player who acts.
 		if step.Role == RoleSystem || seen[step.Role] {
 			continue
 		}
@@ -104,29 +114,33 @@ func (e *Engine) PhaseInfo() *PhaseInfo {
 	return info
 }
 
-// allowedSkillsFor 返回指定角色在当前阶段可用的技能。
+// allowedSkillsFor returns the skills a role may use in the current phase.
 //
-// 唯一真相来源是阶段配置（PhaseConfig.Steps），与 ValidateSkillUse 走同一条路径。
+// The single source of truth is the phase configuration (PhaseConfig.Steps),
+// the same path skill validation takes.
 func (e *Engine) allowedSkillsFor(role RoleType) []SkillType {
 	return e.phase.allowedSkills(e.state.Phase, role)
 }
 
-// buildRolePhaseInfo 组装某个角色在当前阶段的信息。
-// 调用前需持有 e.mu。
+// buildRolePhaseInfo assembles one role's information for the current phase.
+// The caller must hold e.mu.
 func (e *Engine) buildRolePhaseInfo(role RoleType) *RolePhaseInfo {
 	ri := &RolePhaseInfo{
 		AllowedSkills: e.allowedSkillsFor(role),
 	}
 
-	// 与 PhaseReadiness 共用同一份「谁该行动」的判定：两处各写一遍的时候，
-	// 这里漏了排序，同一个局面每次调用给出的名单顺序都不一样。
+	// This shares one "who should act" decision with PhaseReadiness. When the
+	// two were written separately, this one forgot to sort, and the same
+	// board produced a differently ordered list on every call.
 	ri.PlayerIDs = e.actorsForStep(role)
 
 	for _, id := range ri.PlayerIDs {
-		// 队友由 TeammateProvider 回答，与 PlayerView 走同一条路。
-		// 此前这里按角色硬判，于是自定义的同阵营角色
-		// 自定义的同阵营角色在这份名单里拿不到队友——而另外两条路都是对的，只有主持人
-		// 照着组织流程的这一份漏了。三处共用一个判定就不会再有这种事。
+		// Teammates are answered by the TeammateProvider, the same path
+		// PlayerView takes. This used to branch on the role directly, so a
+		// custom same-camp role got no teammates in this particular list --
+		// while the other two paths were correct, and only the one the host
+		// runs the phase from was wrong. Three call sites sharing one
+		// decision cannot drift like that again.
 		if mates := e.teammatesOf(id); len(mates) > 0 {
 			if ri.Teammates == nil {
 				ri.Teammates = make(map[string][]string, len(ri.PlayerIDs))
@@ -134,7 +148,8 @@ func (e *Engine) buildRolePhaseInfo(role RoleType) *RolePhaseInfo {
 			ri.Teammates[id] = mates
 		}
 
-		// 角色专属信息由角色自己回答，引擎不认识任何具体角色
+		// Role-specific information is answered by the role itself; the engine
+		// recognises no specific role.
 		if info := e.roleInfoFor(id, role); info != nil {
 			if ri.RoleInfo == nil {
 				ri.RoleInfo = make(map[string]map[string]string, len(ri.PlayerIDs))

@@ -1,27 +1,32 @@
-// option.go 构造选项：把「开局前必须配好」的东西收到构造函数里。
+// option.go holds the construction options: everything that must be
+// configured before the game starts, gathered into the constructors.
 //
-// 引擎有一批只能在开局前设置的东西：自定义 Resolver、日志、指标。
-// 它们此前各有一个 setter，而 setter 只能在拿到引擎之后调用——
-// 对 RestoreEngine / ReplayEngine 这两个「一步就把引擎推到局中」的
-// 入口来说太晚了：恢复出来的引擎已经不在 START 阶段，注册会直接被拒，
-// 自定义角色的技能从此被静默丢弃。
+// The engine has a set of things that can only be set before play begins:
+// custom Resolvers, the logger, metrics. Each used to have its own setter,
+// and a setter can only be called once you already hold the engine -- which
+// is too late for RestoreEngine and ReplayEngine, the two entry points that
+// hand back an engine already mid-game: the restored engine is no longer in
+// the START phase, registration is rejected outright, and a custom role's
+// skills are silently dropped from then on.
 //
-// 收进构造选项之后还多了一层好处：这些东西在引擎交给调用方之前就已定死、
-// 此后不再改变，锁外读取它们也就不再需要防御性的复制。
+// Folding them into construction options buys one more thing: these values
+// are fixed before the engine is handed to the caller and never change
+// afterwards, so reading them outside the lock no longer needs a defensive
+// copy.
 
 package hiddenrole
 
-import ()
-
-// EngineOption 构造引擎时的可选设置。
+// EngineOption is an optional setting applied while constructing an engine.
 //
-// 三个构造入口（NewEngine / RestoreEngine / ReplayEngine）都接受它，
-// 因此扩展角色在「新开一局」和「从存档续上」两种场合下的写法是同一套。
+// All three entry points (NewEngine / RestoreEngine / ReplayEngine) accept
+// them, so an extension role is written the same way whether the game is
+// starting fresh or resuming from a save.
 type EngineOption func(*Engine) error
 
-// WithResolver 注册或替换某个阶段的解析器。
+// WithResolver registers or replaces one phase's resolver.
 //
-// 这是扩展新角色的唯一入口，对 RestoreEngine / ReplayEngine 同样有效：
+// This is the only way to extend the game with a new role, and it works for
+// RestoreEngine and ReplayEngine just as well:
 //
 //	cfg := werewolf.DefaultGameConfig()
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }
@@ -38,7 +43,7 @@ func WithResolver(phase PhaseType, resolver Resolver) EngineOption {
 	}
 }
 
-// WithLogger 设置日志接口。logger 为 nil 时保持默认的空实现。
+// WithLogger sets the logger. A nil logger leaves the default no-op in place.
 func WithLogger(logger Logger) EngineOption {
 	return func(e *Engine) error {
 		if logger != nil {
@@ -48,8 +53,8 @@ func WithLogger(logger Logger) EngineOption {
 	}
 }
 
-// applyOptions 依次应用构造选项。
-// 调用时引擎尚未交给调用方，不需要加锁。
+// applyOptions applies the construction options in order.
+// The engine has not been handed to the caller yet, so no lock is needed.
 func (e *Engine) applyOptions(opts []EngineOption) error {
 	for _, opt := range opts {
 		if opt == nil {
@@ -62,10 +67,11 @@ func (e *Engine) applyOptions(opts []EngineOption) error {
 	return nil
 }
 
-// WithGameSetup 注册开局时的初始化。
+// WithGameSetup registers the game's opening initialisation.
 //
-// 在 Start() 里调用一次，产出的效果经与其余效果相同的写入点落地。
-// 重复注册以最后一次为准。
+// It is called once inside Start(), and the effects it produces land through
+// the same write point as every other effect. Registering twice keeps the
+// last registration.
 func WithGameSetup(setup GameSetup) EngineOption {
 	return func(e *Engine) error {
 		if setup == nil {

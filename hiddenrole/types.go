@@ -1,34 +1,41 @@
-// types.go 内核的词汇表：阶段、角色、技能、阵营、类别。
+// types.go is the kernel's vocabulary: phases, roles, skills, camps, categories.
 //
-// 这里只有**类型**，没有取值。内核不知道有哪些阶段、哪些角色——
-// 「NIGHT_WITCH」「WEREWOLF」是狼人杀这套规则定义的，见根包 vocab.go。
+// Only the **types** live here, never the values. The kernel does not know
+// which phases or roles exist -- "NIGHT_WITCH" and "WEREWOLF" belong to the
+// werewolf rules package (see vocab.go in the root package).
 //
-// 底层都是字符串，不是编号。编号是 protobuf 时代留下的：那时它们由 .proto
-// 生成，编号进了线格式。protobuf 拆掉之后编号只剩负担——快照按名字写，
-// 日志按名字打，于是每个类型都得额外挂一张对照表和一对 JSON 方法，
-// 一百多行代码只为把值翻译回它本来的样子。
+// Everything is a string underneath, not a number. The numbers were a
+// protobuf legacy: back then these types were generated from .proto files and
+// their numeric tags were part of the wire format. Once protobuf was removed
+// the numbers were pure overhead -- snapshots are written by name, logs are
+// printed by name, so every type needed a lookup table and a pair of JSON
+// methods, a hundred-odd lines whose only job was translating a value back
+// into what it already was.
 //
-// 名字直接就是值之后，那些全部消失：JSON 天然可读、String() 是一行、
-// 规则包定义自己的取值只需 RoleType("KNIGHT")，不会与任何人撞号。
+// With the name as the value all of that disappears: JSON is readable on its
+// own, String() is one line, and a rules package defines its own values with
+// RoleType("KNIGHT") without ever colliding with anyone else's numbering.
 //
-// 零值是空串，语义即「未指定」。
+// The zero value is the empty string and means "unspecified".
 
 package hiddenrole
 
-// PhaseType 游戏阶段。取值由规则定义。
+// PhaseType is a phase of play. The values are defined by the rules.
 type PhaseType string
 
-// 三个由内核自己拥有的阶段：它们是状态机的生命周期，不是某套规则的环节。
+// Three phases the kernel owns itself: they are the state machine's lifecycle,
+// not a step in anybody's rules.
 //
-// 规则的阶段环从 Config.StartPhase 开始、以 PhaseEnd 收尾；PhaseStart
-// 是「还没开局」这个状态本身，AddPlayer 只在它里面被允许。
+// A rules package's phase cycle starts at Config.StartPhase and terminates at
+// PhaseEnd; PhaseStart is the "not started yet" state itself, and AddPlayer is
+// only allowed while the game is in it.
 const (
 	PhaseUnspecified PhaseType = ""
-	PhaseStart       PhaseType = "START" // 还没开局
-	PhaseEnd         PhaseType = "END"   // 已经结束
+	PhaseStart       PhaseType = "START" // not started yet
+	PhaseEnd         PhaseType = "END"   // already over
 )
 
-// String 实现 fmt.Stringer。
+// String implements fmt.Stringer.
 func (v PhaseType) String() string {
 	if v == PhaseUnspecified {
 		return "UNSPECIFIED"
@@ -36,26 +43,30 @@ func (v PhaseType) String() string {
 	return string(v)
 }
 
-// RoleType 角色类型。取值由规则定义。
+// RoleType is a role. The values are defined by the rules.
 type RoleType string
 
 const (
-	// RoleUnspecified 未指定。在 PhaseStep 上它表示「所有角色」。
+	// RoleUnspecified is unspecified. On a PhaseStep it means "every role".
 	RoleUnspecified RoleType = ""
 
-	// RoleSystem 「这一步没有玩家承担」。
+	// RoleSystem means "no player carries this step".
 	//
-	// 它不是一个身份，是一个**标记**：声明了它的阶段步骤是一次广播
-	//（该念一段公告了），不是「等某个人行动」。入座会被拒，就绪判定不数它。
+	// It is not an identity, it is a **marker**: a phase step declaring it is
+	// a broadcast (something is to be announced), not a wait for someone to
+	// act. Seating it is rejected, and readiness does not count it.
 	//
-	// 此前它叫 RoleGod，值是 "GOD"。那个名字暗示「主持人」这个身份——
-	// 而主持人是狼人杀的概念，任务制那一套根本没有人主持，血染钟楼叫说书人。
-	// 内核认得的不是「谁在主持」，是「这一步不等人」。想要一个叫「上帝」
-	// 的角色，在规则包里给它起名（werewolf.RoleGod 就是这么定的）。
+	// It used to be called RoleGod, with the value "GOD". That name implied
+	// the identity of a host -- but a host is a werewolf concept, the
+	// mission-based games have nobody hosting at all, and Blood on the
+	// Clocktower calls theirs a storyteller. What the kernel recognises is
+	// not "who is hosting", it is "this step waits for nobody". If you want a
+	// role literally named god, name it in your rules package (that is
+	// exactly what werewolf.RoleGod is).
 	RoleSystem RoleType = "SYSTEM"
 )
 
-// String 实现 fmt.Stringer。
+// String implements fmt.Stringer.
 func (v RoleType) String() string {
 	if v == RoleUnspecified {
 		return "UNSPECIFIED"
@@ -63,27 +74,32 @@ func (v RoleType) String() string {
 	return string(v)
 }
 
-// SkillType 技能类型。取值由规则定义。
+// SkillType is a skill. The values are defined by the rules.
 type SkillType string
 
 const (
-	// SkillUnspecified 未指定。
+	// SkillUnspecified is unspecified.
 	SkillUnspecified SkillType = ""
 
-	// SkillSkip 主动放弃行动。任何回合制游戏都有这个动作，所以内核给它
-	// 一个共用的名字，免得每套规则各起一个。
+	// SkillSkip declines to act. Every turn-based game has this move, so the
+	// kernel provides one shared name for it instead of letting each rules
+	// package invent its own.
 	//
-	// **它没有任何内核特权。** 此前 validateSkillUse 里有一条
-	// 「弃权不需要目标，直接放行」——那条是空的：不带目标的提交本来就
-	// 过得了目标校验（循环一次都不跑），带了目标的提交**本该**被校验。
-	// 它唯一的实际效果是让内核认得一个具体技能，而那正是这个库要消灭的。
+	// **It carries no kernel privilege.** validateSkillUse used to have a
+	// branch reading "skipping needs no target, let it through" -- that branch
+	// was empty: a submission with no target already passes target validation
+	// (the loop never runs), and a submission that *does* carry a target
+	// **should** be validated. Its only real effect was to make the kernel
+	// recognise one specific skill, which is precisely what this library sets
+	// out to eliminate.
 	SkillSkip SkillType = "SKIP"
 
-	// SkillAnnounce 一次广播，与 RoleSystem 配对。内容由调用方决定。
+	// SkillAnnounce is a broadcast, paired with RoleSystem. The content is up
+	// to the caller.
 	SkillAnnounce SkillType = "ANNOUNCE"
 )
 
-// String 实现 fmt.Stringer。
+// String implements fmt.Stringer.
 func (v SkillType) String() string {
 	if v == SkillUnspecified {
 		return "UNSPECIFIED"
@@ -91,17 +107,20 @@ func (v SkillType) String() string {
 	return string(v)
 }
 
-// Camp 一个「边」的标签，胜负判定的结果就是它。
+// Camp labels one side. It is what a victory check resolves to.
 //
-// 内核**不预设任何取值**：好人与狼人是狼人杀的两边，任务制那一套是正义与邪恶，
-// 血染钟楼还有单独结算的旅行者。内核只知道「有若干个边，其中一个可能会赢」，
-// 也知道每名玩家可能属于某一边（VarCamp），但不知道那是哪一边、意味着什么。
+// The kernel **presumes no values**: villagers and werewolves are the two
+// sides of werewolf, the mission-based games have good and evil, and Blood on
+// the Clocktower additionally has travellers who are scored separately. The
+// kernel only knows that there are some number of sides, one of which may
+// win, and that each player may belong to one of them (VarCamp) -- not which
+// one, nor what it means.
 type Camp string
 
-// CampUnspecified 还没分出胜负，或者这名玩家不属于任何一边。
+// CampUnspecified means no side has won yet, or this player belongs to no side.
 const CampUnspecified Camp = ""
 
-// String 实现 fmt.Stringer。
+// String implements fmt.Stringer.
 func (v Camp) String() string {
 	if v == CampUnspecified {
 		return "UNSPECIFIED"
@@ -109,12 +128,15 @@ func (v Camp) String() string {
 	return string(v)
 }
 
-// VarCamp 阵营在玩家 Vars 里的标准键名。
+// VarCamp is the canonical key under which a player's camp lives in Vars.
 //
-// 内核认这一个键：它的值会填进 PlayerInfo 与 SelfInfo 上的 Camp 字段，
-// 让「这名玩家站哪一边」不必每个使用者自己去 Vars 里翻。值由规则发放
-// （见 RoleSetup），内核不检查也不解释。
+// This is the one key the kernel recognises: its value is copied into the Camp
+// field of PlayerInfo and SelfInfo, so that "which side is this player on"
+// does not have to be dug out of Vars by every caller. The value is handed out
+// by the rules (see RoleSetup); the kernel neither checks nor interprets it.
 //
-// 只有这一个。「神职/平民」这种阵营之内的细分是狼人杀为了屠边判定才需要的，
-// 内核不认得——规则包自己定一个键即可（见 werewolf.VarCategory）。
+// There is only this one. Sub-divisions within a camp -- "special roles" vs
+// "plain villagers" -- exist only because werewolf needs them for its
+// wipe-out-one-side victory check; the kernel does not recognise them, and a
+// rules package can simply define its own key (see werewolf.VarCategory).
 const VarCamp = "camp"

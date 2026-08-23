@@ -1,67 +1,68 @@
 package hiddenrole
 
-import ()
-
-// Logger 日志接口
-// 允许外部注入日志实现，用于记录游戏事件和调试信息
+// Logger is the logging interface.
+// It lets a caller inject their own logging implementation for game events
+// and debugging information.
 type Logger interface {
-	// Debug 调试级别日志
+	// Debug logs at debug level.
 	Debug(msg string, fields ...Field)
-	// Info 信息级别日志
+	// Info logs at info level.
 	Info(msg string, fields ...Field)
-	// Warn 警告级别日志
+	// Warn logs at warning level.
 	Warn(msg string, fields ...Field)
-	// Error 错误级别日志
+	// Error logs at error level.
 	Error(msg string, fields ...Field)
 }
 
-// Field 日志字段。
+// Field is one structured log field.
 //
-// 只有内核会写日志——Resolver 与 VictoryChecker 拿到的只有 GameView，
-// 拿不到 Logger。因此本包不导出任何 Field 的构造函数：实现 Logger 的人
-// 只会读它，读不需要构造器。真要自己拼一个（比如包一层 Logger 再补个
-// 字段），字段是导出的，Field{Key: ..., Value: ...} 就够。
+// Only the kernel writes logs -- a Resolver or VictoryChecker is handed a
+// GameView and nothing else, never a Logger. So this package exports no
+// constructor for Field: whoever implements Logger only ever reads one, and
+// reading needs no constructor. If you really do want to build one (say to
+// wrap a Logger and add a field), the fields are exported and
+// Field{Key: ..., Value: ...} is enough.
 type Field struct {
 	Key   string
 	Value interface{}
 }
 
-// f 创建日志字段的快捷方法
+// logField builds a log field.
 func logField(key string, value interface{}) Field {
 	return Field{Key: key, Value: value}
 }
 
-// phaseField 创建阶段字段
+// phaseField builds a phase field.
 func phaseField(phase PhaseType) Field {
 	return Field{Key: "phase", Value: phase.String()}
 }
 
-// roundField 创建回合字段
+// roundField builds a round field.
 func roundField(round int) Field {
 	return Field{Key: "round", Value: round}
 }
 
-// playerField 创建玩家字段
+// playerField builds a player field.
 func playerField(playerID string) Field {
 	return Field{Key: "player_id", Value: playerID}
 }
 
-// targetField 创建目标字段
+// targetField builds a target field.
 func targetField(targetID string) Field {
 	return Field{Key: "target_id", Value: targetID}
 }
 
-// skillField 创建技能字段
+// skillField builds a skill field.
 func skillField(skill SkillType) Field {
 	return Field{Key: "skill", Value: skill.String()}
 }
 
-// eventField 创建事件字段
+// eventField builds an event field.
 func eventField(event EventType) Field {
 	return Field{Key: "event", Value: event.String()}
 }
 
-// nopLogger 空日志实现（默认）
+// nopLogger is the no-op logger used by default.
 type nopLogger struct{}
 
 func (l *nopLogger) Debug(msg string, fields ...Field) {}
@@ -69,7 +70,7 @@ func (l *nopLogger) Info(msg string, fields ...Field)  {}
 func (l *nopLogger) Warn(msg string, fields ...Field)  {}
 func (l *nopLogger) Error(msg string, fields ...Field) {}
 
-// newNopLogger 创建空日志
+// newNopLogger builds a no-op logger.
 func newNopLogger() *nopLogger {
 	return &nopLogger{}
 }

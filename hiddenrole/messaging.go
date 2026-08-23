@@ -1,7 +1,9 @@
-// messaging.go 消息系统：玩家发言的路由。
+// messaging.go is the messaging system: routing what players say.
 //
-// 发言不走技能通道——它不产生状态变更，也就没有 Effect。
-// 谁能听到由当前阶段决定：狼人阶段只有狼人互通，白天全场可闻。
+// Speech does not go through the skill channel -- it produces no state
+// change, and therefore no Effect. Who hears it is decided by the current
+// phase: during the wolf phase only wolves hear each other, during the day
+// the whole table does.
 
 package hiddenrole
 
@@ -9,45 +11,49 @@ import (
 	"time"
 )
 
-// Message 游戏内消息
+// Message is an in-game message.
 type Message struct {
-	SenderID  string    // 发送者ID
-	Content   string    // 消息内容
-	Phase     PhaseType // 发送时的阶段
-	Round     int       // 发送时的回合
-	Timestamp time.Time // 发送时间
+	SenderID  string    // who sent it
+	Content   string    // what was said
+	Phase     PhaseType // the phase it was sent in
+	Round     int       // the round it was sent in
+	Timestamp time.Time // when it was sent
 }
 
-// MessageHandler 消息处理器
-// msg: 消息内容
-// receiverIDs: 接收者列表
+// MessageHandler handles one message.
+// msg: the message itself.
+// receiverIDs: who it should reach.
 type MessageHandler func(msg *Message, receiverIDs []string)
 
-// OnMessage 注册消息处理器
-// 当玩家发送消息时，处理器会收到消息和接收者列表
+// OnMessage registers a message handler.
+// When a player sends a message the handler receives it along with the list
+// of receivers.
 func (e *Engine) OnMessage(handler MessageHandler) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.messageHandlers = append(e.messageHandlers, handler)
 }
 
-// SendMessage 发一条玩家发言，按当前阶段路由给该听到的人。
+// SendMessage sends one player's speech, routed by the current phase to
+// whoever should hear it.
 //
-// 可听范围由 SpeechProvider 回答（见 WithSpeech）。**没装 provider 时**
-// 内核退回默认：出局的玩家不能发言、这一阶段没人能听到就拒绝。
-// 装了 provider 就由它说了算——「死人能不能说话」是规则的判断，
-// 不是内核的法律（血染钟楼的死人有幽灵票，狼人杀有遗言阶段）。
+// The audible range is answered by a SpeechProvider (see WithSpeech).
+// **With no provider installed** the kernel falls back to a default:
+// eliminated players may not speak, and a phase where nobody can hear is a
+// rejection. With one installed it decides -- whether the dead may speak is
+// the rules' judgement, not the kernel's law (the dead in Blood on the
+// Clocktower hold a ghost vote, and werewolf has a last-words phase).
 //
-// 返回错误：玩家不存在（ErrPlayerNotFound）、
-// 默认规则下出局玩家发言（ErrPlayerDead）、
-// 当前阶段没有任何接收者（ErrMessageNotAllowed）。
+// Errors: no such player (ErrPlayerNotFound); an eliminated player speaking
+// under the default rule (ErrPlayerDead); no receivers at all in the current
+// phase (ErrMessageNotAllowed).
 func (e *Engine) SendMessage(senderID, content string) error {
 	msg, receiverIDs, handlers, err := e.prepareMessage(senderID, content)
 	if err != nil {
 		return err
 	}
 
-	// 发布在锁外：回调里可能回调 Engine
+	// Publish outside the lock: a callback may call back into the Engine.
 	publishMessage(handlers, e.logger, msg, receiverIDs)
 
 	e.logger.Debug("message sent",
@@ -58,11 +64,13 @@ func (e *Engine) SendMessage(senderID, content string) error {
 	return nil
 }
 
-// prepareMessage 在锁内完成校验与取材，返回需要在锁外发布的内容。
+// prepareMessage does the validation and gathering under the lock, and
+// returns what has to be published outside it.
 //
-// 拆成一个函数而不是在 SendMessage 里手动 RUnlock：手动解锁有四条
-// 提前返回的路径，日后任何人再加一条都可能漏掉解锁。EndPhase 那边
-// 是同样的写法，一份代码不该有两套标准。
+// It is a separate function rather than a manual RUnlock inside SendMessage:
+// a manual unlock has four early-return paths, and whoever adds a fifth may
+// well miss one. EndPhase is written the same way, and one codebase should
+// not have two standards.
 func (e *Engine) prepareMessage(senderID, content string) (
 	*Message, []string, []MessageHandler, error,
 ) {
@@ -73,13 +81,16 @@ func (e *Engine) prepareMessage(senderID, content string) (
 	if !ok {
 		return nil, nil, nil, ErrPlayerNotFound
 	}
-	// 存活是**默认**的发言资格，不是法律。
+	// Being alive is the **default** qualification to speak, not the law.
 	//
-	// 此前这里直接拒掉出局的玩家，SpeechProvider 无从否决——而「死人能不能
-	// 说话」是规则的判断：血染钟楼的死人照常参与讨论，狼人杀有遗言阶段。
+	// This used to reject an eliminated player outright, leaving a
+	// SpeechProvider no way to overrule it -- yet whether the dead may speak
+	// is the rules' judgement: the dead in Blood on the Clocktower take part
+	// in discussion as usual, and werewolf has a last-words phase.
 	//
-	// 现在的分工：规则装了 SpeechProvider，就由它说了算（返回空名单即
-	// 「此刻他说不了话」）；没装的话，内核退回默认——死人不说话。
+	// The division now: if the rules installed a SpeechProvider it decides
+	// (an empty list means "they cannot speak right now"); if they did not,
+	// the kernel falls back to its default -- the dead stay silent.
 	if e.speech == nil && !sender.Alive {
 		return nil, nil, nil, ErrPlayerDead
 	}
@@ -97,25 +108,29 @@ func (e *Engine) prepareMessage(senderID, content string) (
 		Timestamp: time.Now(),
 	}
 
-	// 复制 handlers 以避免锁外读取与 OnMessage 竞争
+	// Copy the handlers so that reading them outside the lock does not race
+	// with OnMessage.
 	handlers := make([]MessageHandler, len(e.messageHandlers))
 	copy(handlers, e.messageHandlers)
 
 	return msg, receiverIDs, handlers, nil
 }
 
-// MessageReceivers 获取消息接收者列表（公开方法）
-// 返回当前阶段下，指定发送者的消息可以发送给哪些玩家
+// MessageReceivers returns the receivers of a message.
+// It reports which players a message from the given sender may reach in the
+// current phase.
 func (e *Engine) MessageReceivers(senderID string) []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.getMessageReceivers(senderID)
 }
 
-// getMessageReceivers 获取消息接收者（内部方法，调用前需持有 e.mu）。
+// getMessageReceivers returns the receivers. The caller must hold e.mu.
 //
-// 「此刻谁能说话、谁能听到」是规则的事：夜里只有狼队交流是狼人杀的规矩，
-// 换一套规则完全不同。判定交给 SpeechProvider，狼人杀的那份见 wolfSpeech。
+// "Who may speak right now and who hears it" belongs to the rules: night
+// chat being wolves-only is werewolf's convention, and another ruleset does
+// it entirely differently. The decision goes to a SpeechProvider; werewolf's
+// is wolfSpeech.
 func (e *Engine) getMessageReceivers(senderID string) []string {
 	if e.speech == nil {
 		return nil
@@ -123,10 +138,11 @@ func (e *Engine) getMessageReceivers(senderID string) []string {
 	return e.speech.Receivers(senderID, newStateView(e.state))
 }
 
-// publishMessage 在锁外发布消息。
+// publishMessage publishes a message outside the lock.
 //
-// 每个 handler 拿到自己的一份接收者列表：共用一个切片的话，
-// 某个 handler 就地排序或过滤会影响到后面的 handler。
+// Each handler gets its own copy of the receiver list: were they to share one
+// slice, a handler that sorts or filters in place would affect the handlers
+// after it.
 func publishMessage(handlers []MessageHandler, logger Logger, msg *Message, receiverIDs []string) {
 	for _, handler := range handlers {
 		func() {

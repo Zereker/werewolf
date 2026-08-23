@@ -1,60 +1,69 @@
 package hiddenrole
 
-// GameView 只读的游戏视图。
+// GameView is a read-only view of the game.
 //
-// Resolver 拿到的是它而不是 *gameState：架构上「状态变更一律经由 Effect」
-// 是这个引擎最重要的不变量，此前它只写在文档里，类型系统不设防——
-// 任何 Resolver（包括第三方注册的）都能直接改状态、绕开整条 Effect 管线，
-// 让可回放、可审计这些收益全部落空。现在这条约束写进了签名。
+// A Resolver is handed this rather than a *gameState. "Every state change
+// goes through an Effect" is this engine's most important invariant, and it
+// used to live only in the documentation with no help from the type system --
+// any Resolver, including a third-party one, could mutate state directly and
+// bypass the whole effect pipeline, forfeiting replayability and
+// auditability. The constraint is now part of the signature.
 //
-// 视图只提供事实，不提供判断：规则的判定属于 Resolver，
-// 因此这里给的是「上一回合守了谁」而非「现在能不能守」。
+// The view offers facts, never judgements: judging is the Resolver's job, so
+// what you get here is "who was guarded last round", not "may I guard right
+// now".
 type GameView interface {
-	// Player 返回玩家信息的只读副本
+	// Player returns a read-only copy of a player's information.
 	Player(id string) (PlayerInfo, bool)
 
-	// AlivePlayers 返回所有存活玩家，按 ID 排序。
+	// AlivePlayers returns every living player, sorted by ID.
 	//
-	// 有序是规则可以依赖的：规则产出的效果顺序必须由局面唯一决定，
-	// 否则回放与快照比对失去确定性。
+	// The ordering is something the rules may rely on: the order of the
+	// effects a rule produces has to be uniquely determined by the board, or
+	// replay and snapshot comparison lose their determinism.
 	AlivePlayers() []PlayerInfo
 
-	// AllPlayers 返回全部玩家（含已出局的），按 ID 排序。
+	// AllPlayers returns every player including the eliminated ones, sorted
+	// by ID.
 	//
-	// 胜负判定需要它：「开局有几个神职」得数上已经死掉的那些，
-	// 只看存活的算不出「屠神」。
+	// Victory checks need it: "how many special roles were there at the
+	// start" has to count the dead ones too, and a wipe-out condition cannot
+	// be computed from the living alone.
 	AllPlayers() []PlayerInfo
 
-	// AlivePlayerIDsByRole 返回指定角色的存活玩家 ID
+	// AlivePlayerIDsByRole returns the IDs of living players with the given role.
 	AlivePlayerIDsByRole(role RoleType) []string
 
-	// RoundContext 返回本回合上下文的只读副本
+	// RoundContext returns a read-only copy of this round's context.
 	RoundContext() RoundContext
 
-	// Var 返回某个作用域下的一项自定义状态，没有则为空串。
+	// Var returns one piece of custom state in the given scope, or the empty
+	// string if it is not set.
 	//
-	// 作用域是一张 2×2 的表（见 VarScope）：
+	// Scopes form a 2x2 table (see VarScope):
 	//
-	//	Var(ScopeGame, "score")            整局·无主
-	//	Var(ScopeGame.Of(id), "antidote")  整局·某人
-	//	Var(ScopeRound, "kill")            本回合·无主
-	//	Var(ScopeRound.Of(id), "guarded")  本回合·某人
+	//	Var(ScopeGame, "score")            whole game, unowned
+	//	Var(ScopeGame.Of(id), "antidote")  whole game, one player
+	//	Var(ScopeRound, "kill")            this round, unowned
+	//	Var(ScopeRound.Of(id), "guarded")  this round, one player
 	//
-	// 规则把自己的状态全放在这里，内置角色与第三方角色同一条路。
-	// 写入走 NewSetVarEffect，玩家的初始状态由 RoleSetup 发放。
+	// The rules keep all of their own state here, and built-in roles take the
+	// same route as third-party ones. Writes go through NewSetVarEffect, and
+	// a player's initial state is handed out by RoleSetup.
 	Var(scope VarScope, key string) string
 
-	// Round 返回当前回合数
+	// Round returns the current round number.
 	Round() int
 
-	// Phase 返回当前阶段
+	// Phase returns the current phase.
 	Phase() PhaseType
 }
 
-// stateView 是 GameView 的实现。
+// stateView implements GameView.
 //
-// 刻意做成不导出的包装类型而非直接让 *gameState 实现接口：
-// 后者可以被类型断言还原成可变的状态对象，等于没有约束。
+// It is deliberately an unexported wrapper rather than letting *gameState
+// implement the interface directly: the latter could be type-asserted back
+// into the mutable state object, which would be no constraint at all.
 type stateView struct {
 	s *gameState
 }

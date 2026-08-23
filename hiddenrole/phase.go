@@ -1,17 +1,16 @@
 package hiddenrole
 
-import ()
-
-// phaseManager 阶段管理器
+// phaseManager owns the phase configuration and its resolvers.
 type phaseManager struct {
 	config    *Config
 	resolvers map[PhaseType]Resolver
 }
 
-// newPhaseManager 创建阶段管理器。
+// newPhaseManager builds a phase manager.
 //
-// 不装任何默认解析器：内核不知道哪个阶段该由谁结算。狼人杀的那一批
-// 由 werewolf.Options 作为构造选项传进来。
+// It installs no default resolvers: the kernel does not know which phase is
+// resolved by whom. Werewolf's are passed in as construction options by
+// werewolf.Options.
 func newPhaseManager(config *Config) *phaseManager {
 	return &phaseManager{
 		config:    config,
@@ -19,15 +18,16 @@ func newPhaseManager(config *Config) *phaseManager {
 	}
 }
 
-// registerResolver 注册或替换某阶段的解析器
+// registerResolver registers or replaces one phase's resolver.
 func (p *phaseManager) registerResolver(phase PhaseType, r Resolver) {
 	p.resolvers[phase] = r
 }
 
-// validateResolvers 检查每个已配置的阶段都注册了解析器。
+// validateResolvers checks that every configured phase has a resolver.
 //
-// 缺失解析器不会报错，只会让该阶段收到的技能被悄悄丢弃——这种失败
-// 在对局中几乎无法定位，必须在开局前拦下。
+// A missing resolver raises no error at play time; it just silently drops the
+// skills submitted in that phase -- a failure that is nearly impossible to
+// locate mid-game, so it has to be caught before the game starts.
 func (p *phaseManager) validateResolvers() error {
 	for phaseType := range p.config.Phases {
 		if p.resolvers[phaseType] == nil {
@@ -38,27 +38,29 @@ func (p *phaseManager) validateResolvers() error {
 	return nil
 }
 
-// phaseConfig 获取阶段配置
+// phaseConfig returns a phase's configuration.
 func (p *phaseManager) phaseConfig(phase PhaseType) *PhaseConfig {
 	return p.config.Phases[phase]
 }
 
-// resolver 获取阶段解析器
+// resolver returns a phase's resolver.
 func (p *phaseManager) resolver(phase PhaseType) Resolver {
 	return p.resolvers[phase]
 }
 
-// stepFor 找出「这个角色在这个阶段用这个技能」对应的步骤声明。
+// stepFor finds the step declaration matching "this role, in this phase,
+// using this skill".
 //
-// 与 allowedSkills 共用同一份判定：RoleUnspecified 表示「所有角色」。
-// 找不到即这个技能此刻不被允许。
+// It shares one rule with allowedSkills: RoleUnspecified means "every role".
+// No match means the skill is not allowed right now.
 func (p *phaseManager) stepFor(phase PhaseType, role RoleType, skill SkillType) (PhaseStep, bool) {
 	pc := p.phaseConfig(phase)
 	if pc == nil {
 		return PhaseStep{}, false
 	}
-	// 留空的技能提交不了：那是「醒过来看一眼」的步骤，不是一次行动。
-	// 不挡的话，SkillUnspecified 会正好匹配上留空的步骤。
+	// An empty skill cannot be submitted: that is a "wake up and look" step,
+	// not an action. Without this guard SkillUnspecified would match the empty
+	// step exactly.
 	if skill == SkillUnspecified {
 		return PhaseStep{}, false
 	}
@@ -73,7 +75,7 @@ func (p *phaseManager) stepFor(phase PhaseType, role RoleType, skill SkillType) 
 	return PhaseStep{}, false
 }
 
-// allowedSkills 获取指定角色在当前阶段允许的技能
+// allowedSkills returns the skills a role may use in the given phase.
 func (p *phaseManager) allowedSkills(phase PhaseType, role RoleType) []SkillType {
 	config := p.phaseConfig(phase)
 	if config == nil {
@@ -82,11 +84,12 @@ func (p *phaseManager) allowedSkills(phase PhaseType, role RoleType) []SkillType
 
 	skills := make([]SkillType, 0)
 	for _, step := range config.Steps {
-		// 留空的步骤是「醒过来看一眼」，没有可提交的技能（见 PhaseStep.Skill）
+		// An empty step is "wake up and look" and has no submittable skill
+		// (see PhaseStep.Skill).
 		if step.Skill == SkillUnspecified {
 			continue
 		}
-		// UNSPECIFIED 表示所有角色都可以
+		// UNSPECIFIED means every role qualifies.
 		if step.Role == role || step.Role == RoleUnspecified {
 			skills = append(skills, step.Skill)
 		}
@@ -95,45 +98,52 @@ func (p *phaseManager) allowedSkills(phase PhaseType, role RoleType) []SkillType
 	return skills
 }
 
-// nextSubPhase 计算下一阶段（使用声明式配置）
+// nextSubPhase computes the next phase from the declarative configuration.
 func (p *phaseManager) nextSubPhase(current PhaseType) PhaseType {
-	// 游戏开始阶段的特殊处理
+	// The start phase is special-cased.
 	if current == PhaseStart {
 		return p.config.startPhase()
 	}
 
-	// 从配置中获取下一阶段
+	// Take the next phase from the configuration.
 	config := p.phaseConfig(current)
 	if config != nil && config.NextPhase != PhaseUnspecified {
 		return config.NextPhase
 	}
 
-	// 配置中未找到，返回 END
+	// Not in the configuration: the game ends.
 	return PhaseEnd
 }
 
-// validateSkillUse 验证技能使用是否合法
+// validateSkillUse checks whether a skill use is legal.
 func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
-	// 检查玩家是否存在
+	// Does the player exist?
 	player, ok := state.getPlayer(use.PlayerID)
 	if !ok {
 		return ErrPlayerNotFound
 	}
 
-	// 谁可以行动，两层，与 actorsForStep 逐条对齐——两处不一致就会出现
-	// 「内核收下了他的提交，却告诉别人他不该行动」这种自相矛盾。
+	// Who may act: two layers, lined up item for item with actorsForStep --
+	// if the two disagree you get the self-contradiction of "the kernel
+	// accepted his submission while telling everyone else he should not be
+	// acting".
 	//
-	//	规则点名   名单里的人，存活与否由规则负责
-	//	默认       活着的人
+	//	named by the rules   whoever is on the list; aliveness is the rules' business
+	//	default              whoever is alive
 	//
-	// 绕道要去的阶段走的是第一层：进入那个阶段时，那个人已经被写进名单
-	//（见 gameState.nameDetourActor）。此前它是单独的第一层，
-	// 与点名回答同一个问题、实现也几乎逐字相同——一个概念两份实现。
+	// The phase a detour leads to goes through the first layer: on entering
+	// that phase the player has already been written onto the list (see
+	// gameState.nameDetourActor). That used to be a separate first layer
+	// answering the same question as naming, with a nearly word-for-word
+	// identical implementation -- one concept, two implementations.
 	//
-	// 存活因此是**默认**的行动资格，不是法律。此前只有触发那条路能越过它
-	// ——同一个内核允许自己的机制让死人行动、不允许规则的机制这么做，
-	// 是内核在替规则判断「死了还能不能动」。挡掉的是真实存在的玩法：
-	// 血染钟楼的死人保留一张幽灵票，狼人杀有遗言阶段。
+	// Aliveness is therefore the **default** qualification to act, not the
+	// law. Only the trigger path used to be able to step over it -- one
+	// kernel letting its own mechanism move the dead while forbidding the
+	// rules' mechanism from doing the same is the kernel deciding "may the
+	// dead act" on the rules' behalf. What that blocks is real play: the dead
+	// in Blood on the Clocktower keep a ghost vote, and werewolf has a
+	// last-words phase.
 	switch named, hasNamed := state.actorsFor(state.Phase); {
 	case hasNamed:
 		if !contains(named, use.PlayerID) {
@@ -143,14 +153,16 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 		return ErrPlayerDead
 	}
 
-	// 检查技能是否在当前阶段允许，并取出它的声明
+	// Is the skill allowed in this phase, and what is its declaration?
 	step, allowed := p.stepFor(state.Phase, player.Role, use.Skill)
 	if !allowed {
 		return ErrSkillNotAllowed
 	}
 
-	// 检查目标是否有效。多目标的技能逐个查——一次提交里混进一个无效目标，
-	// 整条提交都该被拒绝，而不是悄悄留下有效的那几个。
+	// Are the targets valid? A multi-target skill is checked one by one -- if
+	// a single invalid target is mixed into one submission, the whole
+	// submission should be rejected rather than silently keeping the valid
+	// ones.
 	for _, id := range use.Targets {
 		if id == "" {
 			continue
@@ -159,7 +171,8 @@ func (p *phaseManager) validateSkillUse(use *SkillUse, state *gameState) error {
 		if !ok {
 			return ErrTargetNotFound
 		}
-		// 能否指向已出局的玩家由步骤声明，内核不认得任何具体技能
+		// Whether an eliminated player may be targeted is declared by the
+		// step; the kernel recognises no specific skill.
 		if !target.Alive && !step.AllowDeadTarget {
 			return ErrTargetDead
 		}

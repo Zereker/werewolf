@@ -1,37 +1,42 @@
-// victory.go 胜负判定的接口。
+// victory.go is the victory-check extension point.
 //
-// 内核不知道什么叫「赢」——它只知道有人可能会赢，以及那个结论长什么样
-// （一个 Camp 标签）。具体条件由规则给，狼人杀的那一套见根包 victory.go。
+// The kernel does not know what winning means -- only that somebody might
+// win, and what that conclusion looks like (a Camp label). The condition
+// itself comes from the rules; werewolf's lives in victory.go of the root
+// package.
 
 package hiddenrole
 
-// VictoryChecker 判定这一刻胜负是否已分。
+// VictoryChecker decides whether the game is decided at this moment.
 //
-// 返回 (false, CampUnspecified) 表示还没分出胜负。
-// winner 可以是任何自定义阵营——Camp 的底层是字符串，内核不预设取值，
-// 只负责把结论原样报出去。
+// Returning (false, CampUnspecified) means it is not decided yet. winner may
+// be any camp the rules like -- Camp is a string underneath, the kernel
+// presumes no values and only reports the conclusion back verbatim.
 //
-// 与 Resolver 一样：只能读 GameView，在引擎持锁期间被调用，实现中不要
-// 回调 Engine 的任何方法——后果是挂住，不是报错。
-// 详见 doc.go「扩展点不能回头找引擎」。
+// Same contract as Resolver: it may read GameView only, and it is called
+// while the engine holds its lock, so an implementation must not call back
+// into any Engine method -- the consequence is a hang, not an error. See
+// "Extension points must not call back into the engine" in doc.go.
 type VictoryChecker interface {
 	CheckVictory(view GameView) (over bool, winner Camp)
 }
 
-// VictoryFunc 让普通函数满足 VictoryChecker。
+// VictoryFunc lets a plain function satisfy VictoryChecker.
 //
-// 与 ResolverFunc 一样是补齐：八个扩展点该有同一套装配方式，
-// 少这两个没有理由。
+// Like ResolverFunc, this is filling a gap: the eight extension points should
+// all be assembled the same way, and there was no reason for these two to be
+// the exceptions.
 type VictoryFunc func(view GameView) (over bool, winner Camp)
 
-// CheckVictory 实现 VictoryChecker。
+// CheckVictory implements VictoryChecker.
 func (f VictoryFunc) CheckVictory(view GameView) (bool, Camp) { return f(view) }
 
-// WithVictoryChecker 换掉内置的胜负判定。
+// WithVictoryChecker replaces the built-in victory check.
 //
-// 换掉之后 Config.VictoryMode 就不再起作用了——那个字段只喂给
-// 内置判定。想在内置规则之上再加一条（比如「情侣双双存活即情侣胜」），
-// 把 DefaultVictoryChecker 包起来，先问自己的条件再问它。
+// Once replaced, Config.VictoryMode no longer has any effect -- that field
+// only feeds the built-in check. To add a condition on top of the built-in
+// rules (say "the lovers win if both survive"), wrap DefaultVictoryChecker:
+// ask your own condition first, then ask it.
 func WithVictoryChecker(checker VictoryChecker) EngineOption {
 	return func(e *Engine) error {
 		if checker == nil {
@@ -42,12 +47,14 @@ func WithVictoryChecker(checker VictoryChecker) EngineOption {
 	}
 }
 
-// neverEnds 内核的缺省判定：永远不结束。
+// neverEnds is the kernel's default check: the game never ends.
 //
-// 内核不知道什么叫「赢」，所以缺省只能是「不知道」。做成一个不结束的
-// 判定而不是留 nil：一台只装了内核的引擎应该能推进阶段、只是永不分出胜负，
-// 而不是在第一次 Start 就空指针崩掉。规则包一定会用 WithVictoryChecker
-// 换掉它（见 werewolf.Options）。
+// The kernel does not know what winning means, so its default can only be "I
+// don't know". It is a check that never fires rather than a nil field because
+// an engine carrying nothing but the kernel should be able to advance phases
+// and simply never decide a winner, instead of nil-panicking on the first
+// Start. A rules package always replaces it via WithVictoryChecker (see
+// werewolf.Options).
 type neverEnds struct{}
 
 func (neverEnds) CheckVictory(GameView) (bool, Camp) { return false, CampUnspecified }

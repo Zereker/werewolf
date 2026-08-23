@@ -1,31 +1,36 @@
-// roleinfo.go 角色专属信息：某个角色的玩家额外看得到什么。
+// roleinfo.go is role-specific information: what extra a player of some role
+// gets to see.
 //
-// 内核只知道通用信息——谁活着、轮到谁行动。「女巫看得到今晚的刀口」
-// 「盗贼看得到两张底牌」这类是角色自己的规则，由规则回答。
+// The kernel knows only the generic facts -- who is alive, whose turn it is
+// to act. "The witch sees tonight's kill" and "the thief sees the two spare
+// cards" are the role's own rules, and the rules answer them.
 
 package hiddenrole
 
-// RoleInfoProvider 回答「这个玩家额外该知道什么」。
+// RoleInfoProvider answers "what else should this player know".
 //
-// 与 Resolver、VictoryChecker 同构：拿只读的 GameView，返回结论，不碰状态。
-// 它在引擎持锁期间被调用，实现中不要回调 Engine 的任何方法——后果是
-// 挂住，不是报错。详见 doc.go「扩展点不能回头找引擎」。
+// Same shape as Resolver and VictoryChecker: it takes a read-only GameView,
+// returns a conclusion, and touches no state. It is called while the engine
+// holds its lock, so an implementation must not call back into any Engine
+// method -- the consequence is a hang, not an error. See "Extension points
+// must not call back into the engine" in doc.go.
 //
-// 返回 nil 或空表示没有额外信息。键名由角色自己定，会原样出现在
-// PlayerView.RoleInfo 与 RolePhaseInfo.RoleInfo 里。
+// Returning nil or an empty map means there is nothing extra. The keys are
+// the role's own, and appear verbatim in PlayerView.RoleInfo and
+// RolePhaseInfo.RoleInfo.
 type RoleInfoProvider interface {
 	RoleInfo(playerID string, view GameView) map[string]string
 }
 
-// RoleInfoFunc 让普通函数满足 RoleInfoProvider。
+// RoleInfoFunc lets a plain function satisfy RoleInfoProvider.
 type RoleInfoFunc func(playerID string, view GameView) map[string]string
 
-// RoleInfo 实现 RoleInfoProvider。
+// RoleInfo implements RoleInfoProvider.
 func (f RoleInfoFunc) RoleInfo(playerID string, view GameView) map[string]string {
 	return f(playerID, view)
 }
 
-// WithRoleInfo 给某个角色注册专属信息的提供者。
+// WithRoleInfo registers a provider of role-specific information for one role.
 //
 //	engine, _ := werewolf.NewEngine(cfg,
 //		werewolf.WithResolver(phaseThief, thiefResolver{}),
@@ -34,7 +39,8 @@ func (f RoleInfoFunc) RoleInfo(playerID string, view GameView) map[string]string
 //				return map[string]string{"spare_cards": view.Var(werewolf.ScopeRound, "thief.spares")}
 //			})))
 //
-// 同一个角色重复注册以最后一次为准，因此也可以用来换掉内置的那些。
+// Registering the same role twice keeps the last registration, so this is
+// also how you replace a built-in provider.
 func WithRoleInfo(role RoleType, provider RoleInfoProvider) EngineOption {
 	return func(e *Engine) error {
 		if provider == nil {
@@ -46,7 +52,8 @@ func WithRoleInfo(role RoleType, provider RoleInfoProvider) EngineOption {
 	}
 }
 
-// roleInfoFor 算出某个玩家的角色专属信息。调用前需持有 e.mu。
+// roleInfoFor computes one player's role-specific information. The caller
+// must hold e.mu.
 func (e *Engine) roleInfoFor(playerID string, role RoleType) map[string]string {
 	provider, ok := e.roleInfo[role]
 	if !ok {

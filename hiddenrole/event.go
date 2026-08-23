@@ -1,62 +1,69 @@
-// event.go 对外事件：引擎发生了什么，说给调用方听。
+// event.go is the outward event: what the engine did, told to the caller.
 //
-// Event 与 Effect 是刻意分开的两层：Effect 是引擎内部对状态变更的描述，
-// 带着 interface{} 的附加数据；Event 是交给调用方的形态，附加数据折成
-// 字符串，可以直接序列化发出去。
+// Event and Effect are deliberately two layers: an Effect is the engine's
+// internal description of a state change and carries interface{} payloads; an
+// Event is the shape handed to the caller, with the payload flattened into
+// strings so it can be serialised and sent straight out.
 
 package hiddenrole
 
-// Event 一件对外可见的事情。
+// Event is one externally visible thing that happened.
 //
-// 由 Effect.ToEvent 构造，经 Engine.OnEvent 注册的处理器收到。
-// 该发给哪些玩家由 Engine.AudienceOf 回答。
+// Built by Effect.ToEvent and received by handlers registered through
+// Engine.OnEvent. Which players it should be sent to is answered by
+// Engine.AudienceOf.
 type Event struct {
 	Type     EventType         `json:"type"`
-	SourceID string            `json:"source_id,omitempty"` // 事件来源玩家
-	TargetID string            `json:"target_id,omitempty"` // 事件目标玩家
-	Data     map[string]string `json:"data,omitempty"`      // 附加数据
+	SourceID string            `json:"source_id,omitempty"` // player the event came from
+	TargetID string            `json:"target_id,omitempty"` // player the event was aimed at
+	Data     map[string]string `json:"data,omitempty"`      // extra payload
 
-	// Canceled / Reason 该行动是否被规则否决，以及原因。
+	// Canceled / Reason record whether the rules vetoed the action, and why.
 	//
-	// 「女巫点了毒药但今晚已经用过解药」这类事情必须能表达出来：
-	// 少了这两个字段，被否决的行动到了调用方手里与成功的一模一样，
-	// 会被当成真的发生过而广播出去。
+	// "The witch clicked poison but had already used the antidote tonight"
+	// has to be expressible: without these two fields a vetoed action reaches
+	// the caller looking exactly like a successful one, and gets broadcast as
+	// though it really happened.
 	Canceled bool   `json:"canceled,omitempty"`
 	Reason   string `json:"reason,omitempty"`
 }
 
-// EventType 事件/效果类型。
+// EventType is the type of an event or effect.
 //
-// 分两类，且这个分法由**名字的归属**决定，不由编号区间决定：
+// There are two classes, and the split is decided by **who owns the name**,
+// not by a numeric range:
 //
-//	内核的状态原语   SET_ALIVE / SET_VAR / ... —— 状态机的记账，永不外发
-//	其余一切        规则给「发生了什么」起的名字 —— 推给 OnEvent，受众由规则决定
+//	kernel state primitives   SET_ALIVE / SET_VAR / ... -- state-machine bookkeeping, never sent out
+//	everything else           the rules' name for something that happened -- pushed to OnEvent, audience decided by the rules
 //
-// 编号时代这里是三段：1..99 外部、100..999 内部、1000 起第三方。那个约定
-// 自己咬到过自己：第三方定义的每一个事件类型都落在「内部」段里，于是
-// 扩展的事件根本发不出去（规则包自己的公开事件全场看不到）。名字之后
-// 不再有段，内核只认自己那几个，别的一律当外部事件。
+// In the numbered era this was three ranges: 1..99 external, 100..999
+// internal, 1000 and up third-party. That convention bit itself: every
+// third-party event type landed inside the "internal" range, so extension
+// events could not be sent at all (a rules package's own public events were
+// invisible to everyone). With names there are no ranges: the kernel
+// recognises its own handful and treats everything else as external.
 type EventType string
 
-// EventUnspecified 未指定。
+// EventUnspecified is unspecified.
 const EventUnspecified EventType = ""
 
-// 内核自己的事件：开局与结束由它发出，其余几个是状态原语，永不外发。
+// The kernel's own events: it emits game start and game end; the rest are
+// state primitives and are never sent out.
 const (
 	EventGameStarted EventType = "GAME_STARTED"
 	EventGameEnded   EventType = "GAME_ENDED"
 
-	// —— 状态原语，永不外发 ——
-	EventDetour       EventType = "DETOUR"        // 为某个人绕道去某个阶段，待结算
-	EventPlayerAdded  EventType = "PLAYER_ADDED"  // 玩家入座（用于效果流回放）
-	EventPhaseChanged EventType = "PHASE_CHANGED" // 阶段流转（用于效果流回放）
-	EventSetAlive     EventType = "SET_ALIVE"     // 改玩家的存活状态
-	EventSetVar       EventType = "SET_VAR"       // 写一项自定义状态，作用域在效果里
-	EventGotoPhase    EventType = "GOTO_PHASE"    // 规则指定下一阶段，改写 NextPhase
-	EventSetActors    EventType = "SET_ACTORS"    // 指定哪些玩家可以在某个阶段行动
+	// -- state primitives, never sent out --
+	EventDetour       EventType = "DETOUR"        // detour through a phase for someone's sake, pending
+	EventPlayerAdded  EventType = "PLAYER_ADDED"  // a player took a seat (for effect-log replay)
+	EventPhaseChanged EventType = "PHASE_CHANGED" // a phase transition (for effect-log replay)
+	EventSetAlive     EventType = "SET_ALIVE"     // change a player's alive flag
+	EventSetVar       EventType = "SET_VAR"       // write custom state, scope carried in the effect
+	EventGotoPhase    EventType = "GOTO_PHASE"    // the rules pick the next phase, overriding NextPhase
+	EventSetActors    EventType = "SET_ACTORS"    // name the players who may act in a phase
 )
 
-// String 实现 fmt.Stringer。
+// String implements fmt.Stringer.
 func (v EventType) String() string {
 	if v == EventUnspecified {
 		return "UNSPECIFIED"

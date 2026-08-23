@@ -5,34 +5,35 @@ import (
 	"fmt"
 )
 
-// ErrorCode 错误码，用于把错误分类。
+// ErrorCode classifies an error.
 //
-// 与其他枚举一样，底层是字符串——错误码会出现在日志与 JSON 里，
-// 名字本身就是最稳定、也最能读懂的表示。
+// Like the other enums it is a string underneath -- error codes show up in
+// logs and in JSON, and the name itself is both the most stable and the most
+// readable representation.
 type ErrorCode string
 
 const (
 	CodeUnspecified        ErrorCode = ""
-	CodePlayerNotFound     ErrorCode = "PLAYER_NOT_FOUND"     // 玩家未找到
-	CodePlayerDead         ErrorCode = "PLAYER_DEAD"          // 玩家已死亡
-	CodeTargetNotFound     ErrorCode = "TARGET_NOT_FOUND"     // 目标未找到
-	CodeTargetDead         ErrorCode = "TARGET_DEAD"          // 目标已死亡
-	CodeSkillNotAllowed    ErrorCode = "SKILL_NOT_ALLOWED"    // 技能不允许在此阶段使用
-	CodeGameNotStarted     ErrorCode = "GAME_NOT_STARTED"     // 游戏未开始
-	CodeGameEnded          ErrorCode = "GAME_ENDED"           // 游戏已结束
-	CodeInvalidPhase       ErrorCode = "INVALID_PHASE"        // 无效阶段
-	CodeMessageNotAllowed  ErrorCode = "MESSAGE_NOT_ALLOWED"  // 当前阶段不允许发言
-	CodePlayerExists       ErrorCode = "PLAYER_EXISTS"        // 玩家ID已存在
-	CodeInvalidPlayerID    ErrorCode = "INVALID_PLAYER_ID"    // 玩家ID非法
-	CodeInvalidRole        ErrorCode = "INVALID_ROLE"         // 该角色不能作为玩家身份
-	CodeGameAlreadyStarted ErrorCode = "GAME_ALREADY_STARTED" // 游戏已开始
-	CodeInvalidBoard       ErrorCode = "INVALID_BOARD"        // 板子配置不合法
-	CodeInvalidSnapshot    ErrorCode = "INVALID_SNAPSHOT"     // 快照不合法或版本不兼容
-	CodeInvalidConfig      ErrorCode = "INVALID_CONFIG"       // 游戏配置不合法
-	CodeInvalidEffectLog   ErrorCode = "INVALID_EFFECT_LOG"   // 效果流不合法，无法回放
+	CodePlayerNotFound     ErrorCode = "PLAYER_NOT_FOUND"     // no such player
+	CodePlayerDead         ErrorCode = "PLAYER_DEAD"          // the player is dead
+	CodeTargetNotFound     ErrorCode = "TARGET_NOT_FOUND"     // no such target
+	CodeTargetDead         ErrorCode = "TARGET_DEAD"          // the target is dead
+	CodeSkillNotAllowed    ErrorCode = "SKILL_NOT_ALLOWED"    // the skill is not allowed in this phase
+	CodeGameNotStarted     ErrorCode = "GAME_NOT_STARTED"     // the game has not started
+	CodeGameEnded          ErrorCode = "GAME_ENDED"           // the game is over
+	CodeInvalidPhase       ErrorCode = "INVALID_PHASE"        // no such phase
+	CodeMessageNotAllowed  ErrorCode = "MESSAGE_NOT_ALLOWED"  // speaking is not allowed in this phase
+	CodePlayerExists       ErrorCode = "PLAYER_EXISTS"        // that player id is taken
+	CodeInvalidPlayerID    ErrorCode = "INVALID_PLAYER_ID"    // malformed player id
+	CodeInvalidRole        ErrorCode = "INVALID_ROLE"         // this role cannot be assigned to a player
+	CodeGameAlreadyStarted ErrorCode = "GAME_ALREADY_STARTED" // the game has already started
+	CodeInvalidBoard       ErrorCode = "INVALID_BOARD"        // the board setup is invalid
+	CodeInvalidSnapshot    ErrorCode = "INVALID_SNAPSHOT"     // the snapshot is invalid or of an incompatible version
+	CodeInvalidConfig      ErrorCode = "INVALID_CONFIG"       // the game config is invalid
+	CodeInvalidEffectLog   ErrorCode = "INVALID_EFFECT_LOG"   // the effect log is invalid and cannot be replayed
 )
 
-// String 实现 fmt.Stringer。
+// String implements fmt.Stringer.
 func (v ErrorCode) String() string {
 	if v == CodeUnspecified {
 		return "UNSPECIFIED"
@@ -40,20 +41,23 @@ func (v ErrorCode) String() string {
 	return string(v)
 }
 
-// GameError 游戏错误（实现 error 接口）
+// GameError is this package's error type.
 type GameError struct {
 	Code    ErrorCode
 	Message string
 
-	// sentinel 本错误对应的预定义哨兵，供 errors.Is 比对。
+	// sentinel is the predefined sentinel this error corresponds to, for
+	// errors.Is to match against.
 	//
-	// 带上下文的错误（WrapError 出来的那些）需要既能打印出具体信息，
-	// 又能被 errors.Is 认出是哪一类。少了这一环，调用方只能拿错误码
-	// 做字符串式的分流，而预定义的那批 Err* 变量看着能用、实际永远不命中。
+	// An error carrying context (one built by WrapError) has to both print
+	// the specific details and still be recognisable by errors.Is as a member
+	// of its class. Without this link a caller can only dispatch on the error
+	// code as a string, and the predefined Err* variables look usable while
+	// never actually matching anything.
 	sentinel error
 }
 
-// Error 实现 error 接口
+// Error implements error.
 func (e *GameError) Error() string {
 	if e.Message != "" {
 		return e.Message
@@ -61,10 +65,11 @@ func (e *GameError) Error() string {
 	return e.Code.String()
 }
 
-// Unwrap 返回本错误对应的预定义哨兵，让 errors.Is 能穿透带上下文的错误。
+// Unwrap returns the predefined sentinel, so errors.Is can see through an
+// error that carries context.
 func (e *GameError) Unwrap() error { return e.sentinel }
 
-// 预定义错误
+// Predefined errors.
 var (
 	ErrPlayerNotFound    = &GameError{Code: CodePlayerNotFound, Message: "player not found"}
 	ErrPlayerDead        = &GameError{Code: CodePlayerDead, Message: "player is dead"}
@@ -76,7 +81,7 @@ var (
 	ErrInvalidPhase      = &GameError{Code: CodeInvalidPhase, Message: "invalid phase"}
 	ErrMessageNotAllowed = &GameError{Code: CodeMessageNotAllowed, Message: "message not allowed in this phase"}
 
-	// 玩家与开局校验
+	// Player and start-of-game validation.
 	ErrPlayerExists        = &GameError{Code: CodePlayerExists, Message: "player already exists"}
 	ErrInvalidPlayerID     = &GameError{Code: CodeInvalidPlayerID, Message: "player id must not be empty"}
 	ErrInvalidRole         = &GameError{Code: CodeInvalidRole, Message: "role cannot be assigned to a player"}
@@ -84,24 +89,26 @@ var (
 	ErrInvalidBoard        = &GameError{Code: CodeInvalidBoard, Message: "invalid board"}
 	ErrBoardAlreadyDecided = &GameError{Code: CodeInvalidBoard, Message: "board is already decided before the game starts", sentinel: ErrInvalidBoard}
 
-	// 快照与效果流
+	// Snapshots and effect logs.
 	ErrInvalidSnapshot  = &GameError{Code: CodeInvalidSnapshot, Message: "invalid snapshot"}
 	ErrNilSnapshot      = &GameError{Code: CodeInvalidSnapshot, Message: "snapshot must not be nil", sentinel: ErrInvalidSnapshot}
 	ErrInvalidEffectLog = &GameError{Code: CodeInvalidEffectLog, Message: "invalid effect log"}
 
-	// 配置
+	// Config.
 	ErrInvalidConfig = &GameError{Code: CodeInvalidConfig, Message: "invalid game config"}
 )
 
-// HasCode 检查错误是否匹配指定错误码。
+// HasCode reports whether an error carries the given code.
 //
-// 走 errors.As 而非裸类型断言：调用方用 fmt.Errorf("...: %w", err)
-// 包一层上下文是最常见的写法，裸断言在那之后就再也不命中了。
+// It goes through errors.As rather than a bare type assertion: wrapping an
+// error in context with fmt.Errorf("...: %w", err) is the most common thing a
+// caller does, and a bare assertion stops matching the moment they do.
 func HasCode(err error, code ErrorCode) bool {
 	return CodeOf(err) == code
 }
 
-// CodeOf 从错误取出错误码，不是本库的错误时返回 CodeUnspecified。
+// CodeOf extracts the error code, returning CodeUnspecified for an error that
+// did not come from this library.
 func CodeOf(err error) ErrorCode {
 	var gameErr *GameError
 	if errors.As(err, &gameErr) {
@@ -110,10 +117,10 @@ func CodeOf(err error) ErrorCode {
 	return CodeUnspecified
 }
 
-// WrapError 构造一个带上下文的错误。
+// WrapError builds an error that carries context.
 //
-// 错误码对应的预定义哨兵会被挂上，因此
-// errors.Is(err, ErrPlayerExists) 对 WrapError 出来的错误同样成立。
+// The sentinel for the given code is attached, so errors.Is(err,
+// ErrPlayerExists) holds for errors built by WrapError too.
 func WrapError(code ErrorCode, format string, args ...interface{}) *GameError {
 	return &GameError{
 		Code:     code,
@@ -122,11 +129,13 @@ func WrapError(code ErrorCode, format string, args ...interface{}) *GameError {
 	}
 }
 
-// sentinelByCode 错误码到预定义哨兵的映射。
+// sentinelByCode maps an error code to its predefined sentinel.
 //
-// 一个码下若有多个更具体的哨兵（INVALID_BOARD 下的缺狼与缺好人），
-// 映射指向那一类的通用哨兵，具体的那几个再把它挂成自己的 sentinel，
-// 于是 errors.Is(ErrBoardAlreadyDecided, ErrInvalidBoard) 也成立。
+// Where one code has several more specific sentinels (no werewolves and no
+// villagers both live under INVALID_BOARD), the map points at the general
+// sentinel of that class and the specific ones attach it as their own
+// sentinel, so errors.Is(ErrBoardAlreadyDecided, ErrInvalidBoard) holds as
+// well.
 var sentinelByCode = map[ErrorCode]error{
 	CodePlayerNotFound:     ErrPlayerNotFound,
 	CodePlayerDead:         ErrPlayerDead,
@@ -147,7 +156,7 @@ var sentinelByCode = map[ErrorCode]error{
 	CodeInvalidEffectLog:   ErrInvalidEffectLog,
 }
 
-// sentinelFor 返回错误码对应的哨兵，没有对应哨兵时返回 nil。
+// sentinelFor returns the sentinel for a code, or nil when there is none.
 func sentinelFor(code ErrorCode) error {
 	return sentinelByCode[code]
 }

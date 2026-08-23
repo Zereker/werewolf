@@ -1,43 +1,53 @@
-// testview.go 手工构造一份 GameView。
+// testview.go builds a GameView by hand.
 //
-// 规则包要单元测试自己的解析器时需要它：`Resolver.Resolve(uses, view)`
-// 收的是一个 GameView，而规则包在内核之外，拿不到内核的内部状态。
-// 没有这个入口，规则的解析器就只能整局跑起来才测得动——那测的是集成，
-// 不是这个解析器本身。
+// A rules package needs this to unit-test its own resolvers:
+// `Resolver.Resolve(uses, view)` takes a GameView, and a rules package sits
+// outside the kernel with no access to the kernel's internal state. Without
+// this entry point a rule's resolver could only be exercised by running a
+// whole game -- which tests the integration, not the resolver.
 //
-// 名字不以 Test 开头，因为它是正经的公开 API，不是测试文件里的辅助。
+// The names do not start with Test because this is a genuine public API, not
+// a helper living in a test file.
 
 package hiddenrole
 
-// Board 一份手工摆出来的局面，用于构造 GameView。
+// Board is a board laid out by hand, used to construct a GameView.
 type Board struct {
-	// Players 场上的玩家。顺序无关，视图会按 ID 排序。
+	// Players are the players at the table. The order does not matter; the
+	// view sorts by ID.
 	Players []PlayerInfo
 
-	// Round 当前回合数，从 1 起。为 0 时按 1 处理。
+	// Round is the current round, counting from 1. Zero is treated as 1.
 	Round int
 
-	// Phase 当前阶段。
+	// Phase is the current phase.
 	Phase PhaseType
 
-	// Vars 整局有效、不属于任何玩家的状态（ScopeGame）。
+	// Vars is state that lives for the whole game and belongs to no player
+	// (ScopeGame).
 	Vars map[string]string
 
-	// RoundVars 本回合有效、不属于任何玩家的状态（ScopeRound）。
+	// RoundVars is state that lives for this round and belongs to no player
+	// (ScopeRound).
 	//
-	// 有主的两格在 PlayerInfo 上（Vars / RoundVars），四格凑齐才摆得出
-	// 任意一个局面——这里此前少了上面那格，理由与内核少那一格一样：
-	// 狼人杀用不到，所以没人发现。
+	// The two owned cells live on PlayerInfo (Vars / RoundVars), and all four
+	// are needed before an arbitrary board can be laid out. The cell above
+	// used to be missing here, for the same reason the kernel was missing one:
+	// werewolf does not need it, so nobody noticed.
 	RoundVars map[string]string
 }
 
-// Apply 把一批效果折进局面，返回改过的副本。
+// Apply folds a batch of effects into the board and returns the modified
+// copy.
 //
-// 规则测试用它接住解析器的产出：`b = b.Apply(r.Resolve(uses, b.View()))`，
-// 然后断言局面变成了什么样。走的是与引擎完全相同的那个写入点，因此
-// 「效果没生效」这类问题在单元测试里就会暴露，不必整局跑起来。
+// A rules test uses it to catch a resolver's output --
+// `b = b.Apply(r.Resolve(uses, b.View()))` -- and then asserts what the board
+// became. It goes through exactly the same write point as the engine, so an
+// effect that fails to land shows up in a unit test rather than requiring a
+// whole game to be run.
 //
-// 被否决的效果与内核不认得的类型都不会改变任何东西——这正是它要验的。
+// A vetoed effect and a type the kernel does not recognise both change
+// nothing -- which is precisely what this is meant to verify.
 func (b Board) Apply(effects []*Effect) Board {
 	s := b.state()
 	for _, ef := range effects {
@@ -46,12 +56,14 @@ func (b Board) Apply(effects []*Effect) Board {
 	return boardOf(s)
 }
 
-// View 构造这份局面的只读视图。
+// View builds a read-only view of this board.
 //
-// 返回的视图是快照式的：之后改动 Board 不会影响它。
+// The returned view is a snapshot: modifying the Board afterwards does not
+// affect it.
 func (b Board) View() GameView { return newStateView(b.state()) }
 
-// Player 取出一名玩家，不存在时第二个返回值为 false。
+// Player returns one player; the second result is false when there is no
+// such player.
 func (b Board) Player(id string) (PlayerInfo, bool) {
 	for _, p := range b.Players {
 		if p.ID == id {
@@ -61,10 +73,11 @@ func (b Board) Player(id string) (PlayerInfo, bool) {
 	return PlayerInfo{}, false
 }
 
-// Var 读某个作用域下的一项状态，四格都能读（见 VarScope）。
+// Var reads one piece of state in the given scope; all four cells are
+// readable (see VarScope).
 func (b Board) Var(scope VarScope, key string) string { return b.state().varOf(scope, key) }
 
-// state 把局面还原成内部状态。
+// state turns the board back into internal state.
 func (b Board) state() *gameState {
 	round := b.Round
 	if round < 1 {
@@ -85,7 +98,7 @@ func (b Board) state() *gameState {
 	return s
 }
 
-// boardOf 把内部状态导回局面。
+// boardOf exports internal state back into a board.
 func boardOf(s *gameState) Board {
 	b := Board{
 		Round: s.Round, Phase: s.Phase,
@@ -99,12 +112,13 @@ func boardOf(s *gameState) Board {
 	return b
 }
 
-// Seat 拼一名玩家，供 Board 使用。vars 是键值交替的可变参数。
+// Seat builds one player for use in a Board. vars is a variadic list of
+// alternating keys and values.
 //
 //	engine.Seat("wi", "WITCH", true, engine.VarCamp, "GOOD", "witch.antidote", "1")
 //
-// 键值个数不成对时，最后一个孤零零的键会被忽略——这是测试辅助，
-// 不值得为一个写错的调用返回 error。
+// If the count is odd the trailing lone key is ignored -- this is a test
+// helper, and a mistyped call is not worth an error return.
 func Seat(id string, role RoleType, alive bool, vars ...string) PlayerInfo {
 	p := PlayerInfo{ID: id, Role: role, Alive: alive}
 	for i := 0; i+1 < len(vars); i += 2 {
@@ -116,7 +130,7 @@ func Seat(id string, role RoleType, alive bool, vars ...string) PlayerInfo {
 	return p
 }
 
-// Mark 给一名玩家加上本回合的标记，返回改过的副本。
+// Mark adds this round's markers to a player and returns the modified copy.
 func Mark(p PlayerInfo, keys ...string) PlayerInfo {
 	if len(keys) == 0 {
 		return p
