@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"math/rand"
 	"testing"
 )
@@ -168,10 +168,10 @@ func withWolfKing(cfg *GameConfig, rules Rules) []EngineOption {
 		NextPhase: cfg.StartPhase,
 	}
 	return []EngineOption{
-		engine.WithRoleSetup(roleWolfKing, engine.RoleSetupFunc(wolfKingSetup)),
-		engine.WithResolver(phaseWolfKing, &wolfKingResolver{}),
-		engine.WithResolver(PhaseVote, &voteWithWolfKing{inner: NewVoteResolver()}),
-		engine.WithResolver(PhaseNightResolve, &nightResolveWithWolfKing{inner: NewNightResolveResolver(rules)}),
+		hiddenrole.WithRoleSetup(roleWolfKing, hiddenrole.RoleSetupFunc(wolfKingSetup)),
+		hiddenrole.WithResolver(phaseWolfKing, &wolfKingResolver{}),
+		hiddenrole.WithResolver(PhaseVote, &voteWithWolfKing{inner: NewVoteResolver()}),
+		hiddenrole.WithResolver(PhaseNightResolve, &nightResolveWithWolfKing{inner: NewNightResolveResolver(rules)}),
 	}
 }
 
@@ -179,7 +179,7 @@ func withWolfKing(cfg *GameConfig, rules Rules) []EngineOption {
 //
 // 与 voteWithWolfKing 同构，只是接的是另一条死亡通道——第三方要覆盖
 // 所有死法，就得每条通道各包一层。
-type nightResolveWithWolfKing struct{ inner engine.Resolver }
+type nightResolveWithWolfKing struct{ inner hiddenrole.Resolver }
 
 func (r *nightResolveWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	effects := r.inner.Resolve(uses, view)
@@ -191,7 +191,7 @@ func (r *nightResolveWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*E
 			continue
 		}
 		if p, ok := view.Player(ef.TargetID); ok && p.Role == roleWolfKing {
-			effects = append(effects, engine.NewDetourEffect(ef.TargetID, phaseWolfKing))
+			effects = append(effects, hiddenrole.NewDetourEffect(ef.TargetID, phaseWolfKing))
 		}
 	}
 	return effects
@@ -252,7 +252,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		// 开局就已分出胜负的板子（屠城模式下狼人不比好人少）会被 Start
 		// 拒掉。这不是缺陷，是那条校验在起作用——但要记一笔，否则
 		// 「跑了 5000 局」里有多少局根本没开局就说不清了。
-		if !errors.Is(err, engine.ErrInvalidBoard) {
+		if !errors.Is(err, hiddenrole.ErrInvalidBoard) {
 			t.Fatalf("seed=%d Start: %v", seed, err)
 		}
 		return append(tags, "开局即判负，未成局")
@@ -280,7 +280,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		// 不变量 A：PlayerView 与 AllowedSkills 一致
 		for _, id := range ids {
 			if a, b := len(e.AllowedSkills(id)), len(e.PlayerView(id).AllowedSkills); a != b {
-				t.Fatalf("seed=%d step=%d %s: AllowedSkills=%d engine.PlayerView=%d", seed, step, id, a, b)
+				t.Fatalf("seed=%d step=%d %s: AllowedSkills=%d hiddenrole.PlayerView=%d", seed, step, id, a, b)
 			}
 		}
 
@@ -292,7 +292,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 		for i := 0; i < 3; i++ {
 			for role, ri := range e.PhaseInfo().RoleInfos {
 				if got := fmt.Sprint(ri.PlayerIDs); got != want[role] {
-					t.Fatalf("seed=%d step=%d engine.PhaseInfo 的 %v 名单顺序不稳定: %s vs %s",
+					t.Fatalf("seed=%d step=%d hiddenrole.PhaseInfo 的 %v 名单顺序不稳定: %s vs %s",
 						seed, step, role, want[role], got)
 				}
 			}
@@ -386,7 +386,7 @@ func playRandom(t *testing.T, seed int, rng *rand.Rand) []string {
 			v := e.PlayerView(id)
 			self, _ := e.PlayerInfo(id)
 			for _, p := range v.Players {
-				if p.Role == engine.RoleUnspecified || p.ID == id {
+				if p.Role == hiddenrole.RoleUnspecified || p.ID == id {
 					continue
 				}
 				// 只允许看到狼队友的身份

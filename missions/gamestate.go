@@ -3,7 +3,7 @@ package missions
 import (
 	"strconv"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // gamestate.go 本包的整局进度存在哪。
@@ -40,8 +40,8 @@ const (
 )
 
 // gameNum 读一个整局计数，没有则为 0。
-func gameNum(view engine.GameView, key string) int {
-	n, err := strconv.Atoi(view.Var(engine.ScopeGame, key))
+func gameNum(view hiddenrole.GameView, key string) int {
+	n, err := strconv.Atoi(view.Var(hiddenrole.ScopeGame, key))
 	if err != nil {
 		return 0
 	}
@@ -49,27 +49,27 @@ func gameNum(view engine.GameView, key string) int {
 }
 
 // setGameNum 写一个整局计数。
-func setGameNum(_ engine.GameView, key string, n int) *engine.Effect {
-	return engine.NewSetVarEffect(engine.ScopeGame, key, strconv.Itoa(n))
+func setGameNum(_ hiddenrole.GameView, key string, n int) *hiddenrole.Effect {
+	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, key, strconv.Itoa(n))
 }
 
 // mission 当前是第几轮任务，1-5。开局还没写过时算第 1 轮。
-func mission(view engine.GameView) int {
+func mission(view hiddenrole.GameView) int {
 	if n := gameNum(view, varMission); n > 0 {
 		return n
 	}
 	return 1
 }
 
-func successes(view engine.GameView) int { return gameNum(view, varSuccess) }
-func failures(view engine.GameView) int  { return gameNum(view, varFail) }
-func rejects(view engine.GameView) int   { return gameNum(view, varRejects) }
+func successes(view hiddenrole.GameView) int { return gameNum(view, varSuccess) }
+func failures(view hiddenrole.GameView) int  { return gameNum(view, varFail) }
+func rejects(view hiddenrole.GameView) int   { return gameNum(view, varRejects) }
 
 // leaderID 当前队长。
 //
 // 队长按座位顺序轮转，无论组队是否通过——条目里的 leader token 每轮
 // 都往下传一位。下标存在账本里，取模玩家数。
-func leaderID(view engine.GameView) string {
+func leaderID(view hiddenrole.GameView) string {
 	all := view.AllPlayers()
 	if len(all) == 0 {
 		return ""
@@ -78,7 +78,7 @@ func leaderID(view engine.GameView) string {
 }
 
 // leaderAt 第 n 顺位的队长是谁。
-func leaderAt(view engine.GameView, n int) string {
+func leaderAt(view hiddenrole.GameView, n int) string {
 	all := view.AllPlayers()
 	if len(all) == 0 {
 		return ""
@@ -87,15 +87,15 @@ func leaderAt(view engine.GameView, n int) string {
 }
 
 // onTeam 这名玩家这一轮在不在任务队伍里。
-func onTeam(view engine.GameView, playerID string) bool {
-	return view.Var(engine.ScopeRound.Of(playerID), varOnTeam) != ""
+func onTeam(view hiddenrole.GameView, playerID string) bool {
+	return view.Var(hiddenrole.ScopeRound.Of(playerID), varOnTeam) != ""
 }
 
 // teamIDs 这一轮的任务队伍，按 ID 排序。
 //
 // 有序是规则必须保证的：产出的效果顺序要由局面唯一决定，
 // 否则回放与快照比对失去确定性。AllPlayers() 已经排好序。
-func teamIDs(view engine.GameView) []string {
+func teamIDs(view hiddenrole.GameView) []string {
 	var out []string
 	for _, p := range view.AllPlayers() {
 		if onTeam(view, p.ID) {
@@ -106,7 +106,9 @@ func teamIDs(view engine.GameView) []string {
 }
 
 // approved 这一轮的队伍表决通过了没有。
-func approved(view engine.GameView) bool { return view.Var(engine.ScopeRound, varApproved) != "" }
+func approved(view hiddenrole.GameView) bool {
+	return view.Var(hiddenrole.ScopeRound, varApproved) != ""
+}
 
 // gameSetup 开局那一刻把局面铺好。
 //
@@ -117,10 +119,10 @@ func approved(view engine.GameView) bool { return view.Var(engine.ScopeRound, va
 // 解析器算出来（表决之后点名下一任队长，提名之后点名任务队伍），
 // 而第一个阶段前面没有阶段。没有它的话，开局第一次提名会退回按角色算
 // ——也就是全场都被告知可以提名，正是这条疤要消灭的东西。
-func gameSetup(view engine.GameView) []*engine.Effect {
-	return []*engine.Effect{
-		engine.NewSetVarEffect(engine.ScopeGame, varMission, "1"),
-		engine.NewSetVarEffect(engine.ScopeGame, varLeader, "0"),
-		engine.NewSetActorsEffect(PhasePropose, leaderAt(view, 0)),
+func gameSetup(view hiddenrole.GameView) []*hiddenrole.Effect {
+	return []*hiddenrole.Effect{
+		hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varMission, "1"),
+		hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varLeader, "0"),
+		hiddenrole.NewSetActorsEffect(PhasePropose, leaderAt(view, 0)),
 	}
 }

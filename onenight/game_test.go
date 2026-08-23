@@ -3,20 +3,20 @@ package onenight
 import (
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // game 一局测试用的对局，外加几个断言辅助。
 type game struct {
 	t *testing.T
-	e *engine.Engine
+	e *hiddenrole.Engine
 }
 
 // newGame 开一局：seats 是「玩家 ID -> 发到手的牌」，center 是中央三张。
-func newGame(t *testing.T, center [CenterCount]engine.RoleType, seats ...seat) *game {
+func newGame(t *testing.T, center [CenterCount]hiddenrole.RoleType, seats ...seat) *game {
 	t.Helper()
 
-	e, err := engine.NewEngine(GameConfig(), Options(center)...)
+	e, err := hiddenrole.NewEngine(GameConfig(), Options(center)...)
 	if err != nil {
 		t.Fatalf("NewEngine: %v", err)
 	}
@@ -33,15 +33,15 @@ func newGame(t *testing.T, center [CenterCount]engine.RoleType, seats ...seat) *
 
 type seat struct {
 	id   string
-	role engine.RoleType
+	role hiddenrole.RoleType
 }
 
-func at(id string, role engine.RoleType) seat { return seat{id, role} }
+func at(id string, role hiddenrole.RoleType) seat { return seat{id, role} }
 
 // use 提交一次技能，失败即终止。
-func (g *game) use(playerID string, skill engine.SkillType, targets ...string) {
+func (g *game) use(playerID string, skill hiddenrole.SkillType, targets ...string) {
 	g.t.Helper()
-	err := g.e.SubmitSkillUse(&engine.SkillUse{
+	err := g.e.SubmitSkillUse(&hiddenrole.SkillUse{
 		PlayerID: playerID, Skill: skill, Targets: targets,
 	})
 	if err != nil {
@@ -50,7 +50,7 @@ func (g *game) use(playerID string, skill engine.SkillType, targets ...string) {
 }
 
 // end 结束当前阶段，并断言走到了 want。
-func (g *game) end(want engine.PhaseType) {
+func (g *game) end(want hiddenrole.PhaseType) {
 	g.t.Helper()
 	if _, err := g.e.EndPhase(); err != nil {
 		g.t.Fatalf("EndPhase: %v", err)
@@ -63,7 +63,7 @@ func (g *game) end(want engine.PhaseType) {
 // advance 一直推进到某个阶段为止。
 //
 // 比 end 好数：end 是「结束当前阶段，落到 want」，写一串的时候很容易差一格。
-func (g *game) advance(to engine.PhaseType) {
+func (g *game) advance(to hiddenrole.PhaseType) {
 	g.t.Helper()
 	for i := 0; i < 20; i++ {
 		if g.e.Status().Phase == to {
@@ -79,7 +79,7 @@ func (g *game) advance(to engine.PhaseType) {
 // toVote 一路推到投票，中途不做任何夜晚动作。
 func (g *game) toVote() {
 	g.t.Helper()
-	for _, p := range []engine.PhaseType{
+	for _, p := range []hiddenrole.PhaseType{
 		PhaseNightMinion, PhaseNightMason, PhaseNightSeer, PhaseNightRobber,
 		PhaseNightTroublemake, PhaseNightDrunk, PhaseNightInsomniac,
 		PhaseDay, PhaseVote,
@@ -89,7 +89,7 @@ func (g *game) toVote() {
 }
 
 // card 这名玩家现在手上是什么牌。
-func (g *game) card(playerID string) engine.RoleType {
+func (g *game) card(playerID string) hiddenrole.RoleType {
 	g.t.Helper()
 	return card(g.e.View(), playerID)
 }
@@ -109,7 +109,7 @@ func (g *game) info(playerID string) map[string]string {
 // 这是这一套规则包的第一条测试，验的是「它到底能不能在这个内核上跑起来」。
 func TestGame_FullNightAndVote(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleWerewolf, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleWerewolf, RoleVillager},
 		at("w", RoleWerewolf), at("s", RoleSeer), at("r", RoleRobber),
 		at("t", RoleTroublemaker), at("v", RoleVillager))
 
@@ -154,7 +154,7 @@ func TestGame_FullNightAndVote(t *testing.T) {
 		g.use(id, SkillVote, "r")
 	}
 	g.use("r", SkillVote, "w")
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	st := g.e.Status()
 	if !st.Over {
@@ -189,12 +189,12 @@ func (g *game) voteAll(target string) {
 // TestVictory_WolfDies 至少一名狼人出局 → 村民队赢。
 func TestVictory_WolfDies(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.toVote()
 	g.voteAll("w")
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	if got := g.e.Status().Winner; !Won(got, CampVillage) {
 		t.Errorf("狼出局，村民队应当赢，实际 %v", got)
@@ -207,12 +207,12 @@ func TestVictory_WolfDies(t *testing.T) {
 // TestVictory_NoWolfDies 场上有狼且没有狼出局 → 狼队赢。
 func TestVictory_NoWolfDies(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.toVote()
 	g.voteAll("v1")
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	if got := g.e.Status().Winner; !Won(got, CampWolf) {
 		t.Errorf("没有狼出局，狼队应当赢，实际 %v", got)
@@ -225,14 +225,14 @@ func TestVictory_NoWolfDies(t *testing.T) {
 // 不是平票的特例。三个人各投下一个，正好一人一票。
 func TestVictory_NoWolfInPlayAndNobodyDies(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
 		at("v1", RoleVillager), at("v2", RoleSeer), at("v3", RoleVillager))
 
 	g.toVote()
 	g.use("v1", SkillVote, "v2")
 	g.use("v2", SkillVote, "v3")
 	g.use("v3", SkillVote, "v1")
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	for _, p := range g.e.View().AllPlayers() {
 		if !p.Alive {
@@ -247,12 +247,12 @@ func TestVictory_NoWolfInPlayAndNobodyDies(t *testing.T) {
 // TestVictory_TannerDiesAlone 皮匠出局且无狼出局 → 皮匠独赢，狼不赢。
 func TestVictory_TannerDiesAlone(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("tn", RoleTanner), at("v", RoleVillager))
 
 	g.toVote()
 	g.voteAll("tn")
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	got := g.e.Status().Winner
 	if !Won(got, CampTanner) {
@@ -273,7 +273,7 @@ func TestVictory_TannerDiesAlone(t *testing.T) {
 // 只能由规则包自己带着。见 SCARS.md 疤 5。
 func TestVictory_TannerAndWolfBothDie(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("tn", RoleTanner),
 		at("v1", RoleVillager), at("v2", RoleVillager))
 
@@ -284,7 +284,7 @@ func TestVictory_TannerAndWolfBothDie(t *testing.T) {
 	g.use("tn", SkillVote, "w") // 狼 2 票
 	g.use("v2", SkillVote, "tn")
 	g.use("w", SkillVote, "tn") // 皮匠 2 票
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	for _, id := range []string{"w", "tn"} {
 		if p, _ := g.e.PlayerInfo(id); p.Alive {
@@ -310,7 +310,7 @@ func TestVictory_TannerAndWolfBothDie(t *testing.T) {
 // 猎人，而发到手是猎人、后来被换走的那个人不是。
 func TestHunter_TakesHisVoteWithHim(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("h", RoleHunter), at("w", RoleWerewolf),
 		at("v1", RoleVillager), at("v2", RoleVillager))
 
@@ -319,7 +319,7 @@ func TestHunter_TakesHisVoteWithHim(t *testing.T) {
 	g.use("v2", SkillVote, "h")
 	g.use("w", SkillVote, "h") // 猎人三票，出局
 	g.use("h", SkillVote, "w") // 他投的是狼 —— 狼被带走
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	if p, _ := g.e.PlayerInfo("h"); p.Alive {
 		t.Fatal("猎人得票最多，应当出局")
@@ -339,7 +339,7 @@ func TestHunter_TakesHisVoteWithHim(t *testing.T) {
 // 之后不会变成狼、不会跟狼一起醒；而狼的牌被抢走之后，他那一夜**已经动过了**。
 func TestNightAbilityFollowsDealtCard_NotHeldCard(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("r", RoleRobber),
 		at("i", RoleInsomniac), at("v", RoleVillager))
 
@@ -380,7 +380,7 @@ func TestNightAbilityFollowsDealtCard_NotHeldCard(t *testing.T) {
 // 当场就不成立了。
 func TestDrunk_DoesNotKnowWhatHeHolds(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
 		at("d", RoleDrunk), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.advance(PhaseNightDrunk)
@@ -395,7 +395,7 @@ func TestDrunk_DoesNotKnowWhatHeHolds(t *testing.T) {
 	for k, v := range view.RoleInfo {
 		t.Errorf("酒鬼不该知道任何东西，却看到 %s=%s", k, v)
 	}
-	if view.Self.Camp != engine.CampUnspecified {
+	if view.Self.Camp != hiddenrole.CampUnspecified {
 		t.Errorf("酒鬼不该知道自己现在算哪边，Self.Camp = %v", view.Self.Camp)
 	}
 	if view.Self.Role != RoleDrunk {
@@ -406,7 +406,7 @@ func TestDrunk_DoesNotKnowWhatHeHolds(t *testing.T) {
 // TestTroublemaker_VictimsAreNotTold 被捣蛋鬼换过牌的两个人不知道。
 func TestTroublemaker_VictimsAreNotTold(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("t", RoleTroublemaker), at("w", RoleWerewolf),
 		at("v1", RoleVillager), at("v2", RoleVillager))
 

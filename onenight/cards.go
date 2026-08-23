@@ -20,7 +20,7 @@
 
 package onenight
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 const (
 	// varCard 这名玩家现在手上是哪张牌。整局有效、属于某个玩家。
@@ -47,10 +47,10 @@ var centerKeys = [CenterCount]string{varCenter0, varCenter1, varCenter2}
 // 夜里谁做什么由它决定，不由 card 决定：抢劫者抢到狼人牌之后不会跟狼一起
 // 醒。内核的 RoleType 就是它，这个函数只是把「为什么读 Role 而不读 card」
 // 这件事写在名字里。
-func dealt(view engine.GameView, playerID string) engine.RoleType {
+func dealt(view hiddenrole.GameView, playerID string) hiddenrole.RoleType {
 	p, ok := view.Player(playerID)
 	if !ok {
-		return engine.RoleUnspecified
+		return hiddenrole.RoleUnspecified
 	}
 	return p.Role
 }
@@ -58,49 +58,49 @@ func dealt(view engine.GameView, playerID string) engine.RoleType {
 // card 这名玩家**现在手上**的那张牌。结算时算哪边由它决定。
 //
 // 没写过则退回发到手的那张——RoleSetup 会在入座时发放，这一路只是兜底。
-func card(view engine.GameView, playerID string) engine.RoleType {
-	if v := view.Var(engine.ScopeGame.Of(playerID), varCard); v != "" {
-		return engine.RoleType(v)
+func card(view hiddenrole.GameView, playerID string) hiddenrole.RoleType {
+	if v := view.Var(hiddenrole.ScopeGame.Of(playerID), varCard); v != "" {
+		return hiddenrole.RoleType(v)
 	}
 	return dealt(view, playerID)
 }
 
 // setCard 把某人手上的牌改成某张。
-func setCard(playerID string, role engine.RoleType) *engine.Effect {
-	return engine.NewSetVarEffect(engine.ScopeGame.Of(playerID), varCard, string(role))
+func setCard(playerID string, role hiddenrole.RoleType) *hiddenrole.Effect {
+	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of(playerID), varCard, string(role))
 }
 
 // centerCard 中央第 i 张牌，下标越界则为空。
-func centerCard(view engine.GameView, i int) engine.RoleType {
+func centerCard(view hiddenrole.GameView, i int) hiddenrole.RoleType {
 	if i < 0 || i >= CenterCount {
-		return engine.RoleUnspecified
+		return hiddenrole.RoleUnspecified
 	}
-	return engine.RoleType(view.Var(engine.ScopeGame, centerKeys[i]))
+	return hiddenrole.RoleType(view.Var(hiddenrole.ScopeGame, centerKeys[i]))
 }
 
 // setCenterCard 把中央第 i 张牌改成某张。
-func setCenterCard(i int, role engine.RoleType) *engine.Effect {
+func setCenterCard(i int, role hiddenrole.RoleType) *hiddenrole.Effect {
 	if i < 0 || i >= CenterCount {
 		return nil
 	}
-	return engine.NewSetVarEffect(engine.ScopeGame, centerKeys[i], string(role))
+	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, centerKeys[i], string(role))
 }
 
 // swapCards 交换两名玩家手上的牌。
 //
 // 捣蛋鬼与抢劫者都走这一条，区别只在谁看得到结果——那是信息边界的事，
 // 不是状态的事。
-func swapCards(view engine.GameView, a, b string) []*engine.Effect {
-	return []*engine.Effect{
+func swapCards(view hiddenrole.GameView, a, b string) []*hiddenrole.Effect {
+	return []*hiddenrole.Effect{
 		setCard(a, card(view, b)),
 		setCard(b, card(view, a)),
 	}
 }
 
 // swapWithCenter 把某人手上的牌与中央第 i 张交换。
-func swapWithCenter(view engine.GameView, playerID string, i int) []*engine.Effect {
+func swapWithCenter(view hiddenrole.GameView, playerID string, i int) []*hiddenrole.Effect {
 	held := card(view, playerID)
-	return []*engine.Effect{
+	return []*hiddenrole.Effect{
 		setCard(playerID, centerCard(view, i)),
 		setCenterCard(i, held),
 	}
@@ -113,7 +113,7 @@ func swapWithCenter(view engine.GameView, playerID string, i int) []*engine.Effe
 // 自己现在拿的是什么牌，把当前阵营填进他自己的视图等于直接告诉他。
 // 所以本包整局都不写 VarCamp，阵营在翻牌那一刻由宿主自己算。
 // 见 SCARS.md 疤 4。
-func CampOf(role engine.RoleType) engine.Camp {
+func CampOf(role hiddenrole.RoleType) hiddenrole.Camp {
 	switch role {
 	case RoleWerewolf, RoleMinion:
 		return CampWolf
@@ -128,4 +128,4 @@ func CampOf(role engine.RoleType) engine.Camp {
 //
 // 只认 WEREWOLF：爪牙属狼队，但他**不是狼**——「有没有狼人出局」这条
 // 胜负判定数的是狼人牌，不是狼队。
-func isWolfCard(role engine.RoleType) bool { return role == RoleWerewolf }
+func isWolfCard(role hiddenrole.RoleType) bool { return role == RoleWerewolf }

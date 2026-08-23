@@ -3,7 +3,7 @@ package onenight
 import (
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // TestSeer_LooksAtTwoCenterCards 预言家看两张中央牌。
@@ -12,7 +12,7 @@ import (
 // 只认玩家 ID。见 SCARS.md 疤 1。
 func TestSeer_LooksAtTwoCenterCards(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleWerewolf, RoleTanner, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleTanner, RoleVillager},
 		at("s", RoleSeer), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.advance(PhaseNightSeer)
@@ -38,7 +38,7 @@ func TestSeer_LooksAtTwoCenterCards(t *testing.T) {
 func TestLoneWolf_MayPeekOnlyWhenAlone(t *testing.T) {
 	t.Run("独狼可以看", func(t *testing.T) {
 		g := newGame(t,
-			[CenterCount]engine.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
+			[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
 			at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
 		g.use("w", SkillPeekCenter0)
@@ -51,7 +51,7 @@ func TestLoneWolf_MayPeekOnlyWhenAlone(t *testing.T) {
 
 	t.Run("两只狼看不了", func(t *testing.T) {
 		g := newGame(t,
-			[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+			[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 			at("w1", RoleWerewolf), at("w2", RoleWerewolf), at("v", RoleVillager))
 
 		g.use("w1", SkillPeekCenter0)
@@ -66,7 +66,7 @@ func TestLoneWolf_MayPeekOnlyWhenAlone(t *testing.T) {
 // TestRobber_LearnsWhatHeTook 抢劫者知道自己抢到了什么，被抢的人不知道。
 func TestRobber_LearnsWhatHeTook(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("r", RoleRobber), at("w", RoleWerewolf), at("v", RoleVillager))
 
 	g.advance(PhaseNightRobber)
@@ -87,7 +87,7 @@ func TestRobber_LearnsWhatHeTook(t *testing.T) {
 // 因此 PhaseReadiness 会把它们列进 Optional 而不是 Pending。
 func TestNightActions_AreAllOptional(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("s", RoleSeer), at("r", RoleRobber), at("v", RoleVillager))
 
 	g.advance(PhaseNightSeer)
@@ -103,7 +103,7 @@ func TestNightActions_AreAllOptional(t *testing.T) {
 // TestVote_IsRequiredOfEveryone 投票是全员必须的。
 func TestVote_IsRequiredOfEveryone(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.advance(PhaseVote)
@@ -122,14 +122,14 @@ func TestVote_IsRequiredOfEveryone(t *testing.T) {
 // 内核不管这条——「能不能投自己」是规则的判断。提交会被收下，结算时丢掉。
 func TestVote_CannotVoteForSelf(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.advance(PhaseVote)
 	g.use("w", SkillVote, "w")
 	g.use("v1", SkillVote, "w")
 	g.use("v2", SkillVote, "w")
-	g.end(engine.PhaseEnd)
+	g.end(hiddenrole.PhaseEnd)
 
 	if p, _ := g.e.PlayerInfo("w"); p.Alive {
 		t.Error("两票投狼，他该出局")
@@ -139,16 +139,16 @@ func TestVote_CannotVoteForSelf(t *testing.T) {
 // TestCenterIndexes 从技能名读中央牌下标。
 func TestCenterIndexes(t *testing.T) {
 	cases := []struct {
-		skill engine.SkillType
+		skill hiddenrole.SkillType
 		want  []int
 	}{
 		{SkillPeekCenter0, []int{0}},
 		{SkillDrinkCenter2, []int{2}},
 		{SkillSeerCenter01, []int{0, 1}},
 		{SkillSeerCenter12, []int{1, 2}},
-		{SkillSeerPlayer, nil},  // 不带下标
-		{SkillRob, nil},         // 同上
-		{engine.SkillSkip, nil}, // 没有下划线
+		{SkillSeerPlayer, nil},      // 不带下标
+		{SkillRob, nil},             // 同上
+		{hiddenrole.SkillSkip, nil}, // 没有下划线
 	}
 	for _, c := range cases {
 		got := centerIndexes(c.skill)
@@ -170,9 +170,9 @@ func TestCenterIndexes(t *testing.T) {
 // 与前两套规则包同一条：效果流的回放与比对全靠它。投票的死亡名单是一张 map，
 // 直接遍历产出效果的话，同一个局面每次结算的顺序都不一样。
 func TestEffectOrderIsDeterminedByTheBoard(t *testing.T) {
-	build := func() []*engine.Effect {
+	build := func() []*hiddenrole.Effect {
 		g := newGame(t,
-			[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+			[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 			at("a", RoleHunter), at("b", RoleWerewolf),
 			at("c", RoleVillager), at("d", RoleVillager))
 		g.advance(PhaseVote)

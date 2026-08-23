@@ -2,7 +2,7 @@ package werewolf
 
 import (
 	"errors"
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"sync"
 	"testing"
 )
@@ -87,8 +87,8 @@ func TestEngine_Start_AlreadyStarted(t *testing.T) {
 	// 首次 Start 由 newRuleGame 完成并断言成功，这里只看重复 Start
 	g := newRuleGame(t, nil, wolf("w1"), villager("v1"))
 
-	if err := g.e.Start(); err != engine.ErrGameAlreadyStarted {
-		t.Errorf("重复 Start 应返回 engine.ErrGameAlreadyStarted，实际 %v", err)
+	if err := g.e.Start(); err != hiddenrole.ErrGameAlreadyStarted {
+		t.Errorf("重复 Start 应返回 hiddenrole.ErrGameAlreadyStarted，实际 %v", err)
 	}
 }
 
@@ -123,8 +123,8 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 				mustAdd(t, eng, id, role)
 			}
 			err := eng.Start()
-			if !errors.Is(err, engine.ErrInvalidBoard) {
-				t.Errorf("期望 engine.ErrInvalidBoard，实际 %v", err)
+			if !errors.Is(err, hiddenrole.ErrInvalidBoard) {
+				t.Errorf("期望 hiddenrole.ErrInvalidBoard，实际 %v", err)
 			}
 		})
 	}
@@ -148,17 +148,17 @@ func TestEngine_Start_RejectsInvalidBoard(t *testing.T) {
 func TestEngine_AddPlayer_Validation(t *testing.T) {
 	eng := MustNew(DefaultRules())
 
-	if err := eng.AddPlayer("", RoleVillager); err != engine.ErrInvalidPlayerID {
-		t.Errorf("空 ID 应返回 engine.ErrInvalidPlayerID，实际 %v", err)
+	if err := eng.AddPlayer("", RoleVillager); err != hiddenrole.ErrInvalidPlayerID {
+		t.Errorf("空 ID 应返回 hiddenrole.ErrInvalidPlayerID，实际 %v", err)
 	}
-	if err := eng.AddPlayer("god", RoleGod); !engine.HasCode(err, engine.CodeInvalidRole) {
+	if err := eng.AddPlayer("god", RoleGod); !hiddenrole.HasCode(err, hiddenrole.CodeInvalidRole) {
 		t.Errorf("上帝不是玩家身份，应返回 INVALID_ROLE，实际 %v", err)
 	}
 
 	if err := eng.AddPlayer("w1", RoleWerewolf); err != nil {
 		t.Fatalf("正常添加应当成功，实际 %v", err)
 	}
-	if err := eng.AddPlayer("w1", RoleVillager); !engine.HasCode(err, engine.CodePlayerExists) {
+	if err := eng.AddPlayer("w1", RoleVillager); !hiddenrole.HasCode(err, hiddenrole.CodePlayerExists) {
 		t.Errorf("重复 ID 应返回 PLAYER_EXISTS，实际 %v", err)
 	}
 
@@ -173,8 +173,8 @@ func TestEngine_AddPlayer_Validation(t *testing.T) {
 	if err := eng.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := eng.AddPlayer("v2", RoleVillager); err != engine.ErrGameAlreadyStarted {
-		t.Errorf("开局后添加玩家应返回 engine.ErrGameAlreadyStarted，实际 %v", err)
+	if err := eng.AddPlayer("v2", RoleVillager); err != hiddenrole.ErrGameAlreadyStarted {
+		t.Errorf("开局后添加玩家应返回 hiddenrole.ErrGameAlreadyStarted，实际 %v", err)
 	}
 	if _, ok := eng.PlayerInfo("v2"); ok {
 		t.Error("被拒绝的玩家不应进入状态")
@@ -219,8 +219,8 @@ func TestEngine_SubmitSkillUse_InvalidPlayer(t *testing.T) {
 
 	err := g.use("nonexistent", SkillKill, "wolf")
 
-	if err != engine.ErrPlayerNotFound {
-		t.Errorf("expected engine.ErrPlayerNotFound, got %v", err)
+	if err != hiddenrole.ErrPlayerNotFound {
+		t.Errorf("expected hiddenrole.ErrPlayerNotFound, got %v", err)
 	}
 }
 
@@ -231,8 +231,8 @@ func TestEngine_SubmitSkillUse_DeadPlayer(t *testing.T) {
 
 	err := g.use("wolf", SkillKill, "victim")
 
-	if err != engine.ErrPlayerDead {
-		t.Errorf("expected engine.ErrPlayerDead, got %v", err)
+	if err != hiddenrole.ErrPlayerDead {
+		t.Errorf("expected hiddenrole.ErrPlayerDead, got %v", err)
 	}
 }
 
@@ -242,8 +242,8 @@ func TestEngine_SubmitSkillUse_InvalidSkill(t *testing.T) {
 	// Villager cannot kill
 	err := g.use("villager", SkillKill, "target")
 
-	if err != engine.ErrSkillNotAllowed {
-		t.Errorf("expected engine.ErrSkillNotAllowed, got %v", err)
+	if err != hiddenrole.ErrSkillNotAllowed {
+		t.Errorf("expected hiddenrole.ErrSkillNotAllowed, got %v", err)
 	}
 }
 
@@ -346,8 +346,8 @@ func TestEngine_EndPhase_AlreadyEnded(t *testing.T) {
 	endTheGame(t, eng)
 
 	_, err := eng.EndPhase()
-	if err != engine.ErrGameEnded {
-		t.Errorf("expected engine.ErrGameEnded, got %v", err)
+	if err != hiddenrole.ErrGameEnded {
+		t.Errorf("expected hiddenrole.ErrGameEnded, got %v", err)
 	}
 }
 
@@ -443,7 +443,7 @@ func TestEngine_OnEvent(t *testing.T) {
 	g := newRuleGame(t, nil, guard("guard"), wolf("wolf"), villager("v1"))
 
 	eventCount := 0
-	g.e.OnEvent(func(event *engine.Event) {
+	g.e.OnEvent(func(event *hiddenrole.Event) {
 		eventCount++
 	})
 
@@ -463,10 +463,10 @@ func TestEngine_MultipleHandlers(t *testing.T) {
 	count1 := 0
 	count2 := 0
 
-	g.e.OnEvent(func(event *engine.Event) {
+	g.e.OnEvent(func(event *hiddenrole.Event) {
 		count1++
 	})
-	g.e.OnEvent(func(event *engine.Event) {
+	g.e.OnEvent(func(event *hiddenrole.Event) {
 		count2++
 	})
 
@@ -515,7 +515,7 @@ func TestEngine_Concurrency(t *testing.T) {
 				Skill:    SkillProtect,
 				Targets:  []string{"v1"},
 			})
-			if err != nil && err != engine.ErrPlayerDead && err != engine.ErrTargetDead {
+			if err != nil && err != hiddenrole.ErrPlayerDead && err != hiddenrole.ErrTargetDead {
 				errors <- err
 			}
 		}()
@@ -741,13 +741,13 @@ func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 200; i++ {
-			eng.OnEvent(func(*engine.Event) {})
+			eng.OnEvent(func(*hiddenrole.Event) {})
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 200; i++ {
-			eng.OnMessage(func(*engine.Message, []string) {})
+			eng.OnMessage(func(*hiddenrole.Message, []string) {})
 		}
 	}()
 	go func() {
@@ -765,13 +765,13 @@ func TestEngine_ConcurrentOnEventAndEndPhase(t *testing.T) {
 // handler，且必须留下错误日志（此前是 `_ = recover()` 静默吞掉）。
 func TestEngine_HandlerPanicIsIsolatedAndLogged(t *testing.T) {
 	rec := &recordingLogger{}
-	g := newRuleGameWith(t, nil, []EngineOption{engine.WithLogger(rec)}, seats(
+	g := newRuleGameWith(t, nil, []EngineOption{hiddenrole.WithLogger(rec)}, seats(
 		wolf("w1"), villagers("v1", "v2", "v3"),
 	)...)
 
 	survivorCalled := false
-	g.e.OnEvent(func(*engine.Event) { panic("boom") })
-	g.e.OnEvent(func(*engine.Event) { survivorCalled = true })
+	g.e.OnEvent(func(*hiddenrole.Event) { panic("boom") })
+	g.e.OnEvent(func(*hiddenrole.Event) { survivorCalled = true })
 
 	g.end(PhaseNightWolf)
 	g.mustUse("w1", SkillKill, "v1")
@@ -796,14 +796,14 @@ type recordingLogger struct {
 	infos  []string
 }
 
-func (l *recordingLogger) Debug(string, ...engine.Field) {}
-func (l *recordingLogger) Warn(string, ...engine.Field)  {}
-func (l *recordingLogger) Info(msg string, _ ...engine.Field) {
+func (l *recordingLogger) Debug(string, ...hiddenrole.Field) {}
+func (l *recordingLogger) Warn(string, ...hiddenrole.Field)  {}
+func (l *recordingLogger) Info(msg string, _ ...hiddenrole.Field) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.infos = append(l.infos, msg)
 }
-func (l *recordingLogger) Error(msg string, _ ...engine.Field) {
+func (l *recordingLogger) Error(msg string, _ ...hiddenrole.Field) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.errors = append(l.errors, msg)
@@ -830,8 +830,8 @@ func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 	mustAdd(t, eng, "w1", RoleWerewolf)
 	mustAdd(t, eng, "v1", RoleVillager)
 
-	if _, err := eng.EndPhase(); !errors.Is(err, engine.ErrGameNotStarted) {
-		t.Fatalf("未开局推进阶段应返回 engine.ErrGameNotStarted，实际 %v", err)
+	if _, err := eng.EndPhase(); !errors.Is(err, hiddenrole.ErrGameNotStarted) {
+		t.Fatalf("未开局推进阶段应返回 hiddenrole.ErrGameNotStarted，实际 %v", err)
 	}
 	if got := eng.Status().Phase; got != PhaseStart {
 		t.Errorf("阶段不应变化，实际 %v", got)
@@ -840,10 +840,10 @@ func TestEngine_EndPhase_BeforeStart(t *testing.T) {
 	// 非法板子（全好人）同样推不动，Start 的校验因此仍然有效
 	bad := MustNew(DefaultRules())
 	mustAdd(t, bad, "v1", RoleVillager)
-	if _, err := bad.EndPhase(); !errors.Is(err, engine.ErrGameNotStarted) {
-		t.Fatalf("期望 engine.ErrGameNotStarted，实际 %v", err)
+	if _, err := bad.EndPhase(); !errors.Is(err, hiddenrole.ErrGameNotStarted) {
+		t.Fatalf("期望 hiddenrole.ErrGameNotStarted，实际 %v", err)
 	}
-	if err := bad.Start(); !errors.Is(err, engine.ErrInvalidBoard) {
+	if err := bad.Start(); !errors.Is(err, hiddenrole.ErrInvalidBoard) {
 		t.Fatalf("板子校验应当仍然生效，实际 %v", err)
 	}
 }
@@ -855,12 +855,12 @@ func TestEngine_Start_DispatchesGameStarted(t *testing.T) {
 	mustAdd(t, eng, "v1", RoleVillager)
 
 	var seen []EventType
-	eng.OnEvent(func(ev *engine.Event) { seen = append(seen, ev.Type) })
+	eng.OnEvent(func(ev *hiddenrole.Event) { seen = append(seen, ev.Type) })
 
 	if err := eng.Start(); err != nil {
 		t.Fatalf("Start 失败: %v", err)
 	}
-	if len(seen) != 1 || seen[0] != engine.EventGameStarted {
+	if len(seen) != 1 || seen[0] != hiddenrole.EventGameStarted {
 		t.Errorf("期望收到 GAME_STARTED，实际 %v", seen)
 	}
 }
@@ -888,7 +888,7 @@ func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
 		allowed := g.e.AllowedSkills(id)
 		fromView := g.e.PlayerView(id).AllowedSkills
 		if len(allowed) != len(fromView) {
-			t.Errorf("%s: AllowedSkills=%v 与 engine.PlayerView=%v 不一致", id, allowed, fromView)
+			t.Errorf("%s: AllowedSkills=%v 与 hiddenrole.PlayerView=%v 不一致", id, allowed, fromView)
 		}
 	}
 
@@ -910,7 +910,7 @@ func TestEngine_AllowedSkills_MatchesPlayerView(t *testing.T) {
 // effect.Type / effect.Canceled——那道保护够不着。
 func TestEngine_ResolverReturningNilEffect(t *testing.T) {
 	eng := MustNew(DefaultRules(),
-		engine.WithResolver(PhaseNightGuard, resolverReturningNil{}))
+		hiddenrole.WithResolver(PhaseNightGuard, resolverReturningNil{}))
 	mustAdd(t, eng, "w1", RoleWerewolf)
 	mustAdd(t, eng, "v1", RoleVillager)
 	if err := eng.Start(); err != nil {
@@ -935,7 +935,7 @@ func TestEngine_ResolverReturningNilEffect(t *testing.T) {
 type resolverReturningNil struct{}
 
 func (resolverReturningNil) Resolve([]*SkillUse, GameView) []*Effect {
-	return []*Effect{nil, engine.NewEffect(EventSkip, "v1", "")}
+	return []*Effect{nil, hiddenrole.NewEffect(EventSkip, "v1", "")}
 }
 
 // TestEngine_RoundBoundaryFollowsStartPhase 回合边界要跟着起始阶段走，而不是写死守卫阶段。
@@ -1000,7 +1000,7 @@ func TestEngine_EndPhase_ReturnsGameEnded(t *testing.T) {
 		t.Fatalf("EndPhase 失败: %v", err)
 	}
 
-	ended := findEffect(effects, engine.EventGameEnded)
+	ended := findEffect(effects, hiddenrole.EventGameEnded)
 	if ended == nil {
 		t.Fatal("EndPhase 的返回值里应当包含 GAME_ENDED")
 	}
@@ -1033,7 +1033,7 @@ func endTheGame(t *testing.T, e *Engine) {
 		}
 	}
 	// 狼人出局，好人立即获胜
-	e.Apply(engine.NewSetAliveEffect("w1", false))
+	e.Apply(hiddenrole.NewSetAliveEffect("w1", false))
 	for i := 0; i < 30 && !e.Status().Over; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)

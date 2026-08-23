@@ -3,7 +3,7 @@ package onenight
 import (
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // TestSnapshot_RoundTrip 存档往返之后局面一致，接着打完结局相同。
@@ -12,7 +12,7 @@ import (
 // 谁看到了什么）。快照要是漏了它们，恢复出来的对局会从头错到尾。
 func TestSnapshot_RoundTrip(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleWerewolf, RoleVillager, RoleTanner},
+		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleTanner},
 		at("s", RoleSeer), at("r", RoleRobber),
 		at("w", RoleWerewolf), at("v", RoleVillager))
 
@@ -23,8 +23,8 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 	g.advance(PhaseDay)
 
 	snap := g.e.Snapshot()
-	restored, err := engine.RestoreEngine(GameConfig(), snap,
-		Options([CenterCount]engine.RoleType{RoleWerewolf, RoleVillager, RoleTanner})...)
+	restored, err := hiddenrole.RestoreEngine(GameConfig(), snap,
+		Options([CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleTanner})...)
 	if err != nil {
 		t.Fatalf("RestoreEngine: %v", err)
 	}
@@ -52,14 +52,14 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 	}
 
 	// 接着打完，两边结局相同。
-	finish := func(e *engine.Engine) engine.Camp {
+	finish := func(e *hiddenrole.Engine) hiddenrole.Camp {
 		t.Helper()
 		for _, id := range []string{"s", "r", "w", "v"} {
 			target := "r"
 			if id == "r" {
 				target = "w"
 			}
-			if err := e.SubmitSkillUse(&engine.SkillUse{
+			if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 				PlayerID: id, Skill: SkillVote, Targets: []string{target},
 			}); err != nil {
 				t.Fatalf("%s 投票: %v", id, err)
@@ -84,7 +84,7 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 
 // TestReplay_RebuildsGame 效果流回放出同一个局面。
 func TestReplay_RebuildsGame(t *testing.T) {
-	center := [CenterCount]engine.RoleType{RoleVillager, RoleWerewolf, RoleVillager}
+	center := [CenterCount]hiddenrole.RoleType{RoleVillager, RoleWerewolf, RoleVillager}
 	g := newGame(t, center,
 		at("t", RoleTroublemaker), at("w", RoleWerewolf),
 		at("d", RoleDrunk), at("v", RoleVillager))
@@ -95,7 +95,7 @@ func TestReplay_RebuildsGame(t *testing.T) {
 	g.use("d", SkillDrinkCenter1)
 	g.advance(PhaseDay)
 
-	replayed, err := engine.ReplayEngine(GameConfig(), g.e.EffectLog(), Options(center)...)
+	replayed, err := hiddenrole.ReplayEngine(GameConfig(), g.e.EffectLog(), Options(center)...)
 	if err != nil {
 		t.Fatalf("ReplayEngine: %v", err)
 	}
@@ -130,10 +130,10 @@ func TestConfig_IsValid(t *testing.T) {
 // ——而这份配置一个回合边界都没声明，正因为它不需要（SCARS.md 疤 2）。
 func TestRoundNeverAdvances(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
-	for _, phase := range []engine.PhaseType{
+	for _, phase := range []hiddenrole.PhaseType{
 		PhaseNightMinion, PhaseNightMason, PhaseNightSeer, PhaseNightRobber,
 		PhaseNightTroublemake, PhaseNightDrunk, PhaseNightInsomniac,
 		PhaseDay, PhaseVote,

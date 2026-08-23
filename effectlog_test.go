@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // playMidGame 走到一个有内容的局面：救过人、投出过人、猎人开过枪
@@ -50,9 +50,9 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 	var added, started int
 	for _, ef := range log {
 		switch ef.Type {
-		case engine.EventPlayerAdded:
+		case hiddenrole.EventPlayerAdded:
 			added++
-		case engine.EventGameStarted:
+		case hiddenrole.EventGameStarted:
 			started++
 		}
 	}
@@ -66,13 +66,13 @@ func TestEffectLog_RecordsWholeGame(t *testing.T) {
 	// 关键事件都要在
 	want := []EventType{
 		EventProtect,
-		engine.EventSetVar,
+		hiddenrole.EventSetVar,
 		EventSave,
 		EventCheck,
 		EventEliminate,
-		engine.EventDetour,
+		hiddenrole.EventDetour,
 		EventShoot,
-		engine.EventPhaseChanged,
+		hiddenrole.EventPhaseChanged,
 	}
 	for _, typ := range want {
 		found := false
@@ -155,14 +155,14 @@ func TestReplayEngine_Rejects(t *testing.T) {
 	})
 
 	t.Run("开局效果缺少阶段", func(t *testing.T) {
-		bad := []*Effect{engine.NewEffect(engine.EventGameStarted, "", "")}
+		bad := []*Effect{hiddenrole.NewEffect(hiddenrole.EventGameStarted, "", "")}
 		if _, err := Replay(nil, DefaultRules(), bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
 	})
 
 	t.Run("流转效果缺少阶段", func(t *testing.T) {
-		bad := []*Effect{engine.NewEffect(engine.EventPhaseChanged, "", "")}
+		bad := []*Effect{hiddenrole.NewEffect(hiddenrole.EventPhaseChanged, "", "")}
 		if _, err := Replay(nil, DefaultRules(), bad); err == nil {
 			t.Error("缺少阶段信息时应当报错")
 		}
@@ -213,7 +213,7 @@ func TestReplayEngine_MidRoundTriggerQueue(t *testing.T) {
 
 	replayed, err := Replay(nil, DefaultRules(), g.e.EffectLog())
 	if err != nil {
-		t.Fatalf("engine.ReplayEngine 失败: %v", err)
+		t.Fatalf("hiddenrole.ReplayEngine 失败: %v", err)
 	}
 
 	origin := g.e.RoundContext().Detours
@@ -255,8 +255,8 @@ func TestApply_StaysReplayableAndRestorable(t *testing.T) {
 
 	// 宿主判一个掉线的玩家出局：不属于任何阶段的状态变更
 	kept := g.e.Apply(
-		engine.NewEffect(EventType("DISCONNECT"), "", "v3"),
-		engine.NewSetAliveEffect("v3", false))
+		hiddenrole.NewEffect(EventType("DISCONNECT"), "", "v3"),
+		hiddenrole.NewSetAliveEffect("v3", false))
 	if len(kept) != 2 {
 		t.Fatalf("Apply 只留下了 %d 条", len(kept))
 	}
@@ -281,7 +281,7 @@ func TestApply_StaysReplayableAndRestorable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var snap engine.Snapshot
+	var snap hiddenrole.Snapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
 		t.Fatal(err)
 	}

@@ -19,8 +19,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/Zereker/hiddenrole"
 	"github.com/Zereker/werewolf"
-	"github.com/Zereker/werewolf/engine"
 )
 
 // command 房间收到的一条指令。
@@ -71,7 +71,7 @@ func newRoom(name string, tick time.Duration) (*room, error) {
 		cmds:  make(chan command, 64),
 	}
 
-	eng, err := werewolf.New(werewolf.DefaultRules(), engine.WithLogger(roomLogger{room: name}))
+	eng, err := werewolf.New(werewolf.DefaultRules(), hiddenrole.WithLogger(roomLogger{room: name}))
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +243,7 @@ func (r *room) phaseMsg() serverMsg {
 //
 // 在房间的 goroutine 上被调用（EndPhase 就在这条 goroutine 上），
 // 因此这里读引擎是安全的。
-func (r *room) onEvent(ev *engine.Event) {
+func (r *room) onEvent(ev *hiddenrole.Event) {
 	audience, known := r.eng.AudienceOf(ev)
 	if !known {
 		// 第三方角色自定义的事件类型，引擎无从判断可见性
@@ -256,7 +256,7 @@ func (r *room) onEvent(ev *engine.Event) {
 }
 
 // onMessage 玩家发言，按引擎给出的接收者路由。
-func (r *room) onMessage(msg *engine.Message, receivers []string) {
+func (r *room) onMessage(msg *hiddenrole.Message, receivers []string) {
 	for _, id := range receivers {
 		r.sendTo(id, serverMsg{Type: "chat", From: msg.SenderID, Text: msg.Content})
 	}
@@ -275,18 +275,18 @@ func (r *room) sendTo(player string, m serverMsg) {
 // roomLogger 把引擎日志带上房间名。
 type roomLogger struct{ room string }
 
-func (l roomLogger) Debug(string, ...engine.Field) {}
-func (l roomLogger) Info(msg string, f ...engine.Field) {
+func (l roomLogger) Debug(string, ...hiddenrole.Field) {}
+func (l roomLogger) Info(msg string, f ...hiddenrole.Field) {
 	log.Printf("[%s] %s%s", l.room, msg, fields(f))
 }
-func (l roomLogger) Warn(msg string, f ...engine.Field) {
+func (l roomLogger) Warn(msg string, f ...hiddenrole.Field) {
 	log.Printf("[%s] WARN %s%s", l.room, msg, fields(f))
 }
-func (l roomLogger) Error(msg string, f ...engine.Field) {
+func (l roomLogger) Error(msg string, f ...hiddenrole.Field) {
 	log.Printf("[%s] ERROR %s%s", l.room, msg, fields(f))
 }
 
-func fields(f []engine.Field) string {
+func fields(f []hiddenrole.Field) string {
 	out := ""
 	for _, x := range f {
 		out += fmt.Sprintf(" %s=%v", x.Key, x.Value)

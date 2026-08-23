@@ -22,7 +22,7 @@
 // 因此用描述性的 onenight（一夜）而不是商标本身，与出版方无关。
 package onenight
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // 十个阶段：九个夜晚环节 + 白天讨论 + 投票。
 //
@@ -33,16 +33,16 @@ import "github.com/Zereker/werewolf/engine"
 // 能把抢劫者刚抢来的牌再换走；失眠者最后动，所以他看到的是所有交换之后的
 // 结果。次序错了，游戏就变成另一个游戏。
 const (
-	PhaseNightWerewolf    engine.PhaseType = "NIGHT_WEREWOLF"     // 狼人互认；独狼可看一张中央牌
-	PhaseNightMinion      engine.PhaseType = "NIGHT_MINION"       // 爪牙看谁是狼（狼不知道爪牙是谁）
-	PhaseNightMason       engine.PhaseType = "NIGHT_MASON"        // 守夜人互认
-	PhaseNightSeer        engine.PhaseType = "NIGHT_SEER"         // 看一名玩家的牌，或两张中央牌
-	PhaseNightRobber      engine.PhaseType = "NIGHT_ROBBER"       // 与一名玩家换牌，并看新牌
-	PhaseNightTroublemake engine.PhaseType = "NIGHT_TROUBLEMAKER" // 交换另外两名玩家的牌，自己不看
-	PhaseNightDrunk       engine.PhaseType = "NIGHT_DRUNK"        // 与一张中央牌交换，不看
-	PhaseNightInsomniac   engine.PhaseType = "NIGHT_INSOMNIAC"    // 看自己现在的牌
-	PhaseDay              engine.PhaseType = "DAY"                // 讨论
-	PhaseVote             engine.PhaseType = "VOTE"               // 同时投票
+	PhaseNightWerewolf    hiddenrole.PhaseType = "NIGHT_WEREWOLF"     // 狼人互认；独狼可看一张中央牌
+	PhaseNightMinion      hiddenrole.PhaseType = "NIGHT_MINION"       // 爪牙看谁是狼（狼不知道爪牙是谁）
+	PhaseNightMason       hiddenrole.PhaseType = "NIGHT_MASON"        // 守夜人互认
+	PhaseNightSeer        hiddenrole.PhaseType = "NIGHT_SEER"         // 看一名玩家的牌，或两张中央牌
+	PhaseNightRobber      hiddenrole.PhaseType = "NIGHT_ROBBER"       // 与一名玩家换牌，并看新牌
+	PhaseNightTroublemake hiddenrole.PhaseType = "NIGHT_TROUBLEMAKER" // 交换另外两名玩家的牌，自己不看
+	PhaseNightDrunk       hiddenrole.PhaseType = "NIGHT_DRUNK"        // 与一张中央牌交换，不看
+	PhaseNightInsomniac   hiddenrole.PhaseType = "NIGHT_INSOMNIAC"    // 看自己现在的牌
+	PhaseDay              hiddenrole.PhaseType = "DAY"                // 讨论
+	PhaseVote             hiddenrole.PhaseType = "VOTE"               // 同时投票
 )
 
 // 十一个角色。
@@ -60,21 +60,21 @@ const (
 // 第二层是本包自己的一项整局状态（varCard），见 cards.go。
 const (
 	// 狼队
-	RoleWerewolf engine.RoleType = "WEREWOLF" // 夜里互认；场上只有一只时可看一张中央牌
-	RoleMinion   engine.RoleType = "MINION"   // 看得见狼，狼看不见他
+	RoleWerewolf hiddenrole.RoleType = "WEREWOLF" // 夜里互认；场上只有一只时可看一张中央牌
+	RoleMinion   hiddenrole.RoleType = "MINION"   // 看得见狼，狼看不见他
 
 	// 村民队
-	RoleMason        engine.RoleType = "MASON"        // 两名守夜人互认；只有一名时另一张在中央
-	RoleSeer         engine.RoleType = "SEER"         // 看一名玩家，或两张中央牌
-	RoleRobber       engine.RoleType = "ROBBER"       // 与一名玩家换牌并看新牌
-	RoleTroublemaker engine.RoleType = "TROUBLEMAKER" // 交换另外两名玩家的牌，自己不看
-	RoleDrunk        engine.RoleType = "DRUNK"        // 与一张中央牌交换，**不看**
-	RoleInsomniac    engine.RoleType = "INSOMNIAC"    // 看自己现在的牌
-	RoleVillager     engine.RoleType = "VILLAGER"     // 无能力
-	RoleHunter       engine.RoleType = "HUNTER"       // 他出局时，他投的那个人也出局
+	RoleMason        hiddenrole.RoleType = "MASON"        // 两名守夜人互认；只有一名时另一张在中央
+	RoleSeer         hiddenrole.RoleType = "SEER"         // 看一名玩家，或两张中央牌
+	RoleRobber       hiddenrole.RoleType = "ROBBER"       // 与一名玩家换牌并看新牌
+	RoleTroublemaker hiddenrole.RoleType = "TROUBLEMAKER" // 交换另外两名玩家的牌，自己不看
+	RoleDrunk        hiddenrole.RoleType = "DRUNK"        // 与一张中央牌交换，**不看**
+	RoleInsomniac    hiddenrole.RoleType = "INSOMNIAC"    // 看自己现在的牌
+	RoleVillager     hiddenrole.RoleType = "VILLAGER"     // 无能力
+	RoleHunter       hiddenrole.RoleType = "HUNTER"       // 他出局时，他投的那个人也出局
 
 	// 独立
-	RoleTanner engine.RoleType = "TANNER" // 只有自己出局才赢
+	RoleTanner hiddenrole.RoleType = "TANNER" // 只有自己出局才赢
 )
 
 // 十三个技能。
@@ -84,24 +84,24 @@ const (
 // 牌的下标只能编进技能名里——三张牌两两组合三种，单张三种，一共六个技能
 // 干的其实是两件事。这是本包记下的第一条疤，见 SCARS.md。
 const (
-	SkillPeekCenter0 engine.SkillType = "PEEK_CENTER_0" // 独狼看中央第 0 张
-	SkillPeekCenter1 engine.SkillType = "PEEK_CENTER_1"
-	SkillPeekCenter2 engine.SkillType = "PEEK_CENTER_2"
+	SkillPeekCenter0 hiddenrole.SkillType = "PEEK_CENTER_0" // 独狼看中央第 0 张
+	SkillPeekCenter1 hiddenrole.SkillType = "PEEK_CENTER_1"
+	SkillPeekCenter2 hiddenrole.SkillType = "PEEK_CENTER_2"
 
-	SkillSeerPlayer   engine.SkillType = "SEER_PLAYER"    // 预言家看一名玩家
-	SkillSeerCenter01 engine.SkillType = "SEER_CENTER_01" // 预言家看中央第 0、1 张
-	SkillSeerCenter02 engine.SkillType = "SEER_CENTER_02"
-	SkillSeerCenter12 engine.SkillType = "SEER_CENTER_12"
+	SkillSeerPlayer   hiddenrole.SkillType = "SEER_PLAYER"    // 预言家看一名玩家
+	SkillSeerCenter01 hiddenrole.SkillType = "SEER_CENTER_01" // 预言家看中央第 0、1 张
+	SkillSeerCenter02 hiddenrole.SkillType = "SEER_CENTER_02"
+	SkillSeerCenter12 hiddenrole.SkillType = "SEER_CENTER_12"
 
-	SkillRob engine.SkillType = "ROB" // 抢劫者与一名玩家换牌
+	SkillRob hiddenrole.SkillType = "ROB" // 抢劫者与一名玩家换牌
 
-	SkillMeddle engine.SkillType = "MEDDLE" // 捣蛋鬼交换另外两名玩家的牌
+	SkillMeddle hiddenrole.SkillType = "MEDDLE" // 捣蛋鬼交换另外两名玩家的牌
 
-	SkillDrinkCenter0 engine.SkillType = "DRINK_CENTER_0" // 酒鬼与中央第 0 张交换
-	SkillDrinkCenter1 engine.SkillType = "DRINK_CENTER_1"
-	SkillDrinkCenter2 engine.SkillType = "DRINK_CENTER_2"
+	SkillDrinkCenter0 hiddenrole.SkillType = "DRINK_CENTER_0" // 酒鬼与中央第 0 张交换
+	SkillDrinkCenter1 hiddenrole.SkillType = "DRINK_CENTER_1"
+	SkillDrinkCenter2 hiddenrole.SkillType = "DRINK_CENTER_2"
 
-	SkillVote engine.SkillType = "VOTE" // 指认一人
+	SkillVote hiddenrole.SkillType = "VOTE" // 指认一人
 )
 
 // 十一个事件：规则给「发生了什么」起的名字。内核一个都不认得。
@@ -109,25 +109,25 @@ const (
 // 与前两套同一条规矩：一条 SWAPPED 单独发出去，谁的牌都不会动；真正改状态
 // 的是旁边那条 SET_VAR。两个效果，两件事。
 const (
-	EventLoneWolf  engine.EventType = "LONE_WOLF"   // 场上只有一只狼
-	EventPeeked    engine.EventType = "PEEKED"      // 看了一张中央牌
-	EventSeerLook  engine.EventType = "SEER_LOOK"   // 预言家看了牌
-	EventRobbed    engine.EventType = "ROBBED"      // 抢劫者换了牌
-	EventMeddled   engine.EventType = "MEDDLED"     // 捣蛋鬼交换了两人的牌
-	EventDrunkSwap engine.EventType = "DRUNK_SWAP"  // 酒鬼与中央换了牌
-	EventInsomnia  engine.EventType = "INSOMNIA"    // 失眠者看了自己的牌
-	EventVoted     engine.EventType = "VOTED"       // 一票投出
-	EventNoOneDies engine.EventType = "NO_ONE_DIES" // 每人各得一票，无人出局
-	EventLynched   engine.EventType = "LYNCHED"     // 被票出局
-	EventHunterHit engine.EventType = "HUNTER_HIT"  // 猎人带走了他投的那个人
+	EventLoneWolf  hiddenrole.EventType = "LONE_WOLF"   // 场上只有一只狼
+	EventPeeked    hiddenrole.EventType = "PEEKED"      // 看了一张中央牌
+	EventSeerLook  hiddenrole.EventType = "SEER_LOOK"   // 预言家看了牌
+	EventRobbed    hiddenrole.EventType = "ROBBED"      // 抢劫者换了牌
+	EventMeddled   hiddenrole.EventType = "MEDDLED"     // 捣蛋鬼交换了两人的牌
+	EventDrunkSwap hiddenrole.EventType = "DRUNK_SWAP"  // 酒鬼与中央换了牌
+	EventInsomnia  hiddenrole.EventType = "INSOMNIA"    // 失眠者看了自己的牌
+	EventVoted     hiddenrole.EventType = "VOTED"       // 一票投出
+	EventNoOneDies hiddenrole.EventType = "NO_ONE_DIES" // 每人各得一票，无人出局
+	EventLynched   hiddenrole.EventType = "LYNCHED"     // 被票出局
+	EventHunterHit hiddenrole.EventType = "HUNTER_HIT"  // 猎人带走了他投的那个人
 )
 
 // 两个阵营。取值与狼人杀、任务制同名，含义与判定完全不同——
 // 这一点本身就是内核不解释取值的证据。
 const (
-	CampVillage engine.Camp = "VILLAGE"
-	CampWolf    engine.Camp = "WOLF"
+	CampVillage hiddenrole.Camp = "VILLAGE"
+	CampWolf    hiddenrole.Camp = "WOLF"
 
 	// CampTanner 皮匠自成一边：他既不帮村民也不帮狼，只想自己死。
-	CampTanner engine.Camp = "TANNER"
+	CampTanner hiddenrole.Camp = "TANNER"
 )

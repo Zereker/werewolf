@@ -1,0 +1,223 @@
+const CampUnspecified
+const CodeGameAlreadyStarted
+const CodeGameEnded
+const CodeGameNotStarted
+const CodeInvalidBoard
+const CodeInvalidConfig
+const CodeInvalidEffectLog
+const CodeInvalidPhase
+const CodeInvalidPlayerID
+const CodeInvalidRole
+const CodeInvalidSnapshot
+const CodeMessageNotAllowed
+const CodePlayerDead
+const CodePlayerExists
+const CodePlayerNotFound
+const CodeSkillNotAllowed
+const CodeTargetDead
+const CodeTargetNotFound
+const CodeUnspecified
+const DefaultPhaseTimeout
+const EventDetour
+const EventGameEnded
+const EventGameStarted
+const EventGotoPhase
+const EventPhaseChanged
+const EventPlayerAdded
+const EventSetActors
+const EventSetAlive
+const EventSetVar
+const EventUnspecified
+const PhaseEnd
+const PhaseStart
+const PhaseUnspecified
+const RoleSystem
+const RoleUnspecified
+const SkillAnnounce
+const SkillSkip
+const SkillUnspecified
+const SnapshotVersion
+const VarCamp
+const VarPresent
+func CodeOf(error) ErrorCode
+func HasCode(error, ErrorCode) bool
+func Mark(PlayerInfo, ...string) PlayerInfo
+func MustNewEngine(*Config, ...EngineOption) *Engine
+func NewDetourEffect(string, PhaseType) *Effect
+func NewEffect(EventType, string, string) *Effect
+func NewEngine(*Config, ...EngineOption) (*Engine, error)
+func NewGotoPhaseEffect(PhaseType) *Effect
+func NewSetActorsEffect(PhaseType, ...string) *Effect
+func NewSetAliveEffect(string, bool) *Effect
+func NewSetVarEffect(VarScope, string, string) *Effect
+func ReplayEngine(*Config, []*Effect, ...EngineOption) (*Engine, error)
+func RestoreEngine(*Config, *Snapshot, ...EngineOption) (*Engine, error)
+func Seat(string, RoleType, bool, ...string) PlayerInfo
+func WithAudience(AudienceProvider) EngineOption
+func WithGameSetup(GameSetup) EngineOption
+func WithLogger(Logger) EngineOption
+func WithResolver(PhaseType, Resolver) EngineOption
+func WithRoleInfo(RoleType, RoleInfoProvider) EngineOption
+func WithRoleSetup(RoleType, RoleSetup) EngineOption
+func WithSpeech(SpeechProvider) EngineOption
+func WithTeammates(TeammateProvider) EngineOption
+func WithVictoryChecker(VictoryChecker) EngineOption
+func WrapError(ErrorCode, string, ...interface{}) *GameError
+func enginetest.RunFuzz(*testing.T, FuzzSpec)
+iface AudienceProvider.Audience(*Event, GameView) ([]string, bool)
+iface GameSetup.Setup(GameView) []*Effect
+iface GameView.AlivePlayerIDsByRole(RoleType) []string
+iface GameView.AlivePlayers() []PlayerInfo
+iface GameView.AllPlayers() []PlayerInfo
+iface GameView.Phase() PhaseType
+iface GameView.Player(string) (PlayerInfo, bool)
+iface GameView.Round() int
+iface GameView.RoundContext() RoundContext
+iface GameView.Var(VarScope, string) string
+iface Logger.Debug(string, ...Field)
+iface Logger.Error(string, ...Field)
+iface Logger.Info(string, ...Field)
+iface Logger.Warn(string, ...Field)
+iface Resolver.Resolve([]*SkillUse, GameView) []*Effect
+iface RoleInfoProvider.RoleInfo(string, GameView) map[string]string
+iface RoleSetup.Setup(string, RoleType) map[string]string
+iface SpeechProvider.Receivers(string, GameView) []string
+iface TeammateProvider.Teammates(string, GameView) []string
+iface VictoryChecker.CheckVictory(GameView) (bool, Camp)
+method AudienceFunc.Audience(*Event, GameView) ([]string, bool)
+method Board.Apply([]*Effect) Board
+method Board.Player(string) (PlayerInfo, bool)
+method Board.Var(VarScope, string) string
+method Board.View() GameView
+method Camp.String() string
+method Config.PhaseTimeout(PhaseType) time.Duration
+method Config.Validate() error
+method Effect.Cancel(string)
+method Effect.SetsAlive() (bool, bool)
+method Effect.SetsVar() (VarScope, string, string, bool)
+method Effect.ToEvent() *Event
+method Effect.WithData(string, interface{}) *Effect
+method Engine.AddPlayer(string, RoleType) error
+method Engine.AlivePlayerIDs() []string
+method Engine.AllowedSkills(string) []SkillType
+method Engine.Apply(...*Effect) []*Effect
+method Engine.AudienceOf(*Event) ([]string, bool)
+method Engine.EffectLog() []*Effect
+method Engine.EndPhase() ([]*Effect, error)
+method Engine.MessageReceivers(string) []string
+method Engine.OnEvent(EventHandler)
+method Engine.OnMessage(MessageHandler)
+method Engine.PhaseInfo() *PhaseInfo
+method Engine.PhaseReadiness() PhaseReadiness
+method Engine.PlayerInfo(string) (PlayerInfo, bool)
+method Engine.PlayerView(string) *PlayerView
+method Engine.RoundContext() *RoundContext
+method Engine.SendMessage(string, string) error
+method Engine.Snapshot() *Snapshot
+method Engine.Start() error
+method Engine.Status() Status
+method Engine.SubmitSkillUse(*SkillUse) error
+method Engine.Teammates(string) []string
+method Engine.Var(VarScope, string) string
+method Engine.View() GameView
+method ErrorCode.String() string
+method EventType.String() string
+method GameError.Error() string
+method GameError.Unwrap() error
+method GameSetupFunc.Setup(GameView) []*Effect
+method PhaseInfo.GodAnnouncementStep() *PhaseStep
+method PhaseInfo.NeedsGodAnnouncement() bool
+method PhaseInfo.PlayerActionSteps() []PhaseStep
+method PhaseType.String() string
+method ResolverFunc.Resolve([]*SkillUse, GameView) []*Effect
+method RoleInfoFunc.RoleInfo(string, GameView) map[string]string
+method RoleSetupFunc.Setup(string, RoleType) map[string]string
+method RoleType.String() string
+method SkillType.String() string
+method SkillUse.Target() string
+method SpeechFunc.Receivers(string, GameView) []string
+method TeammateFunc.Teammates(string, GameView) []string
+method VarScope.Of(string) VarScope
+method VarScope.String() string
+method VictoryFunc.CheckVictory(GameView) (bool, Camp)
+type AudienceFunc func(*Event, GameView) ([]string, bool)
+type AudienceProvider
+type Board
+type Camp
+type Config
+type Detour
+type DetourSnapshot
+type Effect
+type Engine
+type EngineOption func(*Engine) error
+type ErrorCode
+type Event
+type EventHandler func(*Event)
+type EventType
+type Field
+type GameError
+type GameSetup
+type GameSetupFunc func(GameView) []*Effect
+type GameView
+type Logger
+type Message
+type MessageHandler func(*Message, []string)
+type PendingAction
+type PhaseConfig
+type PhaseInfo
+type PhaseReadiness
+type PhaseStep
+type PhaseType
+type PlayerInfo
+type PlayerSnapshot
+type PlayerView
+type PublicPlayerInfo
+type Resolver
+type ResolverFunc func([]*SkillUse, GameView) []*Effect
+type RoleInfoFunc func(string, GameView) map[string]string
+type RoleInfoProvider
+type RolePhaseInfo
+type RoleSetup
+type RoleSetupFunc func(string, RoleType) map[string]string
+type RoleType
+type RoundContext
+type RoundCtxSnapshot
+type SelfInfo
+type SkillType
+type SkillUse
+type SkillUseSnapshot
+type Snapshot
+type SpeechFunc func(string, GameView) []string
+type SpeechProvider
+type Status
+type TeammateFunc func(string, GameView) []string
+type TeammateProvider
+type VarScope
+type VictoryChecker
+type VictoryFunc func(GameView) (bool, Camp)
+type enginetest.Act func(*hiddenrole.Engine, *rand.Rand)
+type enginetest.FuzzSpec
+type enginetest.Game
+type enginetest.Seat
+type enginetest.Setup func(*rand.Rand) Game
+var ErrBoardAlreadyDecided
+var ErrGameAlreadyStarted
+var ErrGameEnded
+var ErrGameNotStarted
+var ErrInvalidBoard
+var ErrInvalidConfig
+var ErrInvalidEffectLog
+var ErrInvalidPhase
+var ErrInvalidPlayerID
+var ErrInvalidRole
+var ErrInvalidSnapshot
+var ErrMessageNotAllowed
+var ErrNilSnapshot
+var ErrPlayerDead
+var ErrPlayerExists
+var ErrPlayerNotFound
+var ErrSkillNotAllowed
+var ErrTargetDead
+var ErrTargetNotFound
+var ScopeGame
+var ScopeRound

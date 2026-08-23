@@ -16,40 +16,40 @@
 // 中文条目在梅林那一条上有误，见 vocab.go 的说明。
 package missions
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // Options 把内核装配成一局这套规则。
 //
 // 与狼人杀的 werewolf.Options 一样，全部经公开选项装上去，没有后门。
 // 两套规则用的是同一批入口，这件事由编译器保证——本包在内核之外。
-func Options() []engine.EngineOption {
-	opts := []engine.EngineOption{
-		engine.WithResolver(PhasePropose, proposeResolver{}),
-		engine.WithResolver(PhaseTeamVote, teamVoteResolver{}),
-		engine.WithResolver(PhaseMission, missionResolver{}),
-		engine.WithResolver(PhaseAssassin, assassinResolver{}),
-		engine.WithVictoryChecker(victoryChecker{}),
-		engine.WithAudience(engine.AudienceFunc(audience)),
-		engine.WithTeammates(engine.TeammateFunc(teammates)),
-		engine.WithSpeech(engine.SpeechFunc(speech)),
-		engine.WithGameSetup(engine.GameSetupFunc(gameSetup)),
+func Options() []hiddenrole.EngineOption {
+	opts := []hiddenrole.EngineOption{
+		hiddenrole.WithResolver(PhasePropose, proposeResolver{}),
+		hiddenrole.WithResolver(PhaseTeamVote, teamVoteResolver{}),
+		hiddenrole.WithResolver(PhaseMission, missionResolver{}),
+		hiddenrole.WithResolver(PhaseAssassin, assassinResolver{}),
+		hiddenrole.WithVictoryChecker(victoryChecker{}),
+		hiddenrole.WithAudience(hiddenrole.AudienceFunc(audience)),
+		hiddenrole.WithTeammates(hiddenrole.TeammateFunc(teammates)),
+		hiddenrole.WithSpeech(hiddenrole.SpeechFunc(speech)),
+		hiddenrole.WithGameSetup(hiddenrole.GameSetupFunc(gameSetup)),
 	}
 	for role, setup := range builtinRoleSetup {
-		opts = append(opts, engine.WithRoleSetup(role, setup))
+		opts = append(opts, hiddenrole.WithRoleSetup(role, setup))
 	}
 	for role, provider := range builtinRoleInfo {
-		opts = append(opts, engine.WithRoleInfo(role, provider))
+		opts = append(opts, hiddenrole.WithRoleInfo(role, provider))
 	}
 	return opts
 }
 
 // New 造一局这套规则。
-func New(extra ...engine.EngineOption) (*engine.Engine, error) {
-	return engine.NewEngine(DefaultConfig(), append(Options(), extra...)...)
+func New(extra ...hiddenrole.EngineOption) (*hiddenrole.Engine, error) {
+	return hiddenrole.NewEngine(DefaultConfig(), append(Options(), extra...)...)
 }
 
 // MustNew 同 New，出错时 panic。配置是常量时可用。
-func MustNew(extra ...engine.EngineOption) *engine.Engine {
+func MustNew(extra ...hiddenrole.EngineOption) *hiddenrole.Engine {
 	e, err := New(extra...)
 	if err != nil {
 		panic(err)
@@ -58,11 +58,11 @@ func MustNew(extra ...engine.EngineOption) *engine.Engine {
 }
 
 // Restore 从快照恢复一局这套规则。
-func Restore(snap *engine.Snapshot, extra ...engine.EngineOption) (*engine.Engine, error) {
-	return engine.RestoreEngine(DefaultConfig(), snap, append(Options(), extra...)...)
+func Restore(snap *hiddenrole.Snapshot, extra ...hiddenrole.EngineOption) (*hiddenrole.Engine, error) {
+	return hiddenrole.RestoreEngine(DefaultConfig(), snap, append(Options(), extra...)...)
 }
 
 // Replay 按效果流重建一局这套规则。
-func Replay(log []*engine.Effect, extra ...engine.EngineOption) (*engine.Engine, error) {
-	return engine.ReplayEngine(DefaultConfig(), log, append(Options(), extra...)...)
+func Replay(log []*hiddenrole.Effect, extra ...hiddenrole.EngineOption) (*hiddenrole.Engine, error) {
+	return hiddenrole.ReplayEngine(DefaultConfig(), log, append(Options(), extra...)...)
 }

@@ -128,7 +128,7 @@ items without touching the engine.
 **Current release: [v1.5.0](CHANGELOG.md).** The generic kernel and the Werewolf
 rules are now separated: no code path in the engine recognises a specific role,
 camp, or cause of death, and the whole rule set is installed through the same
-public options a third party would use. 94.0% coverage across the kernel and all three
+public options a third party would use. 92.8% coverage across the three rule packs, 87.8% for the kernel itself (two modules, measured separately)
 rules packs, every rule traced to the
 Wikipedia article, 5000 randomized games per test run.
 
@@ -145,7 +145,7 @@ The two layers are two packages:
 | Package | What it is |
 |---|---|
 | `github.com/Zereker/werewolf` | The Werewolf rules: roles, phases, resolvers, victory |
-| `github.com/Zereker/werewolf/engine` | The kernel: players, a phase ring, four state primitives, the information boundary |
+| `github.com/Zereker/hiddenrole` | The kernel: players, a phase ring, four state primitives, the information boundary |
 
 **"The rules only use public API" is enforced by the compiler**, not by
 discipline — the rules package sits outside the kernel, and every door it uses
@@ -160,7 +160,7 @@ slice of the kernel — about twenty names ([`alias.go`](alias.go)) — under a 
 admission rule: a name is there only if the root package's own exported API uses
 it (`SkillUse`, `GameView`, `Effect`, `Snapshot`, the vocabulary types and their
 kernel-owned values). They are plain aliases: `werewolf.Effect` and
-`engine.Effect` are the same type.
+`hiddenrole.Effect` are the same type.
 
 **Changing the rules means writing the `engine.` prefix.** Custom resolvers, a
 different victory checker, logging and metrics, branching on error codes, taking

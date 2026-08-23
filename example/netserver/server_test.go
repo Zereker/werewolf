@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Zereker/hiddenrole"
 	"github.com/Zereker/werewolf"
-	"github.com/Zereker/werewolf/engine"
 )
 
 // 这些测试是这个示例存在的理由。命令行主持台碰不到的那半边——
@@ -71,7 +71,7 @@ func (c *testClient) await(what string, ok func(serverMsg) bool) serverMsg {
 	}
 }
 
-func (c *testClient) awaitView() *engine.PlayerView {
+func (c *testClient) awaitView() *hiddenrole.PlayerView {
 	c.t.Helper()
 	return c.await("view", func(m serverMsg) bool { return m.Type == "view" }).View
 }
@@ -117,7 +117,7 @@ func TestServer_PushesViewOnJoin(t *testing.T) {
 func TestServer_EachConnectionGetsItsOwnView(t *testing.T) {
 	srv := newTestServer(t, time.Hour)
 
-	views := make(map[string]*engine.PlayerView)
+	views := make(map[string]*hiddenrole.PlayerView)
 	for _, id := range srv.room.seats {
 		c := dial(t, srv.addr(), id)
 		views[id] = c.awaitView()
@@ -129,7 +129,7 @@ func TestServer_EachConnectionGetsItsOwnView(t *testing.T) {
 		}
 		// 除了自己和狼队友，谁的身份都不该出现
 		for _, p := range v.Players {
-			if p.ID == id || p.Role == engine.RoleUnspecified {
+			if p.ID == id || p.Role == hiddenrole.RoleUnspecified {
 				continue
 			}
 			if v.Self.Camp != werewolf.CampEvil {

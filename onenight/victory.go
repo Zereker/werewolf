@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // 胜负条件，取自官方规则书：
@@ -37,9 +37,9 @@ import (
 // checkVictory 判定胜负。
 //
 // 只在投票结束之后才有答案——这一套规则里，**中途永远不结束**。
-func checkVictory(view engine.GameView) (bool, engine.Camp) {
+func checkVictory(view hiddenrole.GameView) (bool, hiddenrole.Camp) {
 	if view.Phase() != PhaseVote {
-		return false, engine.CampUnspecified
+		return false, hiddenrole.CampUnspecified
 	}
 
 	players := view.AllPlayers()
@@ -63,10 +63,10 @@ func checkVictory(view engine.GameView) (bool, engine.Camp) {
 
 	// 投票还没结算完（没人死也没有「无人出局」的结论）时不下判断。
 	if !anyDied && !votingSettled(view) {
-		return false, engine.CampUnspecified
+		return false, hiddenrole.CampUnspecified
 	}
 
-	var winners []engine.Camp
+	var winners []hiddenrole.Camp
 	if wolfDied || (!wolfInPlay && !anyDied) {
 		winners = append(winners, CampVillage)
 	}
@@ -84,16 +84,16 @@ func checkVictory(view engine.GameView) (bool, engine.Camp) {
 //
 // 「无人出局」是一个合法结局（每人各得一票），它与「还没投票」在局面上
 // 长得一模一样——两种情况都是没有人出局。用一项整局状态把它们分开。
-func votingSettled(view engine.GameView) bool {
-	return view.Var(engine.ScopeGame, varVoteSettled) != ""
+func votingSettled(view hiddenrole.GameView) bool {
+	return view.Var(hiddenrole.ScopeGame, varVoteSettled) != ""
 }
 
 // varVoteSettled 投票已结算的标记。
 const varVoteSettled = "vote.settled"
 
 // markVoteSettled 投票结算完就记一笔，供胜负判定区分「无人出局」与「还没投」。
-func markVoteSettled() *engine.Effect {
-	return engine.NewSetVarEffect(engine.ScopeGame, varVoteSettled, engine.VarPresent)
+func markVoteSettled() *hiddenrole.Effect {
+	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varVoteSettled, hiddenrole.VarPresent)
 }
 
 // joinCamps 把若干个赢家拼成一个 Camp。
@@ -106,7 +106,7 @@ func markVoteSettled() *engine.Effect {
 // 拆开的规矩，而那条规矩内核不知道、也没地方写。见 SCARS.md 疤 5。
 //
 // 按字典序拼，结果因此是确定的。
-func joinCamps(winners []engine.Camp) engine.Camp {
+func joinCamps(winners []hiddenrole.Camp) hiddenrole.Camp {
 	if len(winners) == 0 {
 		return CampNobody
 	}
@@ -115,33 +115,33 @@ func joinCamps(winners []engine.Camp) engine.Camp {
 		out = append(out, string(c))
 	}
 	sort.Strings(out)
-	return engine.Camp(strings.Join(out, "+"))
+	return hiddenrole.Camp(strings.Join(out, "+"))
 }
 
 // CampNobody 没有任何一边达成胜利条件。
 //
-// 这不是「还没结束」（那是 engine.CampUnspecified），是「结束了，没人赢」。
+// 这不是「还没结束」（那是 hiddenrole.CampUnspecified），是「结束了，没人赢」。
 // 一个真实存在的边角局面：狼牌全在中央、爪牙在场、且有人出局。
-const CampNobody engine.Camp = "NOBODY"
+const CampNobody hiddenrole.Camp = "NOBODY"
 
 // Winners 把 checkVictory 拼出来的 Camp 拆回一组。
 //
 // 这个函数的存在本身就是疤 5 的证据：内核给不出「一组赢家」，于是编码与
 // 解码的规矩只能由规则包自己带着。
-func Winners(c engine.Camp) []engine.Camp {
-	if c == engine.CampUnspecified || c == CampNobody {
+func Winners(c hiddenrole.Camp) []hiddenrole.Camp {
+	if c == hiddenrole.CampUnspecified || c == CampNobody {
 		return nil
 	}
 	parts := strings.Split(string(c), "+")
-	out := make([]engine.Camp, 0, len(parts))
+	out := make([]hiddenrole.Camp, 0, len(parts))
 	for _, p := range parts {
-		out = append(out, engine.Camp(p))
+		out = append(out, hiddenrole.Camp(p))
 	}
 	return out
 }
 
 // Won 某一边是不是赢家之一。
-func Won(c engine.Camp, want engine.Camp) bool {
+func Won(c hiddenrole.Camp, want hiddenrole.Camp) bool {
 	for _, w := range Winners(c) {
 		if w == want {
 			return true

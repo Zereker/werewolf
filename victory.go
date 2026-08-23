@@ -9,7 +9,7 @@
 
 package werewolf
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // DefaultVictoryChecker 内置判定，按 GameConfig.VictoryMode 分屠边与屠城。
 //
@@ -59,7 +59,7 @@ func (c DefaultVictoryChecker) CheckVictory(view GameView) (bool, Camp) {
 		}
 	}
 
-	return false, engine.CampUnspecified
+	return false, hiddenrole.CampUnspecified
 }
 
 // census 一次点名的结果：各阵营存活数，以及好人阵营各类别的总数与存活数。

@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Zereker/hiddenrole"
 	"github.com/Zereker/werewolf"
-	"github.com/Zereker/werewolf/engine"
 )
 
 func main() {
@@ -488,7 +488,7 @@ func (t *table) load(args []string) {
 		return
 	}
 	// 恢复时必须给回同一套规则配置：快照只记局面，不记规则
-	eng, err := engine.RestoreEngine(nil, snap)
+	eng, err := hiddenrole.RestoreEngine(nil, snap)
 	if err != nil {
 		warn("恢复失败: %s", reason(err))
 		return

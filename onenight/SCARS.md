@@ -144,7 +144,7 @@ type PhaseStep struct {
 
 ```go
 PhaseVote: {
-    Type: PhaseVote, NextPhase: engine.PhaseEnd,
+    Type: PhaseVote, NextPhase: hiddenrole.PhaseEnd,
     EndsRound:       true,  // 之后没有下一回合，标它只为过 Validate
     ClearsRoundVars: true,  // 同上
 },
@@ -193,7 +193,7 @@ PhaseVote: {
 ```go
 PhaseNightMinion: {
     Type:  PhaseNightMinion,
-    Steps: step(RoleMinion, engine.SkillSkip),  // 只为让主持人知道叫谁
+    Steps: step(RoleMinion, hiddenrole.SkillSkip),  // 只为让主持人知道叫谁
     ...
 },
 ```

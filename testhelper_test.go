@@ -1,7 +1,7 @@
 package werewolf
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"testing"
 )
 
@@ -60,7 +60,7 @@ func checkVictoryWith(e *Engine, rules Rules) (bool, Camp) {
 //
 // 刀口从 RolePhaseInfo 的一等字段变成了角色自己填的 RoleInfo——
 // 内置角色在信息这件事上不再比第三方角色多一等待遇。
-func witchKill(ri *engine.RolePhaseInfo) string {
+func witchKill(ri *hiddenrole.RolePhaseInfo) string {
 	for _, info := range ri.RoleInfo {
 		if t := info[RoleInfoKillTarget]; t != "" {
 			return t
@@ -72,21 +72,21 @@ func witchKill(ri *engine.RolePhaseInfo) string {
 // ==================== 解析器的单元测试辅助 ====================
 //
 // 解析器收的是 GameView，而规则包在内核之外，拿不到内核的内部状态。
-// engine.Board 是内核给规则包留的入口：手工摆一副局面，转成视图喂给
+// hiddenrole.Board 是内核给规则包留的入口：手工摆一副局面，转成视图喂给
 // 解析器，再把产出的效果折回去看局面变成了什么样——走的是与引擎完全
 // 相同的那个写入点。
 
 // board 一副手工摆出来的局面。
-type board = engine.Board
+type board = hiddenrole.Board
 
 // newBoard 摆一副局面。
-func newBoard(seats ...engine.PlayerInfo) board {
+func newBoard(seats ...hiddenrole.PlayerInfo) board {
 	return board{Round: 1, Players: seats}
 }
 
 // seatOf 拼一名玩家。vars 是键值交替的可变参数。
-func seatOf(id string, role RoleType, vars ...string) engine.PlayerInfo {
-	out := engine.Seat(id, role, true, vars...)
+func seatOf(id string, role RoleType, vars ...string) hiddenrole.PlayerInfo {
+	out := hiddenrole.Seat(id, role, true, vars...)
 	if setup, ok := builtinRoleSetup[role]; ok {
 		// 内置角色的初始状态（阵营、类别、女巫的药）由 RoleSetup 发，
 		// 直接摆局面时得自己补上，否则女巫手里没有药
@@ -112,7 +112,7 @@ func withKill(b board, target string) board {
 func markSeat(b board, id string, keys ...string) board {
 	for i, p := range b.Players {
 		if p.ID == id {
-			b.Players[i] = engine.Mark(p, keys...)
+			b.Players[i] = hiddenrole.Mark(p, keys...)
 		}
 	}
 	return b
@@ -133,7 +133,7 @@ func protectedInEngine(e *Engine, id string) bool {
 }
 
 // mustSeat 取出一名玩家，不存在即终止。
-func mustSeat(t *testing.T, b board, id string) engine.PlayerInfo {
+func mustSeat(t *testing.T, b board, id string) hiddenrole.PlayerInfo {
 	t.Helper()
 	p, ok := b.Player(id)
 	if !ok {

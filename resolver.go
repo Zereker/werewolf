@@ -1,6 +1,6 @@
 package werewolf
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // voteResult 投票结果（包内使用）
 type voteResult struct {
@@ -100,7 +100,7 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	// 全场都得知道「今天没人出局」。挂在 UNSPECIFIED 上的事件既没法分类，
 	// 也拿不到受众划分。
 	if result.Tied || result.Winner == "" {
-		effect := engine.NewEffect(EventVoteTied, "", "").
+		effect := hiddenrole.NewEffect(EventVoteTied, "", "").
 			WithData("result", "tied").
 			WithData("votes", result.Votes)
 		effects = append(effects, effect)
@@ -108,11 +108,11 @@ func (r *VoteResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	}
 
 	// 处决得票最多的玩家
-	effect := engine.NewEffect(EventEliminate, "", result.Winner).
+	effect := hiddenrole.NewEffect(EventEliminate, "", result.Winner).
 		WithData("votes", result.MaxVote).
 		WithData("voters", result.Voters[result.Winner]).
 		WithData("allVotes", result.Votes)
-	effects = append(effects, effect, engine.NewSetAliveEffect(result.Winner, false))
+	effects = append(effects, effect, hiddenrole.NewSetAliveEffect(result.Winner, false))
 
 	// 被投票出局的猎人可以开枪
 	effects = append(effects,
@@ -159,7 +159,7 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			return
 		}
 
-		protect := engine.NewEffect(EventProtect, use.PlayerID, use.Target())
+		protect := hiddenrole.NewEffect(EventProtect, use.PlayerID, use.Target())
 
 		switch {
 		case !r.rules.GuardCanRepeat && lastProtected(view, use.PlayerID) == use.Target():
@@ -171,7 +171,7 @@ func (r *GuardResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			// PROTECT 是「发生了什么」的说法，下面两条才真正改状态：
 			// 标记今晚被守的人，并记下本回合的守护供下回合判断连守。
 			effects = append(effects,
-				engine.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarProtected, VarPresent))
+				hiddenrole.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarProtected, VarPresent))
 			effects = append(effects, markProtected(view, use.PlayerID, use.Target())...)
 		}
 
@@ -207,7 +207,7 @@ func (r *WolfResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 	//   - 女巫看到的是「狼刀目标」，她同样不知道守卫的动作
 	// 若在此处因守护而不记录刀口，「同守同救」这一局面根本无法构成。
 	effects = append(effects,
-		engine.NewSetVarEffect(ScopeRound, RoundVarKillTarget, result.Winner))
+		hiddenrole.NewSetVarEffect(ScopeRound, RoundVarKillTarget, result.Winner))
 
 	return effects
 }
@@ -279,7 +279,7 @@ func (r *WitchResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 // 第二个返回值表示解药是否真的被消耗，用于判断本夜能否再用毒药。
 // 这个信息必须显式返回：从产出的效果个数去反推既脆弱又难读。
 func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget string, blocked bool) ([]*Effect, bool) {
-	save := engine.NewEffect(EventSave, use.PlayerID, use.Target())
+	save := hiddenrole.NewEffect(EventSave, use.PlayerID, use.Target())
 
 	switch {
 	case blocked:
@@ -300,8 +300,8 @@ func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget strin
 		// SAVE 是说法，下面两条是状态：药少一瓶，目标带上「今晚被救」的标记。
 		return []*Effect{
 			save,
-			engine.NewSetVarEffect(ScopeGame.Of(use.PlayerID), VarWitchAntidote, ""),
-			engine.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarSaved, VarPresent),
+			hiddenrole.NewSetVarEffect(ScopeGame.Of(use.PlayerID), VarWitchAntidote, ""),
+			hiddenrole.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarSaved, VarPresent),
 		}, true
 	}
 
@@ -310,7 +310,7 @@ func resolveAntidote(use *SkillUse, view GameView, rules Rules, killTarget strin
 
 // resolvePoison 结算一次毒药使用。与 resolveAntidote 同构。
 func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool) {
-	poison := engine.NewEffect(EventPoison, use.PlayerID, use.Target())
+	poison := hiddenrole.NewEffect(EventPoison, use.PlayerID, use.Target())
 
 	switch {
 	case blocked:
@@ -324,8 +324,8 @@ func resolvePoison(use *SkillUse, view GameView, blocked bool) ([]*Effect, bool)
 		// 这里刻意不产出 POISON：中毒要到天亮才公布，此刻发出去
 		// 等于当场告诉全场谁被毒了。
 		return []*Effect{
-			engine.NewSetVarEffect(ScopeGame.Of(use.PlayerID), VarWitchPoison, ""),
-			engine.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarPoisoned, VarPresent),
+			hiddenrole.NewSetVarEffect(ScopeGame.Of(use.PlayerID), VarWitchPoison, ""),
+			hiddenrole.NewSetVarEffect(ScopeRound.Of(use.Target()), PlayerRoundVarPoisoned, VarPresent),
 		}, true
 	}
 
@@ -349,7 +349,7 @@ func (r *SeerResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			return
 		}
 
-		check := engine.NewEffect(EventCheck, use.PlayerID, use.Target())
+		check := hiddenrole.NewEffect(EventCheck, use.PlayerID, use.Target())
 		// 只报阵营，不报具体角色
 		if target, ok := view.Player(use.Target()); ok {
 			check.
@@ -404,11 +404,11 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView) []*Effec
 		}
 
 		if dies {
-			killEffect := engine.NewEffect(EventKill, "", killTarget)
+			killEffect := hiddenrole.NewEffect(EventKill, "", killTarget)
 			if reason != "" {
 				killEffect.WithData("reason", reason)
 			}
-			effects = append(effects, killEffect, engine.NewSetAliveEffect(killTarget, false))
+			effects = append(effects, killEffect, hiddenrole.NewSetAliveEffect(killTarget, false))
 
 			// 「除殉情或被毒殺外」是对死因的排除。同一晚既被刀又被毒的猎人
 			// 身上有毒，即便这里走的是刀口这条通道，也不能开枪。
@@ -419,7 +419,7 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView) []*Effec
 		} else {
 			// 刀口未生效，清除击杀目标
 			effects = append(effects,
-				engine.NewSetVarEffect(ScopeRound, RoundVarKillTarget, "").WithData("reason", reason))
+				hiddenrole.NewSetVarEffect(ScopeRound, RoundVarKillTarget, "").WithData("reason", reason))
 		}
 	}
 
@@ -435,8 +435,8 @@ func (r *NightResolveResolver) Resolve(uses []*SkillUse, view GameView) []*Effec
 			continue
 		}
 		effects = append(effects,
-			engine.NewEffect(EventPoison, "", p.ID),
-			engine.NewSetAliveEffect(p.ID, false))
+			hiddenrole.NewEffect(EventPoison, "", p.ID),
+			hiddenrole.NewSetAliveEffect(p.ID, false))
 	}
 
 	return effects
@@ -458,8 +458,8 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 		case SkillShoot:
 			if use.Target() != "" {
 				effects = append(effects,
-					engine.NewEffect(EventShoot, use.PlayerID, use.Target()),
-					engine.NewSetAliveEffect(use.Target(), false))
+					hiddenrole.NewEffect(EventShoot, use.PlayerID, use.Target()),
+					hiddenrole.NewSetAliveEffect(use.Target(), false))
 				// 枪口下的另一名猎人同样可以回枪：规则排除的只有
 				// 殉情与毒杀，被枪打死属于「其他方式」。
 				// 绕道的入队分散在狼刀、投票、开枪三条通道上，
@@ -469,7 +469,7 @@ func (r *HunterResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 		case SkillSkip:
 			// 猎人选择不开枪
 			effects = append(effects,
-				engine.NewEffect(EventSkip, use.PlayerID, ""))
+				hiddenrole.NewEffect(EventSkip, use.PlayerID, ""))
 		}
 	})
 
@@ -488,7 +488,7 @@ func hunterTrigger(view GameView, playerID string, phase PhaseType) []*Effect {
 	if !ok || target.Role != RoleHunter {
 		return nil
 	}
-	return []*Effect{engine.NewDetourEffect(playerID, phase)}
+	return []*Effect{hiddenrole.NewDetourEffect(playerID, phase)}
 }
 
 // potionKind 女巫的两种药

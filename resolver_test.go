@@ -1,7 +1,7 @@
 package werewolf
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"testing"
 )
 
@@ -166,8 +166,8 @@ func TestWolfResolver_VoteTie_NoKill(t *testing.T) {
 	}
 
 	// Night.KillTarget 应该为空
-	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "" {
-		t.Errorf("expected empty Night.KillTarget for tie, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
+	if b.Var(hiddenrole.ScopeRound, RoundVarKillTarget) != "" {
+		t.Errorf("expected empty Night.KillTarget for tie, got %s", b.Var(hiddenrole.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -191,14 +191,14 @@ func TestWolfResolver_Consensus_Kill(t *testing.T) {
 	if len(effects) != 1 {
 		t.Errorf("expected 1 effect from WolfResolver, got %d", len(effects))
 	}
-	if effects[0].Type != engine.EventSetVar {
+	if effects[0].Type != hiddenrole.EventSetVar {
 		t.Errorf("expected SET_VAR effect, got %v", effects[0].Type)
 	}
 
 	// 应用 Effect 后刀口才会被设置
 	b = b.Apply(effects)
-	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget=victim after applying effect, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
+	if b.Var(hiddenrole.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim after applying effect, got %s", b.Var(hiddenrole.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -227,8 +227,8 @@ func TestWolfResolver_Majority_Kill(t *testing.T) {
 
 	// 应用 Effect 后刀口才会被设置
 	b = b.Apply(effects)
-	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "v1" {
-		t.Errorf("expected Night.KillTarget=v1 after applying effect, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
+	if b.Var(hiddenrole.ScopeRound, RoundVarKillTarget) != "v1" {
+		t.Errorf("expected Night.KillTarget=v1 after applying effect, got %s", b.Var(hiddenrole.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -257,13 +257,13 @@ func TestWolfResolver_SetsKillTargetEvenIfProtected(t *testing.T) {
 	if len(effects) != 1 {
 		t.Fatalf("expected 1 effect (SET_NIGHT_KILL) even when protected, got %d", len(effects))
 	}
-	if effects[0].Type != engine.EventSetVar {
+	if effects[0].Type != hiddenrole.EventSetVar {
 		t.Errorf("expected SET_NIGHT_KILL, got %v", effects[0].Type)
 	}
 
 	b = b.Apply(effects)
-	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget=victim, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
+	if b.Var(hiddenrole.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", b.Var(hiddenrole.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -293,8 +293,8 @@ func TestWolfResolver_Protected_NotEmpty(t *testing.T) {
 	b = b.Apply(effects)
 
 	// Night.KillTarget 应该被设置
-	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget=victim, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
+	if b.Var(hiddenrole.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget=victim, got %s", b.Var(hiddenrole.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -332,8 +332,8 @@ func TestWitchResolver_QueryKillTarget(t *testing.T) {
 	b = b.Apply(effects)
 
 	// 刀口保留到结算阶段，但目标已被标记为「已救」
-	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "victim" {
-		t.Errorf("expected Night.KillTarget kept until resolve, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
+	if b.Var(hiddenrole.ScopeRound, RoundVarKillTarget) != "victim" {
+		t.Errorf("expected Night.KillTarget kept until resolve, got %s", b.Var(hiddenrole.ScopeRound, RoundVarKillTarget))
 	}
 	if roundVarOfBoard(b, "victim", PlayerRoundVarSaved) == "" {
 		t.Error("expected victim to be marked as saved")
@@ -398,8 +398,8 @@ func TestWitchResolver_CannotSaveSelf(t *testing.T) {
 	}
 
 	// Night.KillTarget 应该保持不变
-	if b.Var(engine.ScopeRound, RoundVarKillTarget) != "witch" {
-		t.Errorf("expected Night.KillTarget=witch, got %s", b.Var(engine.ScopeRound, RoundVarKillTarget))
+	if b.Var(hiddenrole.ScopeRound, RoundVarKillTarget) != "witch" {
+		t.Errorf("expected Night.KillTarget=witch, got %s", b.Var(hiddenrole.ScopeRound, RoundVarKillTarget))
 	}
 }
 
@@ -426,7 +426,7 @@ func TestGuardResolver_Protect(t *testing.T) {
 	if got := len(filterVarEffects(effects, PlayerRoundVarProtected)); got != 1 {
 		t.Fatalf("expected one round mark, got %d in %v", got, effects)
 	}
-	if got := len(filterEffects(effects, engine.EventSetVar)); got != 3 {
+	if got := len(filterEffects(effects, hiddenrole.EventSetVar)); got != 3 {
 		t.Fatalf("expected three state writes, got %d in %v", got, effects)
 	}
 

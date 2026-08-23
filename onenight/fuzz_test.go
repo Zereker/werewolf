@@ -4,8 +4,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
-	"github.com/Zereker/werewolf/engine/enginetest"
+	"github.com/Zereker/hiddenrole"
+	"github.com/Zereker/hiddenrole/enginetest"
 )
 
 // TestFuzz_Invariants 随机对局，核对通用不变量。
@@ -33,7 +33,7 @@ func TestFuzz_Invariants(t *testing.T) {
 // deck 随机摆一副牌：人数 + 3 张。
 func setupRandom(rng *rand.Rand) enginetest.Game {
 	n := MinPlayers + rng.Intn(4) // 3~6 人
-	pool := []engine.RoleType{
+	pool := []hiddenrole.RoleType{
 		RoleWerewolf, RoleWerewolf, RoleMinion, RoleMason, RoleMason,
 		RoleSeer, RoleRobber, RoleTroublemaker, RoleDrunk, RoleInsomniac,
 		RoleVillager, RoleVillager, RoleHunter, RoleTanner,
@@ -44,7 +44,7 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 	for i := 0; i < n; i++ {
 		seats = append(seats, enginetest.Seat{ID: playerID(i), Role: pool[i]})
 	}
-	var center [CenterCount]engine.RoleType
+	var center [CenterCount]hiddenrole.RoleType
 	copy(center[:], pool[n:n+CenterCount])
 
 	// 标签：盯住随机化有没有退化。这套规则最要紧的分歧全在发牌上。
@@ -86,7 +86,7 @@ func playerID(i int) string { return string(rune('a' + i)) }
 // 泛泛地随机提交在多目标技能上几乎必然被拒（捣蛋鬼要正好两个人），
 // 所以按技能挑目标个数。提交被拒不算错——规则本来就会丢掉不合法的提交，
 // 那也是被测的行为之一。
-func actRandom(e *engine.Engine, rng *rand.Rand) {
+func actRandom(e *hiddenrole.Engine, rng *rand.Rand) {
 	players := e.View().AllPlayers()
 	ids := make([]string, 0, len(players))
 	for _, p := range players {
@@ -118,7 +118,7 @@ func actRandom(e *engine.Engine, rng *rand.Rand) {
 			targets = []string{others[rng.Intn(len(others))]}
 		}
 
-		_ = e.SubmitSkillUse(&engine.SkillUse{
+		_ = e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: p.ID, Skill: skill, Targets: targets,
 		})
 	}

@@ -3,7 +3,7 @@ package werewolf
 import (
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 const (
@@ -17,13 +17,13 @@ const (
 // 内置角色的 switch：狼人给队友、女巫给刀口，别的角色什么都没有。
 // 加一个盗贼（要看两张底牌）就得改引擎——而加一个角色不该要求改引擎。
 func TestRoleInfo_ThirdPartyRoleCanShowItsOwnInfo(t *testing.T) {
-	provider := engine.RoleInfoFunc(func(playerID string, view GameView) map[string]string {
+	provider := hiddenrole.RoleInfoFunc(func(playerID string, view GameView) map[string]string {
 		return map[string]string{roleInfoSpareCard: "SEER"}
 	})
 
 	e := MustNew(DefaultRules(),
-		engine.WithRoleInfo(roleThief, provider),
-		engine.WithRoleSetup(roleThief, sideSetup(CampGood, RoleCategoryGod)))
+		hiddenrole.WithRoleInfo(roleThief, provider),
+		hiddenrole.WithRoleSetup(roleThief, sideSetup(CampGood, RoleCategoryGod)))
 	mustAdd(t, e, "w1", RoleWerewolf)
 	if err := e.AddPlayer("th", roleThief); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestRoleInfo_CustomWolfGetsTeammatesInPhaseInfo(t *testing.T) {
 	wolfPhase.Steps = append(wolfPhase.Steps,
 		PhaseStep{Role: roleWolfKing2, Skill: SkillKill})
 
-	e := MustNewWith(cfg, DefaultRules(), engine.WithRoleSetup(roleWolfKing2, sideSetup(CampEvil, RoleCategoryWolf)))
+	e := MustNewWith(cfg, DefaultRules(), hiddenrole.WithRoleSetup(roleWolfKing2, sideSetup(CampEvil, RoleCategoryWolf)))
 	mustAdd(t, e, "w1", RoleWerewolf)
 	if err := e.AddPlayer("wk", roleWolfKing2); err != nil {
 		t.Fatal(err)
@@ -103,8 +103,8 @@ func TestRoleInfo_WitchIsJustAnotherProvider(t *testing.T) {
 	}
 
 	// 换掉内置女巫的提供者：内置的没有特权，能被覆盖
-	e2 := MustNew(DefaultRules(), engine.WithRoleInfo(RoleWitch,
-		engine.RoleInfoFunc(func(string, GameView) map[string]string {
+	e2 := MustNew(DefaultRules(), hiddenrole.WithRoleInfo(RoleWitch,
+		hiddenrole.RoleInfoFunc(func(string, GameView) map[string]string {
 			return map[string]string{"custom": "yes"}
 		})))
 	mustAdd(t, e2, "w1", RoleWerewolf)
@@ -124,7 +124,7 @@ func TestRoleInfo_WitchIsJustAnotherProvider(t *testing.T) {
 
 // TestWithRoleInfo_RejectsNil 传 nil 只可能是漏了。
 func TestWithRoleInfo_RejectsNil(t *testing.T) {
-	if _, err := engine.NewEngine(nil, engine.WithRoleInfo(RoleWitch, nil)); err == nil {
+	if _, err := hiddenrole.NewEngine(nil, hiddenrole.WithRoleInfo(RoleWitch, nil)); err == nil {
 		t.Error("nil 提供者应当被拒绝")
 	}
 }

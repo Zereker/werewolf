@@ -3,7 +3,7 @@ package missions
 import (
 	"strconv"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // resolver.go 四个阶段各自的结算。
@@ -18,7 +18,7 @@ import (
 // 见 SCARS.md 疤 5。
 type proposeResolver struct{}
 
-func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (proposeResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	leader := leaderID(view)
 	need := MissionSize(len(view.AllPlayers()), mission(view))
 
@@ -51,17 +51,17 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 	// 上一次提名留下的标记不用在这里清：提名阶段声明了 ClearsRoundVars，
 	// 内核在它结算完时清。此前内核只有「回合级」一档寿命，而这里要的是
 	// 「一次提名」，只好手工清一遍——那段代码现在删掉了。
-	var effects []*engine.Effect
+	var effects []*hiddenrole.Effect
 	for _, id := range team {
 		effects = append(effects,
-			engine.NewEffect(EventProposed, leader, id),
-			engine.NewSetVarEffect(engine.ScopeRound.Of(id), varOnTeam, engine.VarPresent))
+			hiddenrole.NewEffect(EventProposed, leader, id),
+			hiddenrole.NewSetVarEffect(hiddenrole.ScopeRound.Of(id), varOnTeam, hiddenrole.VarPresent))
 	}
 	// 点名任务阶段的行动者：只有这几个人能投成败。
 	//
 	// 名单在这里算出来、到下一个阶段才用——这正是 SetActors 要指定阶段
 	// 而不是只作用于当前阶段的原因。
-	return append(effects, engine.NewSetActorsEffect(PhaseMission, team...))
+	return append(effects, hiddenrole.NewSetActorsEffect(PhaseMission, team...))
 }
 
 // teamVoteResolver 全员表决这支队伍。
@@ -70,13 +70,13 @@ func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 // 都产出一条公开事件——这与任务阶段正好相反，那里连谁投了失败都不能露。
 type teamVoteResolver struct{}
 
-func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (teamVoteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	need := MissionSize(len(view.AllPlayers()), mission(view))
 	team := teamIDs(view)
 
 	voted := map[string]bool{}
 	approve, reject := 0, 0
-	var effects []*engine.Effect
+	var effects []*hiddenrole.Effect
 	for _, u := range uses {
 		if u.Skill != SkillApprove && u.Skill != SkillReject {
 			continue
@@ -91,7 +91,7 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 			reject++
 		}
 		effects = append(effects,
-			engine.NewEffect(EventVote, u.PlayerID, "").WithData("approve", u.Skill == SkillApprove))
+			hiddenrole.NewEffect(EventVote, u.PlayerID, "").WithData("approve", u.Skill == SkillApprove))
 	}
 
 	// 队伍人数不对（队长没提够、或者根本没提）一律按否决处理
@@ -101,31 +101,31 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 	next := gameNum(view, varLeader) + 1
 	effects = append(effects,
 		setGameNum(view, varLeader, next),
-		engine.NewEffect(EventLeaderChanged, "", ""),
-		engine.NewSetActorsEffect(PhasePropose, leaderAt(view, next)))
+		hiddenrole.NewEffect(EventLeaderChanged, "", ""),
+		hiddenrole.NewSetActorsEffect(PhasePropose, leaderAt(view, next)))
 
 	if ok {
 		return append(effects,
-			engine.NewEffect(EventTeamApproved, "", "").WithData("team", len(team)),
-			engine.NewSetVarEffect(engine.ScopeRound, varApproved, engine.VarPresent),
+			hiddenrole.NewEffect(EventTeamApproved, "", "").WithData("team", len(team)),
+			hiddenrole.NewSetVarEffect(hiddenrole.ScopeRound, varApproved, hiddenrole.VarPresent),
 			setGameNum(view, varRejects, 0),
-			engine.NewGotoPhaseEffect(PhaseMission))
+			hiddenrole.NewGotoPhaseEffect(PhaseMission))
 	}
 
 	n := rejects(view) + 1
 	effects = append(effects,
-		engine.NewEffect(EventTeamRejected, "", "").WithData("consecutive", n),
+		hiddenrole.NewEffect(EventTeamRejected, "", "").WithData("consecutive", n),
 		setGameNum(view, varRejects, n))
 	if n >= HammerRejections {
 		// 连续五次否决，坏人直接获胜。胜负由 VictoryChecker 读这个数判定。
-		effects = append(effects, engine.NewEffect(EventHammerReached, "", ""))
+		effects = append(effects, hiddenrole.NewEffect(EventHammerReached, "", ""))
 	}
 	// 被否决就直接回提名，不再空转一次任务阶段。
 	//
 	// 这是内核把「下一步去哪」交给规则之后立刻兑现的：条件分支的结果由
 	// 本阶段的结算算出来，静态的 NextPhase 表达不了。顺带把回合数也修对了
 	// ——任务阶段声明了 EndsRound，空转一次就多推一个回合。
-	return append(effects, engine.NewGotoPhaseEffect(PhasePropose))
+	return append(effects, hiddenrole.NewGotoPhaseEffect(PhasePropose))
 }
 
 // missionResolver 任务结算。
@@ -139,7 +139,7 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 //     好人误投失败按成功计，且那条否决只有他自己看得到。
 type missionResolver struct{}
 
-func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (missionResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	if !approved(view) {
 		return nil // 上一轮表决没通过，这个阶段空转
 	}
@@ -147,7 +147,7 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 	// 不再检查「他在不在队伍里」：内核已经拦下了非队员的提交。
 	acted := map[string]bool{}
 	fails := 0
-	var effects []*engine.Effect
+	var effects []*hiddenrole.Effect
 	for _, u := range uses {
 		if u.Skill != SkillMissionSuccess && u.Skill != SkillMissionFail {
 			continue
@@ -164,7 +164,7 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 			// 好人不能投失败。这条否决只发给他本人——旁人连「有人试过」
 			// 都不该知道，否则等于点名。
 			effects = append(effects, cancel(
-				engine.NewEffect(EventFailRejected, u.PlayerID, ""), "好人只能投成功"))
+				hiddenrole.NewEffect(EventFailRejected, u.PlayerID, ""), "好人只能投成功"))
 			continue
 		}
 		fails++
@@ -176,12 +176,12 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 
 	if failed {
 		effects = append(effects,
-			engine.NewEffect(EventMissionFailed, "", "").
+			hiddenrole.NewEffect(EventMissionFailed, "", "").
 				WithData("mission", m).WithData("fails", strconv.Itoa(fails)),
 			setGameNum(view, varFail, failures(view)+1))
 	} else {
 		effects = append(effects,
-			engine.NewEffect(EventMissionSucceeded, "", "").WithData("mission", m),
+			hiddenrole.NewEffect(EventMissionSucceeded, "", "").WithData("mission", m),
 			setGameNum(view, varSuccess, successes(view)+1))
 	}
 	effects = append(effects, setGameNum(view, varMission, m+1))
@@ -192,7 +192,7 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 	// 做的，语义却正好是这里要的，还顺带把胜负判定推迟到刺杀结算之后。
 	if !failed && successes(view)+1 >= 3 {
 		if ids := idsWithRole(view, RoleAssassin); len(ids) > 0 {
-			effects = append(effects, engine.NewDetourEffect(ids[0], PhaseAssassin))
+			effects = append(effects, hiddenrole.NewDetourEffect(ids[0], PhaseAssassin))
 		}
 	}
 	return effects
@@ -201,7 +201,7 @@ func (missionResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []
 // assassinResolver 刺客指认梅林。
 type assassinResolver struct{}
 
-func (assassinResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (assassinResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	for _, u := range uses {
 		if u.Skill != SkillAssassinate || u.Target() == "" {
 			continue
@@ -211,15 +211,15 @@ func (assassinResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 			continue
 		}
 		hit := p.Role == RoleMerlin
-		return []*engine.Effect{
-			engine.NewEffect(EventAssassinated, u.PlayerID, u.Target()).WithData("hit", hit),
-			engine.NewSetVarEffect(engine.ScopeGame, varAssassinated, boolVar(hit)),
+		return []*hiddenrole.Effect{
+			hiddenrole.NewEffect(EventAssassinated, u.PlayerID, u.Target()).WithData("hit", hit),
+			hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varAssassinated, boolVar(hit)),
 		}
 	}
 	// 没有指认视为刺杀落空
-	return []*engine.Effect{
-		engine.NewEffect(EventAssassinated, "", "").WithData("hit", false),
-		engine.NewSetVarEffect(engine.ScopeGame, varAssassinated, "miss"),
+	return []*hiddenrole.Effect{
+		hiddenrole.NewEffect(EventAssassinated, "", "").WithData("hit", false),
+		hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varAssassinated, "miss"),
 	}
 }
 
@@ -230,7 +230,7 @@ func boolVar(b bool) string {
 	return "miss"
 }
 
-func cancel(e *engine.Effect, reason string) *engine.Effect {
+func cancel(e *hiddenrole.Effect, reason string) *hiddenrole.Effect {
 	e.Cancel(reason)
 	return e
 }

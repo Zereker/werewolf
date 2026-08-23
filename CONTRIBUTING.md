@@ -4,20 +4,16 @@ Contributions are welcome. This document is in Chinese; feel free to open issues
 and pull requests in either Chinese or English.
 
 
-## API 已冻结
+## 内核在另一个 module 里
 
-内核的导出面由 [`docs/API.md`](docs/API.md) 与
-[`engine/testdata/api.golden`](engine/testdata/api.golden) 一起定住，
-`TestAPI_SurfaceIsPinned` 守着：**名字或签名变了，测试就红**。
+引擎已独立成 [`hiddenrole`](hiddenrole/)，有自己的 `go.mod`、自己的
+[CONTRIBUTING](hiddenrole/CONTRIBUTING.md)、**已冻结的 API**。
 
-改导出面要同时做三件事，缺一件不算数：
+**`go` 命令不跨 module 边界**：在仓库根目录跑 `go test ./...` 一个引擎的
+测试都不会跑到。`make check` 两边都跑，本地验证请用它。
 
-1. 有一条**具体的、撞到过的**理由——某套规则包因为它写不下去，或者绕法会
-   说谎。「觉得更好」不算。
-2. 更新 golden 基线：`go test ./engine -run TestAPI_SurfaceIsPinned -update-api-golden`
-3. 更新 `docs/API.md`（正文与附录 A）
-
-什么情况下值得重开，`API.md` 最后一节列了四条触发条件。
+改内核请读 [`hiddenrole/CONTRIBUTING.md`](hiddenrole/CONTRIBUTING.md)
+——那边的纪律更紧（API 冻结、变异验证、三套规则包一起验）。
 
 ## 跑起来
 

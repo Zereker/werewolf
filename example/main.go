@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/Zereker/hiddenrole"
 	"github.com/Zereker/werewolf"
-	"github.com/Zereker/werewolf/engine"
 )
 
 func main() {
@@ -59,7 +59,7 @@ func basicGameSetup() {
 
 	// 2. 组装一局（日志可选，用构造选项给出）
 	eng := werewolf.MustNew(rules,
-		engine.WithLogger(&SimpleLogger{}))
+		hiddenrole.WithLogger(&SimpleLogger{}))
 
 	// 3. 添加玩家
 	// 6人局配置: 2狼人 + 1女巫 + 1预言家 + 1守卫 + 1村民
@@ -71,7 +71,7 @@ func basicGameSetup() {
 	seat(eng, "player6", werewolf.RoleVillager)
 
 	// 4. 注册事件处理器（可选）
-	eng.OnEvent(func(event *engine.Event) {
+	eng.OnEvent(func(event *hiddenrole.Event) {
 		fmt.Printf("  [事件] 类型: %s, 目标: %s\n", event.Type, event.TargetID)
 	})
 
@@ -201,7 +201,7 @@ func godNarratorDemo() {
 }
 
 // getGodAnnouncement 根据阶段生成上帝公告
-func getGodAnnouncement(phase werewolf.PhaseType, info *engine.PhaseInfo) string {
+func getGodAnnouncement(phase werewolf.PhaseType, info *hiddenrole.PhaseInfo) string {
 	switch phase {
 	case werewolf.PhaseNightGuard:
 		return "天黑请闭眼。守卫请睁眼，请选择今晚要守护的玩家。"
@@ -254,7 +254,7 @@ func fullGameFlow() {
 	seat(eng, "villager2", werewolf.RoleVillager)
 
 	// 注册事件处理器
-	eng.OnEvent(func(event *engine.Event) {
+	eng.OnEvent(func(event *hiddenrole.Event) {
 		switch event.Type {
 		case werewolf.EventKill:
 			fmt.Printf("  [击杀] %s 被狼人杀死\n", event.TargetID)
@@ -268,7 +268,7 @@ func fullGameFlow() {
 			fmt.Printf("  [查验] %s 查验了 %s\n", event.SourceID, event.TargetID)
 		case werewolf.EventEliminate:
 			fmt.Printf("  [投票] %s 被投票出局\n", event.TargetID)
-		case engine.EventGameEnded:
+		case hiddenrole.EventGameEnded:
 			fmt.Printf("  [游戏结束] 获胜方: %s\n", event.Data["winner"])
 		}
 	})
@@ -437,7 +437,7 @@ func messagingDemo() {
 	seat(eng, "villager4", werewolf.RoleVillager)
 
 	// 注册消息处理器
-	eng.OnMessage(func(msg *engine.Message, receiverIDs []string) {
+	eng.OnMessage(func(msg *hiddenrole.Message, receiverIDs []string) {
 		fmt.Printf("  [消息] 发送者: %s, 内容: %s\n", msg.SenderID, msg.Content)
 		fmt.Printf("         接收者: %v\n", receiverIDs)
 	})
@@ -492,19 +492,19 @@ func messagingDemo() {
 // SimpleLogger 简单日志实现
 type SimpleLogger struct{}
 
-func (l *SimpleLogger) Debug(msg string, fields ...engine.Field) {
+func (l *SimpleLogger) Debug(msg string, fields ...hiddenrole.Field) {
 	// 调试信息可以忽略或打印
 }
 
-func (l *SimpleLogger) Info(msg string, fields ...engine.Field) {
+func (l *SimpleLogger) Info(msg string, fields ...hiddenrole.Field) {
 	fmt.Printf("  [INFO] %s\n", msg)
 }
 
-func (l *SimpleLogger) Warn(msg string, fields ...engine.Field) {
+func (l *SimpleLogger) Warn(msg string, fields ...hiddenrole.Field) {
 	fmt.Printf("  [WARN] %s\n", msg)
 }
 
-func (l *SimpleLogger) Error(msg string, fields ...engine.Field) {
+func (l *SimpleLogger) Error(msg string, fields ...hiddenrole.Field) {
 	fmt.Printf("  [ERROR] %s\n", msg)
 }
 

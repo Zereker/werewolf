@@ -15,6 +15,49 @@
 
 ## 未发布
 
+### 引擎独立成 module：`github.com/Zereker/hiddenrole`
+
+内核从 `engine/` 变成 `hiddenrole/`，有自己的 `go.mod`、`LICENSE`、
+`CONTRIBUTING.md` 与全套文档。三套规则包改为 import 它。
+
+**包名也换了**：`engine.NewEngine(...)` → `hiddenrole.NewEngine(...)`。
+module 尾段与包名一致，调用点读作 `hiddenrole.GameView`、
+`hiddenrole.ScopeGame`。
+
+**为什么叫 hiddenrole。** 它描述的是这个内核真正承载的机制——**每个人有
+一个别人不知道的身份**。这一整轮做的所有事（信息边界、`PlayerView` 三副
+面孔、`AudienceOf`、不给玩家自由格式口袋）全都在服务这一件事。
+
+一度考虑过 `deduction`（social deduction game 的核心词），放弃了：
+`deduction` 在英语里更常用的义项是「扣除」（tax deduction），仓库名脱离
+上下文会被误认成财务库。
+
+### 拆之前先清了两笔引擎自己的欠账
+
+拆库暴露的问题，两条都与「拆不拆」无关，是内核自己的债：
+
+**一、内核自测只有 73.9%**，靠三套规则包才到 94%。`ReplayEngine` 覆盖率
+**0%**——这一轮修的三个 bug 全在回放这条路上，全部是规则包的随机对局抓到
+的。内核的正确性由下游证明，那是脆的。补到 **87.8%**。
+
+**二、`internal/gamefuzz` 出了 module 就用不了。** Go 的规则是 `internal/`
+只能被同 module 的代码 import。转为公开子包 `hiddenrole/enginetest`
+（位置同 `net/http/httptest`），并把 API golden 扩到覆盖它——一个公开包
+不被冻结守着就是后门。
+
+### 两个 module 的工程口径
+
+**`go` 命令不跨 module 边界**：在仓库根跑 `go test ./...` 一个引擎的测试
+都不会跑到。`Makefile` 与 CI 的每一个目标都跑两遍。
+
+开发期用 `replace github.com/Zereker/hiddenrole => ./hiddenrole` 对着本地
+源码联调——内核改动必须三套规则包一起验，隔着一次发版做不了。
+
+**覆盖率改成两个数**：三套规则包 92.8%，内核自测 87.8%。引擎那边只统计
+内核包自己、不含 `enginetest`——那是给规则包用的支架，驱动它的代码在另一
+个 module 里，跨 module 的覆盖率统计不到；算进来会把 87.8% 拉到 76.9%，
+那 11 个百分点是口径的假象。
+
 ### 🔒 API 冻结
 
 四个阶段走完，内核的导出面冻结。冻结的对象是

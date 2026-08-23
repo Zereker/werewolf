@@ -3,7 +3,7 @@ package missions
 import (
 	"time"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // 各阶段的建议超时。板子数据，引擎不据此计时。
@@ -78,10 +78,10 @@ const HammerRejections = 5
 // 刺杀阶段不在环里：它由任务阶段在好人凑满三次成功时用绕道排进来。
 // 内核那套「谁、去哪个阶段」的排队机制原本是为出局技能做的，用在这里
 // 严丝合缝——它还顺带保证了胜负判定推迟到刺杀结算之后，正是规则要的。
-func DefaultConfig() *engine.Config {
-	return &engine.Config{
+func DefaultConfig() *hiddenrole.Config {
+	return &hiddenrole.Config{
 		StartPhase: PhasePropose,
-		Phases: map[engine.PhaseType]*engine.PhaseConfig{
+		Phases: map[hiddenrole.PhaseType]*hiddenrole.PhaseConfig{
 			PhasePropose: {
 				Type: PhasePropose,
 
@@ -98,8 +98,8 @@ func DefaultConfig() *engine.Config {
 				// 一次提交带整支队伍（SkillUse.Targets 是切片）。
 				// 拆成多次提交是能走通的，但就绪判定因此说不清「还差几个人」
 				// ——它只知道「队长提交过没有」。见 SCARS.md 第 3 条。
-				Steps: []engine.PhaseStep{
-					{Role: engine.RoleUnspecified, Skill: SkillPropose, Required: true},
+				Steps: []hiddenrole.PhaseStep{
+					{Role: hiddenrole.RoleUnspecified, Skill: SkillPropose, Required: true},
 				},
 				Timeout:   ProposeTimeout,
 				NextPhase: PhaseTeamVote,
@@ -107,9 +107,9 @@ func DefaultConfig() *engine.Config {
 			PhaseTeamVote: {
 				Type: PhaseTeamVote,
 				// 全员表决，一人一票，接受或否决二选一。
-				Steps: []engine.PhaseStep{
-					{Role: engine.RoleUnspecified, Skill: SkillApprove, Required: true, Multiple: true, Group: "vote"},
-					{Role: engine.RoleUnspecified, Skill: SkillReject, Required: true, Multiple: true, Group: "vote"},
+				Steps: []hiddenrole.PhaseStep{
+					{Role: hiddenrole.RoleUnspecified, Skill: SkillApprove, Required: true, Multiple: true, Group: "vote"},
+					{Role: hiddenrole.RoleUnspecified, Skill: SkillReject, Required: true, Multiple: true, Group: "vote"},
 				},
 				Timeout:   TeamVoteTimeout,
 				NextPhase: PhaseMission,
@@ -120,9 +120,9 @@ func DefaultConfig() *engine.Config {
 				// 这里只能对所有人开放，再由解析器把不该算的丢掉——
 				// 代价是 AllowedSkills 会对没上任务的玩家说「你可以投」。
 				// 这是绕法最贵的一处，见 SCARS.md 第 1 条。
-				Steps: []engine.PhaseStep{
-					{Role: engine.RoleUnspecified, Skill: SkillMissionSuccess, Required: true, Multiple: true, Group: "mission"},
-					{Role: engine.RoleUnspecified, Skill: SkillMissionFail, Required: true, Multiple: true, Group: "mission"},
+				Steps: []hiddenrole.PhaseStep{
+					{Role: hiddenrole.RoleUnspecified, Skill: SkillMissionSuccess, Required: true, Multiple: true, Group: "mission"},
+					{Role: hiddenrole.RoleUnspecified, Skill: SkillMissionFail, Required: true, Multiple: true, Group: "mission"},
 				},
 				Timeout:   MissionTimeout,
 				NextPhase: PhasePropose,
@@ -138,7 +138,7 @@ func DefaultConfig() *engine.Config {
 			},
 			PhaseAssassin: {
 				Type: PhaseAssassin,
-				Steps: []engine.PhaseStep{
+				Steps: []hiddenrole.PhaseStep{
 					{Role: RoleAssassin, Skill: SkillAssassinate, Required: true},
 				},
 				Timeout:   AssassinTimeout,

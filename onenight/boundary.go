@@ -8,7 +8,7 @@
 package onenight
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // roleInfoFor 某个角色额外看到的东西。
@@ -18,8 +18,8 @@ import (
 //	互认    狼人、守夜人、爪牙——按**发到手**的牌算，因为他们在交换发生之前动
 //	看到的  预言家、抢劫者、独狼、失眠者——记录在自己身上，见 knowledge.go
 //	什么都没有  村民、捣蛋鬼（他自己也没看）、酒鬼（他更不知道）、皮匠、猎人
-func roleInfoFor(role engine.RoleType) engine.RoleInfoProvider {
-	return engine.RoleInfoFunc(func(playerID string, view engine.GameView) map[string]string {
+func roleInfoFor(role hiddenrole.RoleType) hiddenrole.RoleInfoProvider {
+	return hiddenrole.RoleInfoFunc(func(playerID string, view hiddenrole.GameView) map[string]string {
 		out := knowledgeOf(view, playerID)
 		if out == nil {
 			out = map[string]string{}
@@ -69,8 +69,8 @@ func joinIDs(ids []string) string {
 // 只有狼人之间成立，而且**不含爪牙**：爪牙看得见狼，狼看不见爪牙。
 // 内核允许不对称正是为了这种情况——missions 包的奥伯伦是另一个方向的例子
 // （他既不认识同伙，也不被同伙认识）。
-func teammates() engine.TeammateProvider {
-	return engine.TeammateFunc(func(playerID string, view engine.GameView) []string {
+func teammates() hiddenrole.TeammateProvider {
+	return hiddenrole.TeammateFunc(func(playerID string, view hiddenrole.GameView) []string {
 		if dealt(view, playerID) != RoleWerewolf {
 			return nil
 		}
@@ -85,12 +85,12 @@ func teammates() engine.TeammateProvider {
 //
 // 内核的状态原语（SET_VAR / SET_ALIVE）永不外发，这一条不可配置，因此
 // 「三号现在手上是狼人牌」这种事不会因为这里写漏而泄出去。
-func audience() engine.AudienceProvider {
-	return engine.AudienceFunc(func(event *engine.Event, view engine.GameView) ([]string, bool) {
+func audience() hiddenrole.AudienceProvider {
+	return hiddenrole.AudienceFunc(func(event *hiddenrole.Event, view hiddenrole.GameView) ([]string, bool) {
 		switch event.Type {
 		// 公开：投票、出局、无人出局。
 		case EventVoted, EventLynched, EventNoOneDies, EventHunterHit,
-			engine.EventGameStarted, engine.EventGameEnded:
+			hiddenrole.EventGameStarted, hiddenrole.EventGameEnded:
 			return allIDs(view), true
 
 		// 只有当事人知道。捣蛋鬼那条尤其重要：被换的两个人也不能知道。
@@ -111,14 +111,14 @@ func audience() engine.AudienceProvider {
 // 装这个 provider 不是为了改什么，是为了**关掉内核的默认**：内核默认
 // 「出局的人不能发言」，而这一套里出局发生在最后一刻，之后也没有话要说，
 // 默认与本规则无关。写出来比依赖默认清楚。
-func speech() engine.SpeechProvider {
-	return engine.SpeechFunc(func(_ string, view engine.GameView) []string {
+func speech() hiddenrole.SpeechProvider {
+	return hiddenrole.SpeechFunc(func(_ string, view hiddenrole.GameView) []string {
 		return allIDs(view)
 	})
 }
 
 // allIDs 场上所有人，按 ID 排序。
-func allIDs(view engine.GameView) []string {
+func allIDs(view hiddenrole.GameView) []string {
 	players := view.AllPlayers()
 	out := make([]string, 0, len(players))
 	for _, p := range players {

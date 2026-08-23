@@ -11,7 +11,7 @@
 
 package werewolf
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // Rules 狼人杀的规则变体。
 //
@@ -48,7 +48,7 @@ func (r Rules) Validate() error {
 	switch r.VictoryMode {
 	case VictoryModeSideWipe, VictoryModeTownWipe:
 	default:
-		return engine.WrapError(engine.CodeInvalidConfig, "unknown victory mode %q", string(r.VictoryMode))
+		return hiddenrole.WrapError(hiddenrole.CodeInvalidConfig, "unknown victory mode %q", string(r.VictoryMode))
 	}
 	return nil
 }
@@ -59,8 +59,8 @@ func (r Rules) Validate() error {
 // 「哪些阶段有解析器」一眼可见。第三方阶段经 WithResolver 注册。
 //
 // 表是规则的一部分，不是内核的：内核不知道 NIGHT_WITCH 该由谁结算。
-func builtinResolvers(rules Rules) map[PhaseType]engine.Resolver {
-	return map[PhaseType]engine.Resolver{
+func builtinResolvers(rules Rules) map[PhaseType]hiddenrole.Resolver {
+	return map[PhaseType]hiddenrole.Resolver{
 		PhaseDay:          NewDayResolver(),
 		PhaseVote:         NewVoteResolver(),
 		PhaseNightGuard:   NewGuardResolver(rules),
@@ -85,19 +85,19 @@ func builtinResolvers(rules Rules) map[PhaseType]engine.Resolver {
 //		append(werewolf.Options(rules), werewolf.WithResolver(myPhase, myResolver))...)
 func Options(rules Rules) []EngineOption {
 	opts := []EngineOption{
-		engine.WithVictoryChecker(DefaultVictoryChecker{Mode: rules.VictoryMode}),
-		engine.WithAudience(builtinAudience),
-		engine.WithTeammates(builtinTeammates),
-		engine.WithSpeech(builtinSpeech),
+		hiddenrole.WithVictoryChecker(DefaultVictoryChecker{Mode: rules.VictoryMode}),
+		hiddenrole.WithAudience(builtinAudience),
+		hiddenrole.WithTeammates(builtinTeammates),
+		hiddenrole.WithSpeech(builtinSpeech),
 	}
 	for phase, r := range builtinResolvers(rules) {
-		opts = append(opts, engine.WithResolver(phase, r))
+		opts = append(opts, hiddenrole.WithResolver(phase, r))
 	}
 	for role, p := range builtinRoleInfo {
-		opts = append(opts, engine.WithRoleInfo(role, p))
+		opts = append(opts, hiddenrole.WithRoleInfo(role, p))
 	}
 	for role, su := range builtinRoleSetup {
-		opts = append(opts, engine.WithRoleSetup(role, su))
+		opts = append(opts, hiddenrole.WithRoleSetup(role, su))
 	}
 	return opts
 }
@@ -113,7 +113,7 @@ func New(rules Rules, extra ...EngineOption) (*Engine, error) {
 	if err := rules.Validate(); err != nil {
 		return nil, err
 	}
-	return engine.NewEngine(DefaultGameConfig(), append(Options(rules), extra...)...)
+	return hiddenrole.NewEngine(DefaultGameConfig(), append(Options(rules), extra...)...)
 }
 
 // NewWith 同 New，但使用给定的阶段配置。
@@ -123,7 +123,7 @@ func NewWith(config *GameConfig, rules Rules, extra ...EngineOption) (*Engine, e
 	if err := rules.Validate(); err != nil {
 		return nil, err
 	}
-	return engine.NewEngine(config, append(Options(rules), extra...)...)
+	return hiddenrole.NewEngine(config, append(Options(rules), extra...)...)
 }
 
 // MustNewWith 同 NewWith，配置不合法时 panic。
@@ -160,7 +160,7 @@ func Restore(config *GameConfig, rules Rules, snap *Snapshot, extra ...EngineOpt
 	if config == nil {
 		config = DefaultGameConfig()
 	}
-	return engine.RestoreEngine(config, snap, append(Options(rules), extra...)...)
+	return hiddenrole.RestoreEngine(config, snap, append(Options(rules), extra...)...)
 }
 
 // Replay 按效果流重建一局狼人杀。config 为 nil 时用默认阶段配置。
@@ -171,5 +171,5 @@ func Replay(config *GameConfig, rules Rules, log []*Effect, extra ...EngineOptio
 	if config == nil {
 		config = DefaultGameConfig()
 	}
-	return engine.ReplayEngine(config, log, append(Options(rules), extra...)...)
+	return hiddenrole.ReplayEngine(config, log, append(Options(rules), extra...)...)
 }

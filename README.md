@@ -27,7 +27,7 @@
 | [`onenight/`](onenight/) | 单夜换牌制 | 身份**分两层**：发到手的那张定夜里做什么，手上那张定结算算哪边 |
 
 三套没有一个取值相同（阶段、角色、技能、事件全不一样），而内核不用改。
-第三套写下来只逼出**零个破坏性 API 变更**——[API 已冻结](docs/API.md)。
+第三套写下来只逼出**零个破坏性 API 变更**——[API 已冻结](hiddenrole/API.md)。
 
 ## 特性
 
@@ -36,7 +36,7 @@
 - **确定性** - 同一副板子、同一批输入，导出的快照逐字节一致，由 5000 局随机对局摁住（三套规则包合计）
 - **规则有出处** - 三套规则包各有基准（维基条目或官方规则书），与来源不一致处写明理由
 - **规则可配置** - 女巫自救、守卫连守、同守同救、屠边/屠城均可切换
-- **可扩展** - 八个扩展点，内置角色与第三方走同一条路，没有特权；[API 已冻结](docs/API.md)并由 golden 测试守着
+- **可扩展** - 八个扩展点，内置角色与第三方走同一条路，没有特权；[API 已冻结](hiddenrole/API.md)并由 golden 测试守着
 - **可存档、可回放** - 局面导出为 JSON 恢复后继续推进；效果流是完整历史，可重建整局
 - **零依赖** - `go.mod` 里没有 require
 - **线程安全** - 引擎的所有导出方法都可并发调用
@@ -311,7 +311,7 @@ v.RoleInfo        // 角色专属信息：女巫的刀口 v.RoleInfo[RoleInfoKil
 
 ```go
 // 推的一路：OnEvent 给的就是 Event，直接问
-g.OnEvent(func(ev *engine.Event) {
+g.OnEvent(func(ev *hiddenrole.Event) {
     audience, known := g.AudienceOf(ev)
     if !known {
         return // 第三方角色自定义的事件类型，引擎无从判断，调用方自己路由
@@ -373,7 +373,7 @@ g.EndPhase()   // 未就绪也不会被拒绝，是否超时推进由调用方�
 ```go
 import (
     "github.com/Zereker/werewolf"
-    "github.com/Zereker/werewolf/engine" // 扩展点住在内核包
+    "github.com/Zereker/hiddenrole" // 扩展点住在内核包
 )
 
 const (
@@ -391,19 +391,19 @@ cfg.Phases[phaseWolfKing] = &werewolf.PhaseConfig{
 }
 
 g, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
-    engine.WithResolver(phaseWolfKing, &wolfKingResolver{}),
+    hiddenrole.WithResolver(phaseWolfKing, &wolfKingResolver{}),
     // 阵营与类别写在角色自己身上，入座时不用再给一遍
-    engine.WithRoleSetup(roleWolfKing, engine.RoleSetupFunc(
+    hiddenrole.WithRoleSetup(roleWolfKing, hiddenrole.RoleSetupFunc(
         func(string, werewolf.RoleType) map[string]string {
             return werewolf.CampVars(werewolf.CampEvil, werewolf.RoleCategoryWolf)
         })))
 g.AddPlayer("wk", roleWolfKing)
 ```
 
-这八个 `With*` 都住在内核包（`engine.WithResolver`、`engine.WithRoleSetup`……），
-用它们就得 import `werewolf/engine`——扩展规则本来就是在动内核的接线。
+这八个 `With*` 都住在内核包（`hiddenrole.WithResolver`、`hiddenrole.WithRoleSetup`……），
+用它们就得 import `Zereker/hiddenrole`——扩展规则本来就是在动内核的接线。
 它们是构造选项，`New` / `NewWith` / `Restore` / `Replay` 四个入口都接受，
-`engine.WithLogger` 同理。解析器与日志都只能在构造时给出：
+`hiddenrole.WithLogger` 同理。解析器与日志都只能在构造时给出：
 引擎交到调用方手上之后，这些就不再变了。
 
 扩展能改动的八处，都由构造选项给出：
@@ -676,7 +676,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 ├── alias.go                 # 内核名字的小集合再导出（收录规则见文件头）
 ├── doc.go                   # 包文档
 │
-├── engine/                  # 内核：不知道狼人杀是什么
+├── hiddenrole/              # 内核，**独立的 module**：不知道狼人杀是什么
 │   ├── README.md            # 内核自己的说明
 │   ├── engine.go            # 状态机
 │   ├── config.go            # 阶段机的配置
@@ -701,7 +701,12 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 │   ├── logger.go            # 日志接口
 │   ├── testview.go          # Board：单测解析器用的手摆局面
 │   ├── types.go             # 词汇表的类型（取值在规则包）
-│   └── enginetest/          # 给规则包的测试支架：随机对局 + 通用不变量
+│   ├── enginetest/          # 给规则包的测试支架：随机对局 + 通用不变量
+│   ├── go.mod               # ← 它是另一个 module
+│   ├── API.md               # API 契约（已冻结）
+│   ├── DESIGN.md            # 技术方案
+│   ├── ARCHITECTURE.md      # 当前实现的结构
+│   └── PRIOR-ART.md         # 与对照实现的比较
 │
 ├── missions/                # 第二套规则包：任务制（提名 / 表决 / 任务 / 刺杀）
 │   └── SCARS.md             # 它撞到了内核的哪些地方
@@ -713,23 +718,18 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 │   ├── netserver/           # TCP 服务端（推送、并发、断线重连）
 │   └── extension/           # 自定义角色（白痴）
 └── docs/
-    ├── API.md               # 内核 API 契约：全部导出名，冻结的对象
-    ├── DESIGN.md            # 内核技术方案：该长成什么样、为什么
-    ├── ROADMAP.md           # 四个阶段的记录（已归档）
-    ├── ARCHITECTURE.md      # 当前实现的结构
-    ├── PRIOR-ART.md         # 与 boardgame.io 等对照实现的比较
-    └── API-SHAPE.md         # 一次 API 审计的记录（已归档）
+    └── ROADMAP.md           # 四个阶段的记录（已归档）
 ```
 
 ## 架构设计
 
 | 想知道 | 看哪份 |
 |---|---|
-| **内核有哪些 API、各承诺什么** | [API.md](docs/API.md) 🔒 已冻结 |
-| 内核**该**长成什么样、为什么这么抽象 | [DESIGN.md](docs/DESIGN.md) |
+| **内核有哪些 API、各承诺什么** | [API.md](hiddenrole/API.md) 🔒 已冻结 |
+| 内核**该**长成什么样、为什么这么抽象 | [DESIGN.md](hiddenrole/DESIGN.md) |
 | 走到这一步的次序与判断过程 | [ROADMAP.md](docs/ROADMAP.md)（已归档） |
-| 现在的代码是怎么组织的 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](docs/PRIOR-ART.md) |
+| 现在的代码是怎么组织的 | [ARCHITECTURE.md](hiddenrole/ARCHITECTURE.md) |
+| 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](hiddenrole/PRIOR-ART.md) |
 | 第二套规则包撞到了什么 | [missions/SCARS.md](missions/SCARS.md) |
 | 第三套规则包撞到了什么 | [onenight/SCARS.md](onenight/SCARS.md) |
 
@@ -808,7 +808,7 @@ CHANGELOG 里对应的小节。四道闸：版本号格式、tag 未占用、CHA
 
 **当前版本：[v1.5.0](CHANGELOG.md)。** 通用内核与狼人杀规则已经分开：引擎的代码
 路径里没有一处认得具体角色、阵营或死法，狼人杀的一整套由 `werewolf.Options` 经公开
-选项装上去，与第三方注册自定义角色走同一批入口。覆盖率 94.0%（内核加三套规则），
+选项装上去，与第三方注册自定义角色走同一批入口。覆盖率：三套规则包 92.8%，内核自测 87.8%（两个 module 分开统计），
 规则逐条对齐维基条目，
 每次测试跑 5000 局随机对局——三套规则包合计（狼人杀 2000、任务制 1000、单夜制 2000）。
 
@@ -824,7 +824,7 @@ API 是承诺。
 | 包 | 是什么 |
 |---|---|
 | `github.com/Zereker/werewolf` | 狼人杀规则：角色、阶段、解析器、屠边屠城 |
-| `github.com/Zereker/werewolf/engine` | 内核：玩家、阶段环、两条状态原语、信息边界 |
+| `github.com/Zereker/hiddenrole` | 内核，**独立的 module**：玩家、阶段环、两条状态原语、信息边界 |
 
 **「规则只用公开 API」由编译器保证**，不靠自觉——规则包在内核之外，它能用的
 入口使用者也能用。想验证的话看 [`engine/types.go`](engine/types.go)：内核的
@@ -835,13 +835,13 @@ API 是承诺。
 **开一局只 import 根包就够。** 根包把内核的一小部分名字再导出了一遍
 （见 [`alias.go`](alias.go)，二十来个），收录规则只有一条：本包自己的
 导出 API 用得到的才留——`SkillUse`、`GameView`、`Effect`、`Snapshot`、
-词汇表的类型与取值。它们是纯别名，`werewolf.Effect` 与 `engine.Effect`
+词汇表的类型与取值。它们是纯别名，`werewolf.Effect` 与 `hiddenrole.Effect`
 是同一个类型。
 
 **一旦要改规则，就会写出 `engine.` 这个前缀**：自己写解析器、换胜负判定、
-接日志、按错误码分支、拆快照——都从 `werewolf/engine` 取。这不是
+接日志、按错误码分支、拆快照——都从 `Zereker/hiddenrole` 取。这不是
 遗漏，是想让边界在调用点上看得见。本包自己的 `resolver.go`、`rolesetup.go`
-就是这么写的。内核的完整 API 见 [engine/README.md](engine/README.md)。
+就是这么写的。内核的完整 API 见 [engine/README.md](hiddenrole/README.md)。
 
 ## 许可证
 

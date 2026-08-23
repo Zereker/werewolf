@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // canonical 把一批效果压成一个可比较的字符串。
 //
 // Data 是 map，按键排序之后再拼——否则这个函数自己就是不确定的，
 // 会把「顺序稳定」误报成不稳定。
-func canonical(effects []*engine.Effect) string {
+func canonical(effects []*hiddenrole.Effect) string {
 	var sb strings.Builder
 	for _, ef := range effects {
 		if ef == nil {
@@ -59,7 +59,7 @@ func TestResolvers_EffectOrderIsDeterminedByTheBoard(t *testing.T) {
 	// 一副人多、且各角色都有事可做的局面。人多是有意的：map 迭代的
 	// 随机性在键少的时候可能碰巧同序。
 	full := newBoard()
-	full.Players = append(full.Players, []engine.PlayerInfo{
+	full.Players = append(full.Players, []hiddenrole.PlayerInfo{
 		seatOf("w1", RoleWerewolf), seatOf("w2", RoleWerewolf), seatOf("w3", RoleWerewolf),
 		seatOf("s", RoleSeer), seatOf("wi", RoleWitch), seatOf("g", RoleGuard),
 		seatOf("h", RoleHunter),
@@ -93,7 +93,7 @@ func TestResolvers_EffectOrderIsDeterminedByTheBoard(t *testing.T) {
 
 	cases := []struct {
 		name  string
-		r     engine.Resolver
+		r     hiddenrole.Resolver
 		uses  []*SkillUse
 		board board
 	}{

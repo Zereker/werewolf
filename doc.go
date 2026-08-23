@@ -27,7 +27,7 @@
 //	github.com/Zereker/werewolf         这个包，狼人杀规则
 //	github.com/Zereker/werewolf/engine  内核
 //
-// 接线的方向是「规则组装内核」，不是「内核认得规则」：engine.NewEngine
+// 接线的方向是「规则组装内核」，不是「内核认得规则」：hiddenrole.NewEngine
 // 造出来的是一台什么都不认识的状态机——没有解析器、不会判出胜负、
 // 不认得任何角色、不划分信息边界。狼人杀的那一整套由 Options 经公开选项
 // 装上去，与第三方注册自定义角色走的是同一批入口。
@@ -39,10 +39,10 @@
 //
 // 开一局只 import 本包就够：内核的一小部分名字在本包再导出了一遍
 // （见 alias.go，二十来个），收录规则是「本包自己的导出 API 用得到的
-// 才留」。它们是纯别名，werewolf.Effect 与 engine.Effect 是同一个类型。
+// 才留」。它们是纯别名，werewolf.Effect 与 hiddenrole.Effect 是同一个类型。
 //
 // 一旦要**改**规则——自己写解析器、换胜负判定、接日志与指标、按错误码
-// 分支、拆快照——那些名字在内核包，调用点上就会出现 engine. 这个前缀。
+// 分支、拆快照——那些名字在内核包，调用点上就会出现 hiddenrole. 这个前缀。
 // 这不是遗漏，是想让边界在代码里看得见；本包自己的 resolver.go、
 // rolesetup.go 就是这么写的。
 //
@@ -111,8 +111,8 @@
 //
 //	cfg.Phases[myPhase] = &werewolf.PhaseConfig{ ... }        // 声明阶段
 //	g, _ := werewolf.NewWith(cfg, werewolf.DefaultRules(),
-//		engine.WithResolver(myPhase, myResolver),             // 注册行为
-//		engine.WithRoleSetup(myRole, mySetup))                // 注册初始状态
+//		hiddenrole.WithResolver(myPhase, myResolver),             // 注册行为
+//		hiddenrole.WithRoleSetup(myRole, mySetup))                // 注册初始状态
 //	g.AddPlayer("p1", myRole)                            // 入座，与内置角色同一个入口
 //
 // 阵营与角色类别写在角色自己的 setup 里（werewolf.CampVars），不是入座时

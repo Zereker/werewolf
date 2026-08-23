@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // TestDefaultRules 规则开关的默认值。
@@ -97,7 +97,7 @@ func TestStandardVotePhase(t *testing.T) {
 
 	// Verify vote step
 	voteStep := phase.Steps[1]
-	if voteStep.Role != engine.RoleUnspecified {
+	if voteStep.Role != hiddenrole.RoleUnspecified {
 		t.Errorf("expected Role=UNSPECIFIED, got %v", voteStep.Role)
 	}
 	if voteStep.Skill != SkillVote {
@@ -187,7 +187,7 @@ func TestNewEngine_RejectsInvalidConfig(t *testing.T) {
 	cfg := DefaultGameConfig()
 	delete(cfg.Phases, PhaseNightWitch) // NIGHT_WOLF 的 NextPhase 悬空
 
-	if _, err := engine.NewEngine(cfg); err == nil {
+	if _, err := hiddenrole.NewEngine(cfg); err == nil {
 		t.Fatal("残缺配置应当在构造时被拒绝")
 	}
 }
@@ -203,7 +203,7 @@ func TestStart_RejectsMissingResolver(t *testing.T) {
 		NextPhase: PhaseNightGuard,
 	}
 	cfg.Phases[PhaseVote].NextPhase = PhaseType("NO_RESOLVER")
-	eng, err := engine.NewEngine(cfg, opts...)
+	eng, err := hiddenrole.NewEngine(cfg, opts...)
 	if err != nil {
 		t.Fatalf("配置本身应当合法: %v", err)
 	}
@@ -309,8 +309,8 @@ func TestGameConfig_PhaseTimeout(t *testing.T) {
 	}
 	// DefaultTimeout 也没配时退回常量
 	bare := &GameConfig{Phases: cfg.Phases}
-	if got := bare.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != engine.DefaultPhaseTimeout {
-		t.Errorf("兜底: 期望 %v，实际 %v", engine.DefaultPhaseTimeout, got)
+	if got := bare.PhaseTimeout(PhaseType("NOT_CONFIGURED")); got != hiddenrole.DefaultPhaseTimeout {
+		t.Errorf("兜底: 期望 %v，实际 %v", hiddenrole.DefaultPhaseTimeout, got)
 	}
 }
 

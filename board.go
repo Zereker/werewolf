@@ -11,7 +11,7 @@ package werewolf
 import (
 	"time"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // 各阶段的建议超时。板子数据，不是引擎逻辑——引擎不据此计时，
@@ -62,7 +62,7 @@ func (m VictoryMode) String() string {
 func DefaultGameConfig() *GameConfig {
 	return &GameConfig{
 		StartPhase:     PhaseNightGuard,
-		DefaultTimeout: engine.DefaultPhaseTimeout,
+		DefaultTimeout: hiddenrole.DefaultPhaseTimeout,
 		Phases: map[PhaseType]*PhaseConfig{
 			// 白天和投票阶段
 			PhaseDay:       StandardDayPhase(),
@@ -99,7 +99,7 @@ func StandardVotePhase() *PhaseConfig {
 		Type: PhaseVote,
 		Steps: []PhaseStep{
 			{Role: RoleGod, Skill: SkillAnnounce},
-			{Role: engine.RoleUnspecified, Skill: SkillVote, Required: true, Multiple: true},
+			{Role: hiddenrole.RoleUnspecified, Skill: SkillVote, Required: true, Multiple: true},
 		},
 		Timeout:   VotePhaseTimeout,
 		NextPhase: PhaseNightGuard, // 进入下一夜

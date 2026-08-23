@@ -1,7 +1,7 @@
 package werewolf
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"testing"
 )
 
@@ -9,7 +9,7 @@ import (
 func TestWithLogger(t *testing.T) {
 	rec := &recordingLogger{}
 
-	g := newRuleGameWith(t, nil, []EngineOption{engine.WithLogger(rec)},
+	g := newRuleGameWith(t, nil, []EngineOption{hiddenrole.WithLogger(rec)},
 		seats(wolf("w1"), villagers("v1", "v2", "v3"))...)
 
 	g.end(PhaseNightWolf)
@@ -23,7 +23,7 @@ func TestWithLogger(t *testing.T) {
 
 // TestWithNilOption nil 选项与 nil 日志都不该让构造失败。
 func TestWithNilOption(t *testing.T) {
-	if _, err := engine.NewEngine(DefaultGameConfig(), nil, engine.WithLogger(nil)); err != nil {
+	if _, err := hiddenrole.NewEngine(DefaultGameConfig(), nil, hiddenrole.WithLogger(nil)); err != nil {
 		t.Errorf("nil 选项应当被忽略，实际 %v", err)
 	}
 }

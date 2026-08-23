@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 const (
@@ -35,28 +35,28 @@ const (
 )
 
 // learnSelf 记下「我看到自己现在是什么」。
-func learnSelf(viewerID string, role engine.RoleType) *engine.Effect {
-	return engine.NewSetVarEffect(engine.ScopeGame.Of(viewerID), learnSelfKey, string(role))
+func learnSelf(viewerID string, role hiddenrole.RoleType) *hiddenrole.Effect {
+	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of(viewerID), learnSelfKey, string(role))
 }
 
 // learnPlayer 记下「我看到某个人当时是什么」。
-func learnPlayer(viewerID, targetID string, role engine.RoleType) *engine.Effect {
-	return engine.NewSetVarEffect(
-		engine.ScopeGame.Of(viewerID), learnPlayerPrefix+targetID, string(role))
+func learnPlayer(viewerID, targetID string, role hiddenrole.RoleType) *hiddenrole.Effect {
+	return hiddenrole.NewSetVarEffect(
+		hiddenrole.ScopeGame.Of(viewerID), learnPlayerPrefix+targetID, string(role))
 }
 
 // learnCenter 记下「我看到中央第几张当时是什么」。
-func learnCenter(viewerID string, i int, role engine.RoleType) *engine.Effect {
-	return engine.NewSetVarEffect(
-		engine.ScopeGame.Of(viewerID), learnCenterPrefix+strconv.Itoa(i), string(role))
+func learnCenter(viewerID string, i int, role hiddenrole.RoleType) *hiddenrole.Effect {
+	return hiddenrole.NewSetVarEffect(
+		hiddenrole.ScopeGame.Of(viewerID), learnCenterPrefix+strconv.Itoa(i), string(role))
 }
 
 // knowledgeOf 这名玩家夜里看到的一切，键与 learn* 写进去的一致。
 //
 // 它读的是玩家自己的整局状态，因此**必须**由 RoleInfoProvider 显式投射才能
-// 到达玩家——内核刻意不把 Vars 交给玩家（见 engine.PlayerInfo 的说明），
+// 到达玩家——内核刻意不把 Vars 交给玩家（见 hiddenrole.PlayerInfo 的说明），
 // 那正是这个库要替调用方收掉的那类判断。
-func knowledgeOf(view engine.GameView, playerID string) map[string]string {
+func knowledgeOf(view hiddenrole.GameView, playerID string) map[string]string {
 	p, ok := view.Player(playerID)
 	if !ok {
 		return nil
@@ -79,8 +79,8 @@ func knowledgeOf(view engine.GameView, playerID string) map[string]string {
 // 「同一伙」按**发到手**的牌算，不按现在手上那张：狼人在第一个环节互认，
 // 那时候一次交换都还没发生。抢劫者后来抢走了狼人牌也不会被认出来——
 // 他不在场上那一刻的名单里。
-func teammatesByDealt(view engine.GameView, playerID string, roles ...engine.RoleType) []string {
-	want := make(map[engine.RoleType]bool, len(roles))
+func teammatesByDealt(view hiddenrole.GameView, playerID string, roles ...hiddenrole.RoleType) []string {
+	want := make(map[hiddenrole.RoleType]bool, len(roles))
 	for _, r := range roles {
 		want[r] = true
 	}

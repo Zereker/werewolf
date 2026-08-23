@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa
@@ -15,7 +15,7 @@ import (
 // 内核允许不对称正是为了这一类。
 func TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w1", RoleWerewolf), at("w2", RoleWerewolf),
 		at("m", RoleMinion), at("v", RoleVillager))
 
@@ -46,7 +46,7 @@ func TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa(t *testing.
 // 因此空名单也要送到，不能因为空就不给。
 func TestBoundary_LoneWolfSeesEmptyList(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	info := g.info("w")
@@ -62,7 +62,7 @@ func TestBoundary_LoneWolfSeesEmptyList(t *testing.T) {
 // TestBoundary_LoneMasonKnowsTheOtherIsInCenter 只有一名守夜人时名单是空的。
 func TestBoundary_LoneMasonKnowsTheOtherIsInCenter(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleMason, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleMason, RoleVillager, RoleVillager},
 		at("m", RoleMason), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	if got, ok := g.info("m")["masons"]; !ok || got != "" {
@@ -75,21 +75,21 @@ func TestBoundary_LoneMasonKnowsTheOtherIsInCenter(t *testing.T) {
 // 捣蛋鬼那条尤其要紧：被换的两个人也不能知道。
 func TestBoundary_NightEventsGoOnlyToTheActor(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("t", RoleTroublemaker), at("w", RoleWerewolf),
 		at("v1", RoleVillager), at("v2", RoleVillager))
 
 	cases := []struct {
-		event *engine.Event
+		event *hiddenrole.Event
 		want  []string
 		why   string
 	}{
-		{engine.NewEffect(EventMeddled, "t", "").ToEvent(), []string{"t"}, "只有捣蛋鬼自己知道"},
-		{engine.NewEffect(EventSeerLook, "v1", "w").ToEvent(), []string{"v1"}, "只有预言家自己知道"},
-		{engine.NewEffect(EventDrunkSwap, "v2", "").ToEvent(), []string{"v2"}, "酒鬼自己也只知道他换了"},
-		{engine.NewEffect(EventLynched, "", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "出局是公开的"},
-		{engine.NewEffect(EventVoted, "v1", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "投票是公开的"},
-		{engine.NewEffect(EventNoOneDies, "", "").ToEvent(), []string{"t", "v1", "v2", "w"}, "无人出局是公开的"},
+		{hiddenrole.NewEffect(EventMeddled, "t", "").ToEvent(), []string{"t"}, "只有捣蛋鬼自己知道"},
+		{hiddenrole.NewEffect(EventSeerLook, "v1", "w").ToEvent(), []string{"v1"}, "只有预言家自己知道"},
+		{hiddenrole.NewEffect(EventDrunkSwap, "v2", "").ToEvent(), []string{"v2"}, "酒鬼自己也只知道他换了"},
+		{hiddenrole.NewEffect(EventLynched, "", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "出局是公开的"},
+		{hiddenrole.NewEffect(EventVoted, "v1", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "投票是公开的"},
+		{hiddenrole.NewEffect(EventNoOneDies, "", "").ToEvent(), []string{"t", "v1", "v2", "w"}, "无人出局是公开的"},
 	}
 
 	for _, c := range cases {
@@ -105,7 +105,7 @@ func TestBoundary_NightEventsGoOnlyToTheActor(t *testing.T) {
 	}
 
 	// 规则没管的事件交回「不知道」，由调用方自己路由。
-	if _, known := g.e.AudienceOf(engine.NewEffect(engine.EventType("SOMETHING_ELSE"), "t", "").ToEvent()); known {
+	if _, known := g.e.AudienceOf(hiddenrole.NewEffect(hiddenrole.EventType("SOMETHING_ELSE"), "t", "").ToEvent()); known {
 		t.Error("本包没有为这个事件表态，答案该是「不知道」")
 	}
 }
@@ -116,14 +116,14 @@ func TestBoundary_NightEventsGoOnlyToTheActor(t *testing.T) {
 // 它是内核不可配置的那一条，本包写不写 AudienceProvider 都拦得住。
 func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
-	primitives := []*engine.Effect{
+	primitives := []*hiddenrole.Effect{
 		setCard("v1", RoleWerewolf),
 		setCenterCard(0, RoleWerewolf),
 		learnSelf("v1", RoleWerewolf),
-		engine.NewSetAliveEffect("v1", false),
+		hiddenrole.NewSetAliveEffect("v1", false),
 	}
 	for _, ef := range primitives {
 		got, known := g.e.AudienceOf(ef.ToEvent())
@@ -139,7 +139,7 @@ func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 // TestBoundary_SpeechIsPublicAllGame 发言全场可听，全程。
 func TestBoundary_SpeechIsPublicAllGame(t *testing.T) {
 	g := newGame(t,
-		[CenterCount]engine.RoleType{RoleVillager, RoleVillager, RoleVillager},
+		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.advance(PhaseDay)
@@ -153,8 +153,8 @@ func TestBoundary_SpeechIsPublicAllGame(t *testing.T) {
 // TestCampOf 翻牌时算阵营。爪牙属狼队但他不是狼牌。
 func TestCampOf(t *testing.T) {
 	cases := []struct {
-		role engine.RoleType
-		want engine.Camp
+		role hiddenrole.RoleType
+		want hiddenrole.Camp
 	}{
 		{RoleWerewolf, CampWolf},
 		{RoleMinion, CampWolf},

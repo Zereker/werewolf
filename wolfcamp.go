@@ -12,7 +12,7 @@
 
 package werewolf
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // 狼人杀的两个阵营。
 const (
@@ -25,7 +25,7 @@ const (
 // 屠边判定需要区分「神职」与「平民」，而阵营只有好人/狼人两值，
 // 表达不了这个维度，故单列一个类别。
 //
-// 它整个属于狼人杀：内核只认「这名玩家站哪一边」（engine.VarCamp），
+// 它整个属于狼人杀：内核只认「这名玩家站哪一边」（hiddenrole.VarCamp），
 // 不认得神职与平民。
 type RoleCategory string
 
@@ -49,12 +49,12 @@ const (
 )
 
 // campOf 这名玩家属于哪一边，没有登记则为 CampUnspecified。
-func campOf(p engine.PlayerInfo) Camp {
+func campOf(p hiddenrole.PlayerInfo) Camp {
 	return Camp(p.Vars[VarCamp])
 }
 
 // categoryOf 这名玩家是什么类别，没有登记则为 RoleCategoryUnknown。
-func categoryOf(p engine.PlayerInfo) RoleCategory {
+func categoryOf(p hiddenrole.PlayerInfo) RoleCategory {
 	return RoleCategory(p.Vars[VarCategory])
 }
 
@@ -68,7 +68,7 @@ func categoryOf(p engine.PlayerInfo) RoleCategory {
 //		}))
 func campVars(camp Camp, category RoleCategory) map[string]string {
 	out := make(map[string]string, 2)
-	if camp != engine.CampUnspecified {
+	if camp != hiddenrole.CampUnspecified {
 		out[VarCamp] = string(camp)
 	}
 	if category != RoleCategoryUnknown {

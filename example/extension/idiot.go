@@ -12,8 +12,8 @@ package main
 import (
 	"fmt"
 
+	"github.com/Zereker/hiddenrole"
 	"github.com/Zereker/werewolf"
-	"github.com/Zereker/werewolf/engine"
 )
 
 // 自定义取值从 1000 起，避免与后续内置枚举撞号。
@@ -35,13 +35,13 @@ const (
 // 写走 NewSetVarEffect。女巫的药、守卫的守护记录走的是同一条路，
 // 内置角色在这件事上没有特权。
 type idiotRule struct {
-	inner engine.Resolver
+	inner hiddenrole.Resolver
 }
 
 // varRevealed 这个扩展在 PlayerVar 里用的键。
 const varRevealed = "idiot.revealed"
 
-func newIdiotRule(inner engine.Resolver) *idiotRule {
+func newIdiotRule(inner hiddenrole.Resolver) *idiotRule {
 	return &idiotRule{inner: inner}
 }
 
@@ -107,9 +107,9 @@ func (r *idiotRule) Resolve(
 		}
 		revealedAt[ef.TargetID] = true
 		out = append(out,
-			engine.NewEffect(eventRevealed, ef.TargetID, "").WithData("role", "IDIOT"),
+			hiddenrole.NewEffect(eventRevealed, ef.TargetID, "").WithData("role", "IDIOT"),
 			// 状态交给引擎保管：随快照走，回放能重建，这个 Resolver 保持无状态
-			engine.NewSetVarEffect(engine.ScopeGame.Of(ef.TargetID), varRevealed, "1"),
+			hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of(ef.TargetID), varRevealed, "1"),
 		)
 	}
 	return out
@@ -117,7 +117,7 @@ func (r *idiotRule) Resolve(
 
 // revealed 这个白痴翻过牌了吗。
 func revealed(view werewolf.GameView, id string) bool {
-	return view.Var(engine.ScopeGame.Of(id), varRevealed) != ""
+	return view.Var(hiddenrole.ScopeGame.Of(id), varRevealed) != ""
 }
 
 // describe 把效果讲成一句话，包括这个扩展自己的事件类型。

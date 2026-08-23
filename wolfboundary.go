@@ -8,10 +8,10 @@
 
 package werewolf
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // builtinAudience 狼人杀的默认可见性划分。
-var builtinAudience = engine.AudienceFunc(wolfAudience)
+var builtinAudience = hiddenrole.AudienceFunc(wolfAudience)
 
 // wolfAudience 一件事该告诉哪些玩家。
 //
@@ -19,7 +19,7 @@ var builtinAudience = engine.AudienceFunc(wolfAudience)
 // 「女巫想毒人但今晚已用过解药」产出的是一条 source=女巫 的 POISON，
 // 与结算阶段那条 source="" 的「某人毒发身亡」是同一个类型。只按类型分桶，
 // 前者会被当成公开死讯广播给全场，女巫当场暴露。
-func wolfAudience(event *engine.Event, view GameView) ([]string, bool) {
+func wolfAudience(event *hiddenrole.Event, view GameView) ([]string, bool) {
 	if event.Canceled {
 		return actorAudience(event.SourceID, view), true
 	}
@@ -31,8 +31,8 @@ func wolfAudience(event *engine.Event, view GameView) ([]string, bool) {
 		EventEliminate,
 		EventShoot,
 		EventVoteTied,
-		engine.EventGameStarted,
-		engine.EventGameEnded:
+		hiddenrole.EventGameStarted,
+		hiddenrole.EventGameEnded:
 		return allPlayerIDs(view), true
 
 	// 私密事件：只有行动者本人知道
@@ -70,7 +70,7 @@ func allPlayerIDs(view GameView) []string {
 }
 
 // builtinTeammates 狼队互相可见。
-var builtinTeammates = engine.TeammateFunc(wolfTeammates)
+var builtinTeammates = hiddenrole.TeammateFunc(wolfTeammates)
 
 // wolfTeammates 同为狼人阵营的其余玩家，按 ID 排序。
 //
@@ -96,7 +96,7 @@ func wolfTeammates(playerID string, view GameView) []string {
 }
 
 // builtinSpeech 狼人杀的发言范围。
-var builtinSpeech = engine.SpeechFunc(wolfSpeech)
+var builtinSpeech = hiddenrole.SpeechFunc(wolfSpeech)
 
 // wolfSpeech 此刻这名玩家说话谁能听到。
 //

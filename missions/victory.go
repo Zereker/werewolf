@@ -1,6 +1,6 @@
 package missions
 
-import "github.com/Zereker/werewolf/engine"
+import "github.com/Zereker/hiddenrole"
 
 // victory.go 怎么算赢。
 //
@@ -12,7 +12,7 @@ import "github.com/Zereker/werewolf/engine"
 // (是否结束, 赢家)，没有任何地方假设「赢是因为把谁杀光了」。
 type victoryChecker struct{}
 
-func (victoryChecker) CheckVictory(view engine.GameView) (bool, engine.Camp) {
+func (victoryChecker) CheckVictory(view hiddenrole.GameView) (bool, hiddenrole.Camp) {
 	// 连续五次组队被否决，坏人直接获胜
 	if rejects(view) >= HammerRejections {
 		return true, CampEvil
@@ -24,7 +24,7 @@ func (victoryChecker) CheckVictory(view engine.GameView) (bool, engine.Camp) {
 	}
 
 	if successes(view) < 3 {
-		return false, engine.CampUnspecified
+		return false, hiddenrole.CampUnspecified
 	}
 
 	// 好人凑满三次成功，但还得过刺杀这一关。
@@ -33,7 +33,7 @@ func (victoryChecker) CheckVictory(view engine.GameView) (bool, engine.Camp) {
 	// 必须回「还没结束」——否则引擎会在刺杀阶段之前就把这局判掉。
 	// 刺杀阶段由任务解析器用绕道队列排进来，内核会把胜负判定推迟到
 	// 那之后，这里只要如实报「还没完」即可。
-	switch view.Var(engine.ScopeGame, varAssassinated) {
+	switch view.Var(hiddenrole.ScopeGame, varAssassinated) {
 	case "hit":
 		return true, CampEvil // 刺中梅林，坏人反败为胜
 	case "miss":
@@ -42,5 +42,5 @@ func (victoryChecker) CheckVictory(view engine.GameView) (bool, engine.Camp) {
 	if len(idsWithRole(view, RoleAssassin)) == 0 {
 		return true, CampGood
 	}
-	return false, engine.CampUnspecified
+	return false, hiddenrole.CampUnspecified
 }

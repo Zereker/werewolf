@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // TestMissionFailIsAnonymous 任务失败票不记名：全场只知道有几张，不知道是谁投的。
@@ -16,7 +16,7 @@ func TestMissionFailIsAnonymous(t *testing.T) {
 	e := fivePlayer(t) // d=刺客 e=莫甘娜
 	effects := runMission(t, e, 1, "d", "e")
 
-	var failed *engine.Effect
+	var failed *hiddenrole.Effect
 	for _, ef := range effects {
 		if ef.Type == EventMissionFailed {
 			failed = ef
@@ -53,19 +53,19 @@ func TestMissionFailIsAnonymous(t *testing.T) {
 func TestGoodPlayerCannotFail(t *testing.T) {
 	e := fivePlayer(t) // c=忠臣（好人）
 	leader := leaderID(e.View())
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: []string{"c", "d"}})
+	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: []string{"c", "d"}})
 	mustEnd(t, e)
 	for _, id := range e.AlivePlayerIDs() {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillApprove})
 	}
 	mustEnd(t, e)
 
 	// 好人 c 想投失败
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: "c", Skill: SkillMissionFail})
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillMissionSuccess})
+	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: "c", Skill: SkillMissionFail})
+	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: "d", Skill: SkillMissionSuccess})
 	effects := mustEnd(t, e)
 
-	var rejected *engine.Effect
+	var rejected *hiddenrole.Effect
 	for _, ef := range effects {
 		if ef.Type == EventFailRejected {
 			rejected = ef
@@ -114,7 +114,7 @@ func TestSnapshotAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var snap engine.Snapshot
+	var snap hiddenrole.Snapshot
 	if err := json.Unmarshal(raw, &snap); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestSnapshotAndReplay(t *testing.T) {
 	}
 }
 
-func checkProgress(t *testing.T, what string, e *engine.Engine, m, s, f int) {
+func checkProgress(t *testing.T, what string, e *hiddenrole.Engine, m, s, f int) {
 	t.Helper()
 	v := e.View()
 	if mission(v) != m || successes(v) != s || failures(v) != f {

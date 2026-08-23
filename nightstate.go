@@ -5,7 +5,7 @@
 // 没有夜里的刀口，血染钟楼的标记有十几种——它们一个都用不上，而新规则
 // 要表达自己的状态又只能回头去改内核的结构体。
 //
-// 现在它们只是键名。存储用内核的四格作用域（见 engine.VarScope），读写走通用原语，
+// 现在它们只是键名。存储用内核的四格作用域（见 hiddenrole.VarScope），读写走通用原语，
 // 内核不知道「刀口」是什么意思。这一层整体属于狼人杀规则包。
 
 package werewolf
@@ -13,7 +13,7 @@ package werewolf
 import (
 	"strconv"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // 狼人杀在回合级状态里用到的键名。
@@ -83,8 +83,8 @@ func lastProtected(view GameView, guardID string) string {
 // markProtected 记下「本回合守卫守了谁」，供下回合判断连守。
 func markProtected(view GameView, guardID, targetID string) []*Effect {
 	return []*Effect{
-		engine.NewSetVarEffect(ScopeGame.Of(guardID), PlayerVarLastProtectedTarget, targetID),
-		engine.NewSetVarEffect(ScopeGame.Of(guardID), PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
+		hiddenrole.NewSetVarEffect(ScopeGame.Of(guardID), PlayerVarLastProtectedTarget, targetID),
+		hiddenrole.NewSetVarEffect(ScopeGame.Of(guardID), PlayerVarLastProtectedRound, strconv.Itoa(view.Round())),
 	}
 }
 

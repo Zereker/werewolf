@@ -3,7 +3,7 @@ package missions
 import (
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // scars_test.go 把绕法的代价钉成可跑的证据。
@@ -40,7 +40,7 @@ func TestOnlyNamedActorsMayAct(t *testing.T) {
 		if len(allowed) != 0 {
 			t.Errorf("%s 不是队长，AllowedSkills 却给出 %v", id, allowed)
 		}
-		if err := e.SubmitSkillUse(&engine.SkillUse{
+		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: id, Skill: SkillPropose, Targets: []string{"a"},
 		}); err == nil {
 			t.Errorf("%s 不是队长，内核却收下了他的提名", id)
@@ -61,7 +61,7 @@ func TestOnlyNamedActorsMayAct(t *testing.T) {
 		if len(allowed) != 0 {
 			t.Errorf("%s 没上任务，AllowedSkills 却给出 %v", id, allowed)
 		}
-		if err := e.SubmitSkillUse(&engine.SkillUse{
+		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: id, Skill: SkillMissionFail,
 		}); err == nil {
 			t.Errorf("%s 没上任务，内核却收下了他的失败票", id)
@@ -87,7 +87,7 @@ func TestRejectedProposalGoesStraightBackToPropose(t *testing.T) {
 	e := fivePlayer(t)
 	propose(t, e, "a", "b")
 	for _, id := range allPlayerIDs(e) {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillReject})
 	}
 	mustEnd(t, e)
 
@@ -103,7 +103,7 @@ func TestApprovedProposalGoesToMission(t *testing.T) {
 	e := fivePlayer(t)
 	propose(t, e, "a", "b")
 	for _, id := range allPlayerIDs(e) {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillApprove})
 	}
 	mustEnd(t, e)
 
@@ -132,7 +132,7 @@ func TestRoundEqualsMissionNumber(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		propose(t, e, "a", "b")
 		for _, id := range allPlayerIDs(e) {
-			mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
+			mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillReject})
 		}
 		mustEnd(t, e)
 	}
@@ -165,7 +165,7 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 	e := fivePlayer(t)
 	proposeAndApprove(t, e, "a", "b")
 	for _, id := range []string{"a", "b"} {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillMissionSuccess})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillMissionSuccess})
 	}
 	mustEnd(t, e)
 
@@ -173,7 +173,7 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 	if got := successes(e.View()); got != 1 {
 		t.Fatalf("成功次数 = %d，期望 1", got)
 	}
-	if e.Var(engine.ScopeGame, varSuccess) == "" {
+	if e.Var(hiddenrole.ScopeGame, varSuccess) == "" {
 		t.Errorf("成功次数该住在 GameVar 里，%q 是空的", varSuccess)
 	}
 
@@ -181,7 +181,7 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 	for _, id := range e.AlivePlayerIDs() {
 		p, _ := e.PlayerInfo(id)
 		for k := range p.Vars {
-			if k != engine.VarCamp {
+			if k != hiddenrole.VarCamp {
 				t.Errorf("玩家 %s 身上不该有 %q——那是整局状态，不属于任何人", id, k)
 			}
 		}
@@ -190,18 +190,18 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 
 // ==================== 测试辅助 ====================
 
-func allPlayerIDs(e *engine.Engine) []string { return e.AlivePlayerIDs() }
+func allPlayerIDs(e *hiddenrole.Engine) []string { return e.AlivePlayerIDs() }
 
-func missionOf(e *engine.Engine) int { return mission(e.View()) }
+func missionOf(e *hiddenrole.Engine) int { return mission(e.View()) }
 
-func mustSubmit(t *testing.T, e *engine.Engine, use *engine.SkillUse) {
+func mustSubmit(t *testing.T, e *hiddenrole.Engine, use *hiddenrole.SkillUse) {
 	t.Helper()
 	if err := e.SubmitSkillUse(use); err != nil {
 		t.Fatalf("提交 %s/%s: %v", use.PlayerID, use.Skill, err)
 	}
 }
 
-func mustEnd(t *testing.T, e *engine.Engine) []*engine.Effect {
+func mustEnd(t *testing.T, e *hiddenrole.Engine) []*hiddenrole.Effect {
 	t.Helper()
 	effects, err := e.EndPhase()
 	if err != nil {
@@ -210,18 +210,18 @@ func mustEnd(t *testing.T, e *engine.Engine) []*engine.Effect {
 	return effects
 }
 
-func propose(t *testing.T, e *engine.Engine, members ...string) {
+func propose(t *testing.T, e *hiddenrole.Engine, members ...string) {
 	t.Helper()
 	leader := leaderID(e.View())
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: members})
+	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: members})
 	mustEnd(t, e)
 }
 
-func proposeAndApprove(t *testing.T, e *engine.Engine, members ...string) {
+func proposeAndApprove(t *testing.T, e *hiddenrole.Engine, members ...string) {
 	t.Helper()
 	propose(t, e, members...)
 	for _, id := range allPlayerIDs(e) {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillApprove})
 	}
 	mustEnd(t, e)
 }
@@ -248,7 +248,7 @@ func TestReadinessKnowsTheWholeTeamIsProposed(t *testing.T) {
 		t.Fatal("还没提名就报就绪了")
 	}
 	leader := leaderID(e.View())
-	mustSubmit(t, e, &engine.SkillUse{
+	mustSubmit(t, e, &hiddenrole.SkillUse{
 		PlayerID: leader, Skill: SkillPropose, Targets: []string{"a", "b"},
 	})
 	if !e.PhaseReadiness().Ready {

@@ -4,8 +4,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
-	"github.com/Zereker/werewolf/engine/enginetest"
+	"github.com/Zereker/hiddenrole"
+	"github.com/Zereker/hiddenrole/enginetest"
 )
 
 // TestFuzz_Invariants 随机对局，核对通用不变量。
@@ -39,9 +39,9 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 	evil := EvilCount(n)
 
 	// 坏人：刺客必有（没有他就没有刺杀阶段），其余从可选里挑。
-	evilPool := []engine.RoleType{RoleMorgana, RoleMordred, RoleOberon}
+	evilPool := []hiddenrole.RoleType{RoleMorgana, RoleMordred, RoleOberon}
 	rng.Shuffle(len(evilPool), func(i, j int) { evilPool[i], evilPool[j] = evilPool[j], evilPool[i] })
-	roles := []engine.RoleType{RoleAssassin}
+	roles := []hiddenrole.RoleType{RoleAssassin}
 	for i := 0; len(roles) < evil; i++ {
 		if i < len(evilPool) && rng.Intn(2) == 0 {
 			roles = append(roles, evilPool[i])
@@ -69,7 +69,7 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 	if n == 5 {
 		labels = []string{"五人局"}
 	}
-	has := func(want engine.RoleType) bool {
+	has := func(want hiddenrole.RoleType) bool {
 		for _, r := range roles {
 			if r == want {
 				return true
@@ -100,7 +100,7 @@ func playerID(i int) string { return string(rune('a' + i)) }
 //
 // 提名要一次带一整支队伍，人数由 MissionSize 定——泛泛地随机单目标提交
 // 在这里几乎必然被丢掉，对局会一直卡在提名阶段直到 hammer。
-func actRandom(e *engine.Engine, rng *rand.Rand) {
+func actRandom(e *hiddenrole.Engine, rng *rand.Rand) {
 	view := e.View()
 	players := view.AllPlayers()
 	ids := make([]string, 0, len(players))
@@ -129,7 +129,7 @@ func actRandom(e *engine.Engine, rng *rand.Rand) {
 			targets = []string{ids[rng.Intn(len(ids))]}
 		}
 
-		_ = e.SubmitSkillUse(&engine.SkillUse{
+		_ = e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: p.ID, Skill: skill, Targets: targets,
 		})
 	}

@@ -41,7 +41,7 @@ package werewolf
 // 当前该表为空——R1–R11 全部通过。新发现偏差时在此登记，修复后删除。
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"maps"
 	"os"
 	"testing"
@@ -212,7 +212,7 @@ func (g *ruleGame) toNextNight() {
 }
 
 // info 取玩家只读信息。
-func (g *ruleGame) info(id string) engine.PlayerInfo {
+func (g *ruleGame) info(id string) hiddenrole.PlayerInfo {
 	g.t.Helper()
 	pi, ok := g.e.PlayerInfo(id)
 	if !ok {
@@ -260,7 +260,7 @@ func (g *ruleGame) setDead(ids ...string) {
 		if _, ok := g.e.PlayerInfo(id); !ok {
 			g.t.Fatalf("玩家不存在: %s", id)
 		}
-		g.e.Apply(engine.NewSetAliveEffect(id, false))
+		g.e.Apply(hiddenrole.NewSetAliveEffect(id, false))
 	}
 }
 
@@ -951,12 +951,12 @@ func TestRule_R8_HunterMaySkipExplicitly(t *testing.T) {
 		}
 	}
 	if !hasSkip {
-		t.Fatalf("前置不成立：engine.PhaseInfo 未宣告 SKIP 可用，实际 %v", advertised)
+		t.Fatalf("前置不成立：hiddenrole.PhaseInfo 未宣告 SKIP 可用，实际 %v", advertised)
 	}
 
 	// 宣告了就必须能提交
 	if err := g.use("h", SkillSkip, ""); err != nil {
-		t.Fatalf("engine.PhaseInfo 宣告 SKIP 可用，SubmitSkillUse 却拒绝: %v", err)
+		t.Fatalf("hiddenrole.PhaseInfo 宣告 SKIP 可用，SubmitSkillUse 却拒绝: %v", err)
 	}
 
 	// Engine.AllowedSkills 也应与之一致
@@ -1121,7 +1121,7 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	// 它的 setup 里，与内置角色走同一张表
 	const roleHiddenWolf = RoleType("HIDDEN_WOLF")
 
-	e := MustNew(DefaultRules(), engine.WithRoleSetup(roleHiddenWolf,
+	e := MustNew(DefaultRules(), hiddenrole.WithRoleSetup(roleHiddenWolf,
 		sideSetup(CampEvil, RoleCategoryGod)))
 	mustAdd(t, e, "w1", RoleWerewolf)
 	if err := e.AddPlayer("hidden", roleHiddenWolf); err != nil {
@@ -1135,7 +1135,7 @@ func TestRule_R10_SideWipeIgnoresEvilCategories(t *testing.T) {
 	}
 
 	// 好人这边唯一的神职出局 —— 屠神成立，狼人胜
-	e.Apply(engine.NewSetAliveEffect("s", false))
+	e.Apply(hiddenrole.NewSetAliveEffect("s", false))
 
 	over, winner := checkVictory(e)
 	if !over {
@@ -1256,7 +1256,7 @@ func TestRule_R10_RoleCategories(t *testing.T) {
 		t.Fatalf("AddPlayer 失败: %v", err)
 	}
 	x, _ := e2.PlayerInfo("x")
-	if got := campOf(x); got != engine.CampUnspecified {
+	if got := campOf(x); got != hiddenrole.CampUnspecified {
 		t.Errorf("没登记的角色不该有阵营，实际 %v", got)
 	}
 }
@@ -1348,7 +1348,7 @@ func TestRule_R11_DeadPlayerCannotVote(t *testing.T) {
 	g.end(PhaseVote)
 
 	err := g.use("v1", SkillVote, "w1")
-	if !engine.HasCode(err, engine.CodePlayerDead) {
+	if !hiddenrole.HasCode(err, hiddenrole.CodePlayerDead) {
 		t.Errorf("已出局玩家投票应返回 PLAYER_DEAD，实际 %v", err)
 	}
 }
@@ -1475,7 +1475,7 @@ func TestConvention_D3_SkillRejectedOutsideItsPhase(t *testing.T) {
 	}
 	for _, tc := range cases {
 		err := g.use(tc.player, tc.skill, tc.target)
-		if !engine.HasCode(err, engine.CodeSkillNotAllowed) {
+		if !hiddenrole.HasCode(err, hiddenrole.CodeSkillNotAllowed) {
 			t.Errorf("NIGHT_GUARD 阶段提交 %v 应返回 SKILL_NOT_ALLOWED，实际 %v", tc.skill, err)
 		}
 	}

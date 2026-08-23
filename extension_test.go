@@ -1,7 +1,7 @@
 package werewolf
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"testing"
 )
 
@@ -43,16 +43,16 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 		}
 		// 枪只有一发。子弹是入座时发的（wolfKingSetup），用掉即清空——
 		// 与女巫的药同一条路：状态在 PlayerVar 里，改动经 Effect 表达。
-		if view.Var(engine.ScopeGame.Of(use.PlayerID), varWolfKingGun) == "" {
+		if view.Var(hiddenrole.ScopeGame.Of(use.PlayerID), varWolfKingGun) == "" {
 			continue
 		}
 		// SHOOT 是狼王给「发生了什么」起的名字，内核不认得它；
 		// 真正让人出局的是旁边那条 SET_ALIVE。内置角色的狼刀、
 		// 投票放逐走的也是同一条路，第三方在这件事上没有额外负担。
 		effects = append(effects,
-			engine.NewEffect(EventShoot, use.PlayerID, use.Target()),
-			engine.NewSetAliveEffect(use.Target(), false),
-			engine.NewSetVarEffect(engine.ScopeGame.Of(use.PlayerID), varWolfKingGun, ""))
+			hiddenrole.NewEffect(EventShoot, use.PlayerID, use.Target()),
+			hiddenrole.NewSetAliveEffect(use.Target(), false),
+			hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of(use.PlayerID), varWolfKingGun, ""))
 		break
 	}
 	return effects
@@ -62,7 +62,7 @@ func (r *wolfKingResolver) Resolve(uses []*SkillUse, view GameView) []*Effect {
 //
 // 这演示了「装饰已有解析器」——扩展不必从零实现整个阶段。
 type voteWithWolfKing struct {
-	inner engine.Resolver
+	inner hiddenrole.Resolver
 }
 
 func (r *voteWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*Effect {
@@ -72,7 +72,7 @@ func (r *voteWithWolfKing) Resolve(uses []*SkillUse, view GameView) []*Effect {
 			continue
 		}
 		if p, ok := view.Player(ef.TargetID); ok && p.Role == roleWolfKing {
-			effects = append(effects, engine.NewDetourEffect(ef.TargetID, phaseWolfKing))
+			effects = append(effects, hiddenrole.NewDetourEffect(ef.TargetID, phaseWolfKing))
 		}
 	}
 	return effects
@@ -96,9 +96,9 @@ func newWolfKingGame(t *testing.T) *Engine {
 
 	// 2. 构造时注册狼王阶段的解析器，并装饰投票解析器
 	eng, err := NewWith(cfg, DefaultRules(),
-		engine.WithRoleSetup(roleWolfKing, engine.RoleSetupFunc(wolfKingSetup)),
-		engine.WithResolver(phaseWolfKing, &wolfKingResolver{}),
-		engine.WithResolver(PhaseVote,
+		hiddenrole.WithRoleSetup(roleWolfKing, hiddenrole.RoleSetupFunc(wolfKingSetup)),
+		hiddenrole.WithResolver(phaseWolfKing, &wolfKingResolver{}),
+		hiddenrole.WithResolver(PhaseVote,
 			&voteWithWolfKing{inner: NewVoteResolver()}))
 	if err != nil {
 		t.Fatalf("配置应当合法: %v", err)
@@ -188,13 +188,13 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 	eng := newWolfKingGame(t)
 
 	// 内置狼人出局，狼王还在 —— 狼人阵营未灭，游戏继续
-	eng.Apply(engine.NewSetAliveEffect("w1", false))
+	eng.Apply(hiddenrole.NewSetAliveEffect("w1", false))
 	if over, _ := checkVictory(eng); over {
 		t.Error("狼王仍在场，狼人阵营不应判为全灭")
 	}
 
 	// 狼王也出局 —— 好人获胜
-	eng.Apply(engine.NewSetAliveEffect("wk", false))
+	eng.Apply(hiddenrole.NewSetAliveEffect("wk", false))
 	over, winner := checkVictory(eng)
 	if !over || winner != CampGood {
 		t.Errorf("狼人阵营全灭应判好人胜利，实际 over=%v winner=%v", over, winner)
@@ -206,22 +206,22 @@ func TestExtension_WolfKingCountsAsWolfForVictory(t *testing.T) {
 // 想让某阶段不产生任何效果，注册一个返回空切片的解析器；
 // 传 nil 只可能是漏了，必须在构造时就报出来。
 func TestExtension_WithResolverRejectsNil(t *testing.T) {
-	if _, err := engine.NewEngine(nil, engine.WithResolver(PhaseDay, nil)); err == nil {
+	if _, err := hiddenrole.NewEngine(nil, hiddenrole.WithResolver(PhaseDay, nil)); err == nil {
 		t.Error("nil 解析器应当被拒绝")
 	}
 	if !panicsOnNilResolver(t) {
-		t.Error("engine.MustNewEngine 遇到非法选项应当 panic")
+		t.Error("hiddenrole.MustNewEngine 遇到非法选项应当 panic")
 	}
 }
 
 func panicsOnNilResolver(t *testing.T) (panicked bool) {
 	t.Helper()
 	defer func() { panicked = recover() != nil }()
-	MustNew(DefaultRules(), engine.WithResolver(PhaseDay, nil))
+	MustNew(DefaultRules(), hiddenrole.WithResolver(PhaseDay, nil))
 	return false
 }
 
-func mustInfo(t *testing.T, e *Engine, id string) engine.PlayerInfo {
+func mustInfo(t *testing.T, e *Engine, id string) hiddenrole.PlayerInfo {
 	t.Helper()
 	p, ok := e.PlayerInfo(id)
 	if !ok {
@@ -292,7 +292,7 @@ func TestExtension_CustomPhaseGetsPhaseInfo(t *testing.T) {
 func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	const roleWolfKing = RoleType("WOLF_KING")
 
-	eng := MustNew(DefaultRules(), engine.WithRoleSetup(roleWolfKing, engine.RoleSetupFunc(
+	eng := MustNew(DefaultRules(), hiddenrole.WithRoleSetup(roleWolfKing, hiddenrole.RoleSetupFunc(
 		func(string, RoleType) map[string]string {
 			return CampVars(CampEvil, RoleCategoryWolf)
 		})))
@@ -327,7 +327,7 @@ func TestExtension_CustomWolfCampRoleIsPartOfTheTeam(t *testing.T) {
 	if roles["w1"] != RoleWerewolf {
 		t.Errorf("狼王的视图里应能看到 w1 的身份，实际 %v", roles["w1"])
 	}
-	if roles["s"] != engine.RoleUnspecified {
+	if roles["s"] != hiddenrole.RoleUnspecified {
 		t.Errorf("狼王不该看到预言家的身份，实际 %v", roles["s"])
 	}
 
@@ -372,7 +372,7 @@ func TestExtension_TriggerToUnconfiguredPhaseIsRejected(t *testing.T) {
 
 	// 猎人死了，触发指向已被删掉的阶段：应当照常进白天，且触发被否决
 	effects := g.end(PhaseDay)
-	trigger := findEffect(effects, engine.EventDetour)
+	trigger := findEffect(effects, hiddenrole.EventDetour)
 	if trigger == nil {
 		t.Fatal("期望产生 ABILITY_TRIGGERED 效果（即便被否决）")
 	}

@@ -13,8 +13,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/Zereker/hiddenrole"
 	"github.com/Zereker/werewolf"
-	"github.com/Zereker/werewolf/engine"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 
 	// 第三方的事件也走 OnEvent。编号 1000 以上是扩展的地盘，
 	// 引擎不认识它们，但也不替它们决定「不该外发」。
-	eng.OnEvent(func(ev *engine.Event) {
+	eng.OnEvent(func(ev *hiddenrole.Event) {
 		if ev.Type != eventRevealed {
 			return
 		}
@@ -71,8 +71,8 @@ func build(rule *idiotRule) *werewolf.Engine {
 	//    阵营与类别写在角色自己身上，不是入座时的参数——引擎不认识
 	//    「白痴」，也就没有办法替它推导。类别决定屠边怎么算：白痴算神职。
 	eng, err := werewolf.NewWith(cfg, werewolf.DefaultRules(),
-		engine.WithResolver(werewolf.PhaseVote, rule),
-		engine.WithRoleSetup(roleIdiot, engine.RoleSetupFunc(
+		hiddenrole.WithResolver(werewolf.PhaseVote, rule),
+		hiddenrole.WithRoleSetup(roleIdiot, hiddenrole.RoleSetupFunc(
 			func(string, werewolf.RoleType) map[string]string {
 				return werewolf.CampVars(werewolf.CampGood, werewolf.RoleCategoryGod)
 			})))
@@ -108,8 +108,8 @@ func demoRestore(eng *werewolf.Engine) {
 	snap := eng.Snapshot()
 
 	// 恢复时必须再把解析器给一遍——快照只记局面，不记规则。
-	restored, err := engine.RestoreEngine(nil, snap,
-		engine.WithResolver(werewolf.PhaseVote,
+	restored, err := hiddenrole.RestoreEngine(nil, snap,
+		hiddenrole.WithResolver(werewolf.PhaseVote,
 			newIdiotRule(werewolf.NewVoteResolver())))
 	if err != nil {
 		fmt.Printf("  恢复失败: %v\n", err)

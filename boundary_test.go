@@ -1,7 +1,7 @@
 package werewolf
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 	"testing"
 )
 
@@ -25,7 +25,7 @@ func newBoundaryGame(t *testing.T, opts ...EngineOption) *Engine {
 // 默认「查验只给预言家」是狼人杀的规矩。换一套规则——比如一个查验结果
 // 全场公开的变体——不该需要改引擎。
 func TestWithAudience_Replaceable(t *testing.T) {
-	check := engine.NewEffect(EventCheck, "s", "w1").ToEvent()
+	check := hiddenrole.NewEffect(EventCheck, "s", "w1").ToEvent()
 
 	t.Run("默认只给行动者", func(t *testing.T) {
 		e := newBoundaryGame(t)
@@ -36,8 +36,8 @@ func TestWithAudience_Replaceable(t *testing.T) {
 	})
 
 	t.Run("换掉之后全场可见", func(t *testing.T) {
-		e := newBoundaryGame(t, engine.WithAudience(engine.AudienceFunc(
-			func(ev *engine.Event, view GameView) ([]string, bool) {
+		e := newBoundaryGame(t, hiddenrole.WithAudience(hiddenrole.AudienceFunc(
+			func(ev *hiddenrole.Event, view GameView) ([]string, bool) {
 				if ev.Type != EventCheck {
 					return wolfAudience(ev, view)
 				}
@@ -58,17 +58,17 @@ func TestWithAudience_Replaceable(t *testing.T) {
 // 把上帝视角直接发出去。一个恶意或粗心的 provider 不该有能力打开这个口子。
 func TestAudienceOf_KernelPrimitivesAreNeverPublic(t *testing.T) {
 	// 一个「什么都给全场」的 provider
-	e := newBoundaryGame(t, engine.WithAudience(engine.AudienceFunc(
-		func(ev *engine.Event, view GameView) ([]string, bool) {
+	e := newBoundaryGame(t, hiddenrole.WithAudience(hiddenrole.AudienceFunc(
+		func(ev *hiddenrole.Event, view GameView) ([]string, bool) {
 			return allPlayerIDs(view), true
 		})))
 
 	for _, ef := range []*Effect{
-		engine.NewSetAliveEffect("v1", false),
-		engine.NewSetVarEffect(engine.ScopeGame.Of("wi"), VarWitchAntidote, ""),
-		engine.NewSetVarEffect(engine.ScopeRound.Of("v1"), PlayerRoundVarProtected, VarPresent),
-		engine.NewSetVarEffect(engine.ScopeRound, RoundVarKillTarget, "v1"),
-		engine.NewDetourEffect("h", PhaseNightHunter),
+		hiddenrole.NewSetAliveEffect("v1", false),
+		hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of("wi"), VarWitchAntidote, ""),
+		hiddenrole.NewSetVarEffect(hiddenrole.ScopeRound.Of("v1"), PlayerRoundVarProtected, VarPresent),
+		hiddenrole.NewSetVarEffect(hiddenrole.ScopeRound, RoundVarKillTarget, "v1"),
+		hiddenrole.NewDetourEffect("h", PhaseNightHunter),
 	} {
 		got, known := e.AudienceOf(ef.ToEvent())
 		if !known {
@@ -86,7 +86,7 @@ func TestAudienceOf_KernelPrimitivesAreNeverPublic(t *testing.T) {
 // 内核不检查两边是否一致——它根本不知道「阵营」这个概念。
 func TestWithTeammates_Replaceable(t *testing.T) {
 	// w1 认得 w2，w2 谁都不认得
-	oneWay := engine.WithTeammates(engine.TeammateFunc(
+	oneWay := hiddenrole.WithTeammates(hiddenrole.TeammateFunc(
 		func(playerID string, view GameView) []string {
 			if playerID == "w1" {
 				return []string{"w2"}
@@ -107,13 +107,13 @@ func TestWithTeammates_Replaceable(t *testing.T) {
 	if role := revealedRole(e.PlayerView("w1"), "w2"); role != RoleWerewolf {
 		t.Errorf("w1 应当看得到 w2 的身份，实际 %v", role)
 	}
-	if role := revealedRole(e.PlayerView("w2"), "w1"); role != engine.RoleUnspecified {
+	if role := revealedRole(e.PlayerView("w2"), "w1"); role != hiddenrole.RoleUnspecified {
 		t.Errorf("w2 不该看得到 w1 的身份，实际 %v", role)
 	}
 
 	// WolfTeammates 与 PhaseInfo 走的是同一个判定，不该各说各话
 	if got := e.Teammates("w2"); len(got) != 0 {
-		t.Errorf("WolfTeammates 应与 engine.PlayerView 一致，实际 %v", got)
+		t.Errorf("WolfTeammates 应与 hiddenrole.PlayerView 一致，实际 %v", got)
 	}
 	e2 := newBoundaryGame(t, oneWay)
 	for e2.Status().Phase != PhaseNightWolf {
@@ -126,10 +126,10 @@ func TestWithTeammates_Replaceable(t *testing.T) {
 		t.Fatal("狼人阶段应当有狼人的阶段信息")
 	}
 	if got := ri.Teammates["w2"]; len(got) != 0 {
-		t.Errorf("engine.PhaseInfo 应与 engine.PlayerView 一致，实际 w2 的队友是 %v", got)
+		t.Errorf("hiddenrole.PhaseInfo 应与 hiddenrole.PlayerView 一致，实际 w2 的队友是 %v", got)
 	}
 	if got := ri.Teammates["w1"]; len(got) != 1 || got[0] != "w2" {
-		t.Errorf("engine.PhaseInfo 里 w1 的队友应当是 [w2]，实际 %v", got)
+		t.Errorf("hiddenrole.PhaseInfo 里 w1 的队友应当是 [w2]，实际 %v", got)
 	}
 }
 
@@ -151,7 +151,7 @@ func TestWithSpeech_Replaceable(t *testing.T) {
 	})
 
 	t.Run("换成全程公开", func(t *testing.T) {
-		e := newBoundaryGame(t, engine.WithSpeech(engine.SpeechFunc(
+		e := newBoundaryGame(t, hiddenrole.WithSpeech(hiddenrole.SpeechFunc(
 			func(senderID string, view GameView) []string {
 				out := make([]string, 0)
 				for _, p := range view.AlivePlayers() {
@@ -173,26 +173,26 @@ func TestWithSpeech_Replaceable(t *testing.T) {
 // TestBoundaryProviders_NilRejected 三个注册入口与其余选项一致，拒绝 nil。
 func TestBoundaryProviders_NilRejected(t *testing.T) {
 	for name, opt := range map[string]EngineOption{
-		"audience":  engine.WithAudience(nil),
-		"teammates": engine.WithTeammates(nil),
-		"speech":    engine.WithSpeech(nil),
+		"audience":  hiddenrole.WithAudience(nil),
+		"teammates": hiddenrole.WithTeammates(nil),
+		"speech":    hiddenrole.WithSpeech(nil),
 	} {
-		if _, err := engine.NewEngine(DefaultGameConfig(), opt); err == nil {
+		if _, err := hiddenrole.NewEngine(DefaultGameConfig(), opt); err == nil {
 			t.Errorf("With%s(nil) 应当报错", name)
-		} else if code := engine.CodeOf(err); code != engine.CodeInvalidConfig {
-			t.Errorf("With%s(nil): 期望 engine.CodeInvalidConfig，实际 %v", name, code)
+		} else if code := hiddenrole.CodeOf(err); code != hiddenrole.CodeInvalidConfig {
+			t.Errorf("With%s(nil): 期望 hiddenrole.CodeInvalidConfig，实际 %v", name, code)
 		}
 	}
 }
 
 // revealedRole 在某人的视角里，另一名玩家的身份是否公开。
-func revealedRole(v *engine.PlayerView, id string) RoleType {
+func revealedRole(v *hiddenrole.PlayerView, id string) RoleType {
 	for _, p := range v.Players {
 		if p.ID == id {
 			return p.Role
 		}
 	}
-	return engine.RoleUnspecified
+	return hiddenrole.RoleUnspecified
 }
 
 // TestBareEngine_KnowsNothing 只装了内核的引擎一无所知。
@@ -219,7 +219,7 @@ func TestBareEngine_KnowsNothing(t *testing.T) {
 	t.Run("阶段缺解析器时开局被拒", func(t *testing.T) {
 		// 内核不自带任何解析器，因此狼人杀那副阶段图对它是不完整的——
 		// 这一条在 Start 时报出来，而不是让游戏推进到一半静默停住
-		bare := engine.MustNewEngine(DefaultGameConfig())
+		bare := hiddenrole.MustNewEngine(DefaultGameConfig())
 		seat(t, bare)
 		if err := bare.Start(); err == nil {
 			t.Fatal("阶段没有解析器时开局应当被拒")
@@ -227,7 +227,7 @@ func TestBareEngine_KnowsNothing(t *testing.T) {
 	})
 
 	// 补上空解析器之后能推进，但内核对这局游戏依然一无所知
-	bare := engine.MustNewEngine(DefaultGameConfig(), noopResolvers()...)
+	bare := hiddenrole.MustNewEngine(DefaultGameConfig(), noopResolvers()...)
 	seat(t, bare)
 	if err := bare.Start(); err != nil {
 		t.Fatalf("补上解析器后应当能开局: %v", err)
@@ -235,7 +235,7 @@ func TestBareEngine_KnowsNothing(t *testing.T) {
 
 	t.Run("不会判出胜负", func(t *testing.T) {
 		// 一副按狼人杀规则早就该结束的局面：好人全死光
-		bare.Apply(engine.NewSetAliveEffect("s", false), engine.NewSetAliveEffect("v1", false))
+		bare.Apply(hiddenrole.NewSetAliveEffect("s", false), hiddenrole.NewSetAliveEffect("v1", false))
 		for i := 0; i < 30; i++ {
 			if _, err := bare.EndPhase(); err != nil {
 				t.Fatalf("EndPhase: %v", err)
@@ -248,7 +248,7 @@ func TestBareEngine_KnowsNothing(t *testing.T) {
 
 	t.Run("不认得任何角色", func(t *testing.T) {
 		// 女巫没有药、狼人没有阵营——初始状态由规则的 RoleSetup 发
-		wi := engine.MustNewEngine(DefaultGameConfig(), noopResolvers()...)
+		wi := hiddenrole.MustNewEngine(DefaultGameConfig(), noopResolvers()...)
 		if err := wi.AddPlayer("wi", RoleWitch); err != nil {
 			t.Fatal(err)
 		}
@@ -262,7 +262,7 @@ func TestBareEngine_KnowsNothing(t *testing.T) {
 		if got := bare.PlayerView("w1").Teammates; len(got) != 0 {
 			t.Errorf("内核不知道谁和谁是一边的，实际 %v", got)
 		}
-		if _, known := bare.AudienceOf(engine.NewEffect(EventKill, "", "v1").ToEvent()); known {
+		if _, known := bare.AudienceOf(hiddenrole.NewEffect(EventKill, "", "v1").ToEvent()); known {
 			t.Error("内核不该声称认得 KILL 这个事件")
 		}
 		if got := bare.MessageReceivers("w1"); len(got) != 0 {
@@ -279,7 +279,7 @@ func noopResolvers() []EngineOption {
 	cfg := DefaultGameConfig()
 	opts := make([]EngineOption, 0, len(cfg.Phases))
 	for phase := range cfg.Phases {
-		opts = append(opts, engine.WithResolver(phase, noopResolver{}))
+		opts = append(opts, hiddenrole.WithResolver(phase, noopResolver{}))
 	}
 	return opts
 }
@@ -313,13 +313,13 @@ func TestWerewolfOptions_GoThroughThePublicDoor(t *testing.T) {
 	if got := e.Teammates("w1"); len(got) != 1 || got[0] != "w2" {
 		t.Errorf("狼队应当互相认得，实际 %v", got)
 	}
-	if _, known := e.AudienceOf(engine.NewEffect(EventKill, "", "v1").ToEvent()); !known {
+	if _, known := e.AudienceOf(hiddenrole.NewEffect(EventKill, "", "v1").ToEvent()); !known {
 		t.Error("装上规则之后应当认得 KILL")
 	}
 
 	// 好人全死光 -> 狼人胜
-	e.Apply(engine.NewSetAliveEffect("wi", false), engine.NewSetAliveEffect("s", false),
-		engine.NewSetAliveEffect("v1", false), engine.NewSetAliveEffect("v2", false))
+	e.Apply(hiddenrole.NewSetAliveEffect("wi", false), hiddenrole.NewSetAliveEffect("s", false),
+		hiddenrole.NewSetAliveEffect("v1", false), hiddenrole.NewSetAliveEffect("v2", false))
 	for i := 0; i < 30 && !e.Status().Over; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)

@@ -3,14 +3,14 @@ package missions
 import (
 	"testing"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // 5 人局：梅林、派西维尔、忠臣 / 刺客、莫甘娜
-func fivePlayer(t *testing.T) *engine.Engine {
+func fivePlayer(t *testing.T) *hiddenrole.Engine {
 	t.Helper()
 	e := MustNew()
-	for id, role := range map[string]engine.RoleType{
+	for id, role := range map[string]hiddenrole.RoleType{
 		"a": RoleMerlin, "b": RolePercival, "c": RoleLoyalServant,
 		"d": RoleAssassin, "e": RoleMorgana,
 	} {
@@ -37,7 +37,7 @@ func TestFirstMission(t *testing.T) {
 
 	// 队长（座位 0 = "a"）提名两人
 	for _, target := range []string{"a", "b"} {
-		if err := e.SubmitSkillUse(&engine.SkillUse{
+		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: "a", Skill: SkillPropose, Targets: []string{target},
 		}); err != nil {
 			t.Fatalf("提名 %s: %v", target, err)
@@ -52,7 +52,7 @@ func TestFirstMission(t *testing.T) {
 
 	// 全员赞成
 	for _, id := range []string{"a", "b", "c", "d", "e"} {
-		if err := e.SubmitSkillUse(&engine.SkillUse{PlayerID: id, Skill: SkillApprove}); err != nil {
+		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{PlayerID: id, Skill: SkillApprove}); err != nil {
 			t.Fatalf("表决 %s: %v", id, err)
 		}
 	}
@@ -65,7 +65,7 @@ func TestFirstMission(t *testing.T) {
 
 	// 队员投成功
 	for _, id := range []string{"a", "b"} {
-		if err := e.SubmitSkillUse(&engine.SkillUse{PlayerID: id, Skill: SkillMissionSuccess}); err != nil {
+		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{PlayerID: id, Skill: SkillMissionSuccess}); err != nil {
 			t.Fatalf("任务票 %s: %v", id, err)
 		}
 	}
@@ -91,7 +91,7 @@ func TestFirstMission(t *testing.T) {
 // TestMerlinSeesEvilExceptMordred 梅林认得每一个坏人，除了莫德雷德
 func TestMerlinSeesEvilExceptMordred(t *testing.T) {
 	e := MustNew()
-	for id, role := range map[string]engine.RoleType{
+	for id, role := range map[string]hiddenrole.RoleType{
 		"a": RoleMerlin, "b": RolePercival, "c": RoleLoyalServant, "d": RoleLoyalServant,
 		"e": RoleAssassin, "f": RoleMordred, "g": RoleOberon,
 	} {
@@ -114,7 +114,7 @@ func TestMerlinSeesEvilExceptMordred(t *testing.T) {
 // TestOberonIsAloneOnBothSides 奥伯伦既不认识同伙，也不被同伙认识
 func TestOberonIsAloneOnBothSides(t *testing.T) {
 	e := MustNew()
-	for id, role := range map[string]engine.RoleType{
+	for id, role := range map[string]hiddenrole.RoleType{
 		"a": RoleMerlin, "b": RoleLoyalServant, "c": RoleLoyalServant, "d": RoleLoyalServant,
 		"e": RoleAssassin, "f": RoleMorgana, "g": RoleOberon,
 	} {
@@ -156,8 +156,8 @@ func TestPercivalCannotTellMerlinFromMorgana(t *testing.T) {
 	}
 }
 
-func typesOf(effects []*engine.Effect) []engine.EventType {
-	out := make([]engine.EventType, 0, len(effects))
+func typesOf(effects []*hiddenrole.Effect) []hiddenrole.EventType {
+	out := make([]hiddenrole.EventType, 0, len(effects))
 	for _, ef := range effects {
 		out = append(out, ef.Type)
 	}
@@ -167,14 +167,14 @@ func typesOf(effects []*engine.Effect) []engine.EventType {
 // runMission 打完一整轮任务：提名 -> 全票通过 -> 队员按 fails 投失败票
 //
 // members 里前 fails 个人投失败，其余投成功。
-func runMission(t *testing.T, e *engine.Engine, fails int, members ...string) []*engine.Effect {
+func runMission(t *testing.T, e *hiddenrole.Engine, fails int, members ...string) []*hiddenrole.Effect {
 	t.Helper()
 	leader := leaderID(e.View())
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: members})
+	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: members})
 	mustEnd(t, e)
 
 	for _, id := range e.AlivePlayerIDs() {
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillApprove})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillApprove})
 	}
 	mustEnd(t, e)
 
@@ -183,7 +183,7 @@ func runMission(t *testing.T, e *engine.Engine, fails int, members ...string) []
 		if i < fails {
 			skill = SkillMissionFail
 		}
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: skill})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: skill})
 	}
 	return mustEnd(t, e)
 }
@@ -208,7 +208,7 @@ func TestFullGame_GoodWinsThreeThenSurvivesAssassination(t *testing.T) {
 	}
 
 	// 刺客指错人（指了派西维尔，梅林是 a）
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"b"}})
+	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"b"}})
 	mustEnd(t, e)
 
 	if !e.Status().Over {
@@ -230,7 +230,7 @@ func TestFullGame_AssassinFindsMerlin(t *testing.T) {
 	if e.Status().Phase != PhaseAssassin {
 		t.Fatalf("阶段 = %v，期望 ASSASSIN", e.Status().Phase)
 	}
-	mustSubmit(t, e, &engine.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"a"}})
+	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"a"}})
 	mustEnd(t, e)
 
 	if !e.Status().Over {
@@ -263,10 +263,10 @@ func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
 
 	for i := 1; i <= HammerRejections; i++ {
 		leader := leaderID(e.View())
-		mustSubmit(t, e, &engine.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: []string{"a", "b"}})
+		mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: leader, Skill: SkillPropose, Targets: []string{"a", "b"}})
 		mustEnd(t, e)
 		for _, id := range e.AlivePlayerIDs() {
-			mustSubmit(t, e, &engine.SkillUse{PlayerID: id, Skill: SkillReject})
+			mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: id, Skill: SkillReject})
 		}
 		mustEnd(t, e)
 		if i < HammerRejections {

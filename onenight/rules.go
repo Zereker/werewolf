@@ -7,7 +7,7 @@
 package onenight
 
 import (
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // MinPlayers 最少人数。规则要求发牌比人数多三张，三人局是最小的一桌。
@@ -18,36 +18,36 @@ const MinPlayers = 3
 // center 是留在中央的三张牌——由调用方发牌时定下。发牌发生在**建局之前**，
 // 与前两套规则包一致：内核里没有随机，也不需要有。
 //
-//	e := engine.MustNewEngine(onenight.GameConfig(),
-//		onenight.Options([3]engine.RoleType{...})...)
-func Options(center [CenterCount]engine.RoleType) []engine.EngineOption {
-	opts := []engine.EngineOption{
+//	e := hiddenrole.MustNewEngine(onenight.GameConfig(),
+//		onenight.Options([3]hiddenrole.RoleType{...})...)
+func Options(center [CenterCount]hiddenrole.RoleType) []hiddenrole.EngineOption {
+	opts := []hiddenrole.EngineOption{
 		// 十个阶段各自的结算。
-		engine.WithResolver(PhaseNightWerewolf, werewolfResolver{}),
-		engine.WithResolver(PhaseNightMinion, noopResolver{}),
-		engine.WithResolver(PhaseNightMason, noopResolver{}),
-		engine.WithResolver(PhaseNightSeer, seerResolver{}),
-		engine.WithResolver(PhaseNightRobber, robberResolver{}),
-		engine.WithResolver(PhaseNightTroublemake, troublemakerResolver{}),
-		engine.WithResolver(PhaseNightDrunk, drunkResolver{}),
-		engine.WithResolver(PhaseNightInsomniac, insomniacResolver{}),
-		engine.WithResolver(PhaseDay, noopResolver{}),
-		engine.WithResolver(PhaseVote, voteResolver{}),
+		hiddenrole.WithResolver(PhaseNightWerewolf, werewolfResolver{}),
+		hiddenrole.WithResolver(PhaseNightMinion, noopResolver{}),
+		hiddenrole.WithResolver(PhaseNightMason, noopResolver{}),
+		hiddenrole.WithResolver(PhaseNightSeer, seerResolver{}),
+		hiddenrole.WithResolver(PhaseNightRobber, robberResolver{}),
+		hiddenrole.WithResolver(PhaseNightTroublemake, troublemakerResolver{}),
+		hiddenrole.WithResolver(PhaseNightDrunk, drunkResolver{}),
+		hiddenrole.WithResolver(PhaseNightInsomniac, insomniacResolver{}),
+		hiddenrole.WithResolver(PhaseDay, noopResolver{}),
+		hiddenrole.WithResolver(PhaseVote, voteResolver{}),
 
-		engine.WithVictoryChecker(engine.VictoryFunc(checkVictory)),
+		hiddenrole.WithVictoryChecker(hiddenrole.VictoryFunc(checkVictory)),
 
 		// 开局那一刻把三张中央牌铺好。
-		engine.WithGameSetup(engine.GameSetupFunc(func(engine.GameView) []*engine.Effect {
-			out := make([]*engine.Effect, 0, CenterCount)
+		hiddenrole.WithGameSetup(hiddenrole.GameSetupFunc(func(hiddenrole.GameView) []*hiddenrole.Effect {
+			out := make([]*hiddenrole.Effect, 0, CenterCount)
 			for i, role := range center {
 				out = append(out, setCenterCard(i, role))
 			}
 			return out
 		})),
 
-		engine.WithAudience(audience()),
-		engine.WithTeammates(teammates()),
-		engine.WithSpeech(speech()),
+		hiddenrole.WithAudience(audience()),
+		hiddenrole.WithTeammates(teammates()),
+		hiddenrole.WithSpeech(speech()),
 	}
 
 	// 每个角色入座时都带着「我现在手上是这张牌」——起始值等于发到手的那张。
@@ -58,11 +58,11 @@ func Options(center [CenterCount]engine.RoleType) []engine.EngineOption {
 	for _, role := range AllRoles {
 		r := role
 		opts = append(opts,
-			engine.WithRoleSetup(r, engine.RoleSetupFunc(
-				func(_ string, dealt engine.RoleType) map[string]string {
+			hiddenrole.WithRoleSetup(r, hiddenrole.RoleSetupFunc(
+				func(_ string, dealt hiddenrole.RoleType) map[string]string {
 					return map[string]string{varCard: string(dealt)}
 				})),
-			engine.WithRoleInfo(r, roleInfoFor(r)),
+			hiddenrole.WithRoleInfo(r, roleInfoFor(r)),
 		)
 	}
 	return opts
@@ -72,7 +72,7 @@ func Options(center [CenterCount]engine.RoleType) []engine.EngineOption {
 //
 // 内核不知道有哪些角色——它只在 AddPlayer 时收下一个 RoleType 字符串。
 // 这份清单是本包自己的。
-var AllRoles = []engine.RoleType{
+var AllRoles = []hiddenrole.RoleType{
 	RoleWerewolf, RoleMinion, RoleMason, RoleSeer, RoleRobber,
 	RoleTroublemaker, RoleDrunk, RoleInsomniac, RoleVillager,
 	RoleHunter, RoleTanner,

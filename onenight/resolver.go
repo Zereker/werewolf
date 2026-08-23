@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/Zereker/werewolf/engine"
+	"github.com/Zereker/hiddenrole"
 )
 
 // noopResolver 这个阶段不产生任何状态变更。
@@ -20,13 +20,15 @@ import (
 // （见 boundary.go）。
 type noopResolver struct{}
 
-func (noopResolver) Resolve([]*engine.SkillUse, engine.GameView) []*engine.Effect { return nil }
+func (noopResolver) Resolve([]*hiddenrole.SkillUse, hiddenrole.GameView) []*hiddenrole.Effect {
+	return nil
+}
 
 // firstUse 取某个技能集合里第一条有效提交，没有则返回 nil。
 //
 // 夜晚能力全是「至多一次」：内核允许重复提交，取第一条是本包的口径。
-func firstUse(uses []*engine.SkillUse, skills ...engine.SkillType) *engine.SkillUse {
-	want := make(map[engine.SkillType]bool, len(skills))
+func firstUse(uses []*hiddenrole.SkillUse, skills ...hiddenrole.SkillType) *hiddenrole.SkillUse {
+	want := make(map[hiddenrole.SkillType]bool, len(skills))
 	for _, s := range skills {
 		want[s] = true
 	}
@@ -44,7 +46,7 @@ func firstUse(uses []*engine.SkillUse, skills ...engine.SkillType) *engine.Skill
 // 玩家 ID——SkillUse.Targets 里的每一项都会被拿去 getPlayer，对不上就是
 // ErrTargetNotFound。于是下标只能编进技能名里，再在这里读回来。
 // 这是本包的第一条疤，见 SCARS.md 疤 1。
-func centerIndexes(skill engine.SkillType) []int {
+func centerIndexes(skill hiddenrole.SkillType) []int {
 	name := string(skill)
 	i := strings.LastIndex(name, "_")
 	if i < 0 {
@@ -69,7 +71,7 @@ func centerIndexes(skill engine.SkillType) []int {
 // 的事——所以由这里判断，不是内核。
 type werewolfResolver struct{}
 
-func (werewolfResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (werewolfResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	use := firstUse(uses, SkillPeekCenter0, SkillPeekCenter1, SkillPeekCenter2)
 	if use == nil {
 		return nil
@@ -83,8 +85,8 @@ func (werewolfResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 	if len(idx) != 1 {
 		return nil
 	}
-	return []*engine.Effect{
-		engine.NewEffect(EventLoneWolf, use.PlayerID, ""),
+	return []*hiddenrole.Effect{
+		hiddenrole.NewEffect(EventLoneWolf, use.PlayerID, ""),
 		learnCenter(use.PlayerID, idx[0], centerCard(view, idx[0])),
 	}
 }
@@ -92,7 +94,7 @@ func (werewolfResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 // seerResolver 预言家阶段：看一名玩家的牌，或者两张中央牌。
 type seerResolver struct{}
 
-func (seerResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (seerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	use := firstUse(uses, SkillSeerPlayer, SkillSeerCenter01, SkillSeerCenter02, SkillSeerCenter12)
 	if use == nil {
 		return nil
@@ -103,13 +105,13 @@ func (seerResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*en
 		if target == "" || target == use.PlayerID {
 			return nil // 看自己没有意义，规则也不允许
 		}
-		return []*engine.Effect{
-			engine.NewEffect(EventSeerLook, use.PlayerID, target),
+		return []*hiddenrole.Effect{
+			hiddenrole.NewEffect(EventSeerLook, use.PlayerID, target),
 			learnPlayer(use.PlayerID, target, card(view, target)),
 		}
 	}
 
-	out := []*engine.Effect{engine.NewEffect(EventSeerLook, use.PlayerID, "")}
+	out := []*hiddenrole.Effect{hiddenrole.NewEffect(EventSeerLook, use.PlayerID, "")}
 	for _, i := range centerIndexes(use.Skill) {
 		out = append(out, learnCenter(use.PlayerID, i, centerCard(view, i)))
 	}
@@ -121,7 +123,7 @@ func (seerResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*en
 // 「换完之后看」这个次序是规则的一部分：他知道自己现在是什么，但对方不知道。
 type robberResolver struct{}
 
-func (robberResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (robberResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	use := firstUse(uses, SkillRob)
 	if use == nil {
 		return nil
@@ -132,7 +134,7 @@ func (robberResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*
 	}
 
 	got := card(view, target)
-	out := []*engine.Effect{engine.NewEffect(EventRobbed, use.PlayerID, target)}
+	out := []*hiddenrole.Effect{hiddenrole.NewEffect(EventRobbed, use.PlayerID, target)}
 	out = append(out, swapCards(view, use.PlayerID, target)...)
 	return append(out, learnSelf(use.PlayerID, got))
 }
@@ -143,7 +145,7 @@ func (robberResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*
 // 这是这个游戏里信息最不对称的一手。
 type troublemakerResolver struct{}
 
-func (troublemakerResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (troublemakerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	use := firstUse(uses, SkillMeddle)
 	if use == nil {
 		return nil
@@ -156,7 +158,7 @@ func (troublemakerResolver) Resolve(uses []*engine.SkillUse, view engine.GameVie
 		return nil // 「另外两名」——不含自己，且两人不同
 	}
 
-	out := []*engine.Effect{engine.NewEffect(EventMeddled, use.PlayerID, "").
+	out := []*hiddenrole.Effect{hiddenrole.NewEffect(EventMeddled, use.PlayerID, "").
 		WithData("a", a).WithData("b", b)}
 	return append(out, swapCards(view, a, b)...)
 }
@@ -166,7 +168,7 @@ func (troublemakerResolver) Resolve(uses []*engine.SkillUse, view engine.GameVie
 // 他因此不知道自己现在算哪边——这正是这个角色的全部内容。
 type drunkResolver struct{}
 
-func (drunkResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (drunkResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	use := firstUse(uses, SkillDrinkCenter0, SkillDrinkCenter1, SkillDrinkCenter2)
 	if use == nil {
 		return nil
@@ -176,7 +178,7 @@ func (drunkResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*e
 		return nil
 	}
 
-	out := []*engine.Effect{engine.NewEffect(EventDrunkSwap, use.PlayerID, "").
+	out := []*hiddenrole.Effect{hiddenrole.NewEffect(EventDrunkSwap, use.PlayerID, "").
 		WithData("center", idx[0])}
 	// 注意：只换，不 learn。
 	return append(out, swapWithCenter(view, use.PlayerID, idx[0])...)
@@ -188,11 +190,11 @@ func (drunkResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*e
 // 只有一条记录——而记录是必须的，见 learnSelf 的说明。
 type insomniacResolver struct{}
 
-func (insomniacResolver) Resolve(_ []*engine.SkillUse, view engine.GameView) []*engine.Effect {
-	var out []*engine.Effect
+func (insomniacResolver) Resolve(_ []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
+	var out []*hiddenrole.Effect
 	for _, id := range dealtWith(view, RoleInsomniac) {
 		out = append(out,
-			engine.NewEffect(EventInsomnia, id, ""),
+			hiddenrole.NewEffect(EventInsomnia, id, ""),
 			learnSelf(id, card(view, id)))
 	}
 	return out
@@ -212,13 +214,13 @@ func (insomniacResolver) Resolve(_ []*engine.SkillUse, view engine.GameView) []*
 // 抢到猎人牌的人就是猎人。
 type voteResolver struct{}
 
-func (voteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {
+func (voteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	players := view.AllPlayers()
 
 	// 一人一票，重复提交取第一条。
 	votedBy := make(map[string]string, len(players))
 	tally := make(map[string]int, len(players))
-	var out []*engine.Effect
+	var out []*hiddenrole.Effect
 	for _, u := range uses {
 		if u.Skill != SkillVote || votedBy[u.PlayerID] != "" {
 			continue
@@ -232,7 +234,7 @@ func (voteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*en
 		}
 		votedBy[u.PlayerID] = target
 		tally[target]++
-		out = append(out, engine.NewEffect(EventVoted, u.PlayerID, target))
+		out = append(out, hiddenrole.NewEffect(EventVoted, u.PlayerID, target))
 	}
 
 	// 投票结算过了。这一笔是给胜负判定用的：「无人出局」是一个合法结局，
@@ -241,12 +243,12 @@ func (voteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*en
 
 	// 每人恰好各得一票：无人出局。规则明写的一条，不是平票的特例。
 	if allTiedAtOne(players, tally) {
-		return append(out, engine.NewEffect(EventNoOneDies, "", ""))
+		return append(out, hiddenrole.NewEffect(EventNoOneDies, "", ""))
 	}
 
 	doomed := topVoted(tally)
 	if len(doomed) == 0 {
-		return append(out, engine.NewEffect(EventNoOneDies, "", ""))
+		return append(out, hiddenrole.NewEffect(EventNoOneDies, "", ""))
 	}
 
 	// 猎人带人：先把猎人的目标收进来，再一起结算。
@@ -265,19 +267,19 @@ func (voteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*en
 			continue
 		}
 		dead[hit] = true
-		out = append(out, engine.NewEffect(EventHunterHit, id, hit))
+		out = append(out, hiddenrole.NewEffect(EventHunterHit, id, hit))
 	}
 
 	for _, id := range sortedKeys(dead) {
 		out = append(out,
-			engine.NewEffect(EventLynched, "", id),
-			engine.NewSetAliveEffect(id, false))
+			hiddenrole.NewEffect(EventLynched, "", id),
+			hiddenrole.NewSetAliveEffect(id, false))
 	}
 	return out
 }
 
 // allTiedAtOne 是不是每一名玩家都恰好得了一票。
-func allTiedAtOne(players []engine.PlayerInfo, tally map[string]int) bool {
+func allTiedAtOne(players []hiddenrole.PlayerInfo, tally map[string]int) bool {
 	if len(players) == 0 {
 		return false
 	}
@@ -324,7 +326,7 @@ func sortedKeys(set map[string]bool) []string {
 //
 // 用 AllPlayers 而不是 AlivePlayers：这一局到投票之前没有人会出局，
 // 而「谁能用某个能力」在这套规则里与生死无关。
-func dealtWith(view engine.GameView, role engine.RoleType) []string {
+func dealtWith(view hiddenrole.GameView, role hiddenrole.RoleType) []string {
 	var out []string
 	for _, p := range view.AllPlayers() {
 		if p.Role == role {
