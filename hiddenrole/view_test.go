@@ -4,11 +4,13 @@ import (
 	"testing"
 )
 
-// TestGameView_IsReadOnly 视图不能被还原成可变的状态对象。
+// TestGameView_IsReadOnly: a view cannot be turned back into the mutable
+// state object.
 //
-// 这是「状态变更一律经由 Effect」这条不变量的类型级保证：
-// stateView 是不导出的值类型，且其字段不导出，包外无法从 GameView
-// 断言出任何能改状态的东西。
+// This is the type-level guarantee behind "every state change goes through an
+// Effect": stateView is an unexported value type with unexported fields, so
+// nothing outside the package can assert a GameView into anything that
+// changes state.
 func TestGameView_IsReadOnly(t *testing.T) {
 	st := newState()
 	if err := st.addPlayer("v1", roleVillager); err != nil {
@@ -16,15 +18,16 @@ func TestGameView_IsReadOnly(t *testing.T) {
 	}
 	view := newStateView(st)
 
-	// 用 any 绕开编译期检查再断言：*gameState 根本不实现 GameView，
-	// 因此拿不到任何可改状态的东西。
-	// （直接写 view.(*gameState) 编译器会以 impossible type assertion 拒绝，
-	//   这本身就是这条约束成立的证明。）
+	// Go through any to get past the compile-time check before asserting:
+	// *gameState does not implement GameView at all, so nothing that can
+	// change state comes out. (Writing view.(*gameState) directly is
+	// rejected by the compiler as an impossible type assertion, which is
+	// itself proof that the constraint holds.)
 	if _, ok := any(view).(*gameState); ok {
-		t.Fatal("GameView 不应能被断言回 *gameState")
+		t.Fatal("GameView should not be assertable back to *gameState")
 	}
 	if _, ok := any(view).(interface{ applyEffect(*Effect) }); ok {
-		t.Fatal("GameView 不应暴露任何改状态的方法")
+		t.Fatal("GameView should expose no state-changing method")
 	}
 }
 
@@ -49,27 +52,27 @@ func TestGameView_ReadsThrough(t *testing.T) {
 	view := newStateView(st)
 
 	if got := len(view.AlivePlayers()); got != 3 {
-		t.Errorf("存活玩家数: 期望 3，实际 %d", got)
+		t.Errorf("living players: want 3, got %d", got)
 	}
 	if got := view.AlivePlayerIDsByRole(roleWerewolf); len(got) != 1 || got[0] != "w1" {
-		t.Errorf("狼人列表: 期望 [w1]，实际 %v", got)
+		t.Errorf("werewolf list: want [w1], got %v", got)
 	}
 	if got := view.Var(ScopeGame.Of("g"), testVarStock); got != "v1" {
-		t.Errorf("玩家状态: 期望 v1，实际 %q", got)
+		t.Errorf("player state: want v1, got %q", got)
 	}
-	if got := view.Var(ScopeGame.Of("查无此人"), testVarStock); got != "" {
-		t.Errorf("不存在的玩家应返回空，实际 %q", got)
+	if got := view.Var(ScopeGame.Of("nobody"), testVarStock); got != "" {
+		t.Errorf("a player who does not exist should read empty, got %q", got)
 	}
 	if got := view.Var(ScopeRound, testKillTarget); got != "v1" {
-		t.Errorf("回合状态: 期望 v1，实际 %q", got)
+		t.Errorf("round state: want v1, got %q", got)
 	}
-	if _, ok := view.Player("查无此人"); ok {
-		t.Error("不存在的玩家应返回 false")
+	if _, ok := view.Player("nobody"); ok {
+		t.Error("a player who does not exist should return false")
 	}
 }
 
-// TestGameView_RoundContextIsCopy 视图返回的回合上下文是副本，
-// 改它不会影响引擎状态。
+// TestGameView_RoundContextIsCopy: the round context a view returns is a
+// copy, and changing it does not affect the engine's state.
 func TestGameView_RoundContextIsCopy(t *testing.T) {
 	st := newState()
 	if err := st.addPlayer("v1", roleVillager); err != nil {
@@ -79,13 +82,13 @@ func TestGameView_RoundContextIsCopy(t *testing.T) {
 
 	view := newStateView(st)
 	rc := view.RoundContext()
-	rc.Vars[testKillTarget] = "被篡改"
-	rc.Vars["凭空多出来的"] = "1"
+	rc.Vars[testKillTarget] = "tampered"
+	rc.Vars["conjured-out-of-nowhere"] = "1"
 
 	if got := view.Var(ScopeRound, testKillTarget); got != "v1" {
-		t.Errorf("改动副本影响到了引擎状态: %q", got)
+		t.Errorf("changing the copy affected the engine's state: %q", got)
 	}
-	if fresh := view.RoundContext(); fresh.Vars["凭空多出来的"] != "" {
-		t.Error("改动副本的 map 影响到了引擎状态")
+	if fresh := view.RoundContext(); fresh.Vars["conjured-out-of-nowhere"] != "" {
+		t.Error("changing the copy's map affected the engine's state")
 	}
 }

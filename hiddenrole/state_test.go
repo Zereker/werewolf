@@ -33,10 +33,12 @@ func TestAddPlayer(t *testing.T) {
 	if player.Role != roleWerewolf {
 		t.Errorf("expected Role=WEREWOLF, got %v", player.Role)
 	}
-	// 内核入座只记 ID、角色、存活。阵营、道具这些初始状态由规则的
-	// RoleSetup 发放（见 Engine.AddPlayer），裸 gameState 不经过那一步。
+	// Kernel seating records only the ID, the role and aliveness. Camp,
+	// items and other initial state are handed out by the rules' RoleSetup
+	// (see Engine.AddPlayer), and a bare gameState does not go through that
+	// step.
 	if len(player.Vars) != 0 {
-		t.Errorf("内核入座不该发放任何状态，实际 %v", player.Vars)
+		t.Errorf("kernel seating should hand out no state, got %v", player.Vars)
 	}
 	if !player.Alive {
 		t.Error("expected Alive=true")
@@ -68,41 +70,44 @@ func TestGetPlayer_NotExists(t *testing.T) {
 	}
 }
 
-// TestApplyEffect_KernelPrimitives 内核的状态原语。
+// TestApplyEffect_KernelPrimitives covers the kernel's state primitives.
 //
-// applyEffect 此前认得十来种效果类型——狼刀、毒杀、放逐、开枪各是一种死法，
-// PROTECT / SAVE 各标记一件事。那等于把「一局狼人杀会发生什么」写进了状态机：
-// 换一套规则它们一条都用不上，而新规则要表达自己的状态变更又只能来改这里。
+// applyEffect used to recognise a dozen effect types -- a wolf kill, a
+// poisoning, an exile and a gunshot each their own way to die, PROTECT and
+// SAVE each marking a thing. That wrote "what happens in a game of werewolf"
+// into the state machine: change the ruleset and not one is any use, while a
+// new rule wanting to express its own state change had to come and edit
+// this.
 func TestApplyEffect_KernelPrimitives(t *testing.T) {
-	t.Run("SET_ALIVE 改存活", func(t *testing.T) {
+	t.Run("SET_ALIVE changes aliveness", func(t *testing.T) {
 		state := newState()
 		mustAddTo(t, state, "p1", roleVillager)
 
 		state.applyEffect(NewSetAliveEffect("p1", false))
 		if p, _ := state.getPlayer("p1"); p.Alive {
-			t.Error("SET_ALIVE(false) 之后应当已出局")
+			t.Error("should be eliminated after SET_ALIVE(false)")
 		}
 		state.applyEffect(NewSetAliveEffect("p1", true))
 		if p, _ := state.getPlayer("p1"); !p.Alive {
-			t.Error("SET_ALIVE(true) 之后应当复活")
+			t.Error("should be alive again after SET_ALIVE(true)")
 		}
 	})
 
-	t.Run("SET_VAR 标记本回合", func(t *testing.T) {
+	t.Run("SET_VAR marks this round", func(t *testing.T) {
 		state := newState()
 		mustAddTo(t, state, "p1", roleVillager)
 
 		state.applyEffect(NewSetVarEffect(ScopeRound.Of("p1"), testMarkA, VarPresent))
 		if !markedInA(state, "p1") {
-			t.Error("标记之后应当读得到")
+			t.Error("the marker should read back after being set")
 		}
 		state.applyEffect(NewSetVarEffect(ScopeRound.Of("p1"), testMarkA, ""))
 		if markedInA(state, "p1") {
-			t.Error("空值应当等同删除")
+			t.Error("an empty value should be equivalent to deletion")
 		}
 	})
 
-	t.Run("回合边界清掉标记", func(t *testing.T) {
+	t.Run("the round boundary clears markers", func(t *testing.T) {
 		state := newState()
 		mustAddTo(t, state, "p1", roleVillager)
 
@@ -111,19 +116,22 @@ func TestApplyEffect_KernelPrimitives(t *testing.T) {
 		state.resetRoundState()
 
 		if markedInB(state, "p1") {
-			t.Error("玩家身上的回合标记应当随回合清掉")
+			t.Error("a player's round markers should be cleared with the round")
 		}
 		if got := killTargetOfState(state); got != "" {
-			t.Errorf("回合变量应当随回合清掉，实际 %q", got)
+			t.Errorf("round variables should be cleared with the round, got %q", got)
 		}
 	})
 }
 
-// TestApplyEffect_RuleEventsDoNotTouchState 规则的事件不改状态。
+// TestApplyEffect_RuleEventsDoNotTouchState: the rules' events change no
+// state.
 //
-// 这是「内核不认识狼人杀」的可执行说法：KILL / POISON / ELIMINATE / SHOOT /
-// PROTECT / SAVE 现在只是规则给「发生了什么」起的名字，给受众与效果流看。
-// 真正改状态的是它们旁边那条原语——所以单独发一个 KILL，谁都不会死。
+// This is the executable form of "the kernel does not know werewolf": KILL /
+// POISON / ELIMINATE / SHOOT / PROTECT / SAVE are now only the rules' names
+// for what happened, for the audience and the effect log. What actually
+// changes state is the primitive alongside them -- so a lone KILL kills
+// nobody.
 func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
 	for _, typ := range []EventType{
 		eventKill, eventPoison, eventEliminate, eventShoot,
@@ -132,7 +140,8 @@ func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
 		state := newState()
 		mustAddTo(t, state, "p1", roleVillager)
 
-		// 入座已经发过初始状态（阵营与类别），比的是「有没有再动过」
+		// Seating already handed out the initial state (camp and category);
+		// what is compared is whether anything moved since.
 		before := copyVars(state.players["p1"].Vars)
 
 		state.applyEffect(NewEffect(typ, "src", "p1"))
@@ -140,19 +149,21 @@ func TestApplyEffect_RuleEventsDoNotTouchState(t *testing.T) {
 		p, _ := state.getPlayer("p1")
 		switch {
 		case !p.Alive:
-			t.Errorf("%v 不该由内核改存活状态", typ)
+			t.Errorf("%v should not have the kernel change aliveness", typ)
 		case len(p.RoundVars) != 0:
-			t.Errorf("%v 不该由内核写回合标记，实际 %v", typ, p.RoundVars)
+			t.Errorf("%v should not have the kernel write round markers, got %v", typ, p.RoundVars)
 		case !sameVars(p.Vars, before):
-			t.Errorf("%v 不该由内核改玩家状态，入座时 %v，现在 %v", typ, before, p.Vars)
+			t.Errorf("%v should not have the kernel change player state; at seating %v, now %v", typ, before, p.Vars)
 		}
 	}
 }
 
-// TestApplyEffect_SaveDoesNotResurrect 解药不是复活原语。
+// TestApplyEffect_SaveDoesNotResurrect: the antidote is not a resurrection
+// primitive.
 //
-// 死亡统一在夜晚结算阶段发生，SAVE 生效时目标还活着；若在这里置
-// Alive=true，任何一个 SAVE 效果都能把早已出局的玩家拉回场上。
+// Deaths all happen in the night resolution phase, and the target is still
+// alive when SAVE takes effect; setting Alive=true here would let any SAVE
+// effect drag a long-eliminated player back onto the board.
 func TestApplyEffect_SaveDoesNotResurrect(t *testing.T) {
 	state := newState()
 	mustAddTo(t, state, "p1", roleVillager)
@@ -162,7 +173,7 @@ func TestApplyEffect_SaveDoesNotResurrect(t *testing.T) {
 
 	player, _ := state.getPlayer("p1")
 	if player.Alive {
-		t.Error("已出局的玩家不应被解药复活")
+		t.Error("an eliminated player should not be resurrected by the antidote")
 	}
 }
 
@@ -193,14 +204,14 @@ func TestResetRoundState(t *testing.T) {
 	mustAddTo(t, state, "p1", roleVillager)
 	mustAddTo(t, state, "p2", roleVillager)
 
-	// 使用 NightContext 设置保护状态
+	// Set the protection marker through the round context.
 	markRound(state, "p1", testMarkA)
 	markRound(state, "p2", testMarkA)
 	setRoundVar(state, testKillTarget, "p1")
 
 	state.resetRoundState()
 
-	// NightContext 应该被重置
+	// The round context should have been reset.
 	if markedInA(state, "p1") {
 		t.Error("expected p1 not protected after reset")
 	}
@@ -217,7 +228,7 @@ func TestNextPhase_ToDay(t *testing.T) {
 	state.Phase = phaseNight
 	state.Round = 1
 
-	state.nextPhase(phaseDay, false, false) // 上一个阶段两样都没声明
+	state.nextPhase(phaseDay, false, false) // the previous phase declared neither
 
 	if state.Phase != phaseDay {
 		t.Errorf("expected Phase=DAY, got %v", state.Phase)
@@ -235,8 +246,9 @@ func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 	state.Phase = phaseVote
 	state.Round = 1
 
-	// 第二个参数是「刚结算完的那个阶段是不是这一回合的终点」，
-	// 由 PhaseConfig.EndsRound 声明——内核不再从阶段环里猜
+	// The second argument is "was the phase just resolved the end of this
+	// round", declared by PhaseConfig.EndsRound -- the kernel no longer
+	// guesses it from the phase cycle.
 	state.nextPhase(phaseNightGuard, true, true)
 
 	if state.Phase != phaseNightGuard {
@@ -245,7 +257,7 @@ func TestNextPhase_ToNightGuard_IncrementsRound(t *testing.T) {
 	if state.Round != 2 {
 		t.Errorf("expected Round=2, got %d", state.Round)
 	}
-	// NightContext 应该被重置
+	// The round context should have been reset.
 	if markedInA(state, "p1") {
 		t.Error("expected NightContext to be reset")
 	}

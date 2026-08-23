@@ -102,54 +102,57 @@ func TestPredefinedErrors(t *testing.T) {
 	}
 }
 
-// TestErrorCode_ThroughWrappedError 调用方包一层上下文之后仍要能判断错误。
+// TestErrorCode_ThroughWrappedError: an error must still be classifiable
+// after the caller wraps it in context.
 //
-// 裸类型断言在 fmt.Errorf("...: %w", err) 之后就再也不命中了，
-// 而这是库使用者最常见的写法，HasCode / ErrorCode 又是本库导出的
-// 唯一错误判定入口。
+// A bare type assertion stops matching after fmt.Errorf("...: %w", err), which
+// is the most common thing a user of this library does, and HasCode / CodeOf
+// are the only error-classification entry points this library exports.
 func TestCodeOf_ThroughWrappedError(t *testing.T) {
 	wrapped := fmt.Errorf("submit failed: %w", ErrPlayerNotFound)
 
 	if !errors.Is(wrapped, ErrPlayerNotFound) {
-		t.Fatal("errors.Is 应当命中")
+		t.Fatal("errors.Is should match")
 	}
 	if !HasCode(wrapped, CodePlayerNotFound) {
-		t.Error("HasCode 应当穿透包装")
+		t.Error("HasCode should see through the wrapper")
 	}
 	if got := CodeOf(wrapped); got != CodePlayerNotFound {
-		t.Errorf("CodeOf: 期望 PLAYER_NOT_FOUND，实际 %v", got)
+		t.Errorf("CodeOf: want PLAYER_NOT_FOUND, got %v", got)
 	}
 
 	if got := CodeOf(errors.New("plain")); got != CodeUnspecified {
-		t.Errorf("非本库错误应返回 UNSPECIFIED，实际 %v", got)
+		t.Errorf("an error from elsewhere should give UNSPECIFIED, got %v", got)
 	}
 }
 
-// TestWrapError_MatchesSentinel 带上下文的错误要能被预定义哨兵认出来。
+// TestWrapError_MatchesSentinel: an error carrying context must still be
+// recognised by its predefined sentinel.
 //
-// 预定义的那批 Err* 变量此前有几个从未出现在任何返回路径上：
-// 实际返回的是 WrapError 出来的富文本错误，errors.Is 比对永远落空，
-// 而读 errors.go 的人会理所当然地以为它们能用。
+// Several of the predefined Err* variables used to appear on no return path
+// at all: what was actually returned was a rich WrapError, errors.Is never
+// matched, and anyone reading errors.go would reasonably assume they worked.
 func TestWrapError_MatchesSentinel(t *testing.T) {
 	engine := newTestEngine(t)
 	mustAdd(t, engine, "w1", roleWerewolf)
 
 	err := engine.AddPlayer("w1", roleVillager)
 	if !errors.Is(err, ErrPlayerExists) {
-		t.Errorf("重复加玩家应当命中 ErrPlayerExists，实际 %v", err)
+		t.Errorf("adding a duplicate player should match ErrPlayerExists, got %v", err)
 	}
 	if err := engine.AddPlayer("x", RoleSystem); !errors.Is(err, ErrInvalidRole) {
-		t.Errorf("非法角色应当命中 ErrInvalidRole，实际 %v", err)
+		t.Errorf("an invalid role should match ErrInvalidRole, got %v", err)
 	}
 
-	// 同一错误码下的具体哨兵，也要能被该类的通用哨兵认出
+	// A specific sentinel under one code must also be recognised by that
+	// class's general sentinel.
 	if !errors.Is(ErrBoardAlreadyDecided, ErrInvalidBoard) {
-		t.Error("ErrBoardAlreadyDecided 应当属于 ErrInvalidBoard 这一类")
+		t.Error("ErrBoardAlreadyDecided should belong to the ErrInvalidBoard class")
 	}
 
-	// 快照版本不符
+	// A snapshot version mismatch.
 	snap := &Snapshot{Version: SnapshotVersion + 1}
 	if _, err := RestoreEngine(testConfig(), snap); !errors.Is(err, ErrInvalidSnapshot) {
-		t.Errorf("版本不符应当命中 ErrInvalidSnapshot，实际 %v", err)
+		t.Errorf("a version mismatch should match ErrInvalidSnapshot, got %v", err)
 	}
 }
