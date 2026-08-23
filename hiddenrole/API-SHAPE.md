@@ -1,126 +1,154 @@
-# API 里藏着哪些对象（已归档）
+# What objects are hiding inside the API (archived)
 
-> **这是一次性的审计记录，已经归档，不再随代码更新。**
+> **This is a one-off audit record. It is archived and no longer updated
+> alongside the code.**
 >
-> 它写于 API 收敛之前，作用是把「概念存在、但代码里没有对应物」的地方摊开。
-> 五处发现里四处已经收敛、一处判定为**判断有误不该动**，见下面各节的标注。
-> 里面的数字是**当时**的数字，与现在的代码对不上是正常的。
+> It was written before the API converged, and its job was to lay out the
+> places where "a concept exists but has no counterpart in the code". Of five
+> findings, four have since converged and one was judged **a mistaken call
+> that should not be acted on**; each section is annotated below. The numbers
+> in it are the numbers **at the time**, and it is normal for them not to
+> match the code today.
 >
-> 要看现在的 API，去 [API.md](API.md)——那份由 `TestAPI_SurfaceIsPinned`
-> 守着，与代码永远一致。要看设计意图，去 [DESIGN.md](DESIGN.md)。
+> For the API as it stands, see [API.md](API.md) -- that one is guarded by
+> `TestAPI_SurfaceIsPinned` and always agrees with the code. For design
+> intent, see [DESIGN.md](DESIGN.md).
 >
-> 留着它是因为**它记的是判断过程**：那条判据（「一个概念要画成表格、
-> 或者要靠命名前缀才讲得清，说明它在代码里没有对应物」）后面还会用到，
-> 而第四条「判错了」尤其值得留——不是每次审计的结论都对。
+> It is kept because **it records the judgement process**: the test it used
+> ("a concept that needs a table drawn, or a naming prefix, to be explained
+> has no counterpart in the code") gets used again later, and finding 4, "I
+> judged this wrong", is especially worth keeping -- not every audit's
+> conclusion is right.
 
 
-这份文档不提改法，只做一件事：**把当前 API 里那些「概念存在、但代码里没有对应物」
-的地方摊开**，供决定要不要动、动哪些。
+This document proposes no fixes. It does one thing: **lay out the places in
+the current API where a concept exists but has no counterpart in the code**,
+so that what to change, if anything, can be decided.
 
-数据取自 `go doc -all ./engine`：**53 个类型、25 个包级函数、59 个方法**
-（收敛作用域之后；此前是 52 / 28 / 57，总数不变）。
+The data comes from `go doc -all ./engine`: **53 types, 25 package-level
+functions, 59 methods** (after scopes converged; before that it was 52 / 28 /
+57, the same total).
 
-判据只有一条：
+There is one test:
 
-> **一个概念要画成表格、或者要靠命名前缀才讲得清，说明它在代码里没有对应物。**
+> **A concept that needs a table drawn, or a naming prefix, to be explained
+> has no counterpart in the code.**
 
 ---
 
-## 一、变量作用域：一张 2×2 的表，摊成八个平铺的名字 —— 已收敛
+## 1. Variable scope: a 2x2 table flattened into eight names -- converged
 
-这一条最刺眼，因为**证据是我们自己反复写的文档**——`state.go`、`view.go`、
-`SCARS.md`、CHANGELOG 里都画过这张表：
+This one is the most glaring, because **the evidence is documentation we
+wrote ourselves** -- `state.go`, `view.go`, `SCARS.md` and the CHANGELOG all
+drew this table:
 
-|  | 无主 | 属于某个玩家 |
+|  | unowned | owned by a player |
 |---|---|---|
-| **整局有效** | `GameVar` | `PlayerVar` |
-| **本回合有效** | `RoundVar` | `PlayerRoundVar` |
+| **whole game** | `GameVar` | `PlayerVar` |
+| **this round** | `RoundVar` | `PlayerRoundVar` |
 
-而代码里它是八个互不相干的名字：
+And in the code it was eight unrelated names:
 
-|  | 写 | 读 |
+|  | write | read |
 |---|---|---|
-| 整局·无主 | `NewSetGameVarEffect(k,v)` | `GameVar(k)` |
-| 整局·某人 | `NewSetPlayerVarEffect(id,k,v)` | `PlayerVar(id,k)` |
-| 本回合·无主 | `NewSetRoundVarEffect(k,v)` | `RoundVar(k)` |
-| 本回合·某人 | `NewSetPlayerRoundVarEffect(id,k,v)` | `PlayerRoundVar(id,k)` |
+| whole game, unowned | `NewSetGameVarEffect(k,v)` | `GameVar(k)` |
+| whole game, one player | `NewSetPlayerVarEffect(id,k,v)` | `PlayerVar(id,k)` |
+| this round, unowned | `NewSetRoundVarEffect(k,v)` | `RoundVar(k)` |
+| this round, one player | `NewSetPlayerRoundVarEffect(id,k,v)` | `PlayerRoundVar(id,k)` |
 
-**症状是可验证的**：疤 4 之所以是「缺了一格」，正因为没有任何东西强制这张表完整。
-作用域若是一个类型，缺一格根本写不出来；因为是四个函数，少写一个谁也不会发现
-——事实上就是少写了，直到任务制那一套撞上。
+**The symptom is checkable**: scar 4 is "a missing cell" precisely because
+nothing forced the table to be complete. Were a scope a type, a missing cell
+would not be expressible; being four functions, one left unwritten is nobody's
+job to notice -- and in fact one was, until the mission-based rules ran into
+it.
 
-「一个概念」= 作用域（时间尺度 × 有没有主人）。
-「代码里的对应物」= 没有。
+"The concept" = a scope (lifetime x ownership).
+"Its counterpart in the code" = none.
 
-**已收敛**：作用域现在是 `VarScope` 这个类型，四格由两个值叉乘一个方法
-得出，写走 `NewSetVarEffect(scope, k, v)`，读走 `Var(scope, k)`：
+**Converged**: a scope is now the `VarScope` type, the four cells fall out of
+two values crossed with one method, writes go through
+`NewSetVarEffect(scope, k, v)` and reads through `Var(scope, k)`:
 
-|  | 无主 | 属于某个玩家 |
+|  | unowned | owned by a player |
 |---|---|---|
-| **整局有效** | `ScopeGame` | `ScopeGame.Of(id)` |
-| **本回合有效** | `ScopeRound` | `ScopeRound.Of(id)` |
+| **whole game** | `ScopeGame` | `ScopeGame.Of(id)` |
+| **this round** | `ScopeRound` | `ScopeRound.Of(id)` |
 
-顺带发现同一个毛病还在另外两处：`Engine` 上只有两格（有主的读不到），
-`Board` 少了「整局·无主」（摆不出带比分的局面）。两处都补齐了。
+The same fault turned out to be in two more places: `Engine` had only two
+cells (the owned ones could not be read), and `Board` was missing "whole game,
+unowned" (so a board with a score could not be laid out). Both were filled in.
 
-名字总数没减（描述这张表的从 15 个降到 11 个，内核导出总数仍是 137），
-换到的是**完整性**：四格能枚举，缺一格测试先撞上，不必等下一个规则包。
+The total number of names did not drop (the names describing this table went
+from 15 to 11, and the kernel's exported total is still 137). What was bought
+is **completeness**: the four cells can be enumerated, and a missing one is
+caught by a test rather than by the next rules package.
 
 ---
 
-## 二、效果构造器：六个自由函数，混着两类东西
+## 2. Effect constructors: six free functions mixing two kinds of thing
 
 ```
-NewEffect                     规则给「发生了什么」起名字
-NewSetAliveEffect             改状态
-NewSetVarEffect               改状态
-NewDetourEffect       下指令：把某人排进某个阶段
-NewGotoPhaseEffect            下指令：下一步去哪
-NewSetActorsEffect            下指令：谁能在某阶段行动
+NewEffect              the rules naming what happened
+NewSetAliveEffect      changes state
+NewSetVarEffect        changes state
+NewDetourEffect        a directive: queue someone into some phase
+NewGotoPhaseEffect     a directive: where to go next
+NewSetActorsEffect     a directive: who may act in some phase
 ```
 
-（四个 Var 构造器收敛成一个之后从九个降到六个，但这一条的毛病没变：
-两类东西仍然平铺在一起。）
+(Down from nine to six once the four Var constructors converged into one, but
+this finding's fault is unchanged: two kinds of thing are still flattened
+together.)
 
-两类东西平铺在一起，没有任何类型区分：**改状态的**和**下指令的**。
+Two kinds of thing side by side with no type distinguishing them: **those that
+change state** and **those that give a directive**.
 
-后果已经出现过一次：`GOTO_PHASE` 被放进了 `kernelPrimitives` 表——那张表的文档写着
-「它们是状态机的记账（谁的存活位翻了、谁身上多了个标记）」，而 `GOTO_PHASE`
-**在 `applyEffect` 里根本没有分支，它不改任何状态**。行为是对的（永不外发），
-分类是错的。
+The consequence had already shown up once: `GOTO_PHASE` was in the
+`kernelPrimitives` table, whose documentation read "they are the state
+machine's bookkeeping (whose alive bit flipped, who gained a marker)", while
+`GOTO_PHASE` **has no branch in `applyEffect` at all and changes no state**.
+The behaviour was right (never sent out); the classification was wrong.
 
-**分类已收敛，构造器没有。** `kernelPrimitives`（`map[EventType]bool`）换成了
-`kernelEvents`（`map[EventType]eventKind`），三类：
+**The classification has converged; the constructors have not.**
+`kernelPrimitives` (`map[EventType]bool`) became `kernelEvents`
+(`map[EventType]eventKind`), with three classes:
 
 ```
 kindStateWrite   SET_ALIVE / SET_VAR / SET_ACTORS / DETOUR
-kindControl      GOTO_PHASE           —— 不改状态，只影响下一步去哪
-kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有意义
+kindControl      GOTO_PHASE                    -- changes no state, only where to go next
+kindReplay       PLAYER_ADDED / PHASE_CHANGED  -- only meaningful on the replay path
 ```
 
-原来的二分（改状态 / 下指令）自己也不准：`PLAYER_ADDED` 与 `PHASE_CHANGED`
-哪一类都不是，它们是回放记账。
+The original two-way split (changes state / gives a directive) was not
+accurate either: `PLAYER_ADDED` and `PHASE_CHANGED` are neither, they are
+replay bookkeeping.
 
-类别成为一个值之后，那句注释就能断言了：每条 `kindStateWrite` 拿一份干净状态
-试一遍，改不动就是分错了类；每条非 `kindStateWrite` 应用完状态必须逐字段不变。
-把 `GOTO_PHASE` 改回 `kindStateWrite`（也就是今天这个错误）会立刻变红。
+With the class as a value, that comment becomes assertable: every
+`kindStateWrite` is tried against a clean state and one that cannot change
+anything is misclassified; every non-`kindStateWrite` must leave the state
+identical field by field. Putting `GOTO_PHASE` back into `kindStateWrite`
+(that is, today's mistake) turns it red immediately.
 
-`eventKind` 是**未导出的**：外面没有任何调用方需要它，`isInternalEvent` 是它
-唯一的出口。概念有了对应物，不必顺手扩一圈公开 API。
+`eventKind` is **unexported**: no caller outside needs it, and
+`isInternalEvent` is its only exit. The concept has a counterpart without
+widening the public API along the way.
 
-**构造器那一面没动**：六个 `NewXxxEffect` 仍然平铺。要不要给它们也上类型
-（比如 `Effect` 分成两个类型）是下一个问题——代价是所有规则包的返回值签名。
+**The constructor side is untouched**: six `NewXxxEffect` functions, still
+flat. Whether to give them types too (splitting `Effect` into two types, say)
+is the next question -- at the cost of every rules package's return
+signatures.
 
-「一个概念」= 规则对内核说的话，分三类。
-「代码里的对应物」= `eventKind`（未导出），构造器仍是平铺的。
+"The concept" = what the rules say to the kernel, in three classes.
+"Its counterpart in the code" = `eventKind` (unexported); the constructors are
+still flat.
 
 ---
 
-## 三、扩展点：八件事，二十四个名字 —— 已补齐一半
+## 3. Extension points: eight things, twenty-four names -- half fixed
 
-八个扩展点，每个都摊成 2-3 个名字：
+Eight extension points, each spread across 2-3 names:
 
-| 扩展点 | 接口 | Func 适配器 | With 选项 |
+| Extension point | Interface | Func adapter | With option |
 |---|---|---|---|
 | `Resolver` | ✓ | ✓ | ✓ |
 | `VictoryChecker` | ✓ | ✓ | ✓ |
@@ -131,115 +159,141 @@ kindReplay       PLAYER_ADDED / PHASE_CHANGED —— 只在回放那条路上有
 | `RoleSetup` | ✓ | ✓ | ✓ |
 | `GameSetup` | ✓ | ✓ | ✓ |
 
-**已补齐**：`Resolver` 与 `VictoryChecker` 此前没有 Func 适配器，另外六个有。
-这个不齐整没有理由，只是历史，现在补上了 `ResolverFunc` 与 `VictoryFunc`
-——`TestExtensionPoints_AllHaveFuncAdapters` 把八个函数字面量直接装进一台
-引擎，少一个适配器就编译不过。
+**Filled in**: `Resolver` and `VictoryChecker` had no Func adapter while the
+other six did. That asymmetry had no reason but history, and `ResolverFunc`
+and `VictoryFunc` have been added --
+`TestExtensionPoints_AllHaveFuncAdapters` installs eight function literals
+straight into one engine, so a missing adapter fails to compile.
 
-**剩下的那半还在**：一个扩展点仍是三个名字（接口 + 适配器 + 选项）。
-这一半要不要动是另一个问题——三个名字各有各的用处（接口给类型、适配器
-给便利、选项给装配），不像作用域那样是同一件事被摊开。
+**The other half remains**: an extension point is still three names (an
+interface, an adapter, an option). Whether to change that is another question
+-- the three names each do their own job (the interface gives a type, the
+adapter gives convenience, the option gives assembly), unlike scopes, where
+one thing was spread out.
 
-「一个概念」= 一个扩展点。
-「代码里的对应物」= 一个接口 + 一个适配器 + 一个选项函数，三个名字。
+"The concept" = one extension point.
+"Its counterpart in the code" = an interface, an adapter and an option
+function: three names.
 
 ---
 
-## 四、影子类型：同一批数据的三套形状 —— 判断有误，改为加执法
+## 4. Shadow types: three shapes for one set of data -- judged wrong, enforcement added instead
 
-同一批游戏状态，在代码里有三副面孔：
+The same game state wears three faces in the code:
 
-| 内部 | 对外只读 | 存档 |
+| Internal | Read-only outward | Save |
 |---|---|---|
-| `playerState`（未导出） | `PlayerInfo` / `PublicPlayerInfo` / `SelfInfo` | `PlayerSnapshot` |
+| `playerState` (unexported) | `PlayerInfo` / `PublicPlayerInfo` / `SelfInfo` | `PlayerSnapshot` |
 | `RoundContext` | `RoundContext` | `RoundCtxSnapshot` |
 | `SkillUse` | `SkillUse` | `SkillUseSnapshot` |
 | `Detour` | `Detour` | `DetourSnapshot` |
 
-四个 `*Snapshot` 影子类型的存在是**刻意的**（快照是写进存储的格式，字段名必须稳定，
-不能随内部重构漂移——这一条写在 `snapshot.go` 里，我仍然认为是对的）。
+The four `*Snapshot` shadow types exist **deliberately** (a snapshot is a
+format written to storage, its field names must stay stable and must not drift
+with an internal refactor -- that is written in `snapshot.go`, and I still
+think it is right).
 
-视图那一列我原来判成同一个问题：`PlayerInfo` / `PublicPlayerInfo` / `SelfInfo`
-描述的都是「一名玩家，按看的人不同露出不同的字段」，「谁在看」这个维度没有
-对应物，于是变成三个类型名。
+The view column I originally judged to be the same problem: `PlayerInfo` /
+`PublicPlayerInfo` / `SelfInfo` all describe "one player, exposing different
+fields depending on who is looking", the "who is looking" dimension has no
+counterpart, and so it became three type names.
 
-**这个判断是错的，不该合。** 与作用域不同——作用域的四格行为完全一致，只有
-挂点不同，所以合得起来；这三个是**三份不同的契约**：
+**That call was wrong, and they should not be merged.** Unlike scopes -- whose
+four cells behave identically and differ only in where they hang, so they
+merge -- these three are **three different contracts**:
 
 ```
-PlayerInfo         上帝视角   ID Role Alive Vars RoundVars
-SelfInfo           自己那份   ID Role Alive Camp
-PublicPlayerInfo   别人那份   ID Alive Role(仅在对本视角公开时)
+PlayerInfo         god's view      ID Role Alive Vars RoundVars
+SelfInfo           their own       ID Role Alive Camp
+PublicPlayerInfo   everyone else   ID Alive Role(only where revealed to this view)
 ```
 
-`PublicPlayerInfo` **在类型上就装不下** `Vars`。这不是命名的巧合，是与
-「`Resolver` 只能返回 `Effect`」同一级别的编译期保证：合成一个带可选字段的
-类型，「这一项该不该给他看」就从签名问题退回成运行时问题。
+`PublicPlayerInfo` **structurally cannot hold** `Vars`. That is not a naming
+coincidence, it is a compile-time guarantee of the same rank as "a `Resolver`
+can only return `Effect`s": merge them into one type with optional fields and
+"should they be shown this" falls back from a question about signatures to a
+question about runtime.
 
-**真正缺的不是类型，是执法。** 「往里放什么由角色决定，默认把它交给玩家等于
-让每个角色自己去想『这一项能不能给他看』」——这条写在 `PlayerInfo.Vars` 的
-注释里，是三副面孔分开的全部理由，而它此前**只是一句注释**。谁给 `SelfInfo`
-加一个 `Vars map[string]string`，女巫还剩几瓶药就一起发给全场了，没有任何
-东西会响。与 `GOTO_PHASE` 那次是同一类问题：规矩写在注释里。
+**What was actually missing was not a type but enforcement.** "What goes into
+it is up to the role, and handing it to the player by default would make every
+role work out for itself whether each entry may be shown" -- that is written
+on `PlayerInfo.Vars` and is the entire reason the three faces are kept apart,
+and it used to be **only a comment**. Anyone adding a
+`Vars map[string]string` to `SelfInfo` would send how many potions the witch
+has left to the whole table, and nothing would make a sound. The same class of
+problem as `GOTO_PHASE`: a rule written in a comment.
 
-现在 `TestPlayerView_CarriesNoFreeFormState` 用反射走 `PlayerView` 的整张类型图，
-任何 `map[string]string` 都算泄漏，只有 `PlayerView.RoleInfo` 在白名单上
-（那是角色**显式**投射的一次有意公开）。给 `SelfInfo` 或 `PublicPlayerInfo`
-加口袋会立刻变红。
+`TestPlayerView_CarriesNoFreeFormState` now walks `PlayerView`'s entire type
+graph by reflection and treats any `map[string]string` as a leak, with only
+`PlayerView.RoleInfo` on the allow-list (a deliberate disclosure the role
+projects **explicitly**). Adding a bag to `SelfInfo` or `PublicPlayerInfo`
+turns it red immediately.
 
-配套的 `TestPlayerView_ShapeTestActuallyWalks` 盯着这个测试自己：反射走类型图
-很容易因为一个提前 return 而什么都没查、然后永远是绿的。
+Its companion `TestPlayerView_ShapeTestActuallyWalks` watches that test
+itself: walking a type graph by reflection is easy to short-circuit with one
+early return, after which it checks nothing and is green forever.
 
 ---
 
-## 五、`Engine` 的方法 —— 摘要那一组已收敛
+## 5. `Engine`'s methods -- the summary group has converged
 
-原来是 27 个，其中一串是**同一件事的不同粒度**：`Phase()` `Round()` `Var()`
-`PlayerInfo()` `AlivePlayerIDs()` `RoundContext()` 与 `View()` 问的是同一批问题。
+There were 27, and a run of them were **the same thing at different
+granularities**: `Phase()`, `Round()`, `Var()`, `PlayerInfo()`,
+`AlivePlayerIDs()` and `RoundContext()` ask the same set of questions as
+`View()`.
 
-此前的辩护是「`View()` 会 clone 整个状态，问一句『现在第几回合』不该付那个代价」
-——性能分层，不是重复。这个辩护成立，但它解释的是**为什么有两条路**，
-没解释**为什么那条便宜的路要摊成七个方法**。
+The earlier defence was "`View()` clones the whole state, and asking `which
+round is it` should not cost that" -- a performance tier, not duplication.
+That defence holds, but it explains **why there are two paths**, not **why the
+cheap path is spread across seven methods**.
 
-**已收敛的那一组，理由不是名字多，是会撕裂。** `Phase()` / `Round()` /
-`IsGameOver()` / `Winner()` 各取一次读锁：宿主要渲染「第 3 回合的白天」得连问
-两次，中间另一个 goroutine 结算掉一个阶段的话，读到的是一组**从来不曾同时
-成立**的值。四个合成一个 `Status()`，四项标量在同一个读锁里取出，不分配内存。
+**The group that converged did so not because there were too many names, but
+because it could tear.** `Phase()` / `Round()` / `IsGameOver()` / `Winner()`
+each took their own read lock: a host rendering "the day of round 3" had to
+ask twice, and if another goroutine resolved a phase in between, it read a
+combination of values that **never held at the same time**. The four merged
+into one `Status()`, four scalars read under one lock with no allocation.
 
 ```
 Status{ Phase, Round, Over, Winner }
 ```
 
-`TestStatus_IsAtomic` 一边推进阶段一边并发读，断言组合永远合法（结束了就必须
-停在 `PhaseEnd`，没结束就不能已经有赢家）。改回四次分别取锁会变红。
+`TestStatus_IsAtomic` advances phases while reading concurrently, asserting
+that the combination read is always legal (over means stopped at `PhaseEnd`,
+not over means no winner yet). Going back to four separate locks turns it red.
 
-**剩下三个没动**：`Var(scope, key)` / `PlayerInfo(id)` / `AlivePlayerIDs()`
-带参数或者要分配，不是「摘要字段」，把它们塞进一个结构体只会让每次读都付
-不必要的代价。`View()` 那条路照旧。
+**The other three are untouched**: `Var(scope, key)` / `PlayerInfo(id)` /
+`AlivePlayerIDs()` take parameters or allocate; they are not summary fields,
+and putting them in a struct would only make every read pay a cost it does not
+need.  `View()`'s path is unchanged.
 
-现在是 23 个方法。
+There are 23 methods now.
 
 ---
 
-## 汇总
+## Summary
 
-| 概念 | 代码里的对应物 | 摊成几个名字 |
+| Concept | Its counterpart in the code | Spread across how many names |
 |---|---|---|
-| 变量作用域（2×2） | ~~没有~~ → `VarScope` | ~~8~~ → 已收敛 |
-| 规则对内核说的话（三类） | `eventKind`（未导出） | 6（构造器未收敛） |
-| 一个扩展点 | 部分（接口有，装配没有） | 8 × 3 = 24（已齐整，未收敛） |
-| 「谁在看这份数据」 | 三个类型（**本来就该三个**） | 3，不该动 |
-| 便宜的状态读法（摘要那组） | `Status` | ~~4~~ → 已收敛 |
+| variable scope (2x2) | ~~none~~ -> `VarScope` | ~~8~~ -> converged |
+| what the rules say to the kernel (three classes) | `eventKind` (unexported) | 6 (constructors not converged) |
+| one extension point | partly (the interface, not the assembly) | 8 x 3 = 24 (now symmetric, not converged) |
+| "who is looking at this data" | three types (**and it should be three**) | 3, not to be touched |
+| the cheap state readers (the summary group) | `Status` | ~~4~~ -> converged |
 
-**53 个导出类型里，相当一部分是「概念没有对应物」摊出来的。**
+**A substantial share of the 53 exported types come from concepts with no
+counterpart being spread out.**
 
 ---
 
-## 有意为之、不该动的
+## Deliberate, and not to be touched
 
-免得后面误伤：
+So that they are not damaged later:
 
-- **四个 `*Snapshot` 影子类型**——快照是写进存储的格式，必须与内部结构解耦。
-- **`GameView` 与可变状态分离**——规则拿只读视图、只能返回 `Effect`，这条约束由
-  签名保证，是这个库最值钱的性质之一。
-- **`Engine` 与 `GameView` 两条读法并存**——性能分层是真的。
+- **The four `*Snapshot` shadow types** -- a snapshot is a format written to
+  storage and must stay decoupled from the internal structures.
+- **`GameView` being separate from mutable state** -- the rules get a
+  read-only view and can only return `Effect`s, a constraint held up by the
+  signature and one of this library's most valuable properties.
+- **`Engine` and `GameView` coexisting as two read paths** -- the performance
+  tier is real.
