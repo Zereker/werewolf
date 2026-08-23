@@ -115,10 +115,16 @@ func (r canceledGoto) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{ef}
 }
 
-// recordingLogger 只关心有没有记过错误
-type recordingLogger struct{ sawError bool }
+// recordingLogger 数一数各级日志各来了几条。
+//
+// sawError 是最早的用法（「有没有记过错误」）；infos 用来验「装上去的
+// 日志真的接上了」，见 TestWithLogger_IsActuallyWired。
+type recordingLogger struct {
+	sawError bool
+	infos    int
+}
 
 func (l *recordingLogger) Debug(string, ...Field) {}
-func (l *recordingLogger) Info(string, ...Field)  {}
+func (l *recordingLogger) Info(string, ...Field)  { l.infos++ }
 func (l *recordingLogger) Warn(string, ...Field)  {}
 func (l *recordingLogger) Error(string, ...Field) { l.sawError = true }
