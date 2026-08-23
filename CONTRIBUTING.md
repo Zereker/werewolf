@@ -3,6 +3,22 @@
 Contributions are welcome. This document is in Chinese; feel free to open issues
 and pull requests in either Chinese or English.
 
+
+## API 已冻结
+
+内核的导出面由 [`docs/API.md`](docs/API.md) 与
+[`engine/testdata/api.golden`](engine/testdata/api.golden) 一起定住，
+`TestAPI_SurfaceIsPinned` 守着：**名字或签名变了，测试就红**。
+
+改导出面要同时做三件事，缺一件不算数：
+
+1. 有一条**具体的、撞到过的**理由——某套规则包因为它写不下去，或者绕法会
+   说谎。「觉得更好」不算。
+2. 更新 golden 基线：`go test ./engine -run TestAPI_SurfaceIsPinned -update-api-golden`
+3. 更新 `docs/API.md`（正文与附录 A）
+
+什么情况下值得重开，`API.md` 最后一节列了四条触发条件。
+
 ## 跑起来
 
 ```sh

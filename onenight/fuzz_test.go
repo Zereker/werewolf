@@ -19,7 +19,7 @@ import (
 // 狼牌是不是全在中央），只随机打法的话搜索空间会塌成一条线。
 func TestFuzz_Invariants(t *testing.T) {
 	gamefuzz.Run(t, gamefuzz.Config{
-		Games:    300,
+		Games:    2000, // 三套合计 5000 局；这一套单局最短，多跑一些
 		MaxSteps: 40,
 		WantEnd:  true,
 		Setup:    setupRandom,

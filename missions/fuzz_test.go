@@ -22,7 +22,7 @@ import (
 // 表决否决还会绕回提名，五轮任务加上刺杀——所以 MaxSteps 给得宽。
 func TestFuzz_Invariants(t *testing.T) {
 	gamefuzz.Run(t, gamefuzz.Config{
-		Games:    200,
+		Games:    1000, // 三套合计 5000 局；这一套的单局最长，给 1000
 		MaxSteps: 400,
 		WantEnd:  true,
 		Setup:    setupRandom,

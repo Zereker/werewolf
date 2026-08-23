@@ -128,7 +128,7 @@ items without touching the engine.
 **Current release: [v1.5.0](CHANGELOG.md).** The generic kernel and the Werewolf
 rules are now separated: no code path in the engine recognises a specific role,
 camp, or cause of death, and the whole rule set is installed through the same
-public options a third party would use. 93.8% coverage across the kernel and both
+public options a third party would use. 94.0% coverage across the kernel and all three
 rules packs, every rule traced to the
 Wikipedia article, 5000 randomized games per test run.
 

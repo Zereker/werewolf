@@ -28,9 +28,12 @@ import (
 // 不变量一条都不用改——它们本来就该在任何合法配置下成立。
 //
 // 种子固定，因此失败可以复现：日志里会带上 seed 与 step。
-// games 调大即可加大搜索强度（3000 局约 20 秒）。
+//
+// 三套规则包合计 5000 局（这里 2000，missions 1000，onenight 2000）。
+// 带 -race 跑完整套约一分钟，那是这条质量线该付的价钱——它抓到过
+// 「游戏结束时回合数多加一次」这种只在特定 seed 的特定步数上现形的问题。
 func TestFuzz_Invariants(t *testing.T) {
-	const games = 200
+	const games = 2000
 	stats := map[string]int{}
 
 	for seed := 0; seed < games; seed++ {
