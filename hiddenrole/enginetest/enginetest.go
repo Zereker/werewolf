@@ -1,38 +1,49 @@
-// Package gamefuzz 随机对局 + 通用不变量，供每一套规则包复用。
+// Package enginetest runs random games against a set of general invariants,
+// for every rules package to reuse.
 //
-// # 为什么要有这个包
+// # Why this package exists
 //
-// 逐条写的用例只能覆盖想得到的局面。随机对局反过来做：让引擎跑成千上万局，
-// 每一步都核对那些「无论如何都必须成立」的性质。这个项目查出来的几个最难
-// 复现的问题——回放分叉、快照漏字段、游戏结束时回合数多加一次——全都属于
-// 「某个特定局面下才现形」，也全都是被这类不变量抓住的。
+// Hand-written cases only cover the situations somebody thought of. Random
+// games work the other way round: run the engine for thousands of games and
+// check, at every step, the properties that must hold no matter what. The
+// hardest-to-reproduce problems this project has found -- replay divergence,
+// a snapshot missing a field, the round number incremented once too often at
+// the end of a game -- were all of the "only shows up in one particular
+// situation" kind, and all of them were caught by invariants like these.
 //
-// 它此前只存在于狼人杀那一套里（根包的 fuzz_test.go），于是**内核的确定性、
-// 快照往返、效果流回放只被三分之一的规则验证过**。而这三样恰恰是内核的
-// 承重墙，不该只有一套规则替它们作证。
+// It used to exist only inside the werewolf rules (fuzz_test.go in the root
+// package), which meant **the kernel's determinism, snapshot round trips and
+// effect-log replay were attested by one ruleset out of three**. Those three
+// are the kernel's load-bearing walls, and one ruleset should not be their
+// only witness.
 //
-// # 为什么它是公开的
+// # Why it is public
 //
-// 它是测试设施，位置与 net/http/httptest 相同：**给使用者用的测试支架，
-// 不是被测对象。**
+// It is test infrastructure, in the same position as net/http/httptest: **a
+// test harness for users of the library, not the thing under test.**
 //
-// 它此前叫 `internal/gamefuzz`，理由是「不该为一件测试用的东西给刚冻结的
-// API 加名字」。那个位置在**引擎独立成一个 module** 之后不成立了——
-// Go 的规则是 `internal/` 只能被同一个 module 里的代码 import，而规则包
-// 届时在另一个 module 里，一行都用不上它。
+// It used to be called `internal/gamefuzz`, on the grounds that "a test-only
+// thing should not add a name to an API that was just frozen". That position
+// stopped working once **the engine became its own module** -- Go's rule is
+// that `internal/` can only be imported from within the same module, and the
+// rules packages now live in another one and could not use a line of it.
 //
-// 公开了就该被冻结守着：`TestAPI_SurfaceIsPinned` 连这个子包一起钉住，
-// 不然它会成为一个绕开纪律的后门。
+// Being public, it is guarded by the freeze: TestAPI_SurfaceIsPinned pins
+// this sub-package too, or it would become a back door around that
+// discipline.
 //
-// 对照：hiddenrole.Board / Seat / Mark 也是公开的测试 API，它们做的是同一件
-// 事的另一半——那三个手工摆一个局面单测解析器，这一套跑成千上万局验
-// 不变量。
+// For contrast: hiddenrole.Board / Seat / Mark are public test APIs too, and
+// they do the other half of the same job -- those three lay out one board by
+// hand to unit-test a resolver, this one runs thousands of games to check
+// invariants.
 //
-// # 这里的不变量都不认识任何游戏
+// # None of these invariants knows any game
 //
-// 一条都不提「狼人」「任务」「中央牌」。每一条问的都是内核层面的事：
-// 存了再读回来一样吗、回放走到同一个局面吗、说不能行动的人是不是真的
-// 不能行动。规则包只负责摆局面与出招。
+// Not one of them mentions a werewolf, a mission or a centre card. Each asks
+// something at the kernel's level: does what was stored read back the same,
+// does replay arrive at the same board, is somebody the engine says cannot
+// act really unable to act. Laying out the board and taking turns is the
+// rules package's job.
 package enginetest
 
 import (
@@ -44,59 +55,67 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// Seat 一名玩家的入座信息。
+// Seat is one player taking a seat.
 type Seat struct {
 	ID   string
 	Role hiddenrole.RoleType
 }
 
-// Game 一局随机对局要用的全部材料，由规则包提供。
+// Game is everything one random game needs, supplied by the rules package.
 type Game struct {
-	// Config 阶段图。可以每局随机——随机配置比随机打法更能翻出问题，
-	// 狼人杀那套查出的三条会改变对局结果的问题里有两条就出在自定义配置上。
+	// Config is the phase graph. It may be randomised per game -- a random
+	// configuration turns up more than random play does: two of the three
+	// outcome-changing problems found in werewolf came from custom
+	// configurations.
 	Config *hiddenrole.Config
 
-	// Options 装配。必须与 Config 配套，且**恢复时要能原样再传一遍**
-	// ——快照往返那条不变量就是这么验的。
+	// Options is the assembly. It has to match Config, and must be
+	// **re-passable verbatim on restore** -- that is how the snapshot
+	// round-trip invariant checks it.
 	Options []hiddenrole.EngineOption
 
-	// Seats 入座名单。
+	// Seats is who sits down.
 	Seats []Seat
 
-	// Label 这一局的特征标签，用来盯住「随机化有没有退化」。
-	// 某个分支永远走不到的话，这个测试会安静地变成只跑一种局面。
+	// Labels characterise this game, used to watch for the randomisation
+	// degenerating. If some branch is never reached, the test would quietly
+	// become a test of one situation only.
 	Labels []string
 }
 
-// Setup 摆一局。同一个 rng 喂进去必须摆出同一局，失败才可复现。
+// Setup lays out one game. The same rng must lay out the same game, or a
+// failure cannot be reproduced.
 type Setup func(rng *rand.Rand) Game
 
-// Act 出一步招。规则包自己决定怎么出——泛泛地随机提交在多目标技能上
-// 几乎必然被拒（任务制那一套的提名要 N 个人，一夜狼人的捣蛋鬼要正好 2 个），
-// 那样对局推不到有意思的局面去。
+// Act takes one turn. The rules package decides how -- a generically random
+// submission is nearly always rejected on a multi-target skill (the missions
+// nomination needs N people, the One Night troublemaker needs exactly 2), and
+// the game would never reach an interesting situation.
 //
-// 允许什么都不做：不出招也能推进阶段，很多规则的夜晚能力本来就是可选的。
+// Doing nothing is allowed: phases advance without a submission, and many
+// rulesets' night abilities are optional to begin with.
 type Act func(e *hiddenrole.Engine, rng *rand.Rand)
 
-// FuzzSpec 一次随机对局测试的参数。
+// FuzzSpec is the configuration of one random-game test.
 type FuzzSpec struct {
-	Games    int      // 跑多少局
-	MaxSteps int      // 单局最多推进多少步，超了算没结束
-	Setup    Setup    // 怎么摆局
-	Act      Act      // 怎么出招；nil 表示不出招，只推进阶段
-	WantEnd  bool     // 是否要求每一局都必须在 MaxSteps 内结束
-	MustSee  []string // 这些标签一个都不能为零，否则说明随机化退化了
+	Games    int      // how many games to run
+	MaxSteps int      // most steps per game; beyond that it counts as unfinished
+	Setup    Setup    // how to lay a game out
+	Act      Act      // how to take a turn; nil means take none and only advance phases
+	WantEnd  bool     // whether every game must finish within MaxSteps
+	MustSee  []string // none of these labels may be zero, or the randomisation has degenerated
 }
 
-// RunFuzz 跑一批随机对局，逐步核对不变量。
+// RunFuzz runs a batch of random games, checking the invariants at each step.
 //
-// 种子固定，因此失败可复现：日志里带 seed 与 step。
+// The seeds are fixed, so a failure reproduces: the log carries seed and
+// step.
 func RunFuzz(t *testing.T, spec FuzzSpec) {
 	t.Helper()
 
 	stats := map[string]int{}
 	for seed := 0; seed < spec.Games; seed++ {
-		rng := rand.New(rand.NewSource(int64(seed))) //nolint:gosec // 测试用随机
+		rng := rand.New(rand.NewSource(int64(seed))) //nolint:gosec // test randomness
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -114,23 +133,23 @@ func RunFuzz(t *testing.T, spec FuzzSpec) {
 	}
 	if spec.WantEnd {
 		if n := stats[labelNotEnded]; n > 0 {
-			t.Errorf("有 %d 局在 %d 步内没有结束", n, spec.MaxSteps)
+			t.Errorf("%d games did not finish within %d steps", n, spec.MaxSteps)
 		}
 	}
 	for _, k := range spec.MustSee {
 		if stats[k] == 0 {
-			t.Errorf("随机化没有覆盖到「%s」，搜索空间退化了", k)
+			t.Errorf("the randomisation never produced %q; the search space has degenerated", k)
 		}
 	}
 }
 
 const (
-	labelStarted  = "开局"
-	labelEnded    = "结束"
-	labelNotEnded = "未结束"
+	labelStarted  = "started"
+	labelEnded    = "finished"
+	labelNotEnded = "unfinished"
 )
 
-// playOne 跑一局，返回这一局的特征标签。
+// playOne runs one game and returns the labels characterising it.
 func playOne(t *testing.T, seed int, rng *rand.Rand, spec FuzzSpec) []string {
 	t.Helper()
 
@@ -150,7 +169,7 @@ func playOne(t *testing.T, seed int, rng *rand.Rand, spec FuzzSpec) []string {
 
 	labels := append([]string{labelStarted}, g.Labels...)
 
-	// 内核发出来的每一条事件都收下——不变量 D 要看它们。
+	// Collect every event the kernel emits -- invariant G looks at them.
 	var seen []hiddenrole.EventType
 	e.OnEvent(func(ev *hiddenrole.Event) { seen = append(seen, ev.Type) })
 
@@ -169,7 +188,7 @@ func playOne(t *testing.T, seed int, rng *rand.Rand, spec FuzzSpec) []string {
 		checkPhaseInfoStable(t, seed, step, e)
 
 		clone := checkSnapshotRoundTrip(t, seed, step, e, g)
-		checkSameBehaviour(t, seed, step, "快照往返", e, clone)
+		checkSameBehaviour(t, seed, step, "a snapshot round trip", e, clone)
 
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("seed=%d step=%d EndPhase: %v", seed, step, err)
@@ -181,7 +200,7 @@ func playOne(t *testing.T, seed int, rng *rand.Rand, spec FuzzSpec) []string {
 
 		checkStatusCoherent(t, seed, step, e)
 		if r := e.Status().Round; r < lastRound {
-			t.Fatalf("seed=%d step=%d 回合数倒退: %d -> %d", seed, step, lastRound, r)
+			t.Fatalf("seed=%d step=%d round number went backwards: %d -> %d", seed, step, lastRound, r)
 		} else {
 			lastRound = r
 		}
@@ -193,11 +212,15 @@ func playOne(t *testing.T, seed int, rng *rand.Rand, spec FuzzSpec) []string {
 	return append(labels, labelNotEnded)
 }
 
-// checkSnapshotRoundTrip 不变量 A：存档往返之后，两边必须是同一个局面。
+// checkSnapshotRoundTrip is invariant A: after a save round trip, both sides
+// must be the same board.
 //
-// 光比阶段与回合不够——快照漏掉一个字段，两边照样能同步地走完一整局，
-// 只是规则判定不一样了。逐字节比对导出的快照才挡得住「漏字段」这一类，
-// 而那一类真出过两次（守卫的连守记录、结束那一刻的赢家）。
+// Comparing phase and round is not enough -- with a field missing from the
+// snapshot, both sides still walk a whole game in lockstep, only the rules
+// judge differently. Comparing the exported snapshots byte for byte is what
+// catches the missing-field class, and that class really did happen twice
+// (the guard's consecutive-protection record, the winner at the moment the
+// game ends).
 func checkSnapshotRoundTrip(t *testing.T, seed, step int, e *hiddenrole.Engine, g Game) *hiddenrole.Engine {
 	t.Helper()
 
@@ -216,27 +239,30 @@ func checkSnapshotRoundTrip(t *testing.T, seed, step int, e *hiddenrole.Engine, 
 	return clone
 }
 
-// checkSameState 两台引擎导出的快照必须逐字节相同。
+// checkSameState requires two engines' exported snapshots to be byte-identical.
 func checkSameState(t *testing.T, seed, step int, a, b *hiddenrole.Engine) {
 	t.Helper()
 	x, _ := json.Marshal(a.Snapshot())
 	y, _ := json.Marshal(b.Snapshot())
 	if string(x) != string(y) {
-		t.Fatalf("seed=%d step=%d 快照往返后状态不一致:\n  原  %s\n  副本 %s", seed, step, x, y)
+		t.Fatalf("seed=%d step=%d state differs after a snapshot round trip:\n  original %s\n  clone    %s", seed, step, x, y)
 	}
 	if a.Status() != b.Status() {
-		t.Fatalf("seed=%d step=%d Status 不一致: %+v vs %+v", seed, step, a.Status(), b.Status())
+		t.Fatalf("seed=%d step=%d Status differs: %+v vs %+v", seed, step, a.Status(), b.Status())
 	}
 }
 
-// checkSameBehaviour 两台引擎对「现在谁能干什么」必须给出同一个答案。
+// checkSameBehaviour requires two engines to give the same answer to "who can
+// do what right now".
 //
-// **这一条是变异验证逼出来的。** 此前跨引擎只比快照字节——而快照序列化器
-// 自己漏一个字段时，两边一起漏，比对是瞎的：「快照丢掉 Actors」这个变异
-// 当场存活了。
+// **This one was forced out by mutation testing.** Cross-engine comparison
+// used to look at snapshot bytes only -- and when the snapshot serialiser
+// itself drops a field, both sides drop it and the comparison is blind: the
+// "snapshot loses Actors" mutation survived on the spot.
 //
-// 快照的意义不是「导出的 JSON 一样」，是「恢复出来的引擎行为一样」。
-// 所以要问行为：谁能行动、还差谁行动。行动者名单丢了，这里立刻就不一样。
+// What a snapshot means is not "the exported JSON matches", it is "the
+// restored engine behaves the same". So ask about behaviour: who may act, who
+// has yet to act. Lose the actor list and the answers differ immediately.
 func checkSameBehaviour(t *testing.T, seed, step int, how string, a, b *hiddenrole.Engine) {
 	t.Helper()
 
@@ -244,33 +270,34 @@ func checkSameBehaviour(t *testing.T, seed, step int, how string, a, b *hiddenro
 		x := fmt.Sprint(a.AllowedSkills(p.ID))
 		y := fmt.Sprint(b.AllowedSkills(p.ID))
 		if x != y {
-			t.Fatalf("seed=%d step=%d %s之后 %s 能做的事不一样: 原=%s 副本=%s",
+			t.Fatalf("seed=%d step=%d after %s, what %s may do differs: original=%s clone=%s",
 				seed, step, how, p.ID, x, y)
 		}
 	}
 
 	x, y := a.PhaseReadiness(), b.PhaseReadiness()
 	if fmt.Sprint(x) != fmt.Sprint(y) {
-		t.Fatalf("seed=%d step=%d %s之后就绪情况不一样:\n  原  %+v\n  副本 %+v",
+		t.Fatalf("seed=%d step=%d readiness differs after %s:\n  original %+v\n  clone    %+v",
 			seed, step, how, x, y)
 	}
 
-	// 上帝视角的那份名单同样要一致——主持人照它组织流程。
+	// The god's-view list has to match too -- the host runs the phase from it.
 	for role, ri := range a.PhaseInfo().RoleInfos {
 		other, ok := b.PhaseInfo().RoleInfos[role]
 		if !ok {
-			t.Fatalf("seed=%d step=%d %s之后少了 %v 的信息", seed, step, how, role)
+			t.Fatalf("seed=%d step=%d after %s, the information for %v is missing", seed, step, how, role)
 		}
 		if fmt.Sprint(ri.PlayerIDs) != fmt.Sprint(other.PlayerIDs) {
-			t.Fatalf("seed=%d step=%d %s之后 %v 该行动的人不一样: 原=%v 副本=%v",
+			t.Fatalf("seed=%d step=%d after %s, who should act as %v differs: original=%v clone=%v",
 				seed, step, how, role, ri.PlayerIDs, other.PlayerIDs)
 		}
 	}
 }
 
-// checkReplay 不变量 B：效果流回放出同一个局面。
+// checkReplay is invariant B: replaying the effect log reaches the same board.
 //
-// 与快照那条互补：快照是状态，效果流是历史。两者都能重建，重建结果必须一样。
+// It complements the snapshot invariant: a snapshot is state, an effect log
+// is history. Both can rebuild, and the results must agree.
 func checkReplay(t *testing.T, seed, step int, e *hiddenrole.Engine, g Game) {
 	t.Helper()
 
@@ -279,36 +306,40 @@ func checkReplay(t *testing.T, seed, step int, e *hiddenrole.Engine, g Game) {
 		t.Fatalf("seed=%d step=%d ReplayEngine: %v", seed, step, err)
 	}
 	if got, want := replayed.Status().Phase, e.Status().Phase; got != want {
-		t.Fatalf("seed=%d step=%d 回放后阶段 = %v，原局 %v", seed, step, got, want)
+		t.Fatalf("seed=%d step=%d phase after replay = %v, original %v", seed, step, got, want)
 	}
 	if got, want := replayed.Status().Round, e.Status().Round; got != want {
-		t.Fatalf("seed=%d step=%d 回放后回合 = %d，原局 %d", seed, step, got, want)
+		t.Fatalf("seed=%d step=%d round after replay = %d, original %d", seed, step, got, want)
 	}
 
-	// 逐字节比快照。这里能这么比，是因为 checkReplay 在 EndPhase **之后**
-	// 调用——未结算的提交已经清空，而它们本来就不在效果流里
-	//（还没变成效果）。
+	// Compare snapshots byte for byte. That works here because checkReplay is
+	// called **after** EndPhase -- the unresolved submissions have been
+	// cleared, and they were never in the effect log anyway (they had not
+	// become effects yet).
 	x, _ := json.Marshal(e.Snapshot())
 	y, _ := json.Marshal(replayed.Snapshot())
 	if string(x) != string(y) {
-		t.Fatalf("seed=%d step=%d 回放后状态不一致:\n  原  %s\n  回放 %s", seed, step, x, y)
+		t.Fatalf("seed=%d step=%d state differs after replay:\n  original %s\n  replayed %s", seed, step, x, y)
 	}
 
-	// 与快照那条同一个道理：字节一样不等于行为一样，还要问行为。
-	checkSameBehaviour(t, seed, step, "效果流回放", e, replayed)
+	// Same reasoning as the snapshot invariant: matching bytes do not mean
+	// matching behaviour, so ask about behaviour too.
+	checkSameBehaviour(t, seed, step, "an effect-log replay", e, replayed)
 }
 
-// checkAllowedMatchesView 不变量 C：三条路对「谁能行动」必须给出同一个答案。
+// checkAllowedMatchesView is invariant C: three paths must give the same
+// answer to "who may act".
 //
-// Engine.AllowedSkills、PlayerView.AllowedSkills、以及 SubmitSkillUse 的校验。
-// 三者答案不同的话，调用方按其中一个组织流程，玩家的提交会被另一个拒掉。
+// Engine.AllowedSkills, PlayerView.AllowedSkills, and SubmitSkillUse's
+// validation. Were they to differ, a caller running the phase by one of them
+// would have the player's submission rejected by another.
 func checkAllowedMatchesView(t *testing.T, seed, step int, e *hiddenrole.Engine) {
 	t.Helper()
 	for _, p := range e.View().AllPlayers() {
 		a := len(e.AllowedSkills(p.ID))
 		v := e.PlayerView(p.ID)
 		if v == nil {
-			t.Fatalf("seed=%d step=%d %s 没有视角", seed, step, p.ID)
+			t.Fatalf("seed=%d step=%d %s has no view", seed, step, p.ID)
 		}
 		if b := len(v.AllowedSkills); a != b {
 			t.Fatalf("seed=%d step=%d %s: AllowedSkills=%d PlayerView=%d", seed, step, p.ID, a, b)
@@ -316,10 +347,12 @@ func checkAllowedMatchesView(t *testing.T, seed, step int, e *hiddenrole.Engine)
 	}
 }
 
-// checkPhaseInfoStable 不变量 D：同一个局面反复查询，名单顺序必须稳定。
+// checkPhaseInfoStable is invariant D: querying the same board repeatedly
+// must give lists in a stable order.
 //
-// 遍历 map 产出名单的话，同一个局面每次给出的顺序都不一样——效果流的
-// 回放与比对就没了确定性。这条真出过一次。
+// Building a list by iterating a map gives a different order every time for
+// the same board -- and replaying and comparing effect logs would lose their
+// determinism. This one really did happen once.
 func checkPhaseInfoStable(t *testing.T, seed, step int, e *hiddenrole.Engine) {
 	t.Helper()
 	want := map[hiddenrole.RoleType]string{}
@@ -329,56 +362,61 @@ func checkPhaseInfoStable(t *testing.T, seed, step int, e *hiddenrole.Engine) {
 	for i := 0; i < 3; i++ {
 		for role, ri := range e.PhaseInfo().RoleInfos {
 			if got := fmt.Sprint(ri.PlayerIDs); got != want[role] {
-				t.Fatalf("seed=%d step=%d PhaseInfo 的 %v 名单顺序不稳定: %s vs %s",
+				t.Fatalf("seed=%d step=%d PhaseInfo list for %v is not stably ordered: %s vs %s",
 					seed, step, role, want[role], got)
 			}
 		}
 	}
 }
 
-// checkStatusCoherent 不变量 E：Status 的四项必须彼此自洽。
+// checkStatusCoherent is invariant E: Status's four fields must be consistent
+// with each other.
 //
-// 结束了就必须停在 PhaseEnd 且有赢家；没结束就不能已经有赢家。
-// 反方向那一条（结束了却没有赢家）漏了很久——快照不带赢家，恢复出来的
-// 对局就是那样。
+// Over means stopped at PhaseEnd with a winner; not over means no winner yet.
+// The reverse direction (over with no winner) went unnoticed for a long time
+// -- with the winner missing from the snapshot, that is exactly what a
+// restored game looked like.
 func checkStatusCoherent(t *testing.T, seed, step int, e *hiddenrole.Engine) {
 	t.Helper()
 	st := e.Status()
 	switch {
 	case st.Over && st.Phase != hiddenrole.PhaseEnd:
-		t.Fatalf("seed=%d step=%d 已结束却停在 %v", seed, step, st.Phase)
+		t.Fatalf("seed=%d step=%d over, yet stopped at %v", seed, step, st.Phase)
 	case !st.Over && st.Winner != hiddenrole.CampUnspecified:
-		t.Fatalf("seed=%d step=%d 没结束却已经有赢家 %v", seed, step, st.Winner)
+		t.Fatalf("seed=%d step=%d not over, yet already has winner %v", seed, step, st.Winner)
 	case st.Round < 1:
-		t.Fatalf("seed=%d step=%d 回合数 %d 不合法", seed, step, st.Round)
+		t.Fatalf("seed=%d step=%d round number %d is invalid", seed, step, st.Round)
 	}
 }
 
-// checkEndedStaysEnded 不变量 F：结束之后局面不再变。
+// checkEndedStaysEnded is invariant F: once the game is over the board stops
+// changing.
 func checkEndedStaysEnded(t *testing.T, seed, step int, e *hiddenrole.Engine, g Game) {
 	t.Helper()
 	before, _ := json.Marshal(e.Snapshot())
 	st := e.Status()
 
-	_, _ = e.EndPhase() // 结束之后再推一步：报错或者什么都不做，都可以
+	_, _ = e.EndPhase() // one more step after the end: an error or a no-op are both fine
 
 	after, _ := json.Marshal(e.Snapshot())
 	if string(before) != string(after) {
-		t.Fatalf("seed=%d step=%d 结束之后局面还在变:\n  前 %s\n  后 %s", seed, step, before, after)
+		t.Fatalf("seed=%d step=%d board still changing after the end:\n  before %s\n  after  %s", seed, step, before, after)
 	}
 	if e.Status() != st {
-		t.Fatalf("seed=%d step=%d 结束之后 Status 还在变: %+v -> %+v", seed, step, st, e.Status())
+		t.Fatalf("seed=%d step=%d Status still changing after the end: %+v -> %+v", seed, step, st, e.Status())
 	}
 
-	// 结束的局面同样要能存档往返。
+	// A finished board has to survive a save round trip too.
 	clone := checkSnapshotRoundTrip(t, seed, step, e, g)
 	checkSameState(t, seed, step, e, clone)
 }
 
-// checkPrimitivesNeverBroadcast 不变量 G：内核的状态原语一条都不该到达 OnEvent。
+// checkPrimitivesNeverBroadcast is invariant G: not one kernel state
+// primitive may reach OnEvent.
 //
-// 宿主原样转发 OnEvent 就把上帝视角发出去了。这一条内核不可配置，
-// 但「不可配置」也要有东西验着。
+// A host forwarding OnEvent verbatim would be broadcasting the god's view.
+// The kernel makes this part non-configurable, and "non-configurable" still
+// needs something checking it.
 func checkPrimitivesNeverBroadcast(t *testing.T, seed int, seen []hiddenrole.EventType) {
 	t.Helper()
 	primitives := map[hiddenrole.EventType]bool{
@@ -389,12 +427,13 @@ func checkPrimitivesNeverBroadcast(t *testing.T, seed int, seen []hiddenrole.Eve
 	}
 	for _, typ := range seen {
 		if primitives[typ] {
-			t.Fatalf("seed=%d 状态原语 %v 出现在 OnEvent 里", seed, typ)
+			t.Fatalf("seed=%d state primitive %v reached OnEvent", seed, typ)
 		}
 	}
 }
 
-// sortedKeys 统计表的键，排过序——日志因此是确定的。
+// sortedKeys returns the stats table's keys, sorted, so the log is
+// deterministic.
 func sortedKeys(m map[string]int) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
