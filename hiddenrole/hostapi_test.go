@@ -6,24 +6,28 @@ import (
 	"time"
 )
 
-// hostapi_test.go 宿主用得到、而内核自己此前没验过的那几条。
+// hostapi_test.go covers the things a host uses that the kernel itself never
+// verified.
 //
-// 它们的共同点是「只被下游驱动过」：主持台读 PhaseInfo 组织流程、
-// 服务端按错误码分支、超时读 PhaseTimeout。内核拆出去独立成库之后，
-// 这些是使用者最先碰到的东西，不该靠规则包替它们作证。
+// What they have in common is that they were only ever exercised downstream: a
+// host console reads PhaseInfo to run the phase, a server branches on error
+// codes, a timeout reads PhaseTimeout. Now that the kernel is its own library,
+// these are the first things a user touches, and they should not depend on a
+// rules package to attest for them.
 
-// TestPhaseInfo_TellsTheHostWhatToDo PhaseInfo 是主持台的操作说明。
+// TestPhaseInfo_TellsTheHostWhatToDo: PhaseInfo is the host console's
+// instructions.
 //
-// 三个方法回答三个问题：该念公告吗、念哪一条、还有谁要行动。
-// 它们此前覆盖率全是 0%。
+// Three methods answer three questions: is there an announcement, which one,
+// and who else has to act. All three used to have 0% coverage.
 func TestPhaseInfo_TellsTheHostWhatToDo(t *testing.T) {
 	const phaseTalk = PhaseType("TALK")
 	cfg := testConfig()
 	cfg.Phases[phaseTalk] = &PhaseConfig{
 		Type: phaseTalk,
 		Steps: []PhaseStep{
-			{Role: RoleSystem, Skill: SkillAnnounce},               // 该念公告了
-			{Role: roleVillager, Skill: skillVote, Required: true}, // 玩家的行动
+			{Role: RoleSystem, Skill: SkillAnnounce},               // an announcement is due
+			{Role: roleVillager, Skill: skillVote, Required: true}, // a player action
 		},
 		NextPhase: phaseDay,
 	}
@@ -39,13 +43,13 @@ func TestPhaseInfo_TellsTheHostWhatToDo(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	t.Run("没有公告的阶段", func(t *testing.T) {
+	t.Run("a phase with no announcement", func(t *testing.T) {
 		info := e.PhaseInfo()
 		if info.NeedsGodAnnouncement() {
-			t.Error("守卫阶段第一步不是公告")
+			t.Error("the guard phase does not open with an announcement")
 		}
 		if info.GodAnnouncementStep() != nil {
-			t.Error("没有公告就不该给出公告步骤")
+			t.Error("with no announcement there should be no announcement step")
 		}
 	})
 
@@ -53,33 +57,33 @@ func TestPhaseInfo_TellsTheHostWhatToDo(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 
-	t.Run("有公告的阶段", func(t *testing.T) {
+	t.Run("a phase with an announcement", func(t *testing.T) {
 		info := e.PhaseInfo()
 		if !info.NeedsGodAnnouncement() {
-			t.Fatal("第一步是 RoleSystem + ANNOUNCE，主持台该念公告")
+			t.Fatal("the first step is RoleSystem + ANNOUNCE, so the host should announce")
 		}
 		step := info.GodAnnouncementStep()
 		if step == nil || step.Skill != SkillAnnounce {
-			t.Fatalf("公告步骤读错了：%+v", step)
+			t.Fatalf("the announcement step read back wrong: %+v", step)
 		}
 	})
 
-	t.Run("玩家的行动与公告分开列", func(t *testing.T) {
+	t.Run("player actions are listed apart from the announcement", func(t *testing.T) {
 		steps := e.PhaseInfo().PlayerActionSteps()
 		for _, s := range steps {
 			if s.Role == RoleSystem {
-				t.Error("PlayerActionSteps 不该含没有玩家承担的那一步")
+				t.Error("PlayerActionSteps should not include the step no player carries")
 			}
 		}
 		if len(steps) != 1 || steps[0].Skill != skillVote {
-			t.Errorf("玩家该行动的那一步读错了：%+v", steps)
+			t.Errorf("the player action step read back wrong: %+v", steps)
 		}
 	})
 }
 
-// TestEngine_CheapReaders 便宜的读法读的是真东西。
+// TestEngine_CheapReaders: the cheap readers read something real.
 //
-// AlivePlayerIDs 与 PhaseTimeout 此前覆盖率 0%。
+// AlivePlayerIDs and PhaseTimeout used to have 0% coverage.
 func TestEngine_CheapReaders(t *testing.T) {
 	e := newTestEngine(t, withNoopResolvers()...)
 	mustAdd(t, e, "b", roleVillager)
@@ -89,66 +93,68 @@ func TestEngine_CheapReaders(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	t.Run("存活名单按 ID 排序", func(t *testing.T) {
+	t.Run("the living roster is sorted by ID", func(t *testing.T) {
 		got := e.AlivePlayerIDs()
 		want := []string{"a", "b", "c"}
 		if len(got) != len(want) {
-			t.Fatalf("名单 = %v，期望 %v", got, want)
+			t.Fatalf("roster = %v, want %v", got, want)
 		}
 		for i := range want {
 			if got[i] != want[i] {
-				t.Fatalf("名单没排序：%v", got)
+				t.Fatalf("the roster is not sorted: %v", got)
 			}
 		}
 	})
 
-	t.Run("出局的人不在名单里", func(t *testing.T) {
+	t.Run("the eliminated are not on the roster", func(t *testing.T) {
 		e.Apply(NewSetAliveEffect("b", false))
 		for _, id := range e.AlivePlayerIDs() {
 			if id == "b" {
-				t.Error("出局的人不该出现在存活名单里")
+				t.Error("an eliminated player should not appear on the living roster")
 			}
 		}
 	})
 
-	t.Run("回合上下文是副本", func(t *testing.T) {
+	t.Run("the round context is a copy", func(t *testing.T) {
 		rc := e.RoundContext()
 		if rc == nil {
-			t.Fatal("开局之后该有回合上下文")
+			t.Fatal("there should be a round context after the start")
 		}
 		rc.Vars = map[string]string{"tampered": "1"}
 		if got := e.Var(ScopeRound, "tampered"); got != "" {
-			t.Error("改副本不该改到引擎内部")
+			t.Error("changing the copy should not change the engine's internals")
 		}
 	})
 }
 
-// TestConfig_PhaseTimeout 建议超时：阶段自己声明的优先，否则退回默认。
+// TestConfig_PhaseTimeout: the suggested timeout is the phase's own where it
+// declares one, and the default otherwise.
 //
-// 引擎**不据此计时**——它是给调用方的建议值。这一点值得有测试钉住，
-// 免得日后有人以为引擎会自己超时推进。
+// The engine **does not time anything by it** -- it is advice for the caller.
+// That is worth pinning down, so that nobody later assumes the engine advances
+// on a timeout by itself.
 func TestConfig_PhaseTimeout(t *testing.T) {
 	cfg := testConfig()
 	cfg.DefaultTimeout = 7 * time.Second
 	cfg.Phases[phaseDay].Timeout = 99 * time.Second
 
 	if got := cfg.PhaseTimeout(phaseDay); got != 99*time.Second {
-		t.Errorf("阶段声明了超时就该用它，实际 %v", got)
+		t.Errorf("a phase that declares a timeout should use it, got %v", got)
 	}
 	if got := cfg.PhaseTimeout(phaseVote); got != 7*time.Second {
-		t.Errorf("没声明就退回默认，实际 %v", got)
+		t.Errorf("with none declared it should fall back to the default, got %v", got)
 	}
 	if got := cfg.PhaseTimeout(PhaseType("NOT_THERE")); got != 7*time.Second {
-		t.Errorf("阶段不存在也该给默认值，实际 %v", got)
+		t.Errorf("a phase that does not exist should still give the default, got %v", got)
 	}
 
 	empty := &Config{}
 	if got := empty.PhaseTimeout(phaseDay); got != DefaultPhaseTimeout {
-		t.Errorf("连默认值都没设时退回 DefaultPhaseTimeout，实际 %v", got)
+		t.Errorf("with no default set either it should fall back to DefaultPhaseTimeout, got %v", got)
 	}
 }
 
-// TestSkillUse_Target 单目标读法。
+// TestSkillUse_Target covers the single-target reader.
 func TestSkillUse_Target(t *testing.T) {
 	cases := []struct {
 		use  *SkillUse
@@ -161,12 +167,13 @@ func TestSkillUse_Target(t *testing.T) {
 	}
 	for _, c := range cases {
 		if got := c.use.Target(); got != c.want {
-			t.Errorf("Target(%v) = %q，期望 %q", c.use.Targets, got, c.want)
+			t.Errorf("Target(%v) = %q, want %q", c.use.Targets, got, c.want)
 		}
 	}
 }
 
-// TestAddPlayer_RejectsBadSeats 入座的四种拒绝，宿主按错误码分支。
+// TestAddPlayer_RejectsBadSeats: the four ways seating is rejected, which a
+// host branches on by error code.
 func TestAddPlayer_RejectsBadSeats(t *testing.T) {
 	e := newTestEngine(t, withNoopResolvers()...)
 	mustAdd(t, e, "v", roleVillager)
@@ -177,29 +184,29 @@ func TestAddPlayer_RejectsBadSeats(t *testing.T) {
 		role RoleType
 		want error
 	}{
-		{"空 ID", "", roleVillager, ErrInvalidPlayerID},
-		{"重复 ID", "v", roleWerewolf, ErrPlayerExists},
-		{"系统角色不能入座", "sys", RoleSystem, ErrInvalidRole},
+		{"empty ID", "", roleVillager, ErrInvalidPlayerID},
+		{"duplicate ID", "v", roleWerewolf, ErrPlayerExists},
+		{"the system role cannot be seated", "sys", RoleSystem, ErrInvalidRole},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if err := e.AddPlayer(c.id, c.role); !errors.Is(err, c.want) {
-				t.Errorf("应当拒成 %v，实际 %v", c.want, err)
+				t.Errorf("should be rejected as %v, got %v", c.want, err)
 			}
 		})
 	}
 
-	t.Run("开局之后不能再入座", func(t *testing.T) {
+	t.Run("no seating after the start", func(t *testing.T) {
 		if err := e.Start(); err != nil {
 			t.Fatalf("Start: %v", err)
 		}
 		if err := e.AddPlayer("late", roleVillager); !errors.Is(err, ErrGameAlreadyStarted) {
-			t.Errorf("应当拒成 %v，实际 %v", ErrGameAlreadyStarted, err)
+			t.Errorf("should be rejected as %v, got %v", ErrGameAlreadyStarted, err)
 		}
 	})
 }
 
-// TestRestoreEngine_RejectsBadSnapshots 坏快照要被拒绝。
+// TestRestoreEngine_RejectsBadSnapshots: a bad snapshot must be rejected.
 func TestRestoreEngine_RejectsBadSnapshots(t *testing.T) {
 	e := newTestEngine(t, withNoopResolvers()...)
 	mustAdd(t, e, "v", roleVillager)
@@ -208,25 +215,25 @@ func TestRestoreEngine_RejectsBadSnapshots(t *testing.T) {
 	}
 	good := e.Snapshot()
 
-	t.Run("nil 快照", func(t *testing.T) {
+	t.Run("a nil snapshot", func(t *testing.T) {
 		if _, err := RestoreEngine(testConfig(), nil, withNoopResolvers()...); !errors.Is(err, ErrNilSnapshot) {
-			t.Errorf("应当拒成 %v，实际 %v", ErrNilSnapshot, err)
+			t.Errorf("should be rejected as %v, got %v", ErrNilSnapshot, err)
 		}
 	})
 
-	t.Run("版本对不上", func(t *testing.T) {
+	t.Run("a version mismatch", func(t *testing.T) {
 		bad := *good
 		bad.Version = SnapshotVersion + 1
 		if _, err := RestoreEngine(testConfig(), &bad, withNoopResolvers()...); !HasCode(err, CodeInvalidSnapshot) {
-			t.Errorf("应当拒成 %v，实际 %v", CodeInvalidSnapshot, CodeOf(err))
+			t.Errorf("should be rejected as %v, got %v", CodeInvalidSnapshot, CodeOf(err))
 		}
 	})
 
-	t.Run("阶段不在配置里", func(t *testing.T) {
+	t.Run("a phase absent from the config", func(t *testing.T) {
 		bad := *good
 		bad.Phase = PhaseType("NOT_IN_CONFIG")
 		if _, err := RestoreEngine(testConfig(), &bad, withNoopResolvers()...); !HasCode(err, CodeInvalidSnapshot) {
-			t.Errorf("应当拒成 %v，实际 %v", CodeInvalidSnapshot, CodeOf(err))
+			t.Errorf("should be rejected as %v, got %v", CodeInvalidSnapshot, CodeOf(err))
 		}
 	})
 }

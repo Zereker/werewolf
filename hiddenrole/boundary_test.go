@@ -7,32 +7,37 @@ import (
 	"testing"
 )
 
-// publicKernelEvents 内核自己发出、且**应当**让玩家看到的事件。
+// publicKernelEvents are the events the kernel emits that players **should**
+// see.
 //
-// 与 kernelEvents 一起，必须覆盖 event.go 里声明的每一个事件类型——
-// 由 TestKernelEventTypes_AreAllClassified 强制。
+// Together with kernelEvents they must cover every event type declared in
+// event.go -- enforced by TestKernelEventTypes_AreAllClassified.
 var publicKernelEvents = map[EventType]bool{
-	EventUnspecified: true, // 零值，不是真事件
+	EventUnspecified: true, // the zero value, not a real event
 	EventGameStarted: true,
 	EventGameEnded:   true,
 }
 
-// TestKernelEventTypes_AreAllClassified 每一个内核事件类型都必须被明确分类。
+// TestKernelEventTypes_AreAllClassified: every kernel event type must be
+// explicitly classified.
 //
-// 「状态原语永不外发」是内核唯一一条不可配置的规则，判断依据是
-// kernelEvents 这张手工维护的表。手工维护的表有一个固定的坏结局：
-// 有人加了第八个内核事件类型、忘了往表里添一行，于是这条事件默认按
-// 「外部事件」处理，交给 AudienceProvider 决定——一个「什么都给全场」的
-// provider 就能把状态机的记账推给所有玩家。
+// "State primitives never leave the building" is the kernel's only
+// non-configurable rule, and what decides it is kernelEvents, a table
+// maintained by hand. A hand-maintained table has one fixed bad ending:
+// somebody adds an eighth kernel event type, forgets to add a row, and that
+// event is then treated as an external one and handed to the
+// AudienceProvider -- a provider that gives everything to everybody would
+// push the state machine's bookkeeping to every player.
 //
-// 这个测试把 event.go 当作真值：它解析源码取出全部 EventXxx 声明，
-// 要求每一个都落在 kernelEvents 或 publicKernelEvents 里。新增一个
-// 事件类型而不分类，它就变红——你必须回答「这条该不该让玩家看见」。
+// This test treats event.go as the truth: it parses the source for every
+// EventXxx declaration and requires each to appear in kernelEvents or
+// publicKernelEvents. Add an event type without classifying it and it goes
+// red -- you have to answer "should a player see this".
 func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "event.go", nil, 0)
 	if err != nil {
-		t.Fatalf("解析 event.go: %v", err)
+		t.Fatalf("parsing event.go: %v", err)
 	}
 
 	var declared []string
@@ -51,10 +56,10 @@ func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 		return true
 	})
 	if len(declared) == 0 {
-		t.Fatal("在 event.go 里一个 EventType 常量都没解析到——这个测试失去了意义")
+		t.Fatal("no EventType constant was parsed out of event.go -- this test is meaningless")
 	}
 
-	// 名字 -> 取值。常量在同包内，直接按名字对照取值表。
+	// Name -> value. The constants are in this package, so map them by name.
 	byName := map[string]EventType{
 		"EventUnspecified":  EventUnspecified,
 		"EventGameStarted":  EventGameStarted,
@@ -71,22 +76,23 @@ func TestKernelEventTypes_AreAllClassified(t *testing.T) {
 	for _, name := range declared {
 		v, known := byName[name]
 		if !known {
-			t.Errorf("event.go 里新增了 %s，但这个测试的取值表还没跟上——"+
-				"补一行，同时决定它属于 kernelEvents 还是 publicKernelEvents", name)
+			t.Errorf("event.go gained %s but this test's value table has not caught up -- "+
+				"add a row, and decide whether it belongs in kernelEvents or publicKernelEvents", name)
 			continue
 		}
 		switch {
 		case isInternalEvent(v) && publicKernelEvents[v]:
-			t.Errorf("%s 同时被判成状态原语和公开事件", name)
+			t.Errorf("%s is classified as both a state primitive and a public event", name)
 		case !isInternalEvent(v) && !publicKernelEvents[v]:
-			t.Errorf("%s（%q）没有被分类：不进 kernelEvents 就意味着它会被"+
-				"当成外部事件交给 AudienceProvider，一个「什么都给全场」的 provider "+
-				"就能把它推给所有玩家。请明确它该不该让玩家看见", name, v)
+			t.Errorf("%s (%q) is unclassified: staying out of kernelEvents means it is "+
+				"treated as an external event and handed to the AudienceProvider, and a "+
+				"provider that gives everything to everybody would push it to every "+
+				"player. Decide whether a player should see it", name, v)
 		}
 	}
 }
 
-// primitiveSpewer 把每一条内核状态原语都产出一遍。
+// primitiveSpewer emits one of every kernel state primitive.
 type primitiveSpewer struct{}
 
 func (primitiveSpewer) Resolve([]*SkillUse, GameView) []*Effect {
@@ -99,22 +105,26 @@ func (primitiveSpewer) Resolve([]*SkillUse, GameView) []*Effect {
 		NewGotoPhaseEffect(phaseDay),
 		NewSetVarEffect(ScopeGame, "probe.game", "1"),
 		NewSetActorsEffect(phaseDay, "w1"),
-		NewEffect(EventType("PROBE_PUBLIC"), "w1", "g"), // 一条普通的规则事件作对照
+		NewEffect(EventType("PROBE_PUBLIC"), "w1", "g"), // an ordinary rule event, as a control
 	}
 }
 
-// TestBoundary_StatePrimitivesNeverReachPlayers 状态原语走不到玩家面前，两条路都走不到。
+// TestBoundary_StatePrimitivesNeverReachPlayers: state primitives reach no
+// player, down either path.
 //
-// 内核在信息边界上只守一条底线，且不可配置：自己的状态原语永远不外发。
-// 它有两条可能泄漏的路，此前只有第一条有测试盯着：
+// On the information boundary the kernel holds one line, and it is not
+// configurable: its own state primitives never leave the building. There are
+// two paths they could leak down, and only the first used to be watched:
 //
-//   - AudienceOf：即使规则装了一个「什么都给全场」的 provider 也必须被拦住；
-//   - OnEvent：宿主拿到什么就转发什么是很自然的写法，状态原语要是混进这一路，
-//     等于把上帝视角直接推给所有人。
+//   - AudienceOf: it must hold even when the rules install a provider that
+//     gives everything to everybody;
+//   - OnEvent: forwarding whatever arrives is a natural thing for a host to
+//     do, and a state primitive slipping down this path pushes the god's view
+//     straight to everyone.
 func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 	opts := append(withNoopResolvers(),
 		WithResolver(phaseNightGuard, primitiveSpewer{}),
-		// 一个最坏情况的 provider：什么都给全场
+		// A worst-case provider: give everything to everybody.
 		WithAudience(AudienceFunc(func(*Event, GameView) ([]string, bool) {
 			return []string{"w1", "g"}, true
 		})))
@@ -132,31 +142,31 @@ func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 
-	// 一、AudienceOf 这一路
+	// 1. The AudienceOf path.
 	for _, ef := range (primitiveSpewer{}).Resolve(nil, nil) {
 		got, known := e.AudienceOf(ef.ToEvent())
 		if !isInternalEvent(ef.Type) {
-			continue // 对照组：普通规则事件该走 provider
+			continue // control: an ordinary rule event should go to the provider
 		}
 		if !known {
-			t.Errorf("%v 应当是明确的判定，不是「不知道」", ef.Type)
+			t.Errorf("%v should be a definite verdict, not an \"I don't know\"", ef.Type)
 		}
 		if len(got) != 0 {
-			t.Errorf("%v 是状态原语，不该发给任何人，实际 %v", ef.Type, got)
+			t.Errorf("%v is a state primitive and should go to nobody, got %v", ef.Type, got)
 		}
 	}
 
-	// 二、OnEvent 这一路
+	// 2. The OnEvent path.
 	sawPublic := false
 	for _, typ := range seen {
 		if isInternalEvent(typ) {
-			t.Errorf("状态原语 %v 出现在 OnEvent 里——宿主原样转发就把上帝视角发出去了", typ)
+			t.Errorf("state primitive %v reached OnEvent -- a host forwarding it verbatim would send out the god's view", typ)
 		}
 		if typ == EventType("PROBE_PUBLIC") {
 			sawPublic = true
 		}
 	}
 	if !sawPublic {
-		t.Error("普通规则事件没能到达 OnEvent——这个测试可能什么都没验到")
+		t.Error("an ordinary rule event never reached OnEvent -- this test may be checking nothing")
 	}
 }
