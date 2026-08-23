@@ -27,7 +27,7 @@
 | [`onenight/`](onenight/) | 单夜换牌制 | 身份**分两层**：发到手的那张定夜里做什么，手上那张定结算算哪边 |
 
 三套没有一个取值相同（阶段、角色、技能、事件全不一样），而内核不用改。
-第三套写下来只逼出**零个破坏性 API 变更**——[API 已冻结](hiddenrole/API.md)。
+第三套写下来只逼出**零个破坏性 API 变更**——[API 已冻结](https://github.com/Zereker/hiddenrole/blob/master/API.md)。
 
 ## 特性
 
@@ -36,7 +36,7 @@
 - **确定性** - 同一副板子、同一批输入，导出的快照逐字节一致，由 5000 局随机对局摁住（三套规则包合计）
 - **规则有出处** - 三套规则包各有基准（维基条目或官方规则书），与来源不一致处写明理由
 - **规则可配置** - 女巫自救、守卫连守、同守同救、屠边/屠城均可切换
-- **可扩展** - 八个扩展点，内置角色与第三方走同一条路，没有特权；[API 已冻结](hiddenrole/API.md)并由 golden 测试守着
+- **可扩展** - 八个扩展点，内置角色与第三方走同一条路，没有特权；[API 已冻结](https://github.com/Zereker/hiddenrole/blob/master/API.md)并由 golden 测试守着
 - **可存档、可回放** - 局面导出为 JSON 恢复后继续推进；效果流是完整历史，可重建整局
 - **零依赖** - `go.mod` 里没有 require
 - **线程安全** - 引擎的所有导出方法都可并发调用
@@ -676,38 +676,6 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 ├── alias.go                 # 内核名字的小集合再导出（收录规则见文件头）
 ├── doc.go                   # 包文档
 │
-├── hiddenrole/              # 内核，**独立的 module**：不知道狼人杀是什么
-│   ├── README.md            # 内核自己的说明
-│   ├── engine.go            # 状态机
-│   ├── config.go            # 阶段机的配置
-│   ├── phase.go             # 阶段流转与技能校验
-│   ├── resolver.go          # Resolver 接口
-│   ├── effect.go            # 状态原语与控制指令
-│   ├── state.go             # 状态与唯一的写入点
-│   ├── view.go              # Resolver 的只读视图
-│   ├── boundary.go          # 受众/队友/发言三个扩展点
-│   ├── player_view.go       # 玩家视角与效果受众
-│   ├── phase_info.go        # 阶段信息（上帝视角）
-│   ├── readiness.go         # 阶段就绪判定
-│   ├── victory.go           # VictoryChecker 接口
-│   ├── rolesetup.go         # RoleSetup 扩展点
-│   ├── roleinfo.go          # RoleInfoProvider 扩展点
-│   ├── option.go            # 构造选项
-│   ├── snapshot.go          # 存档导出与恢复
-│   ├── effectlog.go         # 效果流日志与回放
-│   ├── event.go / events.go # 对外事件与通知
-│   ├── messaging.go         # 玩家发言的路由
-│   ├── errors.go            # 错误码与哨兵错误
-│   ├── logger.go            # 日志接口
-│   ├── testview.go          # Board：单测解析器用的手摆局面
-│   ├── types.go             # 词汇表的类型（取值在规则包）
-│   ├── enginetest/          # 给规则包的测试支架：随机对局 + 通用不变量
-│   ├── go.mod               # ← 它是另一个 module
-│   ├── API.md               # API 契约（已冻结）
-│   ├── DESIGN.md            # 技术方案
-│   ├── ARCHITECTURE.md      # 当前实现的结构
-│   └── PRIOR-ART.md         # 与对照实现的比较
-│
 ├── missions/                # 第二套规则包：任务制（提名 / 表决 / 任务 / 刺杀）
 │   └── SCARS.md             # 它撞到了内核的哪些地方
 ├── onenight/                # 第三套规则包：单夜换牌制（两层身份）
@@ -725,11 +693,11 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 
 | 想知道 | 看哪份 |
 |---|---|
-| **内核有哪些 API、各承诺什么** | [API.md](hiddenrole/API.md) 🔒 已冻结 |
-| 内核**该**长成什么样、为什么这么抽象 | [DESIGN.md](hiddenrole/DESIGN.md) |
+| **内核有哪些 API、各承诺什么** | [API.md](https://github.com/Zereker/hiddenrole/blob/master/API.md) 🔒 已冻结 |
+| 内核**该**长成什么样、为什么这么抽象 | [DESIGN.md](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) |
 | 走到这一步的次序与判断过程 | [ROADMAP.md](docs/ROADMAP.md)（已归档） |
-| 现在的代码是怎么组织的 | [ARCHITECTURE.md](hiddenrole/ARCHITECTURE.md) |
-| 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](hiddenrole/PRIOR-ART.md) |
+| 现在的代码是怎么组织的 | [ARCHITECTURE.md](https://github.com/Zereker/hiddenrole/blob/master/ARCHITECTURE.md) |
+| 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md) |
 | 第二套规则包撞到了什么 | [missions/SCARS.md](missions/SCARS.md) |
 | 第三套规则包撞到了什么 | [onenight/SCARS.md](onenight/SCARS.md) |
 
@@ -808,7 +776,7 @@ CHANGELOG 里对应的小节。四道闸：版本号格式、tag 未占用、CHA
 
 **当前版本：[v1.5.0](CHANGELOG.md)。** 通用内核与狼人杀规则已经分开：引擎的代码
 路径里没有一处认得具体角色、阵营或死法，狼人杀的一整套由 `werewolf.Options` 经公开
-选项装上去，与第三方注册自定义角色走同一批入口。覆盖率：三套规则包 92.8%，内核自测 87.8%（两个 module 分开统计），
+选项装上去，与第三方注册自定义角色走同一批入口。覆盖率：三套规则包 92.8%，内核自测 87.8%（内核在另一个仓库，各自统计），
 规则逐条对齐维基条目，
 每次测试跑 5000 局随机对局——三套规则包合计（狼人杀 2000、任务制 1000、单夜制 2000）。
 
@@ -827,7 +795,7 @@ API 是承诺。
 | `github.com/Zereker/hiddenrole` | 内核，**独立的 module**：玩家、阶段环、两条状态原语、信息边界 |
 
 **「规则只用公开 API」由编译器保证**，不靠自觉——规则包在内核之外，它能用的
-入口使用者也能用。想验证的话看 [`engine/types.go`](engine/types.go)：内核的
+入口使用者也能用。想验证的话看 [`types.go`](https://github.com/Zereker/hiddenrole/blob/master/types.go)：内核的
 词汇表只有五个非空取值——`START`、`END`、`GOD`、`SKIP`、`ANNOUNCE`，外加
 各类型的空零值。「女巫」「狼人」一个都没有，它们全在根包的
 [`vocab.go`](vocab.go) 里。
@@ -838,10 +806,10 @@ API 是承诺。
 词汇表的类型与取值。它们是纯别名，`werewolf.Effect` 与 `hiddenrole.Effect`
 是同一个类型。
 
-**一旦要改规则，就会写出 `engine.` 这个前缀**：自己写解析器、换胜负判定、
+**一旦要改规则，就会写出 `hiddenrole.` 这个前缀**：自己写解析器、换胜负判定、
 接日志、按错误码分支、拆快照——都从 `Zereker/hiddenrole` 取。这不是
 遗漏，是想让边界在调用点上看得见。本包自己的 `resolver.go`、`rolesetup.go`
-就是这么写的。内核的完整 API 见 [engine/README.md](hiddenrole/README.md)。
+就是这么写的。内核的完整 API 见 [hiddenrole 仓库](https://github.com/Zereker/hiddenrole)。
 
 ## 许可证
 

@@ -12,11 +12,11 @@
 
 | # | 撞到什么 | 归类 | 事先猜到了吗 |
 |---|---|---|---|
-| 1 | 目标必须是玩家，「看一张牌」表达不了 | 缺能力 | ✅ [DESIGN §8.2](../docs/DESIGN.md) 猜到了 |
+| 1 | 目标必须是玩家，「看一张牌」表达不了 | 缺能力 | ✅ [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 猜到了 |
 | 2 | `Validate` 强制要有回合边界，而这套规则没有回合 | 多余的强制 | ❌ 没想到 |
 | 3 | 「醒过来看一眼」没有对应物 | 概念缺口 | ❌ 没想到 |
 | 4 | `VarCamp` 自动外发，而这套规则里阵营是秘密 | 多余的特权 | ❌ 没想到 |
-| 5 | 胜负只能有一个赢家 | 缺能力 | ✅ [DESIGN §8.2](../docs/DESIGN.md) 猜到了 |
+| 5 | 胜负只能有一个赢家 | 缺能力 | ✅ [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 猜到了 |
 | 6 | 快照不带赢家 | **bug** | ❌ 查疤 5 时顺手撞出来的 |
 | — | **「身份入座定死」挡不住换牌类游戏** | **猜错了** | ❌ 反了 |
 
@@ -33,7 +33,7 @@
 
 ## 疤 0：我们把「身份入座定死」判成了缺口，判错了
 
-[DESIGN.md §8.1](../docs/DESIGN.md) 把「`playerState.Role` 没有写入路径」
+[DESIGN.md §8.1](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 把「`playerState.Role` 没有写入路径」
 列进**有证据的抽象缺口**，猜想它挡掉换牌类游戏，还点名了一夜狼人。
 选这套规则做第三套，一半理由就是去验证这一条。
 
@@ -109,7 +109,7 @@ type PhaseStep struct {
 内核只多一个判断：`TargetFree` 时跳过 `getPlayer`。目标字符串的意思由规则
 自己解释，与 `Var` 的键名一样——内核只管搬运。
 
-**归类：缺能力。** [DESIGN §8.2](../docs/DESIGN.md) 事先列过这一条（「目标
+**归类：缺能力。** [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 事先列过这一条（「目标
 只能是玩家 ID」），当时标的是「推测的，没有任何一局撞到过」。**现在撞到了。**
 
 ### 但判定为暂不修
@@ -159,7 +159,7 @@ PhaseVote: {
 **只有当阶段图有环时才要求回合边界。**
 
 或者更简单：`Config` 上加一个显式的 `SingleRound bool`,规则自己说
-「我没有回合」。前者内核能自己判断，更符合[判据](../docs/DESIGN.md)第一问。
+「我没有回合」。前者内核能自己判断，更符合[判据](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)第一问。
 
 **归类：多余的强制。** 与阿瓦隆的疤 6（`Alive` 的特权）同一类——内核在替
 规则做一个它做不了的判断。**事先没想到。**
@@ -173,7 +173,7 @@ PhaseVote: {
 因为它真的不需要。
 
 判断为什么落在内核而不是规则：「阶段图会不会转圈」是内核**不知道这是什么
-游戏也算得出来**的事，正好落在[判据](../docs/DESIGN.md)第一问。
+游戏也算得出来**的事，正好落在[判据](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)第一问。
 
 ---
 
@@ -304,7 +304,7 @@ CheckVictory(view GameView) (over bool, winners []Camp)
 `Winners []Camp`，单赢家就是长度为 1 的切片。改动很小，影响面是三套规则包
 各一处。
 
-**归类：缺能力。** [DESIGN §8.2](../docs/DESIGN.md) 事先列过这一条（「胜负只有
+**归类：缺能力。** [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 事先列过这一条（「胜负只有
 一个 Camp」），当时标的是「推测的」，理由写的是「血染钟楼的旅行者单独结算」。
 **现在有一套真正的规则撞上了**，而且是基础游戏的常规结局，不是扩展的边角。
 

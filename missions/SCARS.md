@@ -46,7 +46,7 @@ go test -run TestScar -v ./avalon/
 
 **内核自己在 `SubmitSkillUse` 就拦**，不是收下来再让规则事后丢掉——这一条抄的是
 boardgame.io（`master.ts` 里 `if (!isPlayerActive(...)) return`），理由见
-[docs/PRIOR-ART.md](../docs/PRIOR-ART.md)。阿瓦隆的解析器因此删掉了两处过滤，
+[docs/PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md)。阿瓦隆的解析器因此删掉了两处过滤，
 现在**一处都不剩**。
 
 名单要指定阶段而不是只作用于当前阶段，是因为它往往在**更早的阶段**算出来
@@ -295,7 +295,7 @@ boardgame.io 的做法是把 PRNG 状态存进游戏状态（`seed` 与 `prngsta
 代价说清楚：同一个回合的同一个阶段被结算两次，摇出来的是同一串数。
 对这个引擎来说那正是要的。
 
-详见 [docs/PRIOR-ART.md](../docs/PRIOR-ART.md)。
+详见 [docs/PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md)。
 
 **后来又撤掉了。** `GameView.Rand` 与 `Config.Seed` 已从内核删除。撤的理由
 不是设计错了——上面那套推导仍然成立——而是**它一个使用者都没有**：狼人杀与

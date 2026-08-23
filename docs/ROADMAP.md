@@ -3,12 +3,12 @@
 > **四个阶段全部走完，API 已冻结。** 这份文档不再更新，留作记录——它记的是
 > **判断过程**，尤其是判断错的那几次。
 >
-> 现在的 API 契约见 [API.md](../hiddenrole/API.md)（含冻结声明与重开条件），设计意图见
-> [DESIGN.md](../hiddenrole/DESIGN.md)。
+> 现在的 API 契约见 [API.md](https://github.com/Zereker/hiddenrole/blob/master/API.md)（含冻结声明与重开条件），设计意图见
+> [DESIGN.md](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)。
 >
 > ---
 >
-> [DESIGN.md](../hiddenrole/DESIGN.md) 说内核该长成什么样。这份说**按什么次序走到那儿，
+> [DESIGN.md](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 说内核该长成什么样。这份说**按什么次序走到那儿，
 > 每一步怎么算完成**。
 
 ---
@@ -150,7 +150,7 @@
 
 **这是本阶段的主干**，其余都挂在它上面。
 
-目标（[DESIGN.md §3.1](../hiddenrole/DESIGN.md)）：
+目标（[DESIGN.md §3.1](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)）：
 
 > 内核存的东西只有两样：一张变量表，和一条时间轴。
 > 身份、生死、阵营都是变量表里的标准键。
@@ -261,7 +261,7 @@
 与 `engine/testdata/api.golden` 比对。改了导出面就必须同时更新基线与
 `API.md`，**不能悄悄发生**。「悄悄新增」与「悄悄删除」两个方向都验证过会变红。
 
-[API.md §14](../hiddenrole/API.md) 那七条不一致同时清完（大小写、`PlayerInfo.Var` 删除、
+[API.md §14](https://github.com/Zereker/hiddenrole/blob/master/API.md) 那七条不一致同时清完（大小写、`PlayerInfo.Var` 删除、
 绕道改名、`RoleGod` → `RoleSystem`、两处文档漂移）。
 
 ### 3.4 完成判据
@@ -421,7 +421,7 @@ CHANGELOG 照记，**记的是变更本身，不是发布**。真到了有第一
 
 | | 为什么 |
 |---|---|
-| 网络层 / 房间 / 匹配 | 宿主的事（[DESIGN.md §1](../hiddenrole/DESIGN.md) 第三问）。`example/netserver` 是示例，不是产品 |
+| 网络层 / 房间 / 匹配 | 宿主的事（[DESIGN.md §1](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 第三问）。`example/netserver` 是示例，不是产品 |
 | AI 玩家 | 同上。内核给的是完整的 `PlayerView`，够任何一个 AI 用 |
 | 持久化后端 | `Snapshot` 是纯数据，`json.Marshal` 就是全部接口 |
 | 计时 | 引擎不计时，`Timeout` 是建议值。这是刻意的 |

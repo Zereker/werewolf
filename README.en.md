@@ -128,7 +128,7 @@ items without touching the engine.
 **Current release: [v1.5.0](CHANGELOG.md).** The generic kernel and the Werewolf
 rules are now separated: no code path in the engine recognises a specific role,
 camp, or cause of death, and the whole rule set is installed through the same
-public options a third party would use. 92.8% coverage across the three rule packs, 87.8% for the kernel itself (two modules, measured separately)
+public options a third party would use. 92.8% coverage across the three rule packs, 87.8% for the kernel itself (a separate repository, measured on its own)
 rules packs, every rule traced to the
 Wikipedia article, 5000 randomized games per test run.
 
@@ -150,7 +150,7 @@ The two layers are two packages:
 **"The rules only use public API" is enforced by the compiler**, not by
 discipline — the rules package sits outside the kernel, and every door it uses
 is a door you can use too. To check, read
-[`engine/types.go`](engine/types.go): the kernel's whole vocabulary is five
+[`types.go`](https://github.com/Zereker/hiddenrole/blob/master/types.go): the kernel's whole vocabulary is five
 non-empty values — `START`, `END`, `GOD`, `SKIP`, `ANNOUNCE` — plus a zero value
 per type. There is no witch and no werewolf; those live in the root package's
 [`vocab.go`](vocab.go).
@@ -162,12 +162,12 @@ it (`SkillUse`, `GameView`, `Effect`, `Snapshot`, the vocabulary types and their
 kernel-owned values). They are plain aliases: `werewolf.Effect` and
 `hiddenrole.Effect` are the same type.
 
-**Changing the rules means writing the `engine.` prefix.** Custom resolvers, a
+**Changing the rules means writing the `hiddenrole.` prefix.** Custom resolvers, a
 different victory checker, logging and metrics, branching on error codes, taking
 a snapshot apart — those names live in the kernel. That is not an oversight; it
 is how the boundary stays visible at the call site. The rules package writes it
 that way itself (see `resolver.go`, `rolesetup.go`). The kernel's own API is
-documented in [engine/README.md](engine/README.md).
+documented in the [hiddenrole repository](https://github.com/Zereker/hiddenrole).
 
 ## Testing
 
@@ -185,7 +185,7 @@ make lint              # golangci-lint
 ## Documentation
 
 - [`doc.go`](doc.go) / [pkg.go.dev](https://pkg.go.dev/github.com/Zereker/werewolf) — package documentation
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — design decisions and their reasons
+- [`docs/ARCHITECTURE.md`](https://github.com/Zereker/hiddenrole/blob/master/ARCHITECTURE.md) — design decisions and their reasons
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to build, test, and what a good change looks like
 - [`CHANGELOG.md`](CHANGELOG.md) — every release, every breaking change, and why
 

@@ -6,13 +6,23 @@ and pull requests in either Chinese or English.
 
 ## 内核在另一个 module 里
 
-引擎已独立成 [`hiddenrole`](hiddenrole/)，有自己的 `go.mod`、自己的
-[CONTRIBUTING](hiddenrole/CONTRIBUTING.md)、**已冻结的 API**。
+引擎已独立成 [`hiddenrole`](https://github.com/Zereker/hiddenrole)，有自己的 `go.mod`、自己的
+[CONTRIBUTING](https://github.com/Zereker/hiddenrole/blob/master/CONTRIBUTING.md)、**已冻结的 API**。
 
-**`go` 命令不跨 module 边界**：在仓库根目录跑 `go test ./...` 一个引擎的
-测试都不会跑到。`make check` 两边都跑，本地验证请用它。
+本仓库按版本依赖它，与其他第三方依赖没有区别，`go test ./...` 跑的是
+下载下来的那一份。
 
-改内核请读 [`hiddenrole/CONTRIBUTING.md`](hiddenrole/CONTRIBUTING.md)
+**要连着内核一起改**，在本地把它检出到并排的目录，加一条 replace：
+
+```sh
+git clone https://github.com/Zereker/hiddenrole ../hiddenrole
+go mod edit -replace github.com/Zereker/hiddenrole=../hiddenrole
+```
+
+验完撤掉（`go mod edit -dropreplace github.com/Zereker/hiddenrole`）——
+**这条 replace 不要提交**，它会让 CI 与使用者拿到不同的引擎。
+
+改内核请读[它自己的 CONTRIBUTING](https://github.com/Zereker/hiddenrole/blob/master/CONTRIBUTING.md)
 ——那边的纪律更紧（API 冻结、变异验证、三套规则包一起验）。
 
 ## 跑起来

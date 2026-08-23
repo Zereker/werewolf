@@ -61,7 +61,7 @@ module 尾段与包名一致，调用点读作 `hiddenrole.GameView`、
 ### 🔒 API 冻结
 
 四个阶段走完，内核的导出面冻结。冻结的对象是
-[`docs/API.md`](docs/API.md) + [`engine/testdata/api.golden`](engine/testdata/api.golden)，
+[`docs/API.md`](https://github.com/Zereker/hiddenrole/blob/master/API.md) + [`engine/testdata/api.golden`](https://github.com/Zereker/hiddenrole/blob/master/testdata/api.golden)，
 由 `TestAPI_SurfaceIsPinned` 守着——**名字或签名变了，测试就红**。
 
 冻结不是「永不改动」，是三条纪律：破坏性变更需要一条**撞到过的**理由；
@@ -587,7 +587,7 @@ Makefile 与 CI 都补上，README 的数字从 94.5% 改成 **93.9%**（内核�
 
 于是把 [boardgame.io](https://github.com/boardgameio/boardgame.io) 的引擎读了一遍
 （`turn-order.ts` / `flow.ts` / `reducer.ts` / `random.ts` 与三篇文档），逐条对照，
-结果写在 [`docs/PRIOR-ART.md`](docs/PRIOR-ART.md)。
+结果写在 [`docs/PRIOR-ART.md`](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md)。
 
 **我们更强的两处：**
 
@@ -627,7 +627,7 @@ Makefile 与 CI 都补上，README 的数字从 94.5% 改成 **93.9%**（内核�
 ### 七条疤全部关闭：内核不再替规则做只有规则知道的决定
 
 阿瓦隆撞出六条疤、对照 boardgame.io 又添一条（[`missions/SCARS.md`](missions/SCARS.md)、
-[`docs/PRIOR-ART.md`](docs/PRIOR-ART.md)）。这一批把它们全部关掉。
+[`docs/PRIOR-ART.md`](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md)）。这一批把它们全部关掉。
 
 判据始终是同一句：**内核能不能在不知道这是什么游戏的情况下，独立判断这件事
 对不对？**「状态改了没有」能判断，归内核；「现在是不是新回合」「下一步去哪」
@@ -915,7 +915,7 @@ log[0].Cancel("我说的")       // Cancel 还是导出方法
 
 ### 内核有了自己的 README
 
-新增 [`engine/README.md`](engine/README.md)：内核是什么、唯一的写入点、
+新增 [`engine/README.md`](https://github.com/Zereker/hiddenrole)：内核是什么、唯一的写入点、
 四条状态原语、信息边界、八个扩展点、怎么用 `Board` 单测自己的解析器、
 内核不做什么。附一套两页纸的完整规则（红蓝公投）作为可运行的最小例子——
 文中的两段代码都是先跑通再抄进来的。

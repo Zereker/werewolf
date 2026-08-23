@@ -18,11 +18,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run golangci-lint (engine)
-        uses: golangci/golangci-lint-action@v6
-        with:
-          working-directory: hiddenrole
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
@@ -40,26 +35,13 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # 引擎是独立的 module，go 命令不跨 module 边界——不单独跑一遍，
-      # 它的测试一个都不会执行。
-      - name: Run tests (engine)
-        working-directory: hiddenrole
-        run: go test -v -race ./...
-
-      # 只统计内核包自己，不含 enginetest：那是给规则包用的测试支架，
-      # 驱动它的代码在另一个 module 里，跨 module 的覆盖率统计不到。
-      # 算进来会把 87.8% 拉到 76.9%，那是口径的假象。
-      - name: Engine coverage
-        working-directory: hiddenrole
-        run: go test -covermode=atomic -coverprofile=coverage.out . && go tool cover -func=coverage.out | tail -1
-
       - name: Run tests
-        # -coverpkg 只指三套规则包：引擎已是另一个 module，算不进来。
-        # 引擎自己的覆盖率由上一步单独跑。
+        # -coverpkg 只指三套规则包：内核在另一个 module 里，算不进来，
+        # 它的覆盖率由它自己的 CI 统计。
         # 不含 example/：示例是使用者，不是被测对象，算进去只会稀释数字。
         run: >
           go test -v -race -covermode=atomic -coverprofile=coverage.out
-          -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/engine,github.com/Zereker/werewolf/missions,github.com/Zereker/werewolf/onenight
+          -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/missions,github.com/Zereker/werewolf/onenight
           ./...
 
       # 每个基准各跑一次。不比对耗时（CI 的机器时快时慢，比了也是噪声），
@@ -89,10 +71,6 @@ jobs:
       # 此前另有一个 `go build -o /tmp/example ./example/...` 步骤，
       # 它既与这里重复，又在 example/cli 加进来之后直接失败——
       # -o 指向单个文件时不允许匹配多个包。
-      - name: Build (engine)
-        working-directory: hiddenrole
-        run: go build -v ./...
-
       - name: Build
         run: go build -v ./...
 
