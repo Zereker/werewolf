@@ -1,210 +1,266 @@
-# 对照：boardgame.io 的引擎，和我们的
+# Prior art: boardgame.io's engine, and ours
 
-写这份文档的起因是一句话：查完三个同类框架之后发现，**「谁可以行动」这件事，
-没有一个把它写进静态配置，只有我们这么做**。那句话值得追问——是我们想得不一样，
-还是我们根本没想过。
+This document started from one sentence: after reading three comparable
+frameworks, **not one of them puts "who may act" into static configuration --
+only we do**. That sentence deserved following up. Did we think about it
+differently, or did we never think about it at all?
 
-于是把 [boardgame.io](https://github.com/boardgameio/boardgame.io) 的引擎整个读了一遍，
-逐条对照。选它是因为它和我们做的是同一件事（回合制多人游戏的状态内核 + 信息边界），
-而且开源、文档与源码都可查。
+So [boardgame.io](https://github.com/boardgameio/boardgame.io)'s engine was
+read end to end and compared point by point. It was chosen because it does the
+same thing we do (a state kernel for turn-based multiplayer plus an
+information boundary), and because it is open source with both docs and source
+available.
 
-读的是这几个文件，结论都能指回去：
+These are the files that were read, and every conclusion points back into
+them:
 
-- `src/core/turn-order.ts` —— 行动者集合
-- `src/core/flow.ts` —— 阶段流转与行动权判定
-- `src/core/reducer.ts` —— 写入路径与历史
-- `src/plugins/random/random.ts` —— 随机
+- `src/core/turn-order.ts` -- the set of active players
+- `src/core/flow.ts` -- phase transitions and the may-act decision
+- `src/core/reducer.ts` -- the write path and the history
+- `src/plugins/random/random.ts` -- randomness
 - `docs/documentation/{stages,phases,secret-state}.md`
 
 ---
 
-## 一张表
+## One table
 
-任何这类引擎都要回答同一批问题。两边的答案并排：
+Any engine of this kind has to answer the same set of questions. Both answers
+side by side:
 
-| 问题 | boardgame.io | 我们 | 判定 |
+| Question | boardgame.io | Us | Verdict |
 |---|---|---|---|
-| 状态怎么改 | 单一 reducer，move 用 immer 改 `G` | 单一写入点 `applyEffect`，规则只能返回 `[]*Effect` | **我们更强** |
-| 发生过什么怎么记 | `deltalog` + `_undo/_redo` 栈 + `_stateID` | `EffectLog`（进出都是副本）+ 快照 + 回放 | 相当 |
-| **谁可以行动** | `ctx.activePlayers` 运行时集合，在状态里 | `SetActors` 运行时名单，在状态里 | 已补，形状相同 |
-| 能做什么 | `GetMove` 分层：stage → phase → 全局 | `PhaseStep.Skill` 按阶段列举 | 相当 |
-| 下一步去哪 | `next` 可以是字符串或函数 | `NextPhase` 默认 + `GOTO_PHASE` 效果改写 | 相当（我们刚补） |
-| 一回合是什么 | **没有这个概念**，只有 turn 与 phase | `Round`，由 `EndsRound` 声明 | 我们多一个，存疑 |
-| 谁能看到什么 | `playerView(G, ctx, playerID) -> G'` 一个函数 | 结构化 `PlayerView` + `AudienceOf` + 不可配置底线 | **我们明显更强** |
-| 随机怎么办 | PRNG 状态进游戏状态，回放确定 | 内核不提供 | 补过又撤了，见下 |
-| 阶段何时结束 | `endIf` / `maxMoves` 自动结束，框架管 | 不管，`EndPhase` 由调用方调 | 刻意不同，我们对 |
-| 扩展怎么加 | plugin 系统 + 配置 | 七个具体扩展点 + 效果原语 | 不同路子 |
-| 谁在跑 | 自带 client/server/master + transport | 不做 | 刻意不同 |
+| how state changes | a single reducer; a move mutates `G` through immer | a single write point, `applyEffect`; the rules can only return `[]*Effect` | **we are stronger** |
+| how what happened is recorded | `deltalog` + an `_undo/_redo` stack + `_stateID` | `EffectLog` (copies in and out) + snapshots + replay | comparable |
+| **who may act** | `ctx.activePlayers`, a runtime set living in state | `SetActors`, a runtime list living in state | since fixed; same shape |
+| what they may do | `GetMove` layered: stage -> phase -> global | `PhaseStep.Skill`, enumerated per phase | comparable |
+| where to go next | `next` may be a string or a function | `NextPhase` as the default, overridden by a `GOTO_PHASE` effect | comparable (we only just fixed it) |
+| what a round is | **no such concept**, only turns and phases | `Round`, declared by `EndsRound` | we have one more; questionable |
+| who can see what | one function, `playerView(G, ctx, playerID) -> G'` | a structured `PlayerView` + `AudienceOf` + a non-configurable floor | **we are clearly stronger** |
+| randomness | PRNG state lives in game state, so replay is deterministic | the kernel offers none | added, then removed; see below |
+| when a phase ends | `endIf` / `maxMoves` end it automatically; the framework runs it | not our business; the caller calls `EndPhase` | deliberately different, and we are right |
+| how extensions are added | a plugin system plus configuration | seven concrete extension points plus effect primitives | different approach |
+| who runs it | ships client/server/master plus transport | we do not | deliberately different |
 
 ---
 
-## 我们更强的两处
+## Two places where we are stronger
 
-### 写入约束是签名保证的，不是约定
+### The write constraint is held up by a signature, not by convention
 
-他们的 move 可以任意改 `G`——immer 只是把改动变成不可变更新，**没有阻止 move
-乱改的机制**。我们的 `Resolver.Resolve(uses, view) []*Effect` 在**类型上**就拿不到
-可变状态：只读 `GameView` 进，`Effect` 出。
+Their moves can mutate `G` however they like -- immer only turns the mutation
+into an immutable update, and **nothing stops a move doing whatever it
+wants**. Our `Resolver.Resolve(uses, view) []*Effect` cannot reach mutable
+state **at the type level**: a read-only `GameView` goes in, an `Effect` comes
+out.
 
-这不是风格差异。「状态的每一次改变都经由同一个写入点」是快照、回放、审计三样
-收益的前提；他们靠纪律维持，我们靠编译器。
+This is not a stylistic difference. "Every change to state goes through one
+write point" is the premise of all three benefits -- snapshots, replay,
+auditing. They maintain it by discipline; we maintain it with the compiler.
 
-### 信息边界不是一个删字段的函数
+### The information boundary is not a function that deletes fields
 
-他们的 `playerView` 是「你自己写一个函数，把不该看的字段删掉」，
-默认实现 `PlayerView.STRIP_SECRETS` 靠**命名约定**——删掉叫 `secret` 的键。
+Their `playerView` is "write a function yourself that deletes the fields they
+should not see", and the default implementation
+`PlayerView.STRIP_SECRETS` relies on a **naming convention** -- it deletes
+keys called `secret`.
 
-我们这边是三样东西：
+On our side there are three things:
 
-- **结构化的 `PlayerView`**——`Self` / `Players` / `RoleInfo` / `Teammates`，
-  每一格的语义都定死了，不是「一个自由的对象删掉几个键」；
-- **`AudienceOf` 单独一条路**——「一件事该告诉谁」和「一个人现在能看到什么」
-  是两个问题，他们只解决了后者；
-- **一条不可配置的底线**——状态原语永不外发，规则改不了它。
+- **A structured `PlayerView`** -- `Self` / `Players` / `RoleInfo` /
+  `Teammates`, each cell with a fixed meaning, not "a free-form object with a
+  few keys deleted";
+- **`AudienceOf` as a separate path** -- "who should be told about this" and
+  "what can this person see right now" are two questions, and they only solved
+  the second;
+- **A non-configurable floor** -- state primitives never leave the building,
+  and the rules cannot change that.
 
-任务制那一套写下来的时候这一整块**零摩擦**（梅林的单向可见、奥伯伦的双向隔离、
-派西维尔的二选一、任务失败票的匿名）。这是这个库最值钱的部分。
+Writing the mission-based rules, this whole area cost **zero friction**
+(Merlin's one-way visibility, Oberon's two-way isolation, Percival's
+either-or, anonymous mission-fail votes). This is the most valuable part of
+this library.
 
 ---
 
-## 我们欠债的两处
+## Two places where we owe
 
-### 一、谁可以行动（[SCARS.md](https://github.com/Zereker/werewolf/blob/main/missions/SCARS.md) 疤 1）
+### 1. Who may act ([SCARS.md](https://github.com/Zereker/werewolf/blob/main/missions/SCARS.md) scar 1)
 
-他们的判定就三行：
+Their decision is three lines:
 
 ```javascript
 function IsPlayerActive(_G, ctx, playerID): boolean {
   if ((ctx._removedPlayers || []).includes(playerID)) return false;
-  if (ctx.activePlayers) return playerID in ctx.activePlayers;   // 运行时集合优先
-  return ctx.currentPlayer === playerID;                          // 否则退回默认
+  if (ctx.activePlayers) return playerID in ctx.activePlayers;   // the runtime set wins
+  return ctx.currentPlayer === playerID;                          // otherwise fall back to the default
 }
 ```
 
-三个要点，每一个都在打我们的脸：
+Three points, each of which is a slap in our face:
 
-1. **`ctx.activePlayers` 是状态**，在序列化的 `ctx` 里，因此进存档、能回放。
-   他们特意**没有**把它放进 `G`（那是放任意游戏状态的地方），而是给了 `ctx`
-   一个专属位置，还配了生命周期（`_prevActivePlayers` 栈、集合空了自动出栈）。
-   → **行动者集合值得当一等概念，不是一个普通变量。**
-2. **默认值 + 运行时改写的分层**——有运行时集合就用，没有就退回默认。
-   这正是我们刚给 `GOTO_PHASE` 用的形状。
-3. **框架自己拦**，在 `master.ts` 的入口：
+1. **`ctx.activePlayers` is state**, inside the serialised `ctx`, so it goes
+   into saves and can be replayed. They deliberately did **not** put it in `G`
+   (the bag for arbitrary game state) and gave it a dedicated place in `ctx`
+   instead, with a lifecycle to match (a `_prevActivePlayers` stack, popped
+   automatically when the set empties).
+   -> **The active-player set deserves to be a first-class concept, not an
+   ordinary variable.**
+2. **A default plus a runtime override** -- use the runtime set if there is
+   one, fall back to the default otherwise. Which is exactly the shape we just
+   used for `GOTO_PHASE`.
+3. **The framework enforces it itself**, at the entry point in `master.ts`:
    `if (!this.game.flow.isPlayerActive(...)) { logging.error('player not active'); return; }`
-   ——不是让游戏逻辑事后过滤。
+   -- rather than leaving the game logic to filter afterwards.
 
-我们的做法是 `PhaseStep{Role, Skill}` 静态匹配，外加 `peekTrigger` 一个单人特例。
-后果是内核对没资格行动的玩家说谎（`AllowedSkills` 说他能动、`PhaseReadiness`
-等着他）。
+Our approach was a static `PhaseStep{Role, Skill}` match plus `peekTrigger` as
+a one-player special case. The consequence was the kernel lying to unqualified
+players (`AllowedSkills` saying they may act, `PhaseReadiness` waiting on
+them).
 
-**顺带一个发现**：我们的 `NewDetourEffect(playerID, phase)` 语义是
-「这一个人、去哪个阶段行动」——**它本来就是「谁在阶段 X 能行动」的单人特例**。
-补这条能力不是加新机制，是把已有机制从一个人推广到一组人，
-`validateSkillUse` 里那个特判大概率能一起删掉。
+**One thing that fell out along the way**: our
+`NewDetourEffect(playerID, phase)` means "this one player, acting in this
+phase" -- **it was already the one-player special case of "who may act in
+phase X"**. Adding the capability was not adding a new mechanism, it was
+generalising an existing one from one player to a set, and the special case in
+`validateSkillUse` could most likely be deleted along with it.
 
-### 二、随机（此前没记过）
+### 2. Randomness (never recorded before)
 
-他们把 PRNG 状态存进游戏状态：`seed` 与 `prngstate` 两个字段，每次取随机数
-之后把新的 PRNG 状态写回去。于是**回放能重现完全相同的随机序列**，move 也
-「stay pure」。
+They store the PRNG's state in the game state: two fields, `seed` and
+`prngstate`, with the new PRNG state written back after every draw. So
+**replay reproduces the exact same random sequence** and moves "stay pure".
 
-我们的内核**根本没有随机**。`Resolver` 必须是局面的纯函数，要随机只能宿主在
-外面摇，摇完的结果不进效果流——于是那一部分**回放不出来**。
+Our kernel has **no randomness at all**. A `Resolver` has to be a pure
+function of the board, so randomness can only be rolled by the host outside,
+and the result does not enter the effect log -- so that part **cannot be
+replayed**.
 
-狼人杀和任务制那一套都躲过了这个问题（发牌在建局之前，局中不需要随机）。但任何
-局中带随机的规则——掷骰、摸牌、随机事件——在我们这儿建不起来，或者建起来了
-就失去可回放性，而那是这个库的招牌之一。
+Both werewolf and the mission-based rules dodged this (dealing happens before
+the game is created, and nothing during play needs randomness). But any
+ruleset with randomness during play -- dice, drawing cards, random events --
+either cannot be built on us, or is built and loses replayability, which is
+one of this library's selling points.
 
-**这条是任务制那一套没撞到、对照才看出来的。** 它证明「写第二套规则包」和
-「看别人怎么做」是两种不同的检验，都不能省。
+**This is one the mission-based rules did not run into; only the comparison
+surfaced it.** It proves that "write a second rules package" and "read how
+somebody else did it" are two different tests, and neither can be skipped.
 
-**补过，又撤了。** 我们加过 `GameView.Rand()`——一条由 (种子, 当前回合,
-当前阶段) 唯一决定的流，不存 PRNG 进度，比对照实现小一圈。设计站得住，
-理由是：我们的约束比他们强（结算是局面的纯函数），所以不必记进度。
+**Added, then removed.** We did add `GameView.Rand()` -- a stream determined
+uniquely by (seed, current round, current phase), storing no PRNG progress,
+one size smaller than the reference implementation. The design holds up, and
+the reason is that our constraint is stronger than theirs (resolution is a
+pure function of the board), so progress need not be recorded.
 
-撤掉是因为**它一个使用者都没有**。两套规则包都不在局中摇，它是对着这张
-对照表补上的，不是被哪一局撞出来的。
+It was removed because **it had not a single user**. Neither rules package
+rolls during play; it was added against this comparison table, not because
+some game ran into it.
 
-于是这条要连着记两次：**对照能告诉你缺什么，但告诉不了你需不需要。**
-这是「照着别人的清单补」这种做法自带的失真——别人的清单反映的是别人的
-形态。第三套规则包如果局中真的要摇，把它加回来不到五十行，设计写在
-`missions/SCARS.md` 疤 7 里。
+So this one goes into the record twice: **a comparison can tell you what you
+are missing, but it cannot tell you whether you need it.** That is the
+distortion built into "fill the gaps from somebody else's checklist" --
+somebody else's checklist reflects somebody else's shape. If a third rules
+package really does need to roll during play, adding it back is under fifty
+lines, and the design is written up in `missions/SCARS.md` scar 7.
 
 ---
 
-## 出局：三个来源分歧，而分歧有规律
+## Elimination: three sources disagree, and the disagreement has a pattern
 
-|  | 有没有一等的「出局」 |
+|  | A first-class "eliminated"? |
 |---|---|
-| boardgame.io | **没有**。游戏自己在 `G` 里记，在轮转里跳过（`playOrderPos` 的 `next` 函数里跳） |
-| OpenSpiel | **没有**。`current_player()` 由 state 算，死人自然轮不到 |
-| PettingZoo AEC | **有**。`terminations` 每个 agent 一份，`agents` 列表会缩短 |
+| boardgame.io | **No.** The game records it in `G` itself and skips them in the rotation (inside `playOrderPos`'s `next` function) |
+| OpenSpiel | **No.** `current_player()` is computed from state, so the dead simply never come up |
+| PettingZoo AEC | **Yes.** `terminations`, one per agent, and the `agents` list shrinks |
 
-分歧对应的是**框架需要它干什么**：PettingZoo 的 API 是循环问每个 agent，
-框架必须知道什么时候不再问；另两个不需要，因为「谁能行动」本来就从状态算。
+The disagreement tracks **what the framework needs it for**: PettingZoo's API
+asks each agent in a loop, so the framework has to know when to stop asking;
+the other two do not, because "who may act" is computed from state anyway.
 
-我们补上 `SetActors` 之后变成了后者。于是问题从「要不要 `Alive`」变成
-「它还该不该说了算」——答案是不该，见 [SCARS.md](https://github.com/Zereker/werewolf/blob/main/missions/SCARS.md) 疤 6。
-`Alive` 保留为**默认**，规则点名时由规则负责。
+Adding `SetActors` put us in the second camp. So the question changed from
+"do we need `Alive`" to "should it still be the decider" -- and the answer is
+no; see [SCARS.md](https://github.com/Zereker/werewolf/blob/main/missions/SCARS.md)
+scar 6. `Alive` stays as the **default**, and when the rules name actors, the
+rules take responsibility.
 
-## `Round`：为什么我们需要，而别人不需要
+## `Round`: why we need one and others do not
 
-boardgame.io **没有回合这个概念**，只有 turn 与 phase；OpenSpiel、PettingZoo 同样没有。
-而且更彻底的一点：**它们没有任何自动清空的作用域存储**——所有游戏状态在一个自由的
-袋子里（`G`），要清什么自己在 `onBegin` / `onEnd` 里清。
+boardgame.io **has no concept of a round**, only turns and phases; neither do
+OpenSpiel or PettingZoo. And more fundamentally: **none of them has any
+automatically cleared scoped storage** -- all game state sits in one free-form
+bag (`G`), and whatever needs clearing you clear yourself in `onBegin` /
+`onEnd`.
 
-这解释了分歧的根源，而且答案对我们是**肯定**的：
+That explains where the disagreement comes from, and the answer for us is
+**yes**:
 
-> 它们不需要「边界」，是因为**它们没有分区**。
+> They do not need a boundary because **they have no partitions**.
 
-我们刻意不给自由的袋子：规则只能产出 `Effect`，状态被切成四格
-（整局/本回合 × 无主/属于某人），回放与审计才成立。**一旦按生命周期分区，
-就必须有至少一个比「整局」短的格子，也就必须有东西定义它的边界。**
+We deliberately do not offer a free-form bag: the rules can only produce
+`Effect`s, and state is cut into four cells (whole game / this round x
+unowned / owned), which is what makes replay and auditing work. **Once you
+partition by lifetime, you must have at least one cell shorter than "the whole
+game", and therefore something has to define its boundary.**
 
-`Round` 就是那个边界标记。它不是我们发明的游戏概念，是我们刻意创造的存储分区
-的边界。证据很直接：**它们根本没有 `RoundVar` 这种东西。**
+`Round` is that boundary marker. It is not a game concept we invented, it is
+the boundary of a storage partition we deliberately created. The evidence is
+direct: **they have nothing like a round-scoped variable at all.**
 
-用量说明它在挣自己的位置：狼人杀 26 处、任务制那一套 5 处。而那个历史 bug
-（女巫的解药一夜又一夜救同一个人）正是清空出错造成的。
+Usage says it is earning its place: 26 sites in werewolf, 5 in the
+mission-based rules. And that historical bug -- the witch's antidote saving
+the same person night after night -- came from getting the clearing wrong.
 
-**照抄「没有 Round」是个陷阱**：看起来像向先例靠拢，实际是把我们换来的分区丢掉，
-最后既没有分区的好处、又要自己清。
+**Copying "no Round" would be a trap**: it looks like moving towards
+precedent, and is actually throwing away the partitioning we paid for, ending
+up with neither its benefits nor freedom from clearing things ourselves.
 
-### 但它此前还焊着两件事
+### But it used to have two things welded together
 
-`EndsRound` 一次做两件：回合数 +1，以及清空回合级变量。狼人杀里两者恰好重合
-（夜间标记活到下一个夜晚，而那正是一回合），所以一直看不出问题。任务制那一套里不重合：
+`EndsRound` did two jobs at once: increment the round number, and clear
+round-scoped variables. In werewolf the two happen to coincide (a night marker
+lives until the next night, and that is exactly one round), which is why
+nothing looked wrong. In the mission-based rules they do not:
 
-	队伍标记活到「下一次提名开始」   一轮任务里可能提名五次
-	回合数跟着「第几轮任务」走       否则报给玩家的数没有意义
+	team markers live until the next nomination begins   one mission may take five nominations
+	the round number tracks which mission it is          or the number shown to players is meaningless
 
-于是任务制那一套只能在提名解析器里手工清一遍——**内核少给了一档寿命，规则替它补**。
-这与疤 3 的病根是同一个：内核把两件事焊在一起。
+So the mission rules had to clear them by hand in the nomination resolver --
+**the kernel was one lifetime short and the rules made up the difference**.
+Same root cause as scar 3: the kernel welding two things together.
 
-现在拆开了：`EndsRound` 只管计数，`ClearsRoundVars` 说「我这个阶段从干净的
-局面开始」。每个阶段只声明关于自己的事，两条都由 `Validate` 强制。
+They are separate now: `EndsRound` governs counting only, and
+`ClearsRoundVars` says "this phase of mine begins from a clean board". Each
+phase declares only what is about itself, and `Validate` enforces both.
 
-## 有一样明确不抄
+## One thing we deliberately do not copy
 
-他们的 `endIf`、`minMoves`、`maxMoves` 会**自动结束**阶段或 stage。
+Their `endIf`, `minMoves` and `maxMoves` **end** a phase or stage
+automatically.
 
-我们刻意不管这件事：引擎不计时，`PhaseConfig.Timeout` 只是建议值，
-什么时候 `EndPhase` 完全由调用方决定，`PhaseReadiness` 只回答「还差谁」。
-这条写在 `doc.go` 的「内核不做什么」里，是有意的边界，不是缺失。
+We deliberately stay out of it: the engine keeps no clock,
+`PhaseConfig.Timeout` is advice, when `EndPhase` is called is entirely the
+caller's decision, and `PhaseReadiness` only answers "who is still missing".
+This is written into "what the kernel does not do" in `doc.go`; it is a
+deliberate boundary, not an omission.
 
-所以补行动者集合的时候，**只取「谁能行动」，不取那套计数与自动结束**。
+So when the active-player set was added, **only "who may act" was taken, not
+the counting and auto-ending that come with it**.
 
 ---
 
-## 结论
+## Conclusion
 
-对照下来，我们不是「架构整体有问题」，而是**一边领先一边欠债**：
+The comparison says we do not have "an architecture that is wrong overall";
+we are **ahead on one half and in debt on the other**:
 
-- 「谁知道什么」这半边比对照对象**强一个量级**，而且是这个库的核心价值；
-- 「一局游戏怎么推进」那半边欠两笔——行动者集合、随机——两笔都是
-  「内核替规则做了决定」或「内核干脆没提供」，而不是做错了。
-  （随机后来补过又撤了：设计没问题，但没有使用者。见上。）
+- The "who knows what" half is **an order of magnitude stronger** than what it
+  was compared against, and it is this library's core value;
+- The "how a game proceeds" half owed two things -- the active-player set and
+  randomness -- and both were "the kernel deciding for the rules" or "the
+  kernel not offering it at all", not something done wrong. (Randomness was
+  later added and removed: the design was fine, it had no users. See above.)
 
-而欠债的形状是清楚的，因为对照给出了可抄的答案：**一等状态 + 规则用效果设置
-+ 内核在入口强制 + 未设置时退回默认**。我们已经用这个形状解决过两次
-（`EndsRound`、`GOTO_PHASE`），这是第三次。
+And the shape of the debt is clear, because the comparison hands over a
+copyable answer: **first-class state + the rules set it with an effect + the
+kernel enforces it at the entry point + fall back to a default when unset.**
+We have solved two things with this shape already (`EndsRound`,
+`GOTO_PHASE`); this was the third.
