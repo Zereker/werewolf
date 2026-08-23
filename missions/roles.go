@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"sort"
@@ -9,7 +9,7 @@ import (
 
 // roles.go 谁是好人、谁看得见谁。
 //
-// 阿瓦隆整局没有一个人出局——这是它与狼人杀最大的结构差异。
+// 这套规则整局没有一个人出局——这是它与狼人杀最大的结构差异。
 // 内核的存活位在这一局里从头到尾没被写过，`SET_ALIVE` 一次都不产出。
 
 // evilRoles 坏人阵营的全部角色。
@@ -33,7 +33,7 @@ func campOf(role engine.RoleType) engine.Camp {
 // builtinRoleSetup 入座时发放阵营。
 //
 // 内核只认 VarCamp 这一个键（胜负判定数阵营用），别的都是规则自己的事。
-// 阿瓦隆不需要「神职/平民」那种细分——它的胜负只看任务成败与刺杀，
+// 这套规则不需要「神职/平民」那种细分——它的胜负只看任务成败与刺杀，
 // 不数人头。
 var builtinRoleSetup = func() map[engine.RoleType]engine.RoleSetup {
 	out := map[engine.RoleType]engine.RoleSetup{}

@@ -1,10 +1,10 @@
-package avalon
+package missions
 
 import "github.com/Zereker/werewolf/engine"
 
 // victory.go 怎么算赢。
 //
-// 阿瓦隆的胜负与狼人杀完全不是一回事：**它不数人头**。没有屠边、没有屠城，
+// 本包的胜负与狼人杀完全不是一回事：**它不数人头**。没有屠边、没有屠城，
 // 没有任何人出局。胜负只看三样——任务成败的比分、连续否决的次数、
 // 以及好人凑满三次之后那一刀。
 //

@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"testing"

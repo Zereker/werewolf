@@ -167,7 +167,7 @@ boardgame.io（`master.ts` 里 `if (!isPlayerActive(...)) return`），理由见
 
 ```
 疤 4：玩家 a 的私有状态里多出 4 个与他无关的字段：
-     [avalon.success avalon.mission avalon.leader avalon.rejects]
+     [missions.success missions.mission missions.leader missions.rejects]
 ```
 
 全局事实记在某个人的私有状态里；那个玩家的 `PlayerView` 里凭空多出几个

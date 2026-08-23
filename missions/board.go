@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"time"
@@ -69,7 +69,7 @@ func FailsNeeded(players, mission int) int {
 // mission, the Spies immediately win the game.」
 const HammerRejections = 5
 
-// DefaultConfig 阿瓦隆的默认板子。
+// DefaultConfig 本包的默认板子。
 //
 // 阶段环是三个节点的循环：提名 -> 表决 -> 任务 -> 提名。表决没通过时
 // 任务阶段会空转一次（那一轮没有人被标记上场），这是绕法的代价之一，
@@ -129,7 +129,7 @@ func DefaultConfig() *engine.Config {
 
 				// 任务结算完是新的一回合。
 				//
-				// 这是「回合边界交给规则」之后立刻兑现的好处：阿瓦隆的
+				// 这是「回合边界交给规则」之后立刻兑现的好处：本包的
 				// Round 从此等于**第几轮任务**，与它自己说的话对得上。
 				// 此前内核猜「绕回起始阶段就算新回合」，而这里每提名一次
 				// 就绕一圈，于是 Round 成了提名计数器，跟「第几轮任务」

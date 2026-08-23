@@ -41,7 +41,7 @@ jobs:
         # 不含 example/：示例是使用者，不是被测对象，算进去只会稀释数字。
         run: >
           go test -v -race -covermode=atomic -coverprofile=coverage.out
-          -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/engine,github.com/Zereker/werewolf/avalon,github.com/Zereker/werewolf/onenight
+          -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/engine,github.com/Zereker/werewolf/missions,github.com/Zereker/werewolf/onenight
           ./...
 
       # 每个基准各跑一次。不比对耗时（CI 的机器时快时慢，比了也是噪声），

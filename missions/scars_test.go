@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"testing"
@@ -16,7 +16,7 @@ import (
 //
 // **这条曾经是疤 1**，而且是六条里最贵的一条——代价直接落在给玩家看的东西上：
 // 内核判定行动者只看 (阶段, 角色, 技能)，而角色是入座时定死的，任何运行时
-// 选出来的集合都表达不了。阿瓦隆里它咬了两次（队长、任务队伍），
+// 选出来的集合都表达不了。这套规则里它咬了两次（队长、任务队伍），
 // 狼人杀里咬了一次（猎人开枪，内核为它开了绕道队列这个单人特例）。
 //
 // 后果是内核对没资格的玩家说谎：AllowedSkills 说他能动、PhaseReadiness
@@ -112,14 +112,14 @@ func TestApprovedProposalGoesToMission(t *testing.T) {
 	}
 }
 
-// TestRoundEqualsMissionNumber 引擎的「回合」等于阿瓦隆的「第几轮任务」。
+// TestRoundEqualsMissionNumber 引擎的「回合」等于本包的「第几轮任务」。
 //
 // **这条曾经是疤 3**：内核把「回合数加一」焊死在「阶段环绕回起始阶段」上，
-// 而阿瓦隆每提名一次就绕一圈，于是 Round 成了提名计数器，与「第几轮任务」
+// 而这套规则每提名一次就绕一圈，于是 Round 成了提名计数器，与「第几轮任务」
 // 最多差五倍，还被 PlayerView.Round 原样发给玩家。
 //
 // 两处改动合起来才关掉它，缺一不可：
-//   - PhaseConfig.EndsRound 让板子自己声明回合边界（阿瓦隆声明在任务阶段）；
+//   - PhaseConfig.EndsRound 让板子自己声明回合边界（这套规则声明在任务阶段）；
 //   - NewGotoPhaseEffect 让被否决的提名直接跳回提名阶段，不再空转任务阶段
 //     ——只改前者的话，空转那一次照样推进回合，这条疤只关掉一半。
 //
@@ -145,7 +145,7 @@ func TestRoundEqualsMissionNumber(t *testing.T) {
 	runMission(t, e, 0, "a", "b", "c")
 
 	if got, want := e.Status().Round, missionOf(e); got != want {
-		t.Errorf("Round = %d，阿瓦隆的第几轮 = %d，两者该相等", got, want)
+		t.Errorf("Round = %d，本包的第几轮 = %d，两者该相等", got, want)
 	}
 	if v := e.PlayerView("a"); v.Round != e.Status().Round {
 		t.Errorf("PlayerView.Round = %d，引擎 = %d", v.Round, e.Status().Round)
@@ -155,7 +155,7 @@ func TestRoundEqualsMissionNumber(t *testing.T) {
 // TestGameProgressLivesInGameVars 整局进度住在整局作用域里，不挂在任何玩家身上。
 //
 // **这条曾经是疤 4**：内核的变量作用域是一张 2x2 的表，缺「整局有效 + 无主」
-// 这一格。阿瓦隆的五个计数器（第几轮、成功几次、失败几次、连续否决几次、
+// 这一格。本包的五个计数器（第几轮、成功几次、失败几次、连续否决几次、
 // 队长是谁）只能挂到 ID 字典序最小那名玩家的 PlayerVar 上当账本——全局事实
 // 记在某个人名下，那个玩家的视图里凭空多出五个与他无关的字段。
 //
@@ -177,7 +177,7 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 		t.Errorf("成功次数该住在 GameVar 里，%q 是空的", varSuccess)
 	}
 
-	// 二、没有任何玩家身上沾着阿瓦隆的整局计数
+	// 二、没有任何玩家身上沾着本包的整局计数
 	for _, id := range e.AlivePlayerIDs() {
 		p, _ := e.PlayerInfo(id)
 		for k := range p.Vars {

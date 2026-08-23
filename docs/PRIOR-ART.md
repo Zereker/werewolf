@@ -69,7 +69,7 @@
 
 ## 我们欠债的两处
 
-### 一、谁可以行动（[SCARS.md](../avalon/SCARS.md) 疤 1）
+### 一、谁可以行动（[SCARS.md](../missions/SCARS.md) 疤 1）
 
 他们的判定就三行：
 
@@ -128,7 +128,7 @@ function IsPlayerActive(_G, ctx, playerID): boolean {
 于是这条要连着记两次：**对照能告诉你缺什么，但告诉不了你需不需要。**
 这是「照着别人的清单补」这种做法自带的失真——别人的清单反映的是别人的
 形态。第三套规则包如果局中真的要摇，把它加回来不到五十行，设计写在
-`avalon/SCARS.md` 疤 7 里。
+`missions/SCARS.md` 疤 7 里。
 
 ---
 
@@ -144,7 +144,7 @@ function IsPlayerActive(_G, ctx, playerID): boolean {
 框架必须知道什么时候不再问；另两个不需要，因为「谁能行动」本来就从状态算。
 
 我们补上 `SetActors` 之后变成了后者。于是问题从「要不要 `Alive`」变成
-「它还该不该说了算」——答案是不该，见 [SCARS.md](../avalon/SCARS.md) 疤 6。
+「它还该不该说了算」——答案是不该，见 [SCARS.md](../missions/SCARS.md) 疤 6。
 `Alive` 保留为**默认**，规则点名时由规则负责。
 
 ## `Round`：为什么我们需要，而别人不需要

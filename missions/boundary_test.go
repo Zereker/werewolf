@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 
 // TestMissionFailIsAnonymous 任务失败票不记名：全场只知道有几张，不知道是谁投的。
 //
-// 这是阿瓦隆比狼人杀更严的一处信息约束——狼人杀里被否决的行动至少行动者
+// 这是这套规则比狼人杀更严的一处信息约束——狼人杀里被否决的行动至少行动者
 // 自己知道，而这里连「结果」都只能露出聚合值。实现方式不是靠内核帮忙，
 // 而是**根本不为每一票产出事件**：解析器只产出一条带票数的聚合事件。
 func TestMissionFailIsAnonymous(t *testing.T) {

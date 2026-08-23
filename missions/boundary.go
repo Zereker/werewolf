@@ -1,10 +1,10 @@
-package avalon
+package missions
 
 import "github.com/Zereker/werewolf/engine"
 
 // boundary.go 一件事该告诉谁、谁能听到谁说话。
 //
-// 阿瓦隆的信息边界比狼人杀简单得多：**桌面上发生的事几乎全是公开的**。
+// 本包的信息边界比狼人杀简单得多：**桌面上发生的事几乎全是公开的**。
 // 谁被提名、谁投了赞成还是反对、任务成了没成、有几张失败票——全场都看得到。
 // 私密的只有两样：开局发的身份信息（走 RoleInfo 与 Teammates，不走事件），
 // 以及「谁投了失败票」——而后者的实现方式是**根本不产出那条事件**。
@@ -47,7 +47,7 @@ func allIDs(view engine.GameView) []string {
 
 // speech 谁能听到谁说话。
 //
-// 阿瓦隆整局都是公开讨论——没有狼人夜间私聊那种分频道的场面。
+// 这套规则整局都是公开讨论——没有狼人夜间私聊那种分频道的场面。
 // 这也是内核的一处正面证据：SpeechProvider 换成「全场都听得到」
 // 只是一个函数，不需要内核知道有没有「夜晚」这回事。
 func speech(_ string, view engine.GameView) []string { return allIDs(view) }

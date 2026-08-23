@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"math/rand"
@@ -18,7 +18,7 @@ import (
 // （有没有莫德雷德，梅林就看不看得见全部坏人；有没有奥伯伦，坏人之间
 // 就认不认得全）。
 //
-// 阿瓦隆的一局比另外两套长得多：一轮任务要走提名、表决、任务三个阶段，
+// 本包的一局比另外两套长得多：一轮任务要走提名、表决、任务三个阶段，
 // 表决否决还会绕回提名，五轮任务加上刺杀——所以 MaxSteps 给得宽。
 func TestFuzz_Invariants(t *testing.T) {
 	gamefuzz.Run(t, gamefuzz.Config{

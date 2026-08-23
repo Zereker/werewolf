@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"strconv"
@@ -127,7 +127,7 @@ func (teamVoteResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) [
 
 // missionResolver 任务结算。
 //
-// 这里有两处阿瓦隆特有的信息约束：
+// 这里有两处这套规则特有的信息约束：
 //
 //   - **只有队员能投**。内核判定行动者只看角色，队伍却是运行时定的，
 //     因此这一步只能由解析器自己把非队员的提交丢掉。代价见 SCARS.md 第 1 条。

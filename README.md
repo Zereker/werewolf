@@ -671,7 +671,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 │   ├── config.go            # 阶段机的配置
 │   ├── phase.go             # 阶段流转与技能校验
 │   ├── resolver.go          # Resolver 接口
-│   ├── effect.go            # 四条状态原语
+│   ├── effect.go            # 状态原语与控制指令
 │   ├── state.go             # 状态与唯一的写入点
 │   ├── view.go              # Resolver 的只读视图
 │   ├── boundary.go          # 受众/队友/发言三个扩展点
@@ -690,6 +690,14 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 │   ├── logger.go            # 日志接口
 │   ├── testview.go          # Board：单测解析器用的手摆局面
 │   └── types.go             # 词汇表的类型（取值在规则包）
+│
+├── missions/                # 第二套规则包：任务制（提名 / 表决 / 任务 / 刺杀）
+│   └── SCARS.md             # 它撞到了内核的哪些地方
+├── onenight/                # 第三套规则包：单夜换牌制（两层身份）
+│   └── SCARS.md             # 同上
+│
+├── internal/
+│   └── gamefuzz/            # 随机对局 + 通用不变量，三套规则包共用
 │
 ├── example/                 # 可运行示例
 │   ├── cli/                 # 命令行主持台（真实使用者）
@@ -713,7 +721,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 | 按什么次序走到那儿 | [ROADMAP.md](docs/ROADMAP.md) |
 | 现在的代码是怎么组织的 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](docs/PRIOR-ART.md) |
-| 第二套规则包撞到了什么 | [avalon/SCARS.md](avalon/SCARS.md) |
+| 第二套规则包撞到了什么 | [missions/SCARS.md](missions/SCARS.md) |
 
 **设计理念：**
 - **状态机驱动** - 不是事件驱动，而是显式的阶段流转
@@ -722,8 +730,31 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 
 ## 规则依据
 
-本引擎的规则以中文维基百科[「狼人殺」条目](https://zh.wikipedia.org/wiki/狼人殺)
-为基准，逐条写成了可执行测试，见 [rules_test.go](rules_test.go)：
+三套规则包各有各的基准，与基准不一致的地方都在代码注释里写明了理由。
+
+| 规则包 | 实现的是什么 | 基准 |
+|---|---|---|
+| 根包 | 狼人杀 | 中文维基[「狼人殺」条目](https://zh.wikipedia.org/wiki/狼人殺) |
+| [`missions/`](missions/) | 任务制社会推理（The Resistance 及其 Avalon 变体的玩法） | 英文维基 [The Resistance (game)](https://en.wikipedia.org/wiki/The_Resistance_(game)) |
+| [`onenight/`](onenight/) | 单夜换牌制（One Night Ultimate Werewolf 的玩法） | 出版方 Bezier Games 的官方规则书 |
+
+### 关于名称
+
+狼人杀是民间游戏，没有归属问题。另外两套实现的是**商业桌游的玩法**。
+
+玩法规则本身一般不受著作权保护，受保护的是名称、美术与具体文字表述。
+因此这两个包：
+
+- **包名取玩法结构，不取商标**——`missions`（任务制）、`onenight`（单夜制）
+- 只实现规则，不复制原文，不使用任何美术资源
+- 角色名里的梅林、莫德雷德等是亚瑟王传说人物，属公有领域
+
+**本项目与上述游戏的出版方无关，也未获其背书。**
+
+### 狼人杀的逐条规则
+
+以中文维基[「狼人殺」条目](https://zh.wikipedia.org/wiki/狼人殺)为基准，
+逐条写成了可执行测试，见 [rules_test.go](rules_test.go)：
 
 | 编号 | 规则 |
 |------|------|

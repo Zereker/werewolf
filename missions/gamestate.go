@@ -1,4 +1,4 @@
-package avalon
+package missions
 
 import (
 	"strconv"
@@ -6,7 +6,7 @@ import (
 	"github.com/Zereker/werewolf/engine"
 )
 
-// gamestate.go 阿瓦隆的整局进度存在哪。
+// gamestate.go 本包的整局进度存在哪。
 //
 // 五样东西：现在第几轮任务、成功了几次、失败了几次、连续否决了几次、
 // 队长轮到谁。它们全都**整局有效、且不属于任何玩家**——正好是内核第四种
@@ -21,22 +21,22 @@ import (
 //
 // 内核补上第四格之后，账本整个删掉了——现在是 GameVar，读写各一行。
 const (
-	varMission = "avalon.mission" // 现在第几轮任务，1-5
-	varSuccess = "avalon.success" // 已经成功几次
-	varFail    = "avalon.fail"    // 已经失败几次
-	varRejects = "avalon.rejects" // 连续被否决几次
-	varLeader  = "avalon.leader"  // 队长是第几号座位（AllPlayers 的下标）
+	varMission = "missions.mission" // 现在第几轮任务，1-5
+	varSuccess = "missions.success" // 已经成功几次
+	varFail    = "missions.fail"    // 已经失败几次
+	varRejects = "missions.rejects" // 连续被否决几次
+	varLeader  = "missions.leader"  // 队长是第几号座位（AllPlayers 的下标）
 
 	// varAssassinated 刺杀结果："hit" 指中了梅林，"miss" 指没中。
 	// 空串表示刺杀还没发生——胜负判定靠它区分「好人赢了」与「好人
 	// 凑满三次、但还没过刺杀这一关」。
-	varAssassinated = "avalon.assassinated"
+	varAssassinated = "missions.assassinated"
 )
 
 // 回合级的状态：这些恰好每提名一轮就该清零，用得上内核现成的作用域。
 const (
-	varOnTeam   = "avalon.on_team"  // 玩家级：这一轮被提名上任务
-	varApproved = "avalon.approved" // 回合级：这一轮的队伍表决通过了
+	varOnTeam   = "missions.on_team"  // 玩家级：这一轮被提名上任务
+	varApproved = "missions.approved" // 回合级：这一轮的队伍表决通过了
 )
 
 // gameNum 读一个整局计数，没有则为 0。
