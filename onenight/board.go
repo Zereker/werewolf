@@ -34,6 +34,11 @@ func GameConfig() *engine.Config {
 		return []engine.PhaseStep{{Role: role, Skill: skill}}
 	}
 
+	// watch 「这个角色该醒了，但他没有行动」——技能留空。
+	watch := func(role engine.RoleType) []engine.PhaseStep {
+		return []engine.PhaseStep{{Role: role}}
+	}
+
 	// group 一组几选一的动作：提交其中任意一个即算这个角色动过了。
 	group := func(role engine.RoleType, name string, skills ...engine.SkillType) []engine.PhaseStep {
 		out := make([]engine.PhaseStep, 0, len(skills))
@@ -54,18 +59,21 @@ func GameConfig() *engine.Config {
 				NextPhase: PhaseNightMinion,
 			},
 
-			// 爪牙、守夜人、失眠者都只接收信息、不做任何动作。内核里
-			// 「醒过来看一眼」没有对应物：没有步骤的阶段，PhaseInfo.ActiveRoles
-			// 是空的，主持人不知道该叫醒谁。只好挂一个 SKIP 步骤当占位。
+			// 爪牙、守夜人、失眠者都只接收信息、不做任何动作：
+			// 睁眼看一眼，然后闭眼。技能留空就是这个意思——他该醒了，
+			// 但他没有行动（见 engine.PhaseStep.Skill）。
+			//
+			// 此前表达不了这件事，只好挂一个 SKIP 当占位，而 SKIP 的意思是
+			// 「主动放弃行动」——他不是放弃，他本来就没有行动可放弃。
 			// 见 SCARS.md 疤 3。
 			PhaseNightMinion: {
 				Type:      PhaseNightMinion,
-				Steps:     step(RoleMinion, engine.SkillSkip),
+				Steps:     watch(RoleMinion),
 				NextPhase: PhaseNightMason,
 			},
 			PhaseNightMason: {
 				Type:      PhaseNightMason,
-				Steps:     step(RoleMason, engine.SkillSkip),
+				Steps:     watch(RoleMason),
 				NextPhase: PhaseNightSeer,
 			},
 
@@ -97,7 +105,7 @@ func GameConfig() *engine.Config {
 
 			PhaseNightInsomniac: {
 				Type:      PhaseNightInsomniac,
-				Steps:     step(RoleInsomniac, engine.SkillSkip),
+				Steps:     watch(RoleInsomniac),
 				NextPhase: PhaseDay,
 			},
 

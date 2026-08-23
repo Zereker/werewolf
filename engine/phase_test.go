@@ -470,3 +470,99 @@ func TestValidateSkillUse_NoTarget(t *testing.T) {
 		t.Errorf("expected no error for empty target, got %v", err)
 	}
 }
+
+// TestWatchOnlyStep 技能留空的步骤：他该醒了，但他没有行动。
+//
+// 这一条是第三套规则包（一夜狼人）撞出来的：爪牙睁眼看谁是狼、守夜人互认、
+// 失眠者看自己的牌——只接收信息，不提交任何东西。此前表达不了，规则包只能
+// 挂一个 SKIP 当占位，而 SKIP 的意思是「主动放弃行动」，他不是放弃。
+//
+// 三件事要同时成立，缺一件这个特性就没用：
+//
+//	不出现在 AllowedSkills 里    他没有可提交的东西
+//	不进入就绪判定               没有东西可满足，否则阶段永远不就绪
+//	**出现在 ActiveRoles 里**    主持人得知道该叫醒谁——全部意义所在
+func TestWatchOnlyStep(t *testing.T) {
+	const phaseWatch = PhaseType("WATCH")
+	cfg := testConfig()
+	cfg.Phases[phaseWatch] = &PhaseConfig{
+		Type: phaseWatch,
+		Steps: []PhaseStep{
+			{Role: roleSeer}, // 留空：醒过来看一眼
+			{Role: roleWitch, Skill: skillPoison, Required: true}, // 对照组
+		},
+		NextPhase: phaseDay,
+	}
+	cfg.Phases[phaseNightGuard].NextPhase = phaseWatch
+
+	opts := append(withNoopResolvers(), WithResolver(phaseWatch, noopResolver{}))
+	e, err := NewEngine(cfg, opts...)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	mustAdd(t, e, "s", roleSeer)
+	mustAdd(t, e, "wi", roleWitch)
+	mustAdd(t, e, "v", roleVillager)
+	if err := e.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := e.EndPhase(); err != nil { // NIGHT_GUARD -> WATCH
+		t.Fatalf("EndPhase: %v", err)
+	}
+	if got := e.Status().Phase; got != phaseWatch {
+		t.Fatalf("阶段 = %v，期望 %v", got, phaseWatch)
+	}
+
+	t.Run("不出现在 AllowedSkills 里", func(t *testing.T) {
+		if got := e.AllowedSkills("s"); len(got) != 0 {
+			t.Errorf("他没有可提交的技能，AllowedSkills 却给出 %v", got)
+		}
+		if got := e.PlayerView("s").AllowedSkills; len(got) != 0 {
+			t.Errorf("PlayerView 也不该给出，实际 %v", got)
+		}
+	})
+
+	t.Run("提交不了", func(t *testing.T) {
+		err := e.SubmitSkillUse(&SkillUse{PlayerID: "s", Skill: SkillUnspecified})
+		if err == nil {
+			t.Error("留空的技能不是一次行动，提交该被拒")
+		}
+	})
+
+	t.Run("不进入就绪判定", func(t *testing.T) {
+		rd := e.PhaseReadiness()
+		for _, p := range append(append([]PendingAction{}, rd.Pending...), rd.Optional...) {
+			if p.Role == roleSeer {
+				t.Errorf("醒过来看一眼的人不该出现在就绪判定里：%+v", p)
+			}
+		}
+		// 对照组：女巫那一步是必需的，阶段因此不就绪。
+		if rd.Ready {
+			t.Error("女巫那一步是必需的且没人提交，阶段不该就绪")
+		}
+	})
+
+	t.Run("出现在 ActiveRoles 里", func(t *testing.T) {
+		var found bool
+		for _, role := range e.PhaseInfo().ActiveRoles {
+			if role == roleSeer {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("主持人得知道该叫醒谁——这正是留空步骤存在的全部理由")
+		}
+	})
+
+	t.Run("阶段能推进", func(t *testing.T) {
+		// 留空的步骤不该把阶段卡住：女巫提交之后就该就绪。
+		if err := e.SubmitSkillUse(&SkillUse{
+			PlayerID: "wi", Skill: skillPoison, Targets: []string{"v"},
+		}); err != nil {
+			t.Fatalf("女巫提交: %v", err)
+		}
+		if !e.PhaseReadiness().Ready {
+			t.Error("必需的那一步满足了，阶段就该就绪")
+		}
+	})
+}

@@ -57,6 +57,11 @@ func (p *phaseManager) stepFor(phase PhaseType, role RoleType, skill SkillType) 
 	if pc == nil {
 		return PhaseStep{}, false
 	}
+	// 留空的技能提交不了：那是「醒过来看一眼」的步骤，不是一次行动。
+	// 不挡的话，SkillUnspecified 会正好匹配上留空的步骤。
+	if skill == SkillUnspecified {
+		return PhaseStep{}, false
+	}
 	for _, step := range pc.Steps {
 		if step.Skill != skill {
 			continue
@@ -77,6 +82,10 @@ func (p *phaseManager) allowedSkills(phase PhaseType, role RoleType) []SkillType
 
 	skills := make([]SkillType, 0)
 	for _, step := range config.Steps {
+		// 留空的步骤是「醒过来看一眼」，没有可提交的技能（见 PhaseStep.Skill）
+		if step.Skill == SkillUnspecified {
+			continue
+		}
 		// UNSPECIFIED 表示所有角色都可以
 		if step.Role == role || step.Role == RoleUnspecified {
 			skills = append(skills, step.Skill)

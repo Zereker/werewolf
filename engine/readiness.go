@@ -148,7 +148,8 @@ func requirementsOf(steps []PhaseStep) []requirement {
 	byGroup := make(map[string]int, len(steps)) // 组名 -> out 中的下标
 
 	for _, step := range steps {
-		if step.Role == RoleSystem {
+		// 这一步没有玩家承担，或者有玩家但他不行动——两种都不进就绪判定。
+		if step.Role == RoleSystem || step.Skill == SkillUnspecified {
 			continue
 		}
 		if i, ok := byGroup[step.Group]; ok && step.Group != "" {

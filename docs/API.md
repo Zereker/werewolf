@@ -113,8 +113,8 @@ type PhaseConfig struct {
 
 ```go
 type PhaseStep struct {
-	Role  RoleType   // 哪个角色；RoleUnspecified 表示所有角色
-	Skill SkillType
+	Role  RoleType   // 哪个角色；RoleUnspecified 表示所有角色，RoleSystem 表示没有玩家承担
+	Skill SkillType  // **留空表示「他该醒了，但他没有行动」**，见下
 
 	Required bool    // 不满足就不就绪（只影响 PhaseReadiness，不影响 EndPhase）
 	Multiple bool    // true=所有合格行动者都要提交；false=任意一人即可
@@ -123,6 +123,20 @@ type PhaseStep struct {
 	AllowDeadTarget bool  // 这个技能能否指向已出局的玩家（女巫的解药）
 }
 ```
+
+**`Skill` 留空表示「这个角色该醒了，但他没有行动」**——只接收信息，不提交
+任何东西。一夜狼人的爪牙睁眼看谁是狼、守夜人互认、失眠者看自己的牌都是
+这一类。
+
+它与 `RoleSystem` 是一对镜像：那个是「这一步没有玩家」，这个是「这一步有
+玩家，但他不行动」。
+
+| 留空的步骤 | |
+|---|---|
+| `AllowedSkills` | **不含**它——他没有可提交的东西 |
+| `SubmitSkillUse` | **拒绝** `SkillUnspecified` 的提交 |
+| `PhaseReadiness` | **不进入**——没有东西可满足 |
+| `PhaseInfo.ActiveRoles` | **含**它——主持人得知道该叫醒谁 |
 
 ---
 
