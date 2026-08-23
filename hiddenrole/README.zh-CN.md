@@ -1,5 +1,7 @@
 # hiddenrole
 
+[English](README.md) · **中文**
+
 **社会推理游戏内核**，纯 Go，**零依赖**。它不知道狼人杀是什么。
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/Zereker/hiddenrole.svg)](https://pkg.go.dev/github.com/Zereker/hiddenrole)
@@ -71,7 +73,7 @@ func (vote) Resolve(uses []*hiddenrole.SkillUse, _ hiddenrole.GameView) []*hidde
 	tally := map[string]int{}
 	for _, u := range uses {
 		if u.Skill == skillVote {
-			tally[u.TargetID]++
+			tally[u.Target()]++
 		}
 	}
 	out, best := "", 0
@@ -120,7 +122,9 @@ func main() {
 					{Role: roleRed, Skill: skillVote, Required: true, Multiple: true},
 					{Role: roleBlue, Skill: skillVote, Required: true, Multiple: true},
 				},
-				NextPhase: phaseVote, // 阶段环，转回自己
+				NextPhase:       phaseVote, // 阶段环，转回自己
+				EndsRound:       true,      // 这个阶段结束就是一回合
+				ClearsRoundVars: true,      // 而它开始时是干净的
 			},
 		},
 	}
@@ -135,7 +139,7 @@ func main() {
 	_ = e.Start()
 
 	for _, id := range []string{"r1", "r2", "b1"} {
-		_ = e.SubmitSkillUse(&hiddenrole.SkillUse{PlayerID: id, Skill: skillVote, TargetID: "b1"})
+		_ = e.SubmitSkillUse(&hiddenrole.SkillUse{PlayerID: id, Skill: skillVote, Targets: []string{"b1"}})
 	}
 	effects, _ := e.EndPhase()
 	for _, ef := range effects {
@@ -325,7 +329,7 @@ b := hiddenrole.Board{
 }
 
 effects := vote{}.Resolve([]*hiddenrole.SkillUse{
-	{PlayerID: "r1", Skill: skillVote, TargetID: "b1"},
+	{PlayerID: "r1", Skill: skillVote, Targets: []string{"b1"}},
 }, b.View())
 
 after := b.Apply(effects)          // 把效果折回去
@@ -380,8 +384,8 @@ go doc github.com/Zereker/hiddenrole
 ```
 
 包文档见 [`doc.go`](doc.go)。一份真实的、跑得起来的规则包见
-[`../`](../README.md)——它用的每一个入口，你也能用。
+[Zereker/werewolf](https://github.com/Zereker/werewolf)——它用的每一个入口，你也能用。
 
 ## 许可证
 
-MIT License. 详见 [LICENSE](../LICENSE)。
+MIT License. 详见 [LICENSE](LICENSE)。
