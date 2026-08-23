@@ -1,104 +1,123 @@
 package hiddenrole
 
-import ()
-
-// PlayerView 站在某一名玩家的角度，他此刻有权知道的全部信息。
+// PlayerView is everything one player is entitled to know at this moment,
+// seen from where they sit.
 //
-// # 为什么需要它
+// # Why it exists
 //
-// 狼人杀这个游戏唯一真正难的东西就是「谁能知道什么」。引擎此前只提供
-// 上帝视角（PlayerInfo 能查到任何人的身份、PhaseInfo 一次性交出
-// 狼队名单与刀口），把最安全攸关的信息过滤逻辑推给了调用方——
-// 只要某个 handler 手滑把整个 PhaseInfo 广播出去，一局游戏当场作废。
+// The one genuinely hard thing about these games is who is allowed to know
+// what. The engine used to offer the god's view only -- PlayerInfo could look
+// up anybody's role, PhaseInfo handed over the wolf roster and the kill in
+// one go -- and pushed the most safety-critical filtering onto the caller.
+// One handler that slips and broadcasts a whole PhaseInfo voids the game on
+// the spot.
 //
-// 调用方作为上帝，确实需要上帝视角；但它不应该被迫自己实现「投影」。
-// PlayerView 把这件事收回库内：给一个玩家 ID，返回的东西可以直接发给他。
+// A caller acting as the host does need the god's view; but it should not be
+// forced to implement the projection itself. PlayerView pulls that back
+// inside the library: give it a player ID and what comes back can be sent
+// straight to them.
 //
-// # 不包含什么
+// # What it does not contain
 //
-// 视图是「此刻的状态」，不是「历史」。预言家历次查验的结果、公开的死亡
-// 记录属于历史，由 Effect 日志（Engine.EffectLog）承载。
+// A view is the state right now, not the history. The seer's past checks and
+// the public record of deaths are history, and are carried by the effect log
+// (Engine.EffectLog).
 type PlayerView struct {
-	PlayerID string    `json:"player_id"` // 视角所属玩家
-	Round    int       `json:"round"`     // 当前回合
-	Phase    PhaseType `json:"phase"`     // 当前阶段
+	PlayerID string    `json:"player_id"` // whose view this is
+	Round    int       `json:"round"`     // the current round
+	Phase    PhaseType `json:"phase"`     // the current phase
 
-	// Self 自己的信息：身份、阵营、存活、（女巫的）药剂
+	// Self is their own information: role, camp, whether they are alive.
 	Self SelfInfo `json:"self"`
 
-	// Players 全场玩家的公开信息，按 ID 排序。
-	// 身份只在对本视角公开时才填充（自己、狼队友）。
+	// Players is the public information about everyone at the table, sorted
+	// by ID. A role is filled in only where it is revealed to this view
+	// (themselves, their teammates).
 	Players []PublicPlayerInfo `json:"players"`
 
-	// AllowedSkills 本阶段自己可以提交的技能，永不为 nil。
-	// 不该自己行动时为空切片——这也是判断「轮到我了吗」的依据。
+	// AllowedSkills are the skills they may submit this phase, never nil.
+	// It is an empty slice when it is not their turn -- which is also how you
+	// answer "is it my turn".
 	AllowedSkills []SkillType `json:"allowed_skills"`
 
-	// Teammates 这名玩家被告知与他同一边的人，他们的身份对他公开。
+	// Teammates are the players this one is told are on their side; their
+	// roles are revealed to them.
 	//
-	// 由 TeammateProvider 回答（见 WithTeammates），内核不认识阵营。
-	// 狼人杀的默认实现是「同为狼人阵营的其余玩家」——按阵营而不是按角色，
-	// 否则规则包自定义的同阵营角色在队友名单里就是空的。
+	// Answered by the TeammateProvider (see WithTeammates); the kernel does
+	// not know about camps. Werewolf's default implementation is "the other
+	// players in the wolf camp" -- by camp rather than by role, or a custom
+	// same-camp role from a rules package would find the teammate list empty.
 	Teammates []string `json:"teammates,omitempty"`
 
-	// RoleInfo 角色专属信息：这个角色额外让他看到的东西。
+	// RoleInfo is role-specific information: what this role additionally
+	// lets them see.
 	//
-	// 由角色自己的 RoleInfoProvider 回答（见 WithRoleInfo），引擎不认识
-	// 任何具体角色。内置女巫的刀口与药剂存量都在这里（键见
-	// RoleInfoKillTarget / RoleInfoAntidote / RoleInfoPoison）——它们此前
-	// 是 PlayerView 与 SelfInfo 上的具名字段，等于内置角色比第三方角色
-	// 多一等公民的待遇，而加一个角色不该要求改引擎。
+	// Answered by the role's own RoleInfoProvider (see WithRoleInfo); the
+	// engine recognises no specific role. The built-in witch's kill target
+	// and remaining potions live here (under the keys RoleInfoKillTarget /
+	// RoleInfoAntidote / RoleInfoPoison) -- they used to be named fields on
+	// PlayerView and SelfInfo, which made built-in roles first-class
+	// citizens next to third-party ones, and adding a role should not
+	// require editing the engine.
 	RoleInfo map[string]string `json:"role_info,omitempty"`
 }
 
-// SelfInfo 一名玩家对自己有权知道的全部信息。
+// SelfInfo is everything a player is entitled to know about themselves.
 //
-// 刻意不复用上帝视角的 PlayerInfo：那个结构体带着 Protected
-// （今晚是否被守卫守护），而「守卫守了谁」是守卫独占的信息——
-// 被守的人一旦知道，就等于知道自己刀不死，也大幅缩小了守卫的范围。
-// 一个字段的可见性差别不该靠调用方记得清空。
+// It deliberately does not reuse the god's-view PlayerInfo: that struct
+// carries Protected (whether the guard shielded them tonight), and who the
+// guard protected is the guard's exclusive information -- the moment the
+// protected player knows, they know they cannot be killed tonight, and the
+// guard's possible positions narrow sharply. A visibility difference of one
+// field should not depend on the caller remembering to blank it.
 type SelfInfo struct {
 	ID    string   `json:"id"`
 	Role  RoleType `json:"role"`
 	Alive bool     `json:"alive"`
 
-	// Camp 这名玩家站哪一边。
+	// Camp is which side this player is on.
 	//
-	// 一个**不透明**标签，取自 Vars 里的标准键 VarCamp。内核只负责搬运：
-	// 它不知道 "EVIL" 是什么意思，也不知道这名玩家该不该知道自己的阵营——
-	// 那由规则在发放初始状态时决定。
+	// An **opaque** label, taken from the canonical Vars key VarCamp. The
+	// kernel only carries it: it does not know what "EVIL" means, nor
+	// whether this player should know their own camp -- the rules decide
+	// that when they hand out the initial state.
 	//
-	// 阵营之内的细分（狼人杀的神职/平民）不在这里：那是规则自己的键，
-	// 从 Vars 读。
+	// Sub-divisions within a camp (werewolf's special roles vs plain
+	// villagers) do not live here: that is the rules' own key, read from
+	// Vars.
 	Camp Camp `json:"camp,omitempty"`
 }
 
-// PublicPlayerInfo 一名玩家对外公开的信息。
+// PublicPlayerInfo is the publicly visible information about one player.
 //
-// 它与 SelfInfo、PlayerInfo 是同一名玩家的三副面孔，分开不是命名上的巧合：
-// 这个类型**在类型上就装不下** Vars，于是「这一项该不该给他看」是一个签名
-// 问题而不是运行时问题。合成一个带可选字段的类型会把这条保证丢掉。
+// It, SelfInfo and PlayerInfo are three faces of the same player, and keeping
+// them apart is not a naming coincidence: this type **structurally cannot
+// hold** Vars, which turns "should they be shown this" into a question about
+// signatures rather than one about runtime. Merging them into one type with
+// optional fields would throw that guarantee away.
 //
-// 这条规矩由 TestPlayerView_CarriesNoFreeFormState 执行：面向玩家的结构里
-// 出现任何自由格式的状态口袋都会变红。
+// The rule is enforced by TestPlayerView_CarriesNoFreeFormState: any
+// free-form state bag appearing in a player-facing struct turns it red.
 type PublicPlayerInfo struct {
 	ID    string `json:"id"`
 	Alive bool   `json:"alive"`
 
-	// Role 仅在该玩家的身份对本视角公开时填充，否则为 UNSPECIFIED。
-	// 引擎默认只公开「自己」和「狼队友」——出局者是否翻牌属于桌面
-	// 规则，由调用方决定，引擎不替它做主。
+	// Role is filled in only where this player's role is revealed to this
+	// view, and is UNSPECIFIED otherwise. The engine reveals only "yourself"
+	// and "your teammates" by default -- whether an eliminated player's card
+	// is turned over is a table rule, decided by the caller, and the engine
+	// does not decide it for them.
 	Role RoleType `json:"role,omitempty"`
 }
 
-// PlayerView 返回指定玩家的视角。
+// PlayerView returns one player's view.
 //
-// 返回的内容可以直接发给该玩家，不需要调用方再做过滤。
-// 玩家不存在时返回 nil。
+// What it returns can be sent straight to that player with no further
+// filtering by the caller. It returns nil when there is no such player.
 //
-// 与之相对，PhaseInfo / PlayerInfo / WolfTeammates /
-// NightKillTarget 是上帝视角接口：调用方作为主持人需要它们，
-// 但它们的内容不可以整体转发给玩家。
+// By contrast PhaseInfo and PlayerInfo are god's-view APIs: a caller acting
+// as the host needs them, but their contents must not be forwarded to players
+// wholesale.
 func (e *Engine) PlayerView(playerID string) *PlayerView {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -121,8 +140,10 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 		AllowedSkills: e.allowedSkillsForPlayer(playerID, self),
 	}
 
-	// 同伴互相可见。「谁和谁是一边的」由规则回答（见 TeammateProvider），
-	// 内核不认识阵营——血染钟楼那种单向可见也因此能表达。
+	// Teammates see each other. Who is on whose side is answered by the
+	// rules (see TeammateProvider); the kernel does not know about camps,
+	// which is also what makes Blood on the Clocktower's one-way visibility
+	// expressible.
 	revealed := map[string]bool{playerID: true}
 	view.Teammates = e.teammatesOf(playerID)
 	for _, id := range view.Teammates {
@@ -131,14 +152,14 @@ func (e *Engine) PlayerView(playerID string) *PlayerView {
 
 	view.Players = e.publicPlayers(revealed)
 
-	// 角色专属信息由角色自己回答
+	// Role-specific information is answered by the role itself.
 	view.RoleInfo = e.roleInfoFor(playerID, self.Role)
 
 	return view
 }
 
-// publicPlayers 组装全场公开信息。revealed 中的玩家会带上身份。
-// 调用前需持有 e.mu。
+// publicPlayers assembles the public information about everyone. Players in
+// revealed carry their role. The caller must hold e.mu.
 func (e *Engine) publicPlayers(revealed map[string]bool) []PublicPlayerInfo {
 	ids := e.state.allPlayerIDs()
 	out := make([]PublicPlayerInfo, 0, len(ids))
@@ -156,18 +177,23 @@ func (e *Engine) publicPlayers(revealed map[string]bool) []PublicPlayerInfo {
 	return out
 }
 
-// allowedSkillsForPlayer 该玩家此刻能提交的技能，永不返回 nil。
+// allowedSkillsForPlayer returns the skills this player may submit right now,
+// never nil.
 //
-// 「为空表示还没轮到我」在语义上与 nil 等价，但序列化出去一个是 []
-// 一个是 null，同一个字段两种形状，调用方要分别处理。
-// 调用前需持有 e.mu。
-// 两层判定与 SubmitSkillUse 的校验**逐条对齐**——顺序不同就会出现
-// 「内核收下了他的提交，却告诉他不能行动」这种自相矛盾。
+// "Empty means it is not my turn yet" is semantically the same as nil, but
+// they serialise as [] and null respectively -- one field, two shapes, and
+// the caller has to handle both. The caller must hold e.mu.
+//
+// The two layers line up **item for item** with the validation in
+// SubmitSkillUse: a different order there would produce the
+// self-contradiction of "the kernel accepted his submission while telling him
+// he cannot act".
 func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []SkillType {
-	// 规则点名了这个阶段的行动者时，不在名单里的人什么都不能做；
-	// 绕道要去的那个人也走这一条——进入阶段时他已经被写进名单
-	// （见 gameState.nameDetourActor）。
-	// 在名单里的人，存活与否由规则负责，内核不再二次否决。
+	// When the rules have named this phase's actors, anyone off the list can
+	// do nothing; the player a detour is for goes through this branch too --
+	// on entering the phase they were already written onto the list (see
+	// gameState.nameDetourActor). For those on the list, aliveness is the
+	// rules' business and the kernel does not veto a second time.
 	if ids, ok := e.state.actorsFor(e.state.Phase); ok {
 		if !contains(ids, playerID) {
 			return []SkillType{}
@@ -180,7 +206,7 @@ func (e *Engine) allowedSkillsForPlayer(playerID string, info PlayerInfo) []Skil
 	return e.allowedSkillsFor(info.Role)
 }
 
-// contains 名单里有没有这个人
+// contains reports whether the list holds this ID.
 func contains(ids []string, id string) bool {
 	for _, v := range ids {
 		if v == id {
@@ -190,31 +216,38 @@ func contains(ids []string, id string) bool {
 	return false
 }
 
-// ==================== 效果的接收者 ====================
+// ==================== Who receives an effect ====================
 
-// AudienceOf 返回一件事应该发给哪些玩家。
+// AudienceOf returns which players should be told about something.
 //
-// 这是配套 PlayerView 的另一半：视图解决「玩家该看到什么状态」，
-// 这里解决「发生的事该告诉谁」。调用方可以据此路由，而不必自己去记
-// 「查验结果只能给预言家」。
+// This is PlayerView's other half: the view settles what state a player
+// should see, and this settles who should be told about what happened. A
+// caller routes on it instead of having to remember for itself that "a check
+// result goes to the seer only".
 //
-// 参数是对外的 Event 而不是内部的 Effect：这个问题问的是「外面的人
-// 该看到什么」，而 OnEvent 推给调用方的正是 Event。手里拿着 Effect
-// （EndPhase 的返回值）时用 Effect.ToEvent() 转一下。
+// The parameter is an outward Event rather than an internal Effect: the
+// question is what the outside world should see, and an Event is exactly what
+// OnEvent pushes to the caller. When you hold an Effect (EndPhase's return
+// value), convert it with Effect.ToEvent().
 //
-// 内核的状态原语（SET_ALIVE 等）一律返回空，且这一条不可配置——
-// 它们是状态机的记账，不该出现在任何玩家面前。其余交给
-// AudienceProvider 回答，狼人杀的那份见 wolfAudience，可整个换掉。
+// The kernel's state primitives (SET_ALIVE and friends) always return empty,
+// and that part is not configurable -- they are the state machine's
+// bookkeeping and have no business in front of any player. Everything else
+// goes to the AudienceProvider; werewolf's is wolfAudience, and it can be
+// replaced wholesale.
 //
-// 第二个返回值表示「认不认得这个事件类型」。第三方 Resolver 可以产出
-// 自定义类型的事件，规则对它们的可见性无从判断，此时返回 (nil, false)：
-// 调用方需要自己路由，而不该把「不知道」当成「不给任何人看」。
+// The second result says whether the event type is recognised. A third-party
+// Resolver may emit events of its own types, whose visibility the rules
+// cannot judge, and (nil, false) is the answer then: the caller has to route
+// it themselves, and "I don't know" must not be mistaken for "show it to
+// nobody".
 func (e *Engine) AudienceOf(event *Event) ([]string, bool) {
 	if event == nil {
 		return nil, false
 	}
 	if isInternalEvent(event.Type) {
-		// 内核的状态原语，不给任何玩家看——这是明确的判断
+		// A kernel state primitive: shown to nobody. This is a definite
+		// verdict, not an "I don't know".
 		return nil, true
 	}
 

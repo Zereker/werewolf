@@ -4,53 +4,66 @@ import (
 	"sort"
 )
 
-// SnapshotVersion 当前快照格式的版本号。
+// SnapshotVersion is the version of the current snapshot format.
 //
-// 每次对快照结构做出不向后兼容的改动时递增，RestoreEngine 会拒绝无法识别
-// 的版本，以免把旧数据按新结构解读出一个看似正常、实则错乱的局面。
+// It is bumped on every change to the snapshot structure that is not
+// backwards compatible. RestoreEngine rejects a version it does not
+// recognise, so that old data is never read through a new structure into a
+// board that looks fine and is in fact scrambled.
 //
-// 这套机制原本有个缺口：改了结构却**忘了**递增，没有任何东西会报警——
-// 而那恰恰是这个版本号想防的事。现在规则包里有一个 golden 测试
-// （TestSnapshot_ShapeIsPinnedToVersion）把序列化形状钉住，字段增删改名
-// 都会让它变红，红了之后再判断该不该递增。
+// The mechanism had a hole: changing the structure and **forgetting** to bump
+// raised no alarm anywhere -- which is exactly what the version number is
+// meant to prevent. There is now a golden test in the rules package
+// (TestSnapshot_ShapeIsPinnedToVersion) pinning the serialised shape; adding,
+// removing or renaming a field turns it red, and the bump decision is made
+// once it is.
 const SnapshotVersion = 13
 
-// Snapshot 引擎的完整可序列化快照。
+// Snapshot is the engine's complete serialisable state.
 //
-// 快照结构与引擎内部结构是刻意分开的两套类型：内部结构随重构演进，
-// 而快照是写进存储的格式，字段名必须稳定。两者之间的转换集中在本文件，
-// 增减字段时这里会显式报错，不会悄悄丢数据。
+// The snapshot types and the engine's internal types are deliberately two
+// separate sets: the internal ones evolve with refactoring, while a snapshot
+// is a format written to storage and its field names must stay stable. The
+// conversion between them is all in this file, so adding or removing a field
+// produces an explicit compile error here rather than silently losing data.
 //
-// 快照**不包含** Config、Logger 与回调：
-// 这些由调用方在恢复时提供，规则配置本身也应由调用方掌握版本。
+// A snapshot does **not** contain the Config, the Logger, or the callbacks:
+// the caller supplies those on restore, and the caller should own the
+// versioning of the rules configuration itself.
 //
-// 枚举以**名字**序列化（"NIGHT_GUARD" 而不是 21）。存档是要给人看、
-// 也可能被别的语言读的东西，编号对不上号。
+// Enums serialise by **name** ("NIGHT_GUARD", not 21). A save file is meant
+// to be read by people and possibly by other languages, and numbers do not
+// line up.
 //
-// v10 起这一点由类型本身保证：枚举的底层就是字符串，不再有一层
-// 「编号到名字」的翻译。第三方的自定义取值此前没有名字、按编号写
-// （`"role":1000`），现在与内置的一样是名字（`"role":"WOLF_KING"`）——
-// 这就是 v9 到 v10 的全部区别，也是它要递增版本号的原因。
+// Since v10 the types themselves guarantee this: an enum is a string
+// underneath, with no number-to-name translation layer left. A third-party
+// custom value used to have no name and was written as a number
+// (`"role":1000`), and is now a name like any built-in (`"role":"WOLF_KING"`)
+// -- which is the entire difference between v9 and v10, and the reason it
+// needed a version bump.
 type Snapshot struct {
 	Version int `json:"version"`
 
 	Phase PhaseType `json:"phase"`
 	Round int       `json:"round"`
 
-	// Vars 整局有效、不属于任何玩家的状态。
+	// Vars is state that lives for the whole game and belongs to no player.
 	Vars map[string]string `json:"vars,omitempty"`
 
-	// Actors 规则为各阶段指定的行动者。名单往往在更早的阶段算出来
-	// （missions 包的任务队伍是提名阶段选的），因此必须随快照走，
-	// 否则从提名与任务之间恢复出来的对局会丢掉队伍。
+	// Actors are the per-phase actors the rules named. Such a list is often
+	// computed in an earlier phase (the missions package picks the team
+	// during nomination), so it has to travel with the snapshot, or a game
+	// restored between nomination and the mission would lose its team.
 	Actors map[PhaseType][]string `json:"actors,omitempty"`
 
-	// Winner 这一局的赢家，还没分出胜负时为空。
+	// Winner is who won this game, empty while it is undecided.
 	//
-	// 它不是从别处推得出来的：谁赢是**结束那一刻**由 VictoryChecker 定下的，
-	// 此后不再变，而恢复出来的引擎不会再跑一次判定。漏了它，一局已经结束的
-	// 对局恢复出来会是 Over=true 而 Winner 为空——Status 那四项号称来自同一
-	// 个瞬间，在这条路上却对不上。
+	// It cannot be derived from anything else: who won was settled by the
+	// VictoryChecker **at the moment the game ended** and does not change
+	// afterwards, and a restored engine does not run the check again. Miss it
+	// and a finished game restores as Over=true with an empty Winner --
+	// Status claims its four fields come from one instant, and on this path
+	// they would not line up.
 	Winner Camp `json:"winner,omitempty"`
 
 	Players      []PlayerSnapshot   `json:"players"`
@@ -58,39 +71,43 @@ type Snapshot struct {
 	PendingUses  []SkillUseSnapshot `json:"pending_uses"`
 }
 
-// PlayerSnapshot 单个玩家的快照
+// PlayerSnapshot is one player's snapshot.
 type PlayerSnapshot struct {
 	ID    string   `json:"id"`
 	Role  RoleType `json:"role"`
 	Alive bool     `json:"alive"`
 
-	// RoundVars 这名玩家在本回合的标记，每回合清零。今晚谁被守了、
-	// 被救了、被毒了都在这里——它们此前是 RoundCtxSnapshot 上三个
-	// []string，v8 起并入玩家自身，与规则包自己定的标记同一条路。
+	// RoundVars are this player's markers for the current round, cleared
+	// every round. Who was guarded, healed or poisoned tonight all live here
+	// -- they used to be three []string fields on RoundCtxSnapshot, and since
+	// v8 they are folded into the player, on the same footing as the markers
+	// a rules package defines for itself.
 	RoundVars map[string]string `json:"round_vars,omitempty"`
 
-	// Vars 角色私有的状态（狼人杀的女巫药剂就在其中）——
-	// 它们此前是这里两个具名 bool 字段，v7 起并入 Vars，与第三方角色
-	// 同一条路。存这一项是整个机制成立的前提：带不上它，角色的状态
-	// 就只能藏在 Resolver 里，那正是要解决的问题。
+	// Vars is the role's private state (werewolf's witch potions are in
+	// here) -- they used to be two named bool fields, and since v7 they are
+	// folded into Vars, on the same footing as a third-party role. Storing
+	// this is what makes the whole mechanism work: without it a role's state
+	// could only hide inside its Resolver, which is the very problem being
+	// solved.
 	Vars map[string]string `json:"vars,omitempty"`
 }
 
-// RoundCtxSnapshot 回合上下文的快照
+// RoundCtxSnapshot is the round context's snapshot.
 type RoundCtxSnapshot struct {
 	Detours []DetourSnapshot `json:"detours,omitempty"`
 
-	// Vars 第三方角色的回合级自定义状态
+	// Vars is round-scoped custom state, including a third-party role's.
 	Vars map[string]string `json:"vars,omitempty"`
 }
 
-// DetourSnapshot 一个待结算的绕道
+// DetourSnapshot is one pending detour.
 type DetourSnapshot struct {
 	PlayerID string    `json:"player_id"`
 	Phase    PhaseType `json:"phase"`
 }
 
-// SkillUseSnapshot 已提交但尚未结算的技能
+// SkillUseSnapshot is a skill submitted but not yet resolved.
 type SkillUseSnapshot struct {
 	PlayerID string    `json:"player_id"`
 	Skill    SkillType `json:"skill"`
@@ -99,13 +116,14 @@ type SkillUseSnapshot struct {
 	Round    int       `json:"round"`
 }
 
-// Snapshot 导出引擎的当前状态。
+// Snapshot exports the engine's current state.
 //
-// 返回的快照是深拷贝，可以安全地序列化、跨 goroutine 传递或长期持有，
-// 后续的游戏推进不会影响它。
+// The returned snapshot is a deep copy: it is safe to serialise, pass across
+// goroutines, or hold onto indefinitely, and later play does not affect it.
 //
-// 快照包含当前阶段已提交但尚未结算的技能，因此可以在一个阶段的中途保存，
-// 恢复后继续收技能、再调用 EndPhase 结算。
+// It includes the skills submitted in the current phase but not yet resolved,
+// so a game can be saved mid-phase, restored, keep collecting skills, and
+// then resolve with EndPhase.
 func (e *Engine) Snapshot() *Snapshot {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -135,16 +153,20 @@ func (e *Engine) Snapshot() *Snapshot {
 	return snap
 }
 
-// RestoreEngine 从快照重建引擎。
+// RestoreEngine rebuilds an engine from a snapshot.
 //
-// config 为 nil 时使用默认配置。**恢复时必须提供与保存时一致的规则配置**——
-// 快照只记录局面，不记录规则；用不同的配置恢复会得到一局规则被中途换掉的游戏。
+// A nil config means the default configuration. **The rules configuration
+// supplied on restore must match the one in force when the snapshot was
+// taken** -- a snapshot records the board, not the rules, and restoring under
+// a different configuration gives you a game whose rules changed halfway
+// through.
 //
-// 自定义角色的解析器必须经 opts 传入（WithResolver）。漏掉会让该阶段的
-// 技能被静默丢弃，所以这里会跑一遍解析器校验，缺了就直接报错。
+// Resolvers for custom roles must be passed through opts (WithResolver).
+// Omitting one makes that phase's skills be silently dropped, so resolver
+// validation runs here and a missing one is an outright error.
 //
-// 返回错误：快照为 nil、版本不受支持、玩家 ID 为空或重复、阶段不在配置中、
-// 有阶段缺少解析器。
+// Errors: a nil snapshot; an unsupported version; an empty or duplicate
+// player ID; a phase not present in the config; a phase with no resolver.
 func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engine, error) {
 	if snap == nil {
 		return nil, ErrNilSnapshot
@@ -159,14 +181,16 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 		return nil, err
 	}
 
-	// 与 Start 同一条校验：缺解析器的阶段会把收到的技能悄悄丢掉，
-	// 这种失败在对局中几乎无法定位，必须在把引擎交出去之前拦下
+	// Same check as Start: a phase with no resolver silently drops the skills
+	// it receives, a failure that is nearly impossible to locate mid-game and
+	// so has to be caught before the engine is handed over.
 	if err := engine.phase.validateResolvers(); err != nil {
 		return nil, err
 	}
 
-	// 引擎尚未交给调用方，但仍走一遍锁：状态的所有访问都在引擎锁内，
-	// 是这套并发模型唯一的前提，不留例外
+	// The engine has not been handed to the caller yet, but take the lock all
+	// the same: every access to state happening under the engine lock is this
+	// concurrency model's one premise, and it gets no exceptions.
 	engine.mu.Lock()
 	defer engine.mu.Unlock()
 
@@ -188,10 +212,11 @@ func RestoreEngine(config *Config, snap *Snapshot, opts ...EngineOption) (*Engin
 	return engine, nil
 }
 
-// restorePhase 校验快照里的阶段能在配置中找到。
+// restorePhase checks that the snapshot's phase exists in the configuration.
 //
-// 找不到的话恢复出来的引擎推进不下去。START 与 END 是流程的两端，
-// 不出现在阶段配置中，单独放行。
+// If it does not, the restored engine cannot advance. START and END are the
+// two ends of the flow, do not appear in the phase configuration, and are
+// allowed through separately.
 func (e *Engine) restorePhase(phase PhaseType) error {
 	if phase == PhaseStart || phase == PhaseEnd {
 		return nil
@@ -203,10 +228,11 @@ func (e *Engine) restorePhase(phase PhaseType) error {
 	return nil
 }
 
-// restorePlayers 按快照写入玩家。
+// restorePlayers writes the players in from the snapshot.
 //
-// 校验与 AddPlayer 一致：restorePlayer 刻意不走 AddPlayer（要原样还原
-// 存活状态与药剂），但不该顺带把 AddPlayer 会拒绝的身份也放行。
+// The validation matches AddPlayer's: restorePlayer deliberately does not go
+// through AddPlayer (it has to restore aliveness and Vars verbatim), but that
+// is no reason to let through a role AddPlayer would reject.
 func (e *Engine) restorePlayers(players []PlayerSnapshot) error {
 	for _, p := range players {
 		if p.ID == "" {
@@ -225,8 +251,9 @@ func (e *Engine) restorePlayers(players []PlayerSnapshot) error {
 	return nil
 }
 
-// restorePendingUses 还原已提交但尚未结算的技能。
-// 引用的玩家与目标都必须存在，否则结算时会被静默丢弃。
+// restorePendingUses restores the skills submitted but not yet resolved.
+// Every player and target they reference must exist, or they would be
+// silently dropped at resolution time.
 func (e *Engine) restorePendingUses(uses []SkillUseSnapshot) error {
 	for _, u := range uses {
 		if _, ok := e.state.getPlayer(u.PlayerID); !ok {
@@ -253,9 +280,10 @@ func (e *Engine) restorePendingUses(uses []SkillUseSnapshot) error {
 	return nil
 }
 
-// ==================== State 侧的转换 ====================
+// ==================== Conversions on the state side ====================
 
-// snapshotPlayers 导出玩家列表（按 ID 排序，保证快照可比较）
+// snapshotPlayers exports the player list, sorted by ID so that snapshots are
+// comparable.
 func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 	out := make([]PlayerSnapshot, 0, len(s.players))
 	for _, p := range s.players {
@@ -271,7 +299,7 @@ func (s *gameState) snapshotPlayers() []PlayerSnapshot {
 	return out
 }
 
-// snapshotRoundCtx 导出回合上下文
+// snapshotRoundCtx exports the round context.
 func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 	if s.RoundCtx == nil {
 		return RoundCtxSnapshot{}
@@ -283,10 +311,11 @@ func (s *gameState) snapshotRoundCtx() RoundCtxSnapshot {
 	}
 }
 
-// restorePlayer 按快照写入一名玩家。
+// restorePlayer writes one player in from the snapshot.
 //
-// 不走 AddPlayer：恢复时要原样还原快照里的存活状态与 Vars，
-// 而 AddPlayer 会经 RoleSetup 重新发一遍初始状态——用掉的药会回来。
+// It does not go through AddPlayer: a restore has to reproduce the snapshot's
+// aliveness and Vars verbatim, and AddPlayer would hand out the initial state
+// through RoleSetup all over again -- a spent potion would come back.
 func (s *gameState) restorePlayer(p PlayerSnapshot) {
 	s.players[p.ID] = &playerState{
 		ID:        p.ID,
@@ -297,8 +326,9 @@ func (s *gameState) restorePlayer(p PlayerSnapshot) {
 	}
 }
 
-// copyVars 复制自定义状态。快照是深拷贝，这一项也不能例外——
-// 否则恢复出来的引擎与原引擎共用同一张 map，改一边动两边。
+// copyVars copies custom state. A snapshot is a deep copy and this is no
+// exception -- otherwise the restored engine would share one map with the
+// original, and changing either would change both.
 func copyVars(m map[string]string) map[string]string {
 	if len(m) == 0 {
 		return nil
@@ -310,7 +340,7 @@ func copyVars(m map[string]string) map[string]string {
 	return out
 }
 
-// restoreProgress 还原阶段、回合与回合上下文
+// restoreProgress restores the phase, the round and the round context.
 func (s *gameState) restoreProgress(phase PhaseType, round int, rc RoundCtxSnapshot) {
 	s.Phase = phase
 	s.Round = round
@@ -320,42 +350,46 @@ func (s *gameState) restoreProgress(phase PhaseType, round int, rc RoundCtxSnaps
 	}
 }
 
-// ==================== 小工具 ====================
+// ==================== Small helpers ====================
 
-// sortedStrings 原地排序并返回，用于让面向调用方的列表输出稳定
+// sortedStrings sorts in place and returns, so that lists handed to the
+// caller come out in a stable order.
 func sortedStrings(in []string) []string {
 	sort.Strings(in)
 	return in
 }
 
-// sortPlayerSnapshots 按 ID 排序
+// sortPlayerSnapshots sorts by ID.
 func sortPlayerSnapshots(ps []PlayerSnapshot) {
 	sort.Slice(ps, func(i, j int) bool { return ps[i].ID < ps[j].ID })
 }
 
-// snapshotTriggers 导出待结算队列
+// snapshotTriggers exports the pending queue.
 func snapshotTriggers(ts []Detour) []DetourSnapshot {
 	if len(ts) == 0 {
 		return nil
 	}
 	out := make([]DetourSnapshot, 0, len(ts))
 	for _, t := range ts {
-		// 刻意逐字段写而不是做类型转换：两个类型当前恰好同形，
-		// 但快照是存储格式、Detour 是内部结构，不应绑定在一起。
-		//nolint:staticcheck // S1016: 见上
+		// Written out field by field rather than converted: the two types
+		// happen to have the same shape today, but a snapshot is a storage
+		// format and Detour is an internal structure, and they should not be
+		// tied together.
+		//nolint:staticcheck // S1016: see above
 		out = append(out, DetourSnapshot{PlayerID: t.PlayerID, Phase: t.Phase})
 	}
 	return out
 }
 
-// restoreTriggers 还原待结算队列（顺序即结算顺序，不排序）
+// restoreTriggers restores the pending queue. The order is the resolution
+// order, so it is not sorted.
 func restoreTriggers(ts []DetourSnapshot) []Detour {
 	if len(ts) == 0 {
 		return nil
 	}
 	out := make([]Detour, 0, len(ts))
 	for _, t := range ts {
-		//nolint:staticcheck // S1016: 同 snapshotTriggers，刻意不做类型转换
+		//nolint:staticcheck // S1016: as in snapshotTriggers, deliberately not a conversion
 		out = append(out, Detour{PlayerID: t.PlayerID, Phase: t.Phase})
 	}
 	return out

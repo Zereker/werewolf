@@ -5,50 +5,59 @@ import (
 	"fmt"
 )
 
-// Effect 效果 - 状态变更的描述
+// Effect describes one state change.
 type Effect struct {
 	Type     EventType
-	SourceID string                 // 效果来源（玩家ID）
-	TargetID string                 // 效果目标（玩家ID）
-	Data     map[string]interface{} // 附加数据
-	Canceled bool                   // 是否被取消（如被保护）
-	Reason   string                 // 取消原因
+	SourceID string                 // where it came from (player ID)
+	TargetID string                 // what it is aimed at (player ID)
+	Data     map[string]interface{} // extra payload
+	Canceled bool                   // vetoed, e.g. by a protection
+	Reason   string                 // why it was vetoed
 }
 
-// eventKind 内核事件的类别。
+// eventKind classifies a kernel event.
 //
-// 「内核事件分几类」此前只是 kernelPrimitives 那张表上的一句注释——
-// 「它们是状态机的记账（谁的存活位翻了、谁身上多了个标记）」。那句话
-// 对 GOTO_PHASE 是**假的**：它在 applyEffect 里根本没有分支，一个状态
-// 都不改。行为一直是对的（永不外发），分类是错的，而分类只是注释，
-// 错了没有任何东西会响。
+// "How many classes of kernel event are there" used to be a single sentence
+// of comment on the kernelPrimitives table -- "they are the state machine's
+// bookkeeping (whose alive bit flipped, who gained a marker)". That sentence
+// was **false** for GOTO_PHASE: it has no branch in applyEffect at all and
+// changes no state whatsoever. The behaviour was always right (never sent
+// out), the classification was wrong, and a classification that lives only in
+// a comment makes no noise when it is.
 //
-// 现在类别是一个值，三条性质因此都能断言（见 effect_test.go）：
-// 改状态的必须真的改得动状态，控制指令与回放记账必须一个字节都不动。
+// The class is now a value, so all three properties can be asserted (see
+// effect_test.go): a state write must actually be able to change state, and a
+// control directive or replay bookkeeping entry must not move a single byte.
 type eventKind uint8
 
 const (
-	// kindRuleEvent 规则给「发生了什么」起的名字（KILL、SHOOT、决斗）。
-	// 内核不认得，推给 OnEvent，受众由规则决定。这是缺省值：
-	// 任何不在下面那张表里的取值都归这一类。
+	// kindRuleEvent is the rules' name for something that happened (KILL,
+	// SHOOT, a duel). The kernel does not recognise it, pushes it to
+	// OnEvent, and lets the rules decide its audience. This is the zero
+	// value: anything absent from the table below falls into this class.
 	kindRuleEvent eventKind = iota
 
-	// kindStateWrite 改状态的原语，applyEffect 里有它的分支。
+	// kindStateWrite is a state-writing primitive, with its own branch in
+	// applyEffect.
 	kindStateWrite
 
-	// kindControl 控制指令。不改任何状态，只影响内核下一步去哪。
+	// kindControl is a control directive. It changes no state, and only
+	// affects where the kernel goes next.
 	kindControl
 
-	// kindReplay 效果流回放用的记账，由内核自己写进流里。
+	// kindReplay is bookkeeping for effect-log replay, written into the log
+	// by the kernel itself.
 	kindReplay
 )
 
-// kernelEvents 内核自己认得的事件，以及各是哪一类。
+// kernelEvents lists the events the kernel recognises, and what class each
+// one is.
 //
-// 不在这张表里的一律是规则事件——判断依据是这张表，不是编号区间。
-// 此前写成「>= 100 即内部」，与「第三方取值从 1000 起」那条约定直接
-// 打架：扩展定义的每一个事件类型都被判成内部事件，于是扩展的事件
-// 根本发不出去。
+// Anything absent from the table is a rule event -- the table decides, not a
+// numeric range. It used to read "anything >= 100 is internal", which
+// collided head-on with the convention that third-party values start at 1000:
+// every event type an extension defined was judged internal, so an
+// extension's events could not be sent at all.
 var kernelEvents = map[EventType]eventKind{
 	EventSetAlive:  kindStateWrite,
 	EventSetVar:    kindStateWrite,
@@ -61,60 +70,74 @@ var kernelEvents = map[EventType]eventKind{
 	EventPhaseChanged: kindReplay,
 }
 
-// isInternalEvent 判断事件是不是内核自己的原语。
+// isInternalEvent reports whether an event is one of the kernel's own
+// primitives.
 //
-// 三类内核事件都不该出现在任何玩家面前——AudienceOf 对它们的回答是
-// 「明确不给任何人看」，且这一条不可配置。规则事件则相反，受众由规则决定。
+// None of the three kernel classes has any business in front of a player --
+// AudienceOf answers "definitely shown to nobody" for them, and that part is
+// not configurable. Rule events are the opposite: the rules decide their
+// audience.
 func isInternalEvent(t EventType) bool {
 	return kernelEvents[t] != kindRuleEvent
 }
 
-// detourPhaseKey 绕道效果里记录「去哪个阶段」的键
+// detourPhaseKey is the key under which a detour effect records which phase
+// to visit.
 const detourPhaseKey = "detour_phase"
 
-// NewDetourEffect 声明「为了这个人，绕一趟那个阶段」（见 Detour）。
+// NewDetourEffect declares "for the sake of this player, take a trip through
+// that phase" (see Detour).
 //
-// 狼人杀用它做「猎人被刀之后开枪」，但内核认得的既不是「死亡」也不是
-// 「技能」，只是「谁、去哪个阶段」——什么触发了它、他到了那儿要干什么，
-// 全是规则的事。出局时开枪、自爆、翻牌、任何「等一下，还有人要动」都走这条。
+// Werewolf uses it for "the hunter shoots after being killed", but what the
+// kernel recognises is neither death nor a skill -- only "who, and to which
+// phase". What triggered it and what they do once there is entirely the
+// rules' business. Shooting on elimination, self-detonating, flipping a card,
+// any "hold on, someone still has to act" goes through here.
 //
-// 与 NewGotoPhaseEffect 的分工：那个是**一次性改写下一站**，这个是
-// **排一笔欠账**——队列排空之前，胜负判定与回合边界都得等着。
+// The division of labour with NewGotoPhaseEffect: that one is a **one-off
+// rewrite of the next stop**, this one **files a debt** -- victory checks and
+// the round boundary all wait until the queue drains.
 func NewDetourEffect(playerID string, phase PhaseType) *Effect {
 	return NewEffect(EventDetour, playerID, "").
 		WithData(detourPhaseKey, phase)
 }
 
-// winnerKey GAME_ENDED 效果里记录赢家的键。
+// winnerKey is the key under which a GAME_ENDED effect records the winner.
 //
-// 两处用它：产出时写进去（endPhaseInternal），效果流回放时读回来
-// （replayEffect）。写成常量而不是两处各写一遍字面量——那两处写的必须
-// 是同一个键，而字面量不会告诉任何人这件事。
+// Two places use it: it is written on production (endPhaseInternal) and read
+// back on replay (replayEffect). It is a constant rather than a literal in
+// both places -- those two have to be the same key, and a literal tells
+// nobody that.
 const winnerKey = "winner"
 
-// gotoPhaseKey 改写下一阶段的效果里记录目标阶段的键
+// gotoPhaseKey is the key under which a next-phase override records its
+// destination.
 const gotoPhaseKey = "goto_phase"
 
-// NewGotoPhaseEffect 声明「这个阶段结算完之后去指定的阶段」。
+// NewGotoPhaseEffect declares "once this phase resolves, go to that phase".
 //
-// 它改写 PhaseConfig.NextPhase 那个默认出口。阶段流转此前是一张纯静态的图，
-// 唯一的动态跳转是绕道队列——于是所有条件分支都得从那个后门走，
-// 而那个后门的语义是「某人的技能待结算」，根本不是「往哪走」。
+// It overrides the default exit in PhaseConfig.NextPhase. Phase progression
+// used to be a purely static graph whose only dynamic jump was the detour
+// queue -- so every conditional branch had to go through that back door,
+// whose meaning is "someone's skill is pending", not "where to go next".
 //
-// missions 包的「表决通过就去任务、否则回提名」是这类分支最朴素的样子：
-// 结果由本阶段的结算算出来，静态图表达不了。
+// The missions package's "go to the mission if the vote passes, back to
+// nomination otherwise" is the plainest form of such a branch: the outcome is
+// computed by this phase's resolution, and a static graph cannot express it.
 //
-// 优先级：待结算的绕道队列 > 本效果 > PhaseConfig.NextPhase。绕道排在最前
-// 是因为队列必须排空——胜负判定与回合边界都等着它，中途跳走会把还没结算的
-// 那一笔欠账丢掉。
+// Priority: a pending detour queue > this effect > PhaseConfig.NextPhase.
+// Detours come first because the queue has to drain -- victory checks and the
+// round boundary are waiting on it, and jumping away mid-queue would drop a
+// debt that has not been settled.
 //
-// 目标阶段不在配置里时，内核记一条错误日志并退回 NextPhase：一条效果写错了
-// 不该让整局崩掉，但也不能安静地跳去一个没人预期的地方。
+// When the destination is not in the configuration the kernel logs an error
+// and falls back to NextPhase: one malformed effect should not bring down a
+// whole game, but neither may it quietly jump somewhere nobody expected.
 func NewGotoPhaseEffect(phase PhaseType) *Effect {
 	return NewEffect(EventGotoPhase, "", "").WithData(gotoPhaseKey, phase)
 }
 
-// gotoPhase 从改写效果里读出目标阶段
+// gotoPhase reads the destination out of an override effect.
 func (e *Effect) gotoPhase() (PhaseType, bool) {
 	v, ok := e.Data[gotoPhaseKey]
 	if !ok {
@@ -127,7 +150,7 @@ func (e *Effect) gotoPhase() (PhaseType, bool) {
 	return p, true
 }
 
-// detourPhase 从触发效果中读出目标阶段
+// detourPhase reads the destination out of a detour effect.
 func (e *Effect) detourPhase() (PhaseType, bool) {
 	v, ok := e.Data[detourPhaseKey]
 	if !ok {
@@ -137,10 +160,10 @@ func (e *Effect) detourPhase() (PhaseType, bool) {
 	return phase, ok
 }
 
-// 写自定义状态时用到的三个键：作用域、键、值。
+// The three keys used to write custom state: scope, key, value.
 //
-// 此前每个作用域一套自己的键名（var_key / round_var_key /
-// player_round_var_key……），六个常量描述的是同一件事。
+// Each scope used to have its own set of key names (var_key / round_var_key /
+// player_round_var_key and so on) -- six constants describing one thing.
 const (
 	varScopeKey = "var_scope"
 	varKeyKey   = "var_key"
@@ -149,26 +172,31 @@ const (
 	aliveKey = "alive"
 )
 
-// NewSetAliveEffect 声明「把某个玩家的存活状态改成某值」。
+// NewSetAliveEffect declares "set this player's alive flag to this value".
 //
-// 这是引擎唯一的生死原语。狼刀、毒杀、放逐、开枪此前各自是一个会改
-// 存活状态的事件类型，于是「有哪些死法」这件狼人杀的规则被写进了引擎；
-// 换一套规则（决斗致死、殉情）就得再加一个事件类型、再加一条分支。
+// This is the engine's only life-and-death primitive. A wolf kill, a
+// poisoning, an exile and a gunshot each used to be an event type that
+// changed the alive flag, which wrote a werewolf rule -- "here are the ways
+// to die" -- into the engine; a different ruleset (death by duel, dying of a
+// broken heart) meant one more event type and one more branch.
 //
-// 现在死法由规则自己命名：产出一个自己的事件（KILL / SHOOT / 殉情）
-// 作为「发生了什么」的说法，再产出一个 SET_ALIVE 真正改状态。
-// 两个效果，两件事——前者给受众与效果流看，后者给状态机看。
+// The ways to die are now named by the rules: emit an event of your own (KILL
+// / SHOOT / heartbreak) as the account of what happened, and emit a SET_ALIVE
+// to actually change the state. Two effects, two things -- the first for the
+// audience and the effect log, the second for the state machine.
 func NewSetAliveEffect(playerID string, alive bool) *Effect {
 	return NewEffect(EventSetAlive, "", playerID).
 		WithData(aliveKey, alive)
 }
 
-// SetsAlive 这个效果是否在改存活状态，以及改成什么。
+// SetsAlive reports whether this effect changes the alive flag, and to what.
 //
-// 想拦下一次死亡的扩展需要它：白痴被投票放逐时翻牌不出局，靠的是把
-// 那条致死的原语否决掉。拦原语而不是拦「放逐」这个说法，好处是**与死因
-// 无关**——同一段代码能挡住狼刀、毒杀、枪口和任何第三方规则的死法，
-// 因为它们最终都要走这一条。
+// An extension that wants to intercept a death needs it: the idiot surviving
+// an exile by flipping their card works by vetoing the lethal primitive.
+// Intercepting the primitive rather than the word "exile" makes it
+// **independent of the cause** -- one piece of code stops a wolf kill, a
+// poisoning, a gunshot and any third-party ruleset's way of dying, because
+// all of them end up here.
 func (e *Effect) SetsAlive() (alive, ok bool) {
 	if e == nil || e.Type != EventSetAlive {
 		return false, false
@@ -176,28 +204,32 @@ func (e *Effect) SetsAlive() (alive, ok bool) {
 	return aliveOf(e)
 }
 
-// aliveOf 从效果里读出要写的存活状态。
+// aliveOf reads the alive flag an effect intends to write.
 func aliveOf(e *Effect) (alive, ok bool) {
 	alive, ok = e.Data[aliveKey].(bool)
 	return alive, ok
 }
 
-// NewSetVarEffect 声明「把某项自定义状态改成某值」，作用域由 scope 指定。
+// NewSetVarEffect declares "set this piece of custom state to this value", in
+// the scope given by scope.
 //
-// 四种作用域此前是四个构造器，于是没有任何东西强制那张 2×2 的表完整
-// ——少了「整局·无主」那一格很久没人发现。现在作用域是一个参数：
+// The four scopes used to be four constructors, so nothing forced the 2x2
+// table to be complete -- the "whole game, unowned" cell was missing for a
+// long time and nobody noticed. The scope is now a parameter:
 //
-//	NewSetVarEffect(ScopeGame, "score", "3")              整局·无主
-//	NewSetVarEffect(ScopeGame.Of(id), "antidote", "used") 整局·某人
-//	NewSetVarEffect(ScopeRound, "kill", target)           本回合·无主
-//	NewSetVarEffect(ScopeRound.Of(id), "guarded", "1")    本回合·某人
+//	NewSetVarEffect(ScopeGame, "score", "3")              whole game, unowned
+//	NewSetVarEffect(ScopeGame.Of(id), "antidote", "used") whole game, one player
+//	NewSetVarEffect(ScopeRound, "kill", target)           this round, unowned
+//	NewSetVarEffect(ScopeRound.Of(id), "guarded", "1")    this round, one player
 //
-// 这是角色存放自身状态的正路。白痴的「翻过牌了」、骑士的「决斗用掉了」、
-// 女巫的两瓶药、守卫的守护记录，全都是同一件事，走的也是同一条路。
-// 走这条路才自动获得整套设施：状态随快照走、效果流能回放、Resolver
-// 因此可以保持无状态——而无状态正是 Resolver 接口要求的。
+// This is the proper way for a role to store its own state. The idiot's
+// "card already flipped", the knight's "duel spent", the witch's two potions
+// and the guard's protection record are all the same thing and take the same
+// route. Taking it is what earns the whole apparatus for free: the state
+// travels with the snapshot, the effect log can replay it, and a Resolver can
+// therefore stay stateless -- which is what the Resolver interface demands.
 //
-// 值传空串即删除该项，四种作用域同一个口径。
+// Passing an empty value deletes the entry, identically in all four scopes.
 func NewSetVarEffect(scope VarScope, key, value string) *Effect {
 	return NewEffect(EventSetVar, "", scope.owner).
 		WithData(varScopeKey, scope).
@@ -205,11 +237,13 @@ func NewSetVarEffect(scope VarScope, key, value string) *Effect {
 		WithData(varValueKey, value)
 }
 
-// SetsVar 这个效果是否在写一项自定义状态，以及写的是哪一格、什么键值。
+// SetsVar reports whether this effect writes a piece of custom state, and if
+// so which cell, key and value.
 //
-// 与 SetsAlive 同一个用法：想拦下或者观察某一类写入的扩展需要它。
-// 四种作用域收进一个事件类型之后，光看 Type 分不出「整局」还是「本回合」、
-// 属不属于某个玩家——要分就从这里读。
+// Same use as SetsAlive: an extension that wants to intercept or observe a
+// class of write needs it. With the four scopes folded into one event type,
+// Type alone no longer distinguishes whole-game from this-round, or owned
+// from unowned -- read them from here.
 func (e *Effect) SetsVar() (scope VarScope, key, value string, ok bool) {
 	if e == nil || e.Type != EventSetVar {
 		return VarScope{}, "", "", false
@@ -218,7 +252,7 @@ func (e *Effect) SetsVar() (scope VarScope, key, value string, ok bool) {
 	return scope, key, value, key != ""
 }
 
-// varOf 从效果里读出作用域与键值。
+// varOf reads the scope, key and value out of an effect.
 func varOf(e *Effect) (scope VarScope, key, value string) {
 	scope, _ = e.Data[varScopeKey].(VarScope)
 	key, _ = e.Data[varKeyKey].(string)
@@ -226,36 +260,42 @@ func varOf(e *Effect) (scope VarScope, key, value string) {
 	return scope, key, value
 }
 
-// actorsPhaseKey / actorsListKey 行动者效果里的两个键
+// actorsPhaseKey / actorsListKey are the two keys in an actors effect.
 const (
 	actorsPhaseKey = "actors_phase"
 	actorsListKey  = "actors_list"
 )
 
-// NewSetActorsEffect 声明「这几个玩家可以在指定阶段行动」。
+// NewSetActorsEffect declares "these players may act in the given phase".
 //
-// 内核判定行动者的默认办法是拿 PhaseStep.Role 比对玩家角色——而角色是入座时
-// 定死的，任何**运行时才选出来的**行动者集合都表达不了：missions 包的任务队伍是
-// 上一个阶段投票选出来的，队长是按座位轮转的。没有这条效果，规则只能让所有人
-// 都提交、再自己丢掉不该算的，而内核会对没资格的玩家说「你可以行动」。
+// The kernel's default way of deciding actors is to match PhaseStep.Role
+// against a player's role -- and a role is fixed at seating time, so any set
+// of actors **chosen at runtime** is inexpressible: the missions package's
+// team is voted on in the previous phase, and its leader rotates by seat.
+// Without this effect the rules could only let everyone submit and then throw
+// away what should not count, while the kernel told unqualified players "you
+// may act".
 //
-// 优先级：待结算的绕道队列 > 本效果 > PhaseStep.Role。与 NewGotoPhaseEffect
-// 是同一个分层——默认值加运行时改写。
+// Priority: a pending detour queue > this effect > PhaseStep.Role. Same
+// layering as NewGotoPhaseEffect -- a default plus a runtime override.
 //
-// 名单在**更早的阶段**算出来是常态，所以要指定阶段而不是只作用于当前阶段。
-// 某个阶段结算完，它的这一份就被消费掉：不清的话下一次进同一个阶段会沿用
-// 上一轮的名单。
+// The list is normally computed in an **earlier phase**, which is why it
+// names a phase rather than applying to the current one. A phase's list is
+// consumed once that phase resolves: without clearing it, the next visit to
+// the same phase would inherit the previous round's list.
 //
-// 传空名单是有意义的：那是「这个阶段没有人能行动」，与「规则没指定」不同。
+// Passing an empty list is meaningful: it says "nobody can act in this
+// phase", which is different from "the rules did not say".
 //
-// 名单里不存在的玩家会被忽略；名单会按 ID 排序后存下，效果流因此是确定的。
+// Players in the list who do not exist are ignored; the list is stored sorted
+// by ID, which keeps the effect log deterministic.
 func NewSetActorsEffect(phase PhaseType, playerIDs ...string) *Effect {
 	return NewEffect(EventSetActors, "", "").
 		WithData(actorsPhaseKey, phase).
 		WithData(actorsListKey, append([]string(nil), playerIDs...))
 }
 
-// actorsOf 从效果里读出阶段与名单
+// actorsOf reads the phase and the list out of an effect.
 func actorsOf(e *Effect) (PhaseType, []string, bool) {
 	p, ok := e.Data[actorsPhaseKey].(PhaseType)
 	if !ok {
@@ -268,7 +308,7 @@ func actorsOf(e *Effect) (PhaseType, []string, bool) {
 	return p, ids, true
 }
 
-// NewEffect 创建效果
+// NewEffect builds an effect.
 func NewEffect(eventType EventType, sourceID, targetID string) *Effect {
 	return &Effect{
 		Type:     eventType,
@@ -278,17 +318,18 @@ func NewEffect(eventType EventType, sourceID, targetID string) *Effect {
 	}
 }
 
-// Cancel 取消效果
+// Cancel vetoes an effect.
 func (e *Effect) Cancel(reason string) {
 	e.Canceled = true
 	e.Reason = reason
 }
 
-// WithData 添加附加数据。
+// WithData attaches extra payload.
 //
-// Data 为 nil 时就地建好：Effect 是导出类型、字段全导出，
-// 第三方 Resolver 用字面量构造它是被文档鼓励的写法，
-// 不该在这里撞上一个「assignment to entry in nil map」。
+// It builds Data in place when nil: Effect is an exported type with all
+// fields exported, constructing one as a literal is the documented thing for
+// a third-party Resolver to do, and it should not run into an "assignment to
+// entry in nil map" here.
 func (e *Effect) WithData(key string, value interface{}) *Effect {
 	if e.Data == nil {
 		e.Data = make(map[string]interface{}, 1)
@@ -297,14 +338,17 @@ func (e *Effect) WithData(key string, value interface{}) *Effect {
 	return e
 }
 
-// clone 深拷贝一条效果，连同它的 Data。
+// clone deep-copies one effect, Data included.
 //
-// 效果流是这个引擎的历史，「历史不可改写」不能只靠文档：此前
-// EndPhase 返回的与 EffectLog 返回的，都是引擎内部那份历史的同一批
-// 指针，调用方随手改一个字段（或者调一下 Cancel，它是导出的）就把
-// 历史改了，而回放会照着被改过的历史重建出另一局游戏。
+// The effect log is this engine's history, and "history cannot be rewritten"
+// cannot rest on documentation alone: what EndPhase returned and what
+// EffectLog returned used to be the very same pointers as the engine's own
+// history, so a caller changing one field in passing (or calling Cancel,
+// which is exported) rewrote the history, and a replay would rebuild a
+// different game from it.
 //
-// 现在进日志的是副本、出日志的也是副本，两侧都不与调用方共享对象。
+// Copies now go into the log and copies come out, so neither side shares an
+// object with the caller.
 func (e *Effect) clone() *Effect {
 	if e == nil {
 		return nil
@@ -319,11 +363,12 @@ func (e *Effect) clone() *Effect {
 	return &c
 }
 
-// ToEvent 转换为事件（用于通知外部）。
+// ToEvent converts an effect into an outward event.
 //
-// Data 从 map[string]interface{} 折成 map[string]string；
-// Canceled / Reason 原样带上——被规则否决的行动如果在这里丢掉标记，
-// 到了调用方手里就与真的发生过的一模一样。
+// Data is flattened from map[string]interface{} to map[string]string;
+// Canceled and Reason are carried over verbatim -- an action the rules vetoed
+// that lost its marker here would reach the caller looking exactly like one
+// that really happened.
 func (e *Effect) ToEvent() *Event {
 	event := &Event{
 		Type:     e.Type,
@@ -334,7 +379,7 @@ func (e *Effect) ToEvent() *Event {
 		Reason:   e.Reason,
 	}
 
-	// 转换 Data: interface{} -> string
+	// Flatten Data: interface{} -> string.
 	for k, v := range e.Data {
 		event.Data[k] = convertToString(v)
 	}
@@ -342,7 +387,7 @@ func (e *Effect) ToEvent() *Event {
 	return event
 }
 
-// convertToString 将 interface{} 转换为 string
+// convertToString renders an interface{} as a string.
 func convertToString(v interface{}) string {
 	switch val := v.(type) {
 	case string:
@@ -359,7 +404,7 @@ func convertToString(v interface{}) string {
 	case fmt.Stringer:
 		return val.String()
 	default:
-		// 对于复杂类型，尝试 JSON 序列化
+		// For a composite type, try JSON.
 		if data, err := json.Marshal(val); err == nil {
 			return string(data)
 		}
