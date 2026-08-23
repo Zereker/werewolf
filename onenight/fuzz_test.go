@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/Zereker/werewolf/engine"
-	"github.com/Zereker/werewolf/internal/gamefuzz"
+	"github.com/Zereker/werewolf/engine/enginetest"
 )
 
 // TestFuzz_Invariants 随机对局，核对通用不变量。
 //
-// 不变量在 internal/gamefuzz 里，一条都不认识这套规则——它们问的全是内核
+// 不变量在 engine/enginetest 里，一条都不认识这套规则——它们问的全是内核
 // 层面的事：存了再读回来一样吗、回放走到同一个局面吗、说不能行动的人是不是
 // 真的不能行动。这里只负责摆局面与出招。
 //
@@ -18,7 +18,7 @@ import (
 // 这一套规则的分歧几乎全由发牌决定（场上有几只狼、皮匠在不在场、
 // 狼牌是不是全在中央），只随机打法的话搜索空间会塌成一条线。
 func TestFuzz_Invariants(t *testing.T) {
-	gamefuzz.Run(t, gamefuzz.Config{
+	enginetest.RunFuzz(t, enginetest.FuzzSpec{
 		Games:    2000, // 三套合计 5000 局；这一套单局最短，多跑一些
 		MaxSteps: 40,
 		WantEnd:  true,
@@ -31,7 +31,7 @@ func TestFuzz_Invariants(t *testing.T) {
 }
 
 // deck 随机摆一副牌：人数 + 3 张。
-func setupRandom(rng *rand.Rand) gamefuzz.Game {
+func setupRandom(rng *rand.Rand) enginetest.Game {
 	n := MinPlayers + rng.Intn(4) // 3~6 人
 	pool := []engine.RoleType{
 		RoleWerewolf, RoleWerewolf, RoleMinion, RoleMason, RoleMason,
@@ -40,9 +40,9 @@ func setupRandom(rng *rand.Rand) gamefuzz.Game {
 	}
 	rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
 
-	seats := make([]gamefuzz.Seat, 0, n)
+	seats := make([]enginetest.Seat, 0, n)
 	for i := 0; i < n; i++ {
-		seats = append(seats, gamefuzz.Seat{ID: playerID(i), Role: pool[i]})
+		seats = append(seats, enginetest.Seat{ID: playerID(i), Role: pool[i]})
 	}
 	var center [CenterCount]engine.RoleType
 	copy(center[:], pool[n:n+CenterCount])
@@ -71,7 +71,7 @@ func setupRandom(rng *rand.Rand) gamefuzz.Game {
 		labels = append(labels, "多人局")
 	}
 
-	return gamefuzz.Game{
+	return enginetest.Game{
 		Config:  GameConfig(),
 		Options: Options(center),
 		Seats:   seats,

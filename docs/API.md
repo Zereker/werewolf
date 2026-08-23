@@ -26,7 +26,8 @@
 > 设计意图见 [DESIGN.md](DESIGN.md)，实施次序见 [ROADMAP.md](ROADMAP.md)。
 > 这里只说**契约**：有什么、怎么用、变不变。
 >
-> 当前规模：**55 个类型、24 个包级函数、56 个方法、62 个常量与变量。**
+> 当前规模：**55 个类型、24 个包级函数、56 个方法、62 个常量与变量**，
+> 外加公开子包 `enginetest` 的 6 个名字（见附录 B）。
 > 附录 A 是完整清单，用于冻结后的比对。
 
 ---
@@ -709,6 +710,52 @@ $ go test ./engine
 写下来不是给冻结打折扣，是说清它的效力边界：**第四套规则包就是这条判据的
 第一次真考试**。它若逼出破坏性变更，说明冻结早了；它若只逼出零导出名变更
 （像第三套那样），冻结就站住了。
+
+---
+
+## 附录 B：`enginetest` —— 给规则包的测试支架
+
+与 `engine` 同一个 module 的公开子包，位置同 `net/http/httptest`：
+**给使用者用的测试支架，不是被测对象。**
+
+```go
+func RunFuzz(t *testing.T, spec FuzzSpec)
+
+type FuzzSpec struct {
+    Games    int      // 跑多少局
+    MaxSteps int      // 单局最多推进多少步
+    Setup    Setup    // 怎么摆局（同一个 rng 必须摆出同一局）
+    Act      Act      // 怎么出招；nil 表示只推进阶段
+    WantEnd  bool     // 是否要求每局都在 MaxSteps 内结束
+    MustSee  []string // 这些标签一个都不能为零，否则随机化退化了
+}
+
+type Game struct { Config *engine.Config; Options []engine.EngineOption; Seats []Seat; Labels []string }
+type Seat struct { ID string; Role engine.RoleType }
+type Setup func(rng *rand.Rand) Game
+type Act   func(e *engine.Engine, rng *rand.Rand)
+```
+
+规则包提供「怎么摆局、怎么出招」，`RunFuzz` 提供**七条通用不变量**——
+一条都不认识任何游戏：
+
+| | |
+|---|---|
+| 存档往返 | 逐字节比快照，**并且比行为**（谁能行动、就绪情况、上帝视角名单） |
+| 效果流回放 | 同上两条 |
+| 三条路一致 | `AllowedSkills` 与 `PlayerView.AllowedSkills` 必须相同 |
+| 名单稳定 | 同一个局面反复查询，顺序不变 |
+| `Status` 自洽 | 结束了就停在 `PhaseEnd` 且有赢家；没结束就没有赢家 |
+| 结束即定 | 结束之后局面不再变，且仍能存档往返 |
+| 原语不外发 | 内核状态原语一条都不到 `OnEvent` |
+
+**「并且比行为」那一条是变异验证逼出来的**：第一版只比快照字节，而快照
+序列化器自己漏字段时两边一起漏，比对是瞎的——「快照丢掉 `Actors`」那个
+变异当场存活了。加上比行为之后，第一次跑就抓出三个真 bug。
+
+它此前叫 `internal/gamefuzz`。`internal/` 只能被同一个 module import，
+而引擎要独立成库——规则包届时在另一个 module 里，一行都用不上它。
+公开了就一起被 `TestAPI_SurfaceIsPinned` 钉住，不然它是一个绕开冻结的后门。
 
 ---
 

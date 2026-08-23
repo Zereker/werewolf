@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/Zereker/werewolf/engine"
-	"github.com/Zereker/werewolf/internal/gamefuzz"
+	"github.com/Zereker/werewolf/engine/enginetest"
 )
 
 // TestFuzz_Invariants 随机对局，核对通用不变量。
 //
-// 不变量在 internal/gamefuzz 里，一条都不认识这套规则。这里只负责摆局面
+// 不变量在 engine/enginetest 里，一条都不认识这套规则。这里只负责摆局面
 // 与出招。
 //
 // 随机的是**人数与角色分配**：5~10 人，坏人数按 EvilCount 表定，
@@ -21,7 +21,7 @@ import (
 // 本包的一局比另外两套长得多：一轮任务要走提名、表决、任务三个阶段，
 // 表决否决还会绕回提名，五轮任务加上刺杀——所以 MaxSteps 给得宽。
 func TestFuzz_Invariants(t *testing.T) {
-	gamefuzz.Run(t, gamefuzz.Config{
+	enginetest.RunFuzz(t, enginetest.FuzzSpec{
 		Games:    1000, // 三套合计 5000 局；这一套的单局最长，给 1000
 		MaxSteps: 400,
 		WantEnd:  true,
@@ -34,7 +34,7 @@ func TestFuzz_Invariants(t *testing.T) {
 }
 
 // setupRandom 摆一副随机的板子。
-func setupRandom(rng *rand.Rand) gamefuzz.Game {
+func setupRandom(rng *rand.Rand) enginetest.Game {
 	n := 5 + rng.Intn(6) // 5~10 人
 	evil := EvilCount(n)
 
@@ -60,9 +60,9 @@ func setupRandom(rng *rand.Rand) gamefuzz.Game {
 	}
 	rng.Shuffle(len(roles), func(i, j int) { roles[i], roles[j] = roles[j], roles[i] })
 
-	seats := make([]gamefuzz.Seat, 0, n)
+	seats := make([]enginetest.Seat, 0, n)
 	for i := 0; i < n; i++ {
-		seats = append(seats, gamefuzz.Seat{ID: playerID(i), Role: roles[i]})
+		seats = append(seats, enginetest.Seat{ID: playerID(i), Role: roles[i]})
 	}
 
 	labels := []string{"大局"}
@@ -86,7 +86,7 @@ func setupRandom(rng *rand.Rand) gamefuzz.Game {
 		labels = append(labels, "有奥伯伦")
 	}
 
-	return gamefuzz.Game{
+	return enginetest.Game{
 		Config:  DefaultConfig(),
 		Options: Options(),
 		Seats:   seats,

@@ -62,7 +62,7 @@ func TestAPI_SurfaceIsPinned(t *testing.T) {
 		added, removed, t.Name())
 }
 
-// exportedNames 解析本包的非测试源码，收集全部导出名。
+// exportedNames 解析模块里每个公开包的非测试源码，收集全部导出名。
 //
 // 走 go/ast 而不是 shell 出去跑 go doc：测试要能在任何环境下跑，
 // 也不该依赖工具链的输出格式。同一个办法 boundary_test.go 已经用过一次
@@ -70,23 +70,38 @@ func TestAPI_SurfaceIsPinned(t *testing.T) {
 func exportedNames(t *testing.T) []string {
 	t.Helper()
 
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		t.Fatalf("读包目录: %v", err)
-	}
-
 	var names []string
 	fset := token.NewFileSet()
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, name, nil, 0)
+
+	// 模块里每一个**公开**的包都算数，不只是 engine 自己。
+	//
+	// enginetest 是给规则包做随机对局用的公开子包（位置同
+	// net/http/httptest）。它此前叫 internal/gamefuzz——`internal/` 出了
+	// module 就 import 不了，而引擎要独立成库，所以它必须公开。
+	// 公开了就该被冻结守着：不然它会成为一个绕开纪律的后门。
+	for _, dir := range []string{".", "enginetest"} {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			t.Fatalf("解析 %s: %v", name, err)
+			t.Fatalf("读包目录 %s: %v", dir, err)
 		}
-		names = append(names, exportedIn(f)...)
+		prefix := ""
+		if dir != "." {
+			prefix = dir + "."
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+			if err != nil {
+				t.Fatalf("解析 %s: %v", name, err)
+			}
+			for _, n := range exportedIn(f) {
+				kind, rest, _ := strings.Cut(n, " ")
+				names = append(names, kind+" "+prefix+rest)
+			}
+		}
 	}
 
 	sort.Strings(names)

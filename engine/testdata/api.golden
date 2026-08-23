@@ -63,6 +63,7 @@ func WithSpeech(SpeechProvider) EngineOption
 func WithTeammates(TeammateProvider) EngineOption
 func WithVictoryChecker(VictoryChecker) EngineOption
 func WrapError(ErrorCode, string, ...interface{}) *GameError
+func enginetest.RunFuzz(*testing.T, FuzzSpec)
 iface AudienceProvider.Audience(*Event, GameView) ([]string, bool)
 iface GameSetup.Setup(GameView) []*Effect
 iface GameView.AlivePlayerIDsByRole(RoleType) []string
@@ -194,6 +195,11 @@ type TeammateProvider
 type VarScope
 type VictoryChecker
 type VictoryFunc func(GameView) (bool, Camp)
+type enginetest.Act func(*engine.Engine, *rand.Rand)
+type enginetest.FuzzSpec
+type enginetest.Game
+type enginetest.Seat
+type enginetest.Setup func(*rand.Rand) Game
 var ErrBoardAlreadyDecided
 var ErrGameAlreadyStarted
 var ErrGameEnded

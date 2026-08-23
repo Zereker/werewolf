@@ -11,21 +11,29 @@
 // 快照往返、效果流回放只被三分之一的规则验证过**。而这三样恰恰是内核的
 // 承重墙，不该只有一套规则替它们作证。
 //
-// # 为什么在 internal 里
+// # 为什么它是公开的
 //
-// 它是测试设施，不是内核 API。放 internal 下，仓库内每一套规则包都能用，
-// 而**内核的导出面一个名字都不多**——`docs/API.md` 刚冻结，不该为一件
-// 测试用的东西破例。
+// 它是测试设施，位置与 net/http/httptest 相同：**给使用者用的测试支架，
+// 不是被测对象。**
 //
-// 对照：engine.Board / Seat / Mark 是**正经的公开 API**，因为规则包在
-// 内核之外也要用它们单测自己的解析器；这一套只在本仓库内用。
+// 它此前叫 `internal/gamefuzz`，理由是「不该为一件测试用的东西给刚冻结的
+// API 加名字」。那个位置在**引擎独立成一个 module** 之后不成立了——
+// Go 的规则是 `internal/` 只能被同一个 module 里的代码 import，而规则包
+// 届时在另一个 module 里，一行都用不上它。
+//
+// 公开了就该被冻结守着：`TestAPI_SurfaceIsPinned` 连这个子包一起钉住，
+// 不然它会成为一个绕开纪律的后门。
+//
+// 对照：engine.Board / Seat / Mark 也是公开的测试 API，它们做的是同一件
+// 事的另一半——那三个手工摆一个局面单测解析器，这一套跑成千上万局验
+// 不变量。
 //
 // # 这里的不变量都不认识任何游戏
 //
 // 一条都不提「狼人」「任务」「中央牌」。每一条问的都是内核层面的事：
 // 存了再读回来一样吗、回放走到同一个局面吗、说不能行动的人是不是真的
 // 不能行动。规则包只负责摆局面与出招。
-package gamefuzz
+package enginetest
 
 import (
 	"encoding/json"
@@ -70,8 +78,8 @@ type Setup func(rng *rand.Rand) Game
 // 允许什么都不做：不出招也能推进阶段，很多规则的夜晚能力本来就是可选的。
 type Act func(e *engine.Engine, rng *rand.Rand)
 
-// Config 一次随机对局测试的参数。
-type Config struct {
+// FuzzSpec 一次随机对局测试的参数。
+type FuzzSpec struct {
 	Games    int      // 跑多少局
 	MaxSteps int      // 单局最多推进多少步，超了算没结束
 	Setup    Setup    // 怎么摆局
@@ -80,14 +88,14 @@ type Config struct {
 	MustSee  []string // 这些标签一个都不能为零，否则说明随机化退化了
 }
 
-// Run 跑一批随机对局，逐步核对不变量。
+// RunFuzz 跑一批随机对局，逐步核对不变量。
 //
 // 种子固定，因此失败可复现：日志里带 seed 与 step。
-func Run(t *testing.T, cfg Config) {
+func RunFuzz(t *testing.T, spec FuzzSpec) {
 	t.Helper()
 
 	stats := map[string]int{}
-	for seed := 0; seed < cfg.Games; seed++ {
+	for seed := 0; seed < spec.Games; seed++ {
 		rng := rand.New(rand.NewSource(int64(seed))) //nolint:gosec // 测试用随机
 		func() {
 			defer func() {
@@ -95,7 +103,7 @@ func Run(t *testing.T, cfg Config) {
 					t.Fatalf("seed=%d PANIC: %v", seed, r)
 				}
 			}()
-			for _, label := range playOne(t, seed, rng, cfg) {
+			for _, label := range playOne(t, seed, rng, spec) {
 				stats[label]++
 			}
 		}()
@@ -104,12 +112,12 @@ func Run(t *testing.T, cfg Config) {
 	for _, k := range sortedKeys(stats) {
 		t.Logf("  %-16s %d", k, stats[k])
 	}
-	if cfg.WantEnd {
+	if spec.WantEnd {
 		if n := stats[labelNotEnded]; n > 0 {
-			t.Errorf("有 %d 局在 %d 步内没有结束", n, cfg.MaxSteps)
+			t.Errorf("有 %d 局在 %d 步内没有结束", n, spec.MaxSteps)
 		}
 	}
-	for _, k := range cfg.MustSee {
+	for _, k := range spec.MustSee {
 		if stats[k] == 0 {
 			t.Errorf("随机化没有覆盖到「%s」，搜索空间退化了", k)
 		}
@@ -123,10 +131,10 @@ const (
 )
 
 // playOne 跑一局，返回这一局的特征标签。
-func playOne(t *testing.T, seed int, rng *rand.Rand, cfg Config) []string {
+func playOne(t *testing.T, seed int, rng *rand.Rand, spec FuzzSpec) []string {
 	t.Helper()
 
-	g := cfg.Setup(rng)
+	g := spec.Setup(rng)
 	e, err := engine.NewEngine(g.Config, g.Options...)
 	if err != nil {
 		t.Fatalf("seed=%d NewEngine: %v", seed, err)
@@ -147,14 +155,14 @@ func playOne(t *testing.T, seed int, rng *rand.Rand, cfg Config) []string {
 	e.OnEvent(func(ev *engine.Event) { seen = append(seen, ev.Type) })
 
 	lastRound := e.Status().Round
-	for step := 0; step < cfg.MaxSteps; step++ {
+	for step := 0; step < spec.MaxSteps; step++ {
 		if e.Status().Over {
 			checkEndedStaysEnded(t, seed, step, e, g)
 			return append(labels, labelEnded)
 		}
 
-		if cfg.Act != nil {
-			cfg.Act(e, rng)
+		if spec.Act != nil {
+			spec.Act(e, rng)
 		}
 
 		checkAllowedMatchesView(t, seed, step, e)
