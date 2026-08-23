@@ -70,8 +70,13 @@ const (
 	// SkillUnspecified 未指定。
 	SkillUnspecified SkillType = ""
 
-	// SkillSkip 主动放弃行动。任何回合制游戏都有这个动作，也是唯一
-	// 不需要目标的技能——内核据此跳过目标校验。
+	// SkillSkip 主动放弃行动。任何回合制游戏都有这个动作，所以内核给它
+	// 一个共用的名字，免得每套规则各起一个。
+	//
+	// **它没有任何内核特权。** 此前 validateSkillUse 里有一条
+	// 「弃权不需要目标，直接放行」——那条是空的：不带目标的提交本来就
+	// 过得了目标校验（循环一次都不跑），带了目标的提交**本该**被校验。
+	// 它唯一的实际效果是让内核认得一个具体技能，而那正是这个库要消灭的。
 	SkillSkip SkillType = "SKIP"
 
 	// SkillAnnounce 一次广播，与 RoleSystem 配对。内容由调用方决定。

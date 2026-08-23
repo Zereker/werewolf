@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -563,6 +564,61 @@ func TestWatchOnlyStep(t *testing.T) {
 		}
 		if !e.PhaseReadiness().Ready {
 			t.Error("必需的那一步满足了，阶段就该就绪")
+		}
+	})
+}
+
+// TestSkip_HasNoKernelPrivilege 弃权在内核眼里不是特殊技能。
+//
+// 此前 validateSkillUse 里有一条「弃权不需要目标，直接放行」。那条是空的：
+// 不带目标的提交本来就过得了目标校验（循环一次都不跑），而带了目标的提交
+// **本该**被校验。它唯一的实际效果是让内核认得一个具体技能——
+// 而「内核不认得任何取值」是这个库的五条不变量之一。
+//
+// 删掉之后要保证两件事：不带目标照样能提交，带了坏目标会被拒。
+func TestSkip_HasNoKernelPrivilege(t *testing.T) {
+	const phasePass = PhaseType("PASS")
+	cfg := testConfig()
+	cfg.Phases[phasePass] = &PhaseConfig{
+		Type: phasePass,
+		Steps: []PhaseStep{
+			{Role: roleVillager, Skill: skillVote, Group: "act"},
+			{Role: roleVillager, Skill: SkillSkip, Group: "act"},
+		},
+		NextPhase: phaseDay,
+	}
+	cfg.Phases[phaseNightGuard].NextPhase = phasePass
+
+	opts := append(withNoopResolvers(), WithResolver(phasePass, noopResolver{}))
+	e, err := NewEngine(cfg, opts...)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	mustAdd(t, e, "v", roleVillager)
+	mustAdd(t, e, "w", roleWerewolf)
+	if err := e.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, err := e.EndPhase(); err != nil { // NIGHT_GUARD -> PASS
+		t.Fatalf("EndPhase: %v", err)
+	}
+	if got := e.Status().Phase; got != phasePass {
+		t.Fatalf("阶段 = %v，期望 %v", got, phasePass)
+	}
+
+	t.Run("不带目标能提交", func(t *testing.T) {
+		if err := e.SubmitSkillUse(&SkillUse{PlayerID: "v", Skill: SkillSkip}); err != nil {
+			t.Errorf("弃权不需要目标，提交却被拒：%v", err)
+		}
+	})
+
+	t.Run("带了不存在的目标会被拒", func(t *testing.T) {
+		err := e.SubmitSkillUse(&SkillUse{
+			PlayerID: "v", Skill: SkillSkip, Targets: []string{"ghost"},
+		})
+		if !errors.Is(err, ErrTargetNotFound) {
+			t.Errorf("目标不存在该拒成 %v，实际 %v——"+
+				"弃权在内核眼里不是特殊技能", ErrTargetNotFound, err)
 		}
 	})
 }
