@@ -1,496 +1,583 @@
-# 内核技术方案
+# The kernel's design
 
-> 这份文档回答一个问题：**这个内核该长成什么样，才能承载「社会推理」这一类游戏，
-> 而不只是狼人杀。**
+> This document answers one question: **what does this kernel have to look
+> like to carry the whole class of social deduction games, and not just
+> werewolf?**
 >
-> **API 已冻结**——逐条契约与冻结声明见 [API.md](API.md)，走到这一步的次序
-> 见 [ROADMAP.md](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md)（已归档）。
-> 当前实现的结构见 [ARCHITECTURE.md](ARCHITECTURE.md)，与对照实现的比较见
-> [PRIOR-ART.md](PRIOR-ART.md)。
+> **The API is frozen** -- the contract clause by clause and the freeze
+> declaration are in [API.md](API.md), and the order in which we got here is
+> in [ROADMAP.md](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md)
+> (archived). The structure of the code as it stands is in
+> [ARCHITECTURE.md](ARCHITECTURE.md), and the comparison with other engines is
+> in [PRIOR-ART.md](PRIOR-ART.md).
 
 ---
 
-## 0. 这是什么
+## 0. What this is
 
-**一台社会推理游戏的状态机，外加一层信息边界。**
+**A state machine for social deduction games, plus a layer of information
+boundary.**
 
-它做两件事，只做这两件：
+It does two things and only these two:
 
 | | |
 |---|---|
-| **推进** | 谁能动 → 动了什么 → 局面变成什么 → 下一步去哪 → 结束了没有 |
-| **遮蔽** | 同一份局面，不同的人看到不同的东西 |
+| **Drive** | who may act -> what they did -> what the board becomes -> where to go next -> is it over |
+| **Conceal** | one board, and different people see different things |
 
-第二件是这一类游戏的**全部意义**——没有信息不对称就没有推理。因此它不是
-「顺手做的一个功能」，而是与状态机并列的另一半。
+The second is **the entire point** of this class of games -- without
+asymmetric information there is nothing to deduce. So it is not "a feature
+added along the way", it is the other half, standing alongside the state
+machine.
 
-### 不是什么
+### What it is not
 
-- **不是狼人杀引擎。** 内核里不出现「女巫」「狼人」「刀口」。
-- **不是通用桌游框架。** 它假设了：玩家是一组人、时间分成命名的步骤、
-  行动被集中结算、有人知道别人不知道的事。不满足这四条的游戏（实时、
-  完全信息、非回合）不在射程内。
-- **不是服务器。** 不计时、不网络、不持久化。超时等多久、出局要不要翻牌、
-  用什么传输，全是宿主的事。
+- **Not a werewolf engine.** The words "witch", "werewolf" and "tonight's
+  kill" do not appear in the kernel.
+- **Not a general board game framework.** It assumes four things: the players
+  are a group, time is divided into named steps, actions are resolved in
+  batches, and some people know things others do not. A game that does not
+  satisfy all four (real-time, perfect information, not turn-based) is out of
+  range.
+- **Not a server.** No clock, no networking, no persistence. How long a
+  timeout waits, whether an eliminated player's card is turned over, what
+  transport to use -- all the host's business.
 
 ---
 
-## 1. 判据：一件事归谁
+## 1. The test: whose job is this
 
-**这是整份文档最重要的一节。** 后面所有结论都是它推出来的。
+**This is the most important section in the document.** Every conclusion below
+follows from it.
 
-对任何一件事，按顺序问三个问题，第一个答「是」的那一层就是它的归属：
+For anything at all, ask three questions in order; the first "yes" is where it
+belongs:
 
 ```
-1. 内核在**不知道这是什么游戏**的情况下，能独立判断它对不对吗？   → 内核
-2. 知道游戏规则就能判断，但与这一桌、这一局无关吗？              → 规则
-3. 只有知道这一桌怎么打才判断得了吗？                            → 宿主
+1. Can the kernel judge it correctly **without knowing what game this is**?  -> the kernel
+2. Judgeable from the rules, but independent of this table and this game?    -> the rules
+3. Only judgeable by knowing how this particular table plays?                -> the host
 ```
 
-对照着看：
+Side by side:
 
-| 一件事 | 归谁 | 为什么 |
+| The thing | Whose | Why |
 |---|---|---|
-| 「这个玩家的存活位翻了没有」 | 内核 | 不知道游戏也能判断 |
-| 「这个人在不在本阶段的行动者名单里」 | 内核 | 同上 |
-| 「效果流回放出来的局面和原局一样吗」 | 内核 | 同上 |
-| 「现在是不是新的一回合」 | **规则** | 任务制那一套一回合是三个阶段，狼人杀是八个 |
-| 「谁赢了」 | **规则** | 内核不知道有哪些边 |
-| 「这条消息该给谁看」 | **规则** | 狼人夜聊只给狼，任务制那一套全程公开 |
-| 「死了还能不能行动」 | **规则** | 血染钟楼的死人有一张幽灵票 |
-| 「等多久算超时」 | 宿主 | 线下和线上不一样，快桌和慢桌不一样 |
-| 「出局要不要翻牌」 | 宿主 | 同一套规则，不同桌不同打法 |
-| 「用 WebSocket 还是 HTTP」 | 宿主 | 与游戏无关 |
+| "did this player's alive bit flip" | kernel | judgeable without knowing the game |
+| "is this player on this phase's actor list" | kernel | ditto |
+| "does the board replayed from the effect log match the original" | kernel | ditto |
+| "is this a new round" | **rules** | a mission-based round is three phases, werewolf's is eight |
+| "who won" | **rules** | the kernel does not know which sides exist |
+| "who should see this message" | **rules** | wolf night chat is wolves-only, the mission-based games are public throughout |
+| "may the dead act" | **rules** | the dead in Blood on the Clocktower have a ghost vote |
+| "how long before it times out" | host | offline differs from online, a fast table from a slow one |
+| "is an eliminated player's card turned over" | host | one ruleset, different tables, different practice |
+| "WebSocket or HTTP" | host | nothing to do with the game |
 
-**这条判据被违反过，每一次都留下了同一种伤口**：内核里出现一个
-`if role == X`、一个 `case EventY`、一个只有某套规则用得上的字段。
-七次记录见 [`missions/SCARS.md`](https://github.com/Zereker/werewolf/blob/main/missions/SCARS.md)。
+**This test has been violated, and every violation left the same wound**: an
+`if role == X`, a `case EventY`, or a field only one ruleset could use, inside
+the kernel. Seven of them are recorded in
+[`missions/SCARS.md`](https://github.com/Zereker/werewolf/blob/main/missions/SCARS.md).
 
-### 判据的第二面：内核可以提供**默认**，但不能立**法律**
+### The test's other side: the kernel may offer a **default**, not make **law**
 
-「死了不能行动」是绝大多数游戏的规矩，内核提供它是好事——不提供的话，
-每一套规则都要自己重写一遍。问题不在提供默认，在**能不能被推翻**。
+"The dead may not act" is the convention in most games, and the kernel
+offering it is a good thing -- without it every ruleset would rewrite it. The
+problem is not offering a default, it is **whether it can be overruled**.
 
-因此每一条内核默认都必须配一个明示的推翻口：
+So every kernel default must come with an explicit way to overrule it:
 
-| 内核默认 | 推翻口 |
+| Kernel default | The override |
 |---|---|
-| 行动者 = 角色匹配的活人 | `NewSetActorsEffect(phase, ids...)` |
-| 技能不能指向死人 | `PhaseStep.AllowDeadTarget` |
-| 死人不能发言 | `WithSpeech(provider)` |
-| 下一阶段照静态配置走 | `NewGotoPhaseEffect(phase)` |
-| 回合边界在标了 `EndsRound` 的阶段 | 由规则在配置里标，内核不猜 |
+| actors = the living players matching the role | `NewSetActorsEffect(phase, ids...)` |
+| a skill may not target the dead | `PhaseStep.AllowDeadTarget` |
+| the dead may not speak | `WithSpeech(provider)` |
+| the next phase comes from static configuration | `NewGotoPhaseEffect(phase)` |
+| the round ends at the phase marked `EndsRound` | the rules mark it in the configuration; the kernel does not guess |
 
-**没有推翻口的默认就是法律。** 新增任何默认行为时，先回答「规则怎么推翻它」。
-
----
-
-## 2. 五条不变量
-
-这五条是内核的承重墙。它们**由签名或测试保证，不靠约定**——一条规矩只写在
-注释里，等于没有。
-
-### I1. 状态只有一个写入点
-
-`applyEffect` 是唯一改状态的地方。`Resolver` 拿到的是只读的 `GameView`，
-只能通过返回 `[]*Effect` 表达变更。
-
-- **由什么保证**：签名。`Resolve(uses []*SkillUse, view GameView) []*Effect`
-  拿不到任何可变状态。
-- **违反了会怎样**：快照、回放、审计三样能力同时失效——它们全都建立在
-  「所有变更都流经同一条管道」之上。
-- **谁在守**：`GameView` 是接口且实现未导出；`TestGameView_IsReadOnly`。
-
-### I2. 结算是局面的纯函数
-
-同一个局面进去，必须同一批效果出来，**且顺序相同**。
-
-- **由什么保证**：`Resolver` 无状态（状态没地方放——它只有 `view` 一个入参）；
-  遍历 map 的地方一律排序后输出。
-- **违反了会怎样**：回放对不上，效果流失去意义。
-- **谁在守**：规则包的 `EffectOrderIsDeterminedByTheBoard` 一类测试；
-  5000 局随机对局的回放比对（三套规则包合计）。
-
-### I3. 信息边界有一条不可配置的地板
-
-内核自己的状态原语（`SET_ALIVE` / `SET_VAR` / `SET_ACTORS` /
-`DETOUR` / `GOTO_PHASE` / `PLAYER_ADDED` / `PHASE_CHANGED`）
-**永不发给任何玩家**，且这一条**不能被 provider 改写**。
-
-其余一切（规则自己命名的事件）的受众由规则决定，内核的答案是「不知道」。
-
-- **为什么要有地板**：状态原语是上帝视角的记账。一个「什么都给全场」的
-  `AudienceProvider` 若能路由它们，整局的隐藏信息一次性泄光。
-- **谁在守**：`TestBoundary_StatePrimitivesNeverReachPlayers`、
-  `TestKernelEventTypes_AreAllClassified`（新增事件类型不分类就变红）、
-  `TestPlayerView_CarriesNoFreeFormState`（面向玩家的结构里不许有自由格式的口袋）。
-
-### I4. 一个问题只有一个来源
-
-「谁能在这个阶段行动」只有 `actorsForStep` 一处取数。技能校验、
-`AllowedSkills`、`PhaseReadiness`、`PhaseInfo` 四处共用它。
-
-- **违反了会怎样**：「内核收下了他的提交，却告诉别人他不该行动」。
-  这类自相矛盾出现过三次，每次都是两处判断各写了一遍然后漂移。
-- **谁在守**：`TestEngine_AllowedSkills_MatchesPlayerView` 一类的交叉断言。
-
-### I5. 内核不认得任何取值
-
-词汇表（`PhaseType` / `RoleType` / `SkillType` / `EventType` / `Camp`）
-**只有类型，没有取值**。取值全在规则包里。
-
-内核自己拥有的那少数几个，每一个都要能单独说出理由（见 §7）。
-
-- **违反了会怎样**：内核开始知道自己在跑哪个游戏，第二套规则包就建不起来。
-- **谁在守**：第二套规则包本身——`missions/vocab.go` 与 `werewolf/vocab.go`
-  没有一个取值相同，而内核一行都不用改。
+**A default with no override is law.** Before adding any default behaviour,
+answer "how do the rules overrule it".
 
 ---
 
-## 3. 状态模型
+## 2. Five invariants
 
-### 3.1 目标形态：一张变量表，一条时间轴
+These five are the kernel's load-bearing walls. They are **held up by
+signatures or by tests, not by convention** -- a rule that lives only in a
+comment might as well not exist.
 
-> **内核存的东西只有两样：一张变量表，和一条时间轴。**
+### I1. State has one write point
+
+`applyEffect` is the only place state changes. A `Resolver` is handed a
+read-only `GameView` and can express a change only by returning `[]*Effect`.
+
+- **Held up by**: the signature.
+  `Resolve(uses []*SkillUse, view GameView) []*Effect` cannot reach any
+  mutable state.
+- **What breaking it costs**: snapshots, replay and auditing fail together --
+  all three rest on "every change flows through one pipe".
+- **What guards it**: `GameView` is an interface whose implementation is
+  unexported; `TestGameView_IsReadOnly`.
+
+### I2. Resolution is a pure function of the board
+
+The same board in must give the same effects out, **in the same order**.
+
+- **Held up by**: a `Resolver` is stateless (there is nowhere to put state --
+  its only parameter is `view`); everywhere a map is iterated, the output is
+  sorted.
+- **What breaking it costs**: replay stops matching, and the effect log
+  becomes meaningless.
+- **What guards it**: tests in the rules packages along the lines of
+  `EffectOrderIsDeterminedByTheBoard`; the replay comparison across 5000
+  random games (three rules packages combined).
+
+### I3. The information boundary has a non-configurable floor
+
+The kernel's own state primitives (`SET_ALIVE` / `SET_VAR` / `SET_ACTORS` /
+`DETOUR` / `GOTO_PHASE` / `PLAYER_ADDED` / `PHASE_CHANGED`) **are never sent
+to any player**, and that **cannot be overridden by a provider**.
+
+Everything else -- events the rules named themselves -- has its audience
+decided by the rules, and the kernel's answer is "I don't know".
+
+- **Why there is a floor**: state primitives are the god's-view bookkeeping.
+  If an `AudienceProvider` that gives everything to everybody could route
+  them, every hidden fact in the game would leak at once.
+- **What guards it**: `TestBoundary_StatePrimitivesNeverReachPlayers`,
+  `TestKernelEventTypes_AreAllClassified` (a new event type goes red until it
+  is classified), `TestPlayerView_CarriesNoFreeFormState` (no free-form bag in
+  a player-facing struct).
+
+### I4. One question has one source
+
+"Who may act in this phase" is read from exactly one place, `actorsForStep`.
+Skill validation, `AllowedSkills`, `PhaseReadiness` and `PhaseInfo` all share
+it.
+
+- **What breaking it costs**: "the kernel accepted his submission while
+  telling everyone else he should not be acting". That contradiction has
+  arisen three times, and every time it was two places each writing their own
+  version and then drifting.
+- **What guards it**: cross-assertions such as
+  `TestEngine_AllowedSkills_MatchesPlayerView`.
+
+### I5. The kernel recognises no value
+
+The vocabulary (`PhaseType` / `RoleType` / `SkillType` / `EventType` / `Camp`)
+has **types only, never values**. The values all live in the rules packages.
+
+Every one of the handful the kernel does own has to be defensible on its own
+(see §7).
+
+- **What breaking it costs**: the kernel starts knowing which game it is
+  running, and the second rules package cannot be built.
+- **What guards it**: the second rules package itself --
+  `missions/vocab.go` and `werewolf/vocab.go` share not one value, and the
+  kernel needed not one line changed.
+
+---
+
+## 3. The state model
+
+### 3.1 The target shape: one variable table, one timeline
+
+> **The kernel stores two things: a variable table, and a timeline.**
 >
-> 身份、生死、阵营都是变量表里的**标准键**——内核认得键名、据此提供默认
-> 行为，但**不解释值**。
+> Identity, life and death, and camp are **canonical keys** in the variable
+> table -- the kernel recognises the key names and offers default behaviour
+> from them, but **does not interpret the values**.
 
-这是这份方案的核心主张。它的作用是把「内核认得几个概念」这个数字压到最小：
-概念越少，能承载的游戏越多。
+This is the design's central claim. Its job is to drive the number of concepts
+the kernel recognises as low as possible: fewer concepts, more games carried.
 
-### 3.2 变量表
+### 3.2 The variable table
 
-作用域是一张 2×2 的表——时间尺度乘以有没有主人：
+A scope is a 2x2 table -- lifetime crossed with ownership:
 
-| | 无主 | 属于某个玩家 |
+| | unowned | owned by a player |
 |---|---|---|
-| **整局有效** | `ScopeGame` | `ScopeGame.Of(id)` |
-| **本回合有效** | `ScopeRound` | `ScopeRound.Of(id)` |
+| **whole game** | `ScopeGame` | `ScopeGame.Of(id)` |
+| **this round** | `ScopeRound` | `ScopeRound.Of(id)` |
 
-- 写：`NewSetVarEffect(scope, key, value)`
-- 读：`GameView.Var(scope, key)` / `Engine.Var(scope, key)`
-- 值是字符串，**空串等同删除**，四格同一个口径
-- 键名由规则自己定，内核只管存
+- Write: `NewSetVarEffect(scope, key, value)`
+- Read: `GameView.Var(scope, key)` / `Engine.Var(scope, key)`
+- Values are strings, and **an empty string is deletion**, identically in all
+  four cells
+- The keys are the rules' own; the kernel only stores them
 
-**为什么是 2×2 而不是别的**：时间尺度与归属是两个正交的问题，任何一套社会
-推理规则都同时要用到。这张表此前只存在于注释里、代码里是八个平铺的名字，
-于是没有任何东西强制它完整——少了「整局·无主」那一格很久没人发现，直到
-missions 包的比分撞上。**一个概念要画成表格才讲得清，说明它在代码里没有对应物。**
+**Why 2x2 and not something else**: lifetime and ownership are two orthogonal
+questions, and any social deduction ruleset uses both at once. The table used
+to exist only in a comment while the code had eight flat names, so nothing
+forced it to be complete -- "whole game, unowned" was missing for a long time,
+until the missions package's score ran into it. **A concept that needs a table
+drawn to be explained has no counterpart in the code.**
 
-**标准键**：内核认得少数几个键名，据此提供默认行为——
+**Canonical keys**: the kernel recognises a handful of key names and offers
+default behaviour from them --
 
-| 键 | 内核用它做什么 | 内核**不**知道什么 |
+| Key | What the kernel does with it | What the kernel does **not** know |
 |---|---|---|
-| `camp` | 填进 `PlayerInfo.Camp` / `SelfInfo.Camp` | 有哪些边、哪边是好人 |
-| 生死（目标：`alive`） | 默认行动资格、默认目标校验、默认发言资格 | 怎么死的、死了算不算输 |
-| 身份（目标：`role`） | `PhaseStep.Role` 的默认匹配 | 这个角色有什么能力 |
+| `camp` | fills `PlayerInfo.Camp` / `SelfInfo.Camp` | which sides exist, which one is good |
+| aliveness (target: `alive`) | the default right to act, the default target check, the default right to speak | how they died, whether dying is losing |
+| identity (target: `role`) | the default match for `PhaseStep.Role` | what this role can do |
 
-生死与身份**今天是 `playerState` 上的结构体字段**，不是变量表里的键。
-把它们降为标准键是本方案的主要改动之一，理由见 §8。
+Aliveness and identity are **struct fields on `playerState` today**, not keys
+in the variable table. Demoting them to canonical keys is one of this
+design's main changes; the reasoning is in §8.
 
-### 3.3 时间轴
+### 3.3 The timeline
 
-| 存的东西 | 是什么 | 谁写 |
+| Stored | What it is | Written by |
 |---|---|---|
-| `Phase` | 当前阶段 | 内核（流转） |
-| `Round` | **第几次经过一个标了 `EndsRound` 的阶段**——一个纯计数器 | 内核，边界由规则声明 |
-| `Actors: map[phase][]id` | 规则点名的行动者，用过即作废 | 规则（`SET_ACTORS`）或绕道队列 |
-| 绕道队列 | 「某人欠一次在某个阶段的行动」，先进先出 | 规则（`DETOUR`） |
+| `Phase` | the current phase | the kernel (transitions) |
+| `Round` | **how many times a phase marked `EndsRound` has been passed** -- a plain counter | the kernel, with the boundary declared by the rules |
+| `Actors: map[phase][]id` | the actors the rules named, spent on use | the rules (`SET_ACTORS`) or the detour queue |
+| the detour queue | "someone owes an action in some phase", first in first out | the rules (`DETOUR`) |
 
-**`Round` 为什么留着**：对照过的引擎都没有它，因为它们的状态没有分区。
-我们有——回合级变量的寿命需要一个边界，而「一回合」是规则的概念
-（任务制那一套三个阶段，狼人杀八个）。所以内核只数数，边界由规则在配置里标。
-「回合数 +1」与「回合级变量清空」是两件事，分开声明（`EndsRound` /
-`ClearsRoundVars`）——绝大多数板子两者重合，任务制那一套不重合。
+**Why `Round` stays**: none of the engines compared has one, because their
+state has no partitions. Ours does -- a round-scoped variable's lifetime needs
+a boundary, and "one round" is a rules concept (three phases in the
+mission-based games, eight in werewolf). So the kernel only counts, and the
+rules mark the boundary in the configuration. "Round number +1" and
+"round-scoped variables cleared" are two things and are declared separately
+(`EndsRound` / `ClearsRoundVars`) -- most boards have them coincide, and the
+mission-based games do not.
 
-**绕道队列为什么不能被 `GOTO_PHASE` 替代**：它管三件事，后两件没有替代品——
+**Why `GOTO_PHASE` cannot replace the detour queue**: it governs three things,
+and nothing else provides the last two --
 
-1. 把阶段引到欠账的地方（这件 `GOTO_PHASE` 能做）
-2. **在排空之前拦住胜负判定与回合边界**（被刀的猎人开枪可能翻盘）
-3. **按队首一条一条来**（两名猎人同一夜出局，各开各的枪）
+1. routing the phase to where the debt is (`GOTO_PHASE` can do this)
+2. **holding off the victory check and the round boundary until it drains**
+   (the killed hunter's shot can turn the game around)
+3. **taking them one at a time from the head** (two hunters eliminated on one
+   night each fire their own shot)
 
-它**不**回答「谁能行动」——进入欠账的阶段时它写一份行动者名单，之后走与
-`SET_ACTORS` 完全相同的那条路。
+It does **not** answer "who may act" -- on entering the phase owed to, it
+writes an actor list, and everything after that takes exactly the same path as
+`SET_ACTORS`.
 
 ---
 
-## 4. 推进：一个阶段怎么走完
+## 4. Driving: how a phase runs to its end
 
 ```
-SubmitSkillUse ──校验──▶ 攒在 pendingUses
-                              │
-      EndPhase ───────────────┤
-                              ▼
-                        Resolver.Resolve(uses, view) ─▶ []*Effect
-                              │
-                              ▼
-                        applyEffect（唯一写入点）
-                              │
-                              ├─▶ 效果流（回放、审计）
-                              ├─▶ AudienceOf ─▶ OnEvent（按受众）
-                              ▼
-                        算下一阶段 ─▶ 问胜负 ─▶ 流转
+SubmitSkillUse ──validate──▶ accumulate in pendingUses
+                                  │
+      EndPhase ───────────────────┤
+                                  ▼
+                            Resolver.Resolve(uses, view) ─▶ []*Effect
+                                  │
+                                  ▼
+                            applyEffect (the only writer)
+                                  │
+                                  ├─▶ the effect log (replay, auditing)
+                                  ├─▶ AudienceOf ─▶ OnEvent (per audience)
+                                  ▼
+                            next phase ─▶ victory? ─▶ transition
 ```
 
-### 4.1 谁能行动：两层
+### 4.1 Who may act: two layers
 
-| 优先级 | 谁 | 存活怎么算 |
+| Priority | Who | How aliveness counts |
 |---|---|---|
-| 1 | **点到名的人**：`SET_ACTORS`，或绕道队列进入阶段时写下的那一份 | 由规则负责，内核不再二次否决 |
-| 2 | **默认**：`PhaseStep.Role` 匹配上的活人 | 内核按存活过滤 |
+| 1 | **the players named**: `SET_ACTORS`, or the list the detour queue writes on entering the phase | the rules' business; the kernel does not veto a second time |
+| 2 | **the default**: the living players matching `PhaseStep.Role` | the kernel filters on aliveness |
 
-**存活因此是默认资格，不是法律。** 此前只有内核自己的绕道队列能越过它，
-规则的点名不能——同一个内核允许自己的机制让死人行动、不允许规则的机制
-这么做，那是内核在替规则判断「死了还能不能动」。挡掉的是真实存在的玩法。
+**Aliveness is therefore the default qualification, not the law.** Only the
+kernel's own detour queue used to be able to step over it while the rules
+naming actors could not -- one kernel letting its own mechanism move the dead
+while forbidding the rules' mechanism from doing the same is the kernel
+deciding "may the dead act" on the rules' behalf. What that blocks is real
+play.
 
-### 4.2 提交与校验
+### 4.2 Submission and validation
 
-内核在 `SubmitSkillUse` **就拦**，不是收下来再让规则事后丢掉。理由：
-收下来再丢，`AllowedSkills` 会对没资格的玩家说谎、`PhaseReadiness` 会等
-一群不可能行动的人。
+The kernel **blocks at `SubmitSkillUse`** rather than accepting and leaving
+the rules to throw it away afterwards. The reason: accept-then-discard makes
+`AllowedSkills` lie to unqualified players and `PhaseReadiness` wait on a
+crowd who cannot possibly act.
 
-校验四件事，每件都只用内核判断得了的信息：
+It validates four things, each using only information the kernel can judge:
 
-1. 这个人在不在行动者名单里（§4.1 两层）
-2. 这个技能在当前阶段的 `Steps` 里声明过没有
-3. 目标存在吗
-4. 目标已出局的话，这个步骤声明了 `AllowDeadTarget` 吗
+1. is this player on the actor list (the two layers of §4.1)
+2. is this skill declared in the current phase's `Steps`
+3. does the target exist
+4. if the target is eliminated, does this step declare `AllowDeadTarget`
 
-### 4.3 结算
+### 4.3 Resolution
 
-`Resolver` 是「一个阶段怎么结算」的全部。它拿只读局面，返回效果。
+A `Resolver` is the whole of "how a phase resolves". It takes a read-only
+board and returns effects.
 
-**两种效果，一次动作里通常都要产出**：
+**Two kinds of effect, usually both produced by one action**:
 
-| | 例子 | 给谁看 |
+| | Example | For whom |
 |---|---|---|
-| **规则给「发生了什么」起的名字** | `KILL` / `SHOOT` / `MISSION_FAIL` | 受众由规则决定，推给 `OnEvent` |
-| **内核的状态原语** | `SET_ALIVE` / `SET_VAR` | 只给状态机，永不外发 |
+| **the rules' name for what happened** | `KILL` / `SHOOT` / `MISSION_FAIL` | audience decided by the rules, pushed to `OnEvent` |
+| **a kernel state primitive** | `SET_ALIVE` / `SET_VAR` | for the state machine only, never sent out |
 
-「狼刀」不会让人死——一条 `KILL` 单独发出去，状态机不认得。规则要让人出局，
-就在它旁边产出一条 `SET_ALIVE`。**两个效果，两件事。**
+A wolf kill kills nobody -- a lone `KILL` means nothing to the state machine.
+For the rules to eliminate someone, they emit a `SET_ALIVE` alongside it.
+**Two effects, two things.**
 
-这个分法的好处是**与死因无关**：想拦下一次死亡的扩展（白痴翻牌不出局）
-拦的是原语，同一段代码能挡住狼刀、毒杀、枪口和任何第三方规则的死法。
+The benefit of this split is that it is **independent of the cause**: an
+extension that wants to intercept a death (the idiot flipping their card)
+intercepts the primitive, and one piece of code stops a wolf kill, a
+poisoning, a gunshot and any third-party ruleset's way of dying.
 
-### 4.4 下一步去哪：三层出口
+### 4.4 Where to go next: three layers of exit
 
 ```
-待结算的绕道队列  >  GOTO_PHASE  >  PhaseConfig.NextPhase
+a pending detour queue  >  GOTO_PHASE  >  PhaseConfig.NextPhase
 ```
 
-绕道排最前是因为队列必须排空（§3.3）。`GOTO_PHASE` 是规则的运行时改写
-（任务制那一套的表决通过就去任务、否决就回提名，静态图表达不了）。都没有就走
-声明式配置里的默认出口。
+Detours come first because the queue has to drain (§3.3). `GOTO_PHASE` is the
+rules' runtime override (the mission-based games go to the mission when the
+vote passes and back to nomination when it fails, which a static graph cannot
+express). With neither, the default exit from the declarative configuration is
+taken.
 
-### 4.5 什么时候结束
+### 4.5 When it ends
 
-每次阶段流转后问一次 `VictoryChecker`。**队列非空时推迟判定**——死亡技能
-可能翻盘，被刀的猎人开枪带走最后一只狼，好人反而赢。
+The `VictoryChecker` is asked once after every phase transition. **The
+decision is deferred while the queue is non-empty** -- a death ability can
+turn the game around, the killed hunter shoots the last wolf, and the
+villagers win instead.
 
 ---
 
-## 5. 遮蔽：谁看到什么
+## 5. Concealment: who sees what
 
-这一半比对照实现强一个量级，是这个库的核心价值。**改动它要格外小心。**
+This half is an order of magnitude stronger than what it was compared against,
+and it is this library's core value. **Change it with particular care.**
 
-### 5.1 地板
+### 5.1 The floor
 
-见 I3。一条不可配置的规矩，其余全部可配。
+See I3. One non-configurable rule; everything else is configurable.
 
-### 5.2 四个 provider
+### 5.2 The four providers
 
-| 问题 | 谁回答 | 内核的缺省答案 |
+| Question | Answered by | The kernel's default |
 |---|---|---|
-| 这条事件该告诉谁 | `AudienceProvider` | 「不知道」（调用方自己路由） |
-| 谁和谁是一边的 | `TeammateProvider` | 没有队友 |
-| 这句发言谁能听到 | `SpeechProvider` | 活人都能听到 |
-| 这个角色额外看到什么 | `RoleInfoProvider` | 什么都没有 |
+| who should be told about this event | `AudienceProvider` | "I don't know" (the caller routes it) |
+| who is on whose side | `TeammateProvider` | no teammates |
+| who hears this speech | `SpeechProvider` | every living player |
+| what does this role additionally see | `RoleInfoProvider` | nothing |
 
-**允许不对称**：恶魔认得爪牙、反过来不成立；missions 包的奥伯伦既不认识同伙
-也不被同伙认识。这是社会推理游戏的常态，内核不能假设对称。
+**Asymmetry is allowed**: the demon knows its minions and the reverse does not
+hold; the missions package's Oberon neither knows his fellows nor is known to
+them. That is the norm in social deduction games, and the kernel cannot assume
+symmetry.
 
-### 5.3 一名玩家的三副面孔
+### 5.3 One player's three faces
 
-| 类型 | 谁在看 | 有什么 |
+| Type | Who is looking | What it has |
 |---|---|---|
-| `PlayerInfo` | 上帝 / 规则 | 全部，含 `Vars` |
-| `SelfInfo` | 他自己 | 身份、阵营、生死，**没有 `Vars`** |
-| `PublicPlayerInfo` | 别人 | 生死，身份仅在对本视角公开时 |
+| `PlayerInfo` | god / the rules | everything, `Vars` included |
+| `SelfInfo` | themselves | identity, camp, aliveness, **no `Vars`** |
+| `PublicPlayerInfo` | everyone else | aliveness; identity only where revealed to this view |
 
-**这三个不合并。** `PublicPlayerInfo` **在类型上就装不下 `Vars`**——
-「这一项该不该给他看」因此是签名问题，不是运行时问题。合成一个带可选字段
-的类型会把这条保证退回成判断。
+**These three do not get merged.** `PublicPlayerInfo` **structurally cannot
+hold `Vars`** -- so "should they be shown this" is a question about
+signatures, not about runtime. Merging them into one type with optional fields
+would demote that guarantee back into a judgement call.
 
-要给玩家看的私有状态，由角色经 `RoleInfoProvider` **显式投射**。默认把
-`Vars` 交给玩家，等于让每个角色自己去想「这一项能不能给他看」——而那正是
-这个库要替调用方收掉的那类判断。
+Private state a player should see is **projected explicitly** by the role
+through a `RoleInfoProvider`. Handing `Vars` to the player by default would
+make every role work out for itself whether each entry may be shown -- exactly
+the class of judgement this library sets out to take off a caller's hands.
 
 ---
 
-## 6. 扩展点
+## 6. The extension points
 
-八个，全部只能在构造时给出：引擎交到调用方手上之后，这些就不再变。
+Eight, all of which can only be given at construction: once the engine is in
+the caller's hands, they no longer change.
 
-| 想加什么 | 用什么 |
+| To add | Use |
 |---|---|
-| 某个阶段怎么结算 | `WithResolver(phase, r)` |
-| 怎么算赢 | `WithVictoryChecker(c)` |
-| 某个角色带着什么入座 | `WithRoleSetup(role, s)` |
-| 开局那一刻铺什么 | `WithGameSetup(s)` |
-| 一件事该告诉谁 | `WithAudience(p)` |
-| 谁和谁是一边的 | `WithTeammates(p)` |
-| 发言谁能听到 | `WithSpeech(p)` |
-| 角色额外看到什么 | `WithRoleInfo(role, p)` |
+| how a phase resolves | `WithResolver(phase, r)` |
+| how winning works | `WithVictoryChecker(c)` |
+| what a role sits down with | `WithRoleSetup(role, s)` |
+| what the board looks like at the start | `WithGameSetup(s)` |
+| who should be told about something | `WithAudience(p)` |
+| who is on whose side | `WithTeammates(p)` |
+| who hears a player speak | `WithSpeech(p)` |
+| what a role additionally sees | `WithRoleInfo(role, p)` |
 
-八个都能用一个普通函数装上（`ResolverFunc` / `VictoryFunc` / …）。
-**内置角色没有特权**——它们走的是同一批门。
+All eight can be installed with a plain function (`ResolverFunc` /
+`VictoryFunc` / ...). **Built-in roles hold no privilege** -- they go through
+the same doors.
 
-**扩展点不能回头找引擎**：它们在引擎持锁期间被同步调用，回调 `Engine`
-的任何方法会挂住（Go 的读写锁不可重入）。签名是刻意收窄的：扩展点拿不到
-`*Engine`。要在回调里问引擎，用 `OnEvent` / `OnMessage` 的处理器——
-那些在**释放锁之后**执行。
+**Extension points must not call back into the engine**: they are called
+synchronously while the engine holds its lock, and calling any `Engine` method
+hangs (Go's RWMutex is not reentrant). The signatures are deliberately narrow:
+an extension point never receives an `*Engine`. To ask the engine something
+from a callback, use an `OnEvent` / `OnMessage` handler -- those run **after
+the lock is released**.
 
 ---
 
-## 7. 内核自己拥有的取值，逐个说理由
+## 7. The values the kernel owns, defended one by one
 
-I5 说内核不认得任何取值。下面这些是例外，每一个都要能单独辩护。
-**这张表只能变短，不能随便变长。**
+I5 says the kernel recognises no value. What follows are the exceptions, and
+each has to be defensible on its own. **This table may only get shorter, never
+casually longer.**
 
-三套规则包写完之后逐条重新辩护过一次，下面带的是**实际使用数据**——
-辩护不能只靠说理，得看真有没有人用。
+Every entry was defended again after the three rules packages were written,
+and what follows carries **actual usage data** -- a defence cannot rest on
+argument alone, it has to show somebody uses it.
 
-| 取值 | 谁在用 | 理由 | 判决 |
+| Value | Who uses it | Reason | Verdict |
 |---|---|---|---|
-| `PhaseEnd` | 三套全用 | 状态机的生命周期终点 | ✅ |
-| `RoleUnspecified` | 三套全用 | 在 `PhaseStep` 上表示「所有角色」，零值有语义省掉一个字段 | ✅ |
-| `VarPresent`（`"1"`） | 三套全用 | 空串等同删除，所以「有 / 没有」需要一个非空的约定值 | ✅ |
-| `VarCamp` | 三套全用 | 让「这名玩家站哪一边」不必每个使用者自己去 `Vars` 里翻 | ✅ |
-| `CampUnspecified` | 三套全用 | 「还没分出胜负」与「不属于任何一边」 | ✅ |
-| `PhaseStart` | 一套 | 生命周期起点，`AddPlayer` 只在它里面允许。**内核自己要用**，规则包用不用无所谓 | ✅ |
-| `SkillUnspecified` | 零套**按名字**用 | 但它的**零值是承重的**：`PhaseStep.Skill` 留空表示「他该醒了，但他没有行动」（见 §4.1）。零值有语义，名字只是把它写出来 | ✅ |
-| `PhaseUnspecified` | 零套 | 同上，零值本来就存在，命名它只是文档 | ⚠️ 无害，留着 |
-| `RoleSystem` + `SkillAnnounce` | **一套** | 「这一步没有玩家承担」。任务制那一套没有主持人，单夜制也没有——三套里只有狼人杀用得上 | ⚠️ 见下 |
-| `SkillSkip` | 两套 | 「我不动」是任何回合制游戏都有的动作，内核给个共用名字免得各起各的 | ✅ 但**特权已删**，见下 |
+| `PhaseEnd` | all three | the state machine's lifecycle end | ✅ |
+| `RoleUnspecified` | all three | on a `PhaseStep` it means "every role"; a meaningful zero value saves a field | ✅ |
+| `VarPresent` (`"1"`) | all three | an empty string is deletion, so has-it/hasn't-it needs an agreed non-empty value | ✅ |
+| `VarCamp` | all three | so that "which side is this player on" need not be dug out of `Vars` by every caller | ✅ |
+| `CampUnspecified` | all three | "not decided yet" and "belongs to no side" | ✅ |
+| `PhaseStart` | one | the lifecycle start; `AddPlayer` is only allowed inside it. **The kernel needs it itself**, whether a rules package uses it or not | ✅ |
+| `SkillUnspecified` | zero **by name** | but its **zero value is load-bearing**: an empty `PhaseStep.Skill` means "this role wakes but takes no action" (see §4.1). The zero value has meaning, and the name only writes it down | ✅ |
+| `PhaseUnspecified` | zero | as above; the zero value exists anyway, and naming it is documentation | ⚠️ harmless, kept |
+| `RoleSystem` + `SkillAnnounce` | **one** | "no player carries this step". The mission-based games have no host and neither does the one-night format -- of the three, only werewolf can use them | ⚠️ see below |
+| `SkillSkip` | two | "I decline" is a move every turn-based game has, and the kernel offers a shared name so each ruleset does not invent its own | ✅ but the **privilege is gone**, see below |
 
-### 这次辩护改掉的一条：`SkillSkip` 的内核特权
+### One thing this defence changed: `SkillSkip`'s kernel privilege
 
-`validateSkillUse` 里此前有一条：
+`validateSkillUse` used to contain:
 
 ```go
-// 弃权不需要目标
+// skipping needs no target
 if use.Skill == SkillSkip {
     return nil
 }
 ```
 
-**这条是空的。** 不带目标的提交本来就过得了目标校验（循环一次都不跑），
-而带了目标的提交**本该**被校验——一次 `SKIP` 带着一个不存在的玩家 ID，
-那是一条写错的提交，不该悄悄放行。
+**That branch was empty.** A submission with no target already passes target
+validation (the loop never runs), and a submission that does carry a target
+**should** be validated -- a `SKIP` carrying a player ID that does not exist
+is a malformed submission and should not be let through quietly.
 
-它唯一的实际效果是**让内核认得一个具体技能**，而那正是 I5 要消灭的。已删。
-`SkillSkip` 作为**共用的名字**留着（那是它真正的价值），特权没有了。
+Its only real effect was to **make the kernel recognise one specific skill**,
+which is precisely what I5 sets out to eliminate. It is gone. `SkillSkip`
+stays as a **shared name** (which is its real value), without the privilege.
 
-`TestSkip_HasNoKernelPrivilege` 钉住两条：不带目标照样能提交，带了坏目标
-会被拒成 `ErrTargetNotFound`。把特权加回去会立刻变红。
+`TestSkip_HasNoKernelPrivilege` pins two things: a submission with no target
+still goes through, and one with a bad target is rejected as
+`ErrTargetNotFound`. Putting the privilege back turns it red immediately.
 
-### 只有一套规则用得上的那两个：`RoleSystem` / `SkillAnnounce`
+### The two only one ruleset can use: `RoleSystem` / `SkillAnnounce`
 
-三套里只有狼人杀有主持人。按「没有使用者的 API 是负债」这条，它们看着像
-该删的。
+Of the three, only werewolf has a host. By the rule "an API with no users is a
+liability", these look like they should go.
 
-**但不删**，理由是它们不是「能力」，是**词汇**：任何一套需要「这一步是一次
-广播，不等人」的规则都会用到，而它们不占任何运行时代价（就绪判定跳过、
-`AllowedSkills` 不列）。删掉的话，第四套规则若需要它，就得自己发明一个，
-而内核对那个自造的值一无所知——「就绪判定不该数它」这条就得每套自己实现。
+**They stay**, on the grounds that they are not a capability but **vocabulary**:
+any ruleset needing "this step is a broadcast and waits for nobody" will use
+them, and they cost nothing at runtime (readiness skips them,
+`AllowedSkills` does not list them). Removed, a fourth ruleset that needed
+them would have to invent a value of its own, about which the kernel would
+know nothing -- and "readiness must not count it" would then have to be
+reimplemented by every ruleset.
 
-**这条辩护是有条件的**：如果第四、第五套规则包仍然一个都用不上，那就说明
-「主持人」确实是狼人杀独有的，届时删掉、把它挪进狼人杀包。**写下来是为了
-下次能兑现。**
+**This defence is conditional**: if a fourth and fifth rules package still
+cannot use them, that says the host really is werewolf-specific, and at that
+point they get deleted and moved into the werewolf package. **Writing it down
+is so that it can be honoured next time.**
 
 ---
 
-## 8. 抽象缺口：哪一类游戏今天建不起来
+## 8. Abstraction gaps: what class of game cannot be built today
 
-**按证据强弱排，这个次序直接决定实施优先级**（见 [ROADMAP.md](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md)）。
+**Ordered by strength of evidence, which is directly the implementation
+priority** (see [ROADMAP.md](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md)).
 
-### 8.1 有证据的
+### 8.1 With evidence
 
-| 缺口 | 证据 | 挡掉什么 |
+| Gap | Evidence | What it blocks |
 |---|---|---|
-| **生死是特权布尔，只有一位** | 任务制那一套一处都不用，却要为它付快照字段、视图字段、三处默认判断 | 血染钟楼的中毒/醉酒/被保护是并列的状态位；「被禁言但活着」 |
-| ~~**身份入座定死**~~ | **判错了，已撤销。** 第三套规则包（一夜狼人，正是这里点名的那个）验证的结果是反的：换牌类游戏要的不是「可写的 `RoleType`」，而是**两层身份**——发到手的那张（决定夜里做什么，不变）与现在手上那张（决定结算算哪边，会变）。内核给一层、规则给一层正好够用；压成一层，抢劫者就会跟狼一起醒，游戏当场垮掉。**不可变反而是这里的价值。** 见 [onenight/SCARS.md 疤 0](https://github.com/Zereker/werewolf/blob/main/onenight/SCARS.md) | — |
-| **绕道队列的命名与文档还在说「死亡技能」** | 概念已经泛化，文字没跟上 | 纯文档债，零风险 |
+| **aliveness is a privileged bool, one bit only** | the mission-based rules use it nowhere, yet pay for it in a snapshot field, a view field and three default decisions | Blood on the Clocktower's poisoned / drunk / protected are parallel state bits; "silenced but alive" |
+| ~~**identity is fixed at seating**~~ | **judged wrong, withdrawn.** The third rules package (One Night, exactly the one named here) proved the opposite: what a card-swapping game wants is not "a writable `RoleType`" but **two layers of identity** -- the card dealt (decides what you do at night, never changes) and the card in hand now (decides which side you score for, does change). One layer from the kernel and one from the rules is exactly enough; flatten them and the robber wakes up with the wolves and the game collapses on the spot. **Immutability is the value here.** See [onenight/SCARS.md scar 0](https://github.com/Zereker/werewolf/blob/main/onenight/SCARS.md) | — |
+| **the detour queue's naming and docs still say "death ability"** | the concept has been generalised, the words did not follow | pure documentation debt, zero risk |
 
-前两条共享同一个修法：**降为变量表里的标准键**（§3.1）。这不是两处改动，
-是一处——状态模型从「一张变量表 + 两个特权字段」收敛成「一张变量表」。
+The first two share one fix: **demote them to canonical keys in the variable
+table** (§3.1). That is not two changes but one -- the state model converging
+from "a variable table plus two privileged fields" into "a variable table".
 
-### 8.2 推测的（**没有任何一局撞到过**）
+### 8.2 Speculative (**not one game has run into them**)
 
-| 缺口 | 可能挡掉什么 |
+| Gap | What it might block |
 |---|---|
-| 胜负只有一个 `Camp` | **一夜狼人已撞上**（皮匠可以和村民一起赢，是基础游戏的常规结局）。判定为**等第二次撞上再改**——它是唯一一条破坏性签名变更，一套规则不足以动一个刚冻结的接口 |
-| `SkillUse.Targets` 只能是玩家 ID | **一夜狼人已撞上**（看中央牌）。判定为**暂不修**：绕法（把下标编进技能名）丑而不说谎，代价 15 行 |
-| 一个阶段一个 `Resolver`，组合靠手工包装 | 阶段结算逻辑高度复用的游戏 |
-| 内核没有随机 | 需要在局中摸牌/掷骰的游戏（**曾经补过，因零使用者撤掉**） |
+| victory has a single `Camp` | **One Night has run into it** (the tanner can win alongside the villagers, a routine outcome of the base game). Judged as **wait for a second collision** -- it is the only breaking signature change, and one ruleset is not enough to move an interface that was just frozen |
+| `SkillUse.Targets` can only hold player IDs | **One Night has run into it** (looking at a centre card). Judged as **not fixing it for now**: the way around it (encoding the index into the skill name) is ugly and tells no lie, at a cost of 15 lines |
+| one `Resolver` per phase, composition by hand-wrapping | games whose phase resolution is heavily reused |
+| the kernel has no randomness | games that draw or roll during play (**it was added once, and removed for having no users**) |
 
-**这四条一律不动，直到有一局真的撞上**——而「撞上了」也不等于「立刻改」：
-还要过一遍 [`SCARS.md`](https://github.com/Zereker/werewolf/blob/main/onenight/SCARS.md) 开头那条判据（**能绕过去的，
-说明它是人机工程问题，不是抽象问题**），以及「破坏性签名变更要不要等第二次
-撞上」。理由见下一节和 [ROADMAP.md §0](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md)。
+**None of these four moves until a game really runs into it** -- and "ran into
+it" is not the same as "change it now": it still has to pass the test at the
+top of [`SCARS.md`](https://github.com/Zereker/werewolf/blob/main/onenight/SCARS.md)
+(**if you can work around it, it is an ergonomics problem, not an abstraction
+problem**), and "should a breaking signature change wait for a second
+collision". The reasoning is in the next section and in
+[ROADMAP.md §0](https://github.com/Zereker/werewolf/blob/main/docs/ROADMAP.md).
 
 ---
 
-## 9. 不做清单
+## 9. The will-not-do list
 
-拒绝比接受更需要写下来，否则每一条都会被重新提一遍。
+Refusals need writing down more than acceptances do, or every one of them gets
+proposed again.
 
-| 不做 | 为什么 |
+| Will not | Why |
 |---|---|
-| **按对照表补 API** | `Rand` 就是这么来的：对着 boardgame.io 的表补上，设计没问题，零使用者，删了。**对照能告诉你缺什么，告诉不了你需不需要。** |
-| **为「将来可能有用」加抽象** | 样本量为 2 的泛化不是泛化，是猜。等第三套。 |
-| **内核内置任何角色、阶段、技能** | I5。破这一条第二套规则包就建不起来。 |
-| **合并三副面孔（§5.3）** | 会把编译期保证退回成运行时判断。 |
-| **给宿主写死一组指标 / 一套超时 / 一种传输** | 那是宿主该决定的（§1 第三问）。`Metrics` 就是这么删掉的。 |
-| **在 `Effect` 之外开第二个写入点** | I1。`Engine.Apply` 是**同一个**写入点，不是第二个。 |
-| **把「谁能行动」再拆成第三条路** | I4。三层降两层花了一次重构。 |
+| **fill in APIs from a comparison table** | `Rand` came from exactly that: added against boardgame.io's table, sound design, zero users, deleted. **A comparison tells you what you are missing; it cannot tell you whether you need it.** |
+| **add abstraction for "it might be useful later"** | a generalisation from a sample of two is not a generalisation, it is a guess. Wait for the third. |
+| **build any role, phase or skill into the kernel** | I5. Break this and the second rules package cannot be built. |
+| **merge the three faces (§5.3)** | it would demote a compile-time guarantee into a runtime judgement. |
+| **hard-code a metrics set, a timeout policy or a transport for the host** | those are the host's to decide (§1, third question). `Metrics` was deleted for exactly this. |
+| **open a second write point beside `Effect`** | I1. `Engine.Apply` is **the same** write point, not a second one. |
+| **split "who may act" into a third path again** | I4. Going from three layers to two cost one refactor. |
 
 ---
 
-## 10. 两个使用方落在这套抽象上
+## 10. Two consumers landing on this abstraction
 
-内核不认得下面任何一个词。这张表是「同一套抽象、两副完全不同的填法」的证据。
+The kernel does not recognise a single word below. This table is the evidence
+for "one abstraction, two completely different fillings".
 
-| 抽象 | 狼人杀 | 任务制那一套 |
+| Abstraction | Werewolf | The mission-based rules |
 |---|---|---|
-| 阶段环 | 8 个，静态 | 3 个循环 + 1 个条件进入，靠 `GOTO_PHASE` 路由 |
-| 谁能行动 | 按角色（默认路径） | 运行时算出来（`SET_ACTORS`：队长按座位轮转、队伍由提名产生） |
-| 出局 | 核心机制 | **完全不用** |
-| 回合边界 | 投票阶段结束 | 一轮任务结束，且与变量寿命**不重合** |
-| 整局·无主变量 | 用不到 | 比分、连续否决数、队长轮到谁 |
-| 本回合·某人变量 | 今晚被守/被救/被毒 | 这一轮在不在任务队伍里 |
-| 绕道队列 | 猎人被刀之后开枪 | 用不到 |
-| 胜负 | 屠边（数神职/平民/狼） | 三次任务成功，且刺客没认出梅林 |
-| 信息不对称 | 狼互相认识；女巫看刀口 | 梅林认得坏人（莫德雷德除外）；派西维尔看到梅林与莫甘娜但分不清；奥伯伦双向隔离 |
-| 阵营 | `GOOD` / `EVIL` | `GOOD` / `EVIL`（同名，含义与判定完全不同） |
+| the phase cycle | 8, static | 3 in a loop plus 1 entered conditionally, routed by `GOTO_PHASE` |
+| who may act | by role (the default path) | computed at runtime (`SET_ACTORS`: the leader rotates by seat, the team comes from a nomination) |
+| elimination | the core mechanic | **not used at all** |
+| the round boundary | the end of the vote phase | the end of one mission, and it does **not** coincide with variable lifetime |
+| whole-game unowned variables | not needed | the score, the consecutive-reject count, whose turn it is to lead |
+| this-round owned variables | guarded / healed / poisoned tonight | on this round's mission team or not |
+| the detour queue | the hunter's shot after being killed | not needed |
+| victory | wipe out one side (counting special roles / villagers / wolves) | three successful missions, and the assassin failing to identify Merlin |
+| asymmetric information | the wolves know each other; the witch sees the kill | Merlin knows the bad guys (except Mordred); Percival sees Merlin and Morgana without telling them apart; Oberon is isolated both ways |
+| camps | `GOOD` / `EVIL` | `GOOD` / `EVIL` (same names, entirely different meanings and decisions) |
 
-**最有说服力的一行是「出局」那一行**：一套用它当核心机制，另一套一次都不用，
-内核不用改。这正是 §8.1 说生死该降为标准键的理由——它是**其中一套游戏的
-核心概念**，不是内核的。
+**The most convincing line is the elimination one**: one ruleset uses it as
+the core mechanic, the other never once, and the kernel needs no change. Which
+is exactly the argument in §8.1 that aliveness should be demoted to a
+canonical key -- it is **one game's core concept**, not the kernel's.
 
 ---
 
-## 附：这份方案怎么被验证
+## Appendix: how this design gets verified
 
-设计对不对，靠的不是评审，是这四件事：
+Whether a design is right does not rest on review, it rests on these four
+things:
 
-1. **两套独立的规则包**——没有一个取值相同。加第三套时内核改动量就是通用性的度量。
-2. **变异验证**——每加一条规矩，手动把它改坏，确认有测试变红。
-   「拆掉 `consumeActors` 之后整套测试一条都不红」这种事发生过，那条规矩当时
-   只是一句注释。
-3. **5000 局随机对局**（三套规则包合计）——每局比对快照往返、效果流回放、不变量。
-4. **字节级 golden 快照**——存档格式漂移会立刻变红。
+1. **Two independent rules packages** -- sharing not one value. When a third
+   is added, the size of the kernel change is the measure of generality.
+2. **Mutation verification** -- for every rule added, break it by hand and
+   confirm a test goes red. "Removing `consumeActors` turned not one test red"
+   really happened, and at that point the rule was only a comment.
+3. **5000 random games** (three rules packages combined) -- each one comparing
+   snapshot round trips, effect-log replay and the invariants.
+4. **A byte-level golden snapshot** -- drift in the save format goes red
+   immediately.
 
-**一条规矩不能只写在注释里。** 这是这个项目唯一的质量口号。
+**A rule cannot live only in a comment.** That is this project's one quality
+slogan.
