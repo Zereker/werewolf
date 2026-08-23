@@ -5,10 +5,11 @@ import (
 	"testing"
 )
 
-// 内核测试用的辅助。狼人杀那一层的同名辅助留在根包——它们认得
-// 「刀口」「被守」这些词，内核不认得。
+// Helpers for the kernel's own tests. The similarly named helpers of the
+// werewolf layer stay in the root package -- they know the words "kill" and
+// "guarded", and the kernel does not.
 
-// mustAddTo 直接向状态添加玩家，失败即终止。
+// mustAddTo adds a player straight to the state, failing the test on error.
 func mustAddTo(t *testing.T, s *gameState, id string, role RoleType) {
 	t.Helper()
 	if err := s.addPlayer(id, role); err != nil {
@@ -16,7 +17,7 @@ func mustAddTo(t *testing.T, s *gameState, id string, role RoleType) {
 	}
 }
 
-// mustAdd 经引擎添加玩家，失败即终止。
+// mustAdd adds a player through the engine, failing the test on error.
 func mustAdd(t *testing.T, e *Engine, id string, role RoleType) {
 	t.Helper()
 	if err := e.AddPlayer(id, role); err != nil {
@@ -24,10 +25,10 @@ func mustAdd(t *testing.T, e *Engine, id string, role RoleType) {
 	}
 }
 
-// newTestEngine 造一台装了 testConfig 的引擎。
+// newTestEngine builds an engine carrying testConfig.
 //
-// 它不带任何解析器——内核本来就不自带。需要能推进阶段的引擎时，
-// 用 withNoopResolvers。
+// It comes with no resolvers -- the kernel never ships any. When a test needs
+// an engine that can advance phases, use withNoopResolvers.
 func newTestEngine(t *testing.T, opts ...EngineOption) *Engine {
 	t.Helper()
 	e, err := NewEngine(testConfig(), opts...)
@@ -37,15 +38,16 @@ func newTestEngine(t *testing.T, opts ...EngineOption) *Engine {
 	return e
 }
 
-// noopResolver 什么都不做的解析器，用于让阶段能推进。
+// noopResolver does nothing, and exists so that phases can advance.
 type noopResolver struct{}
 
 func (noopResolver) Resolve([]*SkillUse, GameView) []*Effect { return nil }
 
-// withNoopResolvers 给 testConfig 里每个阶段都装一个空解析器。
+// withNoopResolvers installs an empty resolver on every phase of testConfig.
 //
-// 内核的 Start 会校验「每个阶段都有解析器」，而内核自己不带任何解析器——
-// 这正是拆分之后的正确行为，测试要推进阶段就得自己补上。
+// The kernel's Start checks that every phase has a resolver, and the kernel
+// ships none -- which is the correct behaviour after the split, so a test
+// that wants to advance phases has to supply them itself.
 func withNoopResolvers() []EngineOption {
 	cfg := testConfig()
 	opts := make([]EngineOption, 0, len(cfg.Phases))
@@ -55,7 +57,8 @@ func withNoopResolvers() []EngineOption {
 	return opts
 }
 
-// setRoundVar / markRound 直接铺回合状态，供不经解析器的单元测试用。
+// setRoundVar / markRound lay out round state directly, for unit tests that
+// do not go through a resolver.
 func setRoundVar(s *gameState, key, value string) {
 	s.applyEffect(NewSetVarEffect(ScopeRound, key, value))
 }
@@ -75,10 +78,11 @@ func markedInB(s *gameState, id string) bool { return markedIn(s, id, testMarkB)
 
 func killTargetOfState(s *gameState) string { return roundVarOfState(s, testKillTarget) }
 
-// sameVars 比较两份自定义状态是否完全一致。
+// sameVars reports whether two sets of custom state are identical.
 func sameVars(a, b map[string]string) bool { return maps.Equal(a, b) }
 
-// newViewGame 一台开好局、装了空解析器的引擎，供视图与受众的测试用。
+// newViewGame is a started engine with empty resolvers, for the view and
+// audience tests.
 func newViewGame(t *testing.T) *Engine {
 	t.Helper()
 	e := newTestEngine(t, withNoopResolvers()...)

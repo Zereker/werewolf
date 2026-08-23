@@ -1,13 +1,16 @@
 package hiddenrole
 
-// 内核测试用的词汇表。
+// The vocabulary the kernel's own tests use.
 //
-// 内核不认识「女巫」「狼人」这些词，但测试总得摆出一个具体的局面。
-// 这里定义一套只在测试里存在的取值——它们是**测试夹具**，不是内核 API。
+// The kernel does not know the words "witch" or "werewolf", but a test still
+// has to lay out some concrete board. The values defined here exist only in
+// the tests -- they are **test fixtures**, not kernel API.
 //
-// 名字沿用狼人杀的说法，是为了让这些测试读起来仍然像人话；对内核而言
-// 它们与 RoleType("KNIGHT") 没有任何区别，换成别的字符串测试照样过。
-// 这一点本身就是被测的性质：状态机不认得任何具体取值。
+// The names follow werewolf's so that these tests still read like something a
+// person would say; to the kernel they are no different from
+// RoleType("KNIGHT"), and the tests pass just as well with any other strings.
+// That is itself one of the properties under test: the state machine
+// recognises no concrete value.
 const (
 	roleWerewolf = RoleType("WEREWOLF")
 	roleSeer     = RoleType("SEER")
@@ -47,25 +50,29 @@ const (
 	campGood = Camp("GOOD")
 	campEvil = Camp("EVIL")
 
-	// testKillTarget 一个回合变量的键。内核不知道它是「刀口」，
-	// 只知道有人往本回合的状态里写了一项东西。
+	// testKillTarget is the key of one round variable. The kernel does not
+	// know it is "tonight's kill", only that somebody wrote something into
+	// this round's state.
 	testKillTarget = "test.kill_target"
 
-	// 三个「本回合标记了某个玩家」的键。内核不知道它们叫「被守」「被救」
-	// 「被毒」，只知道有人往某个玩家身上写了一项本回合有效的东西。
+	// Three keys of the form "marked on a player this round". The kernel
+	// does not know they mean guarded, healed and poisoned, only that
+	// somebody wrote something round-scoped onto a player.
 	testMarkA = "test.mark_a"
 	testMarkB = "test.mark_b"
 	testMarkC = "test.mark_c"
 
-	// testVarStock 一项跟着玩家走一整局的状态。
+	// testVarStock is a piece of state that follows a player for the whole
+	// game.
 	testVarStock = "test.stock"
 )
 
-// testConfig 一副够用的阶段图：守卫 -> 狼 -> 女巫 -> 预言家 -> 结算 -> 白天 -> 投票 -> 回到守卫。
+// testConfig is a phase graph that is enough to work with: guard -> wolves
+// -> witch -> seer -> resolution -> day -> vote -> back to guard.
 //
-// 内核的测试需要一个合法的 Config，但内核自己没有默认板子——
-// 「有哪些阶段」是规则的事。这里手摆一副，与狼人杀那副长得像，
-// 但它只属于这些测试。
+// The kernel's tests need a valid Config, and the kernel has no default board
+// of its own -- which phases exist is the rules' business. This one is laid
+// out by hand, looks much like werewolf's, and belongs to these tests alone.
 func testConfig() *Config {
 	step := func(role RoleType, skill SkillType) []PhaseStep {
 		return []PhaseStep{{Role: role, Skill: skill, Required: true}}

@@ -5,14 +5,17 @@ import (
 	"testing"
 )
 
-// TestStatus_SurvivesSnapshot 存档往返之后 Status 的四项仍然自洽。
+// TestStatus_SurvivesSnapshot: Status's four fields stay consistent across a
+// save round trip.
 //
-// 这一条是补的：Status 号称四项来自同一个瞬间，而**恢复**这条路上它们
-// 从来就对不上——快照不带赢家，一局已经结束的对局恢复出来是
-// Over=true 而 Winner 为空。
+// This one was added after the fact: Status claims its four fields come from
+// one instant, and on the **restore** path they never lined up -- the
+// snapshot did not carry the winner, so a finished game restored as
+// Over=true with an empty Winner.
 //
-// TestStatus_IsAtomic 只测了「没结束却有赢家」那个方向，反方向
-// 「结束了却没有赢家」一直没人管，于是漏了很久。两个方向现在都有。
+// TestStatus_IsAtomic only covered the "not over yet has a winner" direction;
+// the reverse, "over with no winner", was nobody's job and went unnoticed for
+// a long time. Both directions are covered now.
 func TestStatus_SurvivesSnapshot(t *testing.T) {
 	opts := append(withNoopResolvers(),
 		WithVictoryChecker(VictoryFunc(func(view GameView) (bool, Camp) {
@@ -31,7 +34,7 @@ func TestStatus_SurvivesSnapshot(t *testing.T) {
 
 	before := e.Status()
 	if !before.Over || before.Winner == CampUnspecified {
-		t.Fatalf("这个测试要一局**已经结束且有赢家**的对局，实际 %+v", before)
+		t.Fatalf("this test needs a game that is **over and has a winner**, got %+v", before)
 	}
 
 	restored, err := RestoreEngine(testConfig(), e.Snapshot(), opts...)
@@ -39,22 +42,26 @@ func TestStatus_SurvivesSnapshot(t *testing.T) {
 		t.Fatalf("RestoreEngine: %v", err)
 	}
 	if got := restored.Status(); got != before {
-		t.Errorf("存档往返之后 Status 变了：%+v -> %+v", before, got)
+		t.Errorf("Status changed across a save round trip: %+v -> %+v", before, got)
 	}
 }
 
-// TestStatus_IsAtomic Status 的四项必须来自同一个瞬间。
+// TestStatus_IsAtomic: Status's four fields must come from one instant.
 //
-// 这是 Phase / Round / IsGameOver / Winner 合成一个方法的**唯一**理由：
-// 四个方法各取一次读锁，宿主要渲染「第 3 回合的白天」得连问两次，中间
-// 另一个 goroutine 结算掉一个阶段的话，读到的是一组从来不曾同时成立的值。
+// This is the **only** reason Phase / Round / IsGameOver / Winner were merged
+// into one method: four methods each took their own read lock, a host
+// rendering "the day of round 3" had to ask twice, and if another goroutine
+// resolved a phase in between, it read a combination of values that never
+// held at the same time.
 //
-// 这里一边不停推进阶段，一边不停读 Status，断言读到的组合永远是合法的：
-// 结束了就必须停在 PhaseEnd，没结束就不能已经有赢家。
+// Here one goroutine keeps advancing phases while others keep reading Status,
+// asserting that the combination read is always legal: over means stopped at
+// PhaseEnd, and not over means no winner yet.
 func TestStatus_IsAtomic(t *testing.T) {
 	e := newTestEngine(t, append(withNoopResolvers(),
 		WithVictoryChecker(VictoryFunc(func(view GameView) (bool, Camp) {
-			// 跑够几个回合再结束，好让读者有足够多的机会撞上中间态。
+			// End after a few rounds, so the readers get plenty of chances to
+			// hit an intermediate state.
 			return view.Round() > 3, Camp("PROBE")
 		})))...)
 	mustAdd(t, e, "p1", roleVillager)
@@ -88,19 +95,19 @@ func TestStatus_IsAtomic(t *testing.T) {
 				}
 				st := e.Status()
 				if st.Over && st.Winner == CampUnspecified {
-					t.Error("读到「已结束」却没有赢家——四项来自不同的瞬间")
+					t.Error("read \"over\" with no winner -- the four fields came from different instants")
 					return
 				}
 				if st.Over && st.Phase != PhaseEnd {
-					t.Errorf("读到「已结束」但阶段是 %v——四项来自不同的瞬间", st.Phase)
+					t.Errorf("read \"over\" but the phase is %v -- the four fields came from different instants", st.Phase)
 					return
 				}
 				if !st.Over && st.Winner != CampUnspecified {
-					t.Errorf("读到「没结束」却已经有赢家 %v——四项来自不同的瞬间", st.Winner)
+					t.Errorf("read \"not over\" yet a winner %v is already set -- the four fields came from different instants", st.Winner)
 					return
 				}
 				if st.Round < 1 {
-					t.Errorf("回合数 %d 不合法", st.Round)
+					t.Errorf("round number %d is invalid", st.Round)
 					return
 				}
 			}

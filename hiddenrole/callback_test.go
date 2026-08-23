@@ -5,22 +5,25 @@ import (
 	"time"
 )
 
-// TestCallbacks_MayCallBackIntoTheEngine OnEvent / OnMessage 的处理器可以回调 Engine。
+// TestCallbacks_MayCallBackIntoTheEngine: an OnEvent / OnMessage handler may
+// call back into the Engine.
 //
-// 这是**被支持的**写法，也是把引擎接进一个服务端的唯一办法：收到事件，
-// 问一句「这该发给谁」，再往那几条连接上写。example/netserver 整个推送
-// 链路就压在这条性质上。
+// This is **supported**, and it is the only way to wire the engine into a
+// server: receive an event, ask who it should go to, write it to those
+// connections. example/netserver's entire push path rests on this property.
 //
-// 它成立的原因是事件与消息都在**锁外**发布（见 endPhaseInternal 与
-// SendMessage）。这件事此前只写在代码注释里：谁要是把 dispatchEvent
-// 挪回锁内，netserver 会当场死锁，而整套测试一条都不会红。
+// It holds because events and messages are both published **outside the
+// lock** (see endPhaseInternal and SendMessage). That used to live only in a
+// code comment: anyone moving dispatchEvent back inside the lock would
+// deadlock netserver on the spot, and not one test would go red.
 //
-// 与之相对的是八个扩展点（Resolver、VictoryChecker、三个信息边界
-// provider、RoleInfoProvider、RoleSetup）——它们在持锁期间被调用，
-// 回调 Engine 的后果是**挂住，不是报错**。那条禁令写在各自的接口文档上。
+// Contrast the eight extension points (Resolver, VictoryChecker, the three
+// information-boundary providers, RoleInfoProvider, RoleSetup) -- they are
+// called while the lock is held, and calling back into the Engine **hangs,
+// it does not error**. That prohibition is documented on each interface.
 //
-// 超时兜底是必需的：真出问题时这个测试会挂住而不是失败，一个卡死的
-// CI 比一条红线难查得多。
+// The timeout is necessary: when this really breaks the test hangs rather
+// than fails, and a wedged CI job is harder to diagnose than a red line.
 func TestCallbacks_MayCallBackIntoTheEngine(t *testing.T) {
 	var events, messages int
 
@@ -29,7 +32,7 @@ func TestCallbacks_MayCallBackIntoTheEngine(t *testing.T) {
 		defer close(done)
 
 		opts := append(withNoopResolvers(),
-			WithResolver(phaseNightGuard, effectProducer{tag: "回调"}),
+			WithResolver(phaseNightGuard, effectProducer{tag: "callback"}),
 			WithAudience(AudienceFunc(func(*Event, GameView) ([]string, bool) {
 				return []string{"w1"}, true
 			})),
@@ -40,7 +43,7 @@ func TestCallbacks_MayCallBackIntoTheEngine(t *testing.T) {
 		mustAdd(t, e, "w1", roleWerewolf)
 		mustAdd(t, e, "g", roleGuard)
 
-		// 处理器里把公开的读法挨个调一遍
+		// Call every public reader from inside the handlers.
 		e.OnEvent(func(ev *Event) {
 			events++
 			_, _ = e.AudienceOf(ev)
@@ -69,7 +72,7 @@ func TestCallbacks_MayCallBackIntoTheEngine(t *testing.T) {
 			t.Errorf("EndPhase: %v", err)
 			return
 		}
-		if err := e.SendMessage("w1", "还活着吗"); err != nil {
+		if err := e.SendMessage("w1", "anyone still alive?"); err != nil {
 			t.Errorf("SendMessage: %v", err)
 			return
 		}
@@ -78,14 +81,15 @@ func TestCallbacks_MayCallBackIntoTheEngine(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("处理器回调 Engine 时死锁了——事件与消息必须在锁外发布，" +
-			"检查 endPhaseInternal 与 SendMessage 的发布位置是不是被挪进了锁内")
+		t.Fatal("deadlock when a handler called back into the Engine -- events and " +
+			"messages must be published outside the lock; check whether the " +
+			"publish points in endPhaseInternal and SendMessage moved inside it")
 	}
 
 	if events == 0 {
-		t.Error("OnEvent 处理器一次都没被调用——这个测试什么都没验到")
+		t.Error("the OnEvent handler was never called -- this test verified nothing")
 	}
 	if messages == 0 {
-		t.Error("OnMessage 处理器一次都没被调用——这个测试什么都没验到")
+		t.Error("the OnMessage handler was never called -- this test verified nothing")
 	}
 }

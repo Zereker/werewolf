@@ -3,18 +3,20 @@ package hiddenrole
 import "testing"
 
 // TestValidate_RoundBoundaryRequiredOnlyWhenTheGraphLoops
-// 回合边界只对会转圈的阶段图是必需的。
+// A round boundary is required only of a phase graph that loops.
 //
-// 这一条是第三套规则包（一夜狼人）撞出来的：那一套整局只有一个夜晚、
-// 一次讨论、一次投票，阶段图是**一条直线**，回合数从头到尾是 1——而那
-// 恰恰是对的。检查此前是无条件的，于是内核为了防一类配置错误，逼一个
-// 正确的配置去撒谎（把 EndsRound 挂在最后一个阶段上，虽然它之后没有下
-// 一个回合）。
+// This one came out of the third rules package (One Night Ultimate
+// Werewolf): that ruleset has one night, one discussion and one vote in the
+// whole game, its phase graph is **a straight line**, and its round number is
+// 1 from start to finish -- which is exactly right. The check used to be
+// unconditional, so the kernel, guarding against one class of
+// misconfiguration, forced a correct configuration to lie (hanging EndsRound
+// on the last phase even though no round follows it).
 func TestValidate_RoundBoundaryRequiredOnlyWhenTheGraphLoops(t *testing.T) {
 	phaseA, phaseB := PhaseType("A"), PhaseType("B")
 	step := []PhaseStep{{Role: roleVillager, Skill: skillVote}}
 
-	t.Run("直线图不需要回合边界", func(t *testing.T) {
+	t.Run("a straight-line graph needs no round boundary", func(t *testing.T) {
 		cfg := &Config{
 			StartPhase: phaseA,
 			Phases: map[PhaseType]*PhaseConfig{
@@ -23,28 +25,28 @@ func TestValidate_RoundBoundaryRequiredOnlyWhenTheGraphLoops(t *testing.T) {
 			},
 		}
 		if err := cfg.Validate(); err != nil {
-			t.Errorf("走到 END 就结束的图不该被要求声明回合边界：%v", err)
+			t.Errorf("a graph that ends at END should not be required to declare a round boundary: %v", err)
 		}
 	})
 
-	t.Run("转圈的图仍然要", func(t *testing.T) {
+	t.Run("a looping graph still does", func(t *testing.T) {
 		cfg := &Config{
 			StartPhase: phaseA,
 			Phases: map[PhaseType]*PhaseConfig{
 				phaseA: {Type: phaseA, Steps: step, NextPhase: phaseB},
-				phaseB: {Type: phaseB, Steps: step, NextPhase: phaseA}, // 绕回去
+				phaseB: {Type: phaseB, Steps: step, NextPhase: phaseA}, // loops back
 			},
 		}
 		err := cfg.Validate()
 		if err == nil {
-			t.Fatal("转圈的图没有回合边界，回合永远是 1、回合变量永不清，该被拒绝")
+			t.Fatal("a looping graph with no round boundary leaves the round at 1 and round variables never cleared; it should be rejected")
 		}
 		if !HasCode(err, CodeInvalidConfig) {
-			t.Errorf("错误码应当是 %v，实际 %v", CodeInvalidConfig, CodeOf(err))
+			t.Errorf("error code should be %v, got %v", CodeInvalidConfig, CodeOf(err))
 		}
 	})
 
-	t.Run("转圈的图只有 EndsRound 也不够", func(t *testing.T) {
+	t.Run("EndsRound alone is not enough for a looping graph", func(t *testing.T) {
 		cfg := &Config{
 			StartPhase: phaseA,
 			Phases: map[PhaseType]*PhaseConfig{
@@ -53,11 +55,11 @@ func TestValidate_RoundBoundaryRequiredOnlyWhenTheGraphLoops(t *testing.T) {
 			},
 		}
 		if err := cfg.Validate(); err == nil {
-			t.Error("回合数会涨但回合变量永不清，同样该被拒绝")
+			t.Error("the round number would rise while round variables are never cleared; that should be rejected too")
 		}
 	})
 
-	t.Run("自己指向自己也算转圈", func(t *testing.T) {
+	t.Run("a phase pointing at itself is a loop", func(t *testing.T) {
 		cfg := &Config{
 			StartPhase: phaseA,
 			Phases: map[PhaseType]*PhaseConfig{
@@ -65,14 +67,15 @@ func TestValidate_RoundBoundaryRequiredOnlyWhenTheGraphLoops(t *testing.T) {
 			},
 		}
 		if err := cfg.Validate(); err == nil {
-			t.Error("一个阶段指向自己也是圈")
+			t.Error("a phase pointing at itself is a loop")
 		}
 	})
 
-	t.Run("三套真实规则包都通过", func(t *testing.T) {
-		// 前两套是环、声明了回合边界；第三套是直线、一个都没声明。
+	t.Run("all three real rules packages pass", func(t *testing.T) {
+		// The first two loop and declare a round boundary; the third is a
+		// straight line and declares none.
 		if err := testConfig().Validate(); err != nil {
-			t.Errorf("内核测试用的那副环形板子: %v", err)
+			t.Errorf("the looping board the kernel tests use: %v", err)
 		}
 	})
 }

@@ -2,11 +2,14 @@ package hiddenrole
 
 import "testing"
 
-// TestExtensionPoints_AllHaveFuncAdapters 八个扩展点必须都能用一个普通函数装上。
+// TestExtensionPoints_AllHaveFuncAdapters: all eight extension points must be
+// installable with a plain function.
 //
-// 此前只有 Resolver 与 VictoryChecker 没有这层适配器——没有理由，只是历史，
-// 于是「装一个只有几行的解析器」得先声明一个空结构体。这个测试不检查名字，
-// 它直接把八个函数字面量装进一台引擎：少一个适配器就编译不过。
+// Resolver and VictoryChecker used to be the only two without such an adapter
+// -- no reason, just history -- which meant installing a three-line resolver
+// first required declaring an empty struct. This test checks no names; it
+// installs eight function literals into one engine, so a missing adapter
+// fails to compile.
 func TestExtensionPoints_AllHaveFuncAdapters(t *testing.T) {
 	cfg := testConfig()
 	opts := []EngineOption{
@@ -41,9 +44,11 @@ func TestExtensionPoints_AllHaveFuncAdapters(t *testing.T) {
 	}
 }
 
-// TestResolverFunc_IsCalled 装上去的函数真的被调用，产出真的落进状态。
+// TestResolverFunc_IsCalled: the installed function really is called, and
+// what it produces really lands in the state.
 //
-// 适配器本身只有一行，但一行也能写反（调用了别的、把返回值丢了）。
+// The adapter itself is one line, but one line can still be written backwards
+// (calling the wrong thing, dropping the return value).
 func TestResolverFunc_IsCalled(t *testing.T) {
 	called := 0
 	cfg := testConfig()
@@ -73,21 +78,23 @@ func TestResolverFunc_IsCalled(t *testing.T) {
 	}
 
 	if called == 0 {
-		t.Error("ResolverFunc 装上了却没被调用")
+		t.Error("ResolverFunc was installed but never called")
 	}
 	if got := e.Var(ScopeGame, "probe"); got != "1" {
-		t.Errorf("ResolverFunc 的产出没有落进状态，读到 %q", got)
+		t.Errorf("ResolverFunc's output did not land in the state, read %q", got)
 	}
 }
 
-// TestVictoryFunc_IsCalled 装上去的判定真的被问到，结论真的被采纳。
+// TestVictoryFunc_IsCalled: the installed checker really is asked, and its
+// verdict really is taken.
 func TestVictoryFunc_IsCalled(t *testing.T) {
 	called := 0
 	opts := append(withNoopResolvers(),
 		WithVictoryChecker(VictoryFunc(func(GameView) (bool, Camp) {
 			called++
-			// 开局那一次必须说「还没结束」——否则引擎会拒绝开局
-			// （「board is already decided before the game starts」）。
+			// The first call, at the start, has to say "not decided" -- or the
+			// engine refuses to start ("board is already decided before the
+			// game starts").
 			return called > 1, Camp("PROBE")
 		})))
 
@@ -101,12 +108,12 @@ func TestVictoryFunc_IsCalled(t *testing.T) {
 	}
 
 	if called == 0 {
-		t.Fatal("VictoryFunc 装上了却没被问到")
+		t.Fatal("VictoryFunc was installed but never asked")
 	}
 	if !e.Status().Over {
-		t.Error("VictoryFunc 说结束了，引擎却没结束")
+		t.Error("VictoryFunc said the game was over, the engine disagreed")
 	}
 	if got := e.Status().Winner; got != Camp("PROBE") {
-		t.Errorf("胜者应当原样报出去，得到 %v", got)
+		t.Errorf("the winner should be reported verbatim, got %v", got)
 	}
 }
