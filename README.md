@@ -709,7 +709,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
     ├── ROADMAP.md           # 实现方案：按什么次序走到那儿
     ├── ARCHITECTURE.md      # 当前实现的结构
     ├── PRIOR-ART.md         # 与 boardgame.io 等对照实现的比较
-    └── API-SHAPE.md         # 一次 API 审计的记录
+    └── API-SHAPE.md         # 一次 API 审计的记录（已归档）
 ```
 
 ## 架构设计
@@ -722,6 +722,7 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 | 现在的代码是怎么组织的 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](docs/PRIOR-ART.md) |
 | 第二套规则包撞到了什么 | [missions/SCARS.md](missions/SCARS.md) |
+| 第三套规则包撞到了什么 | [onenight/SCARS.md](onenight/SCARS.md) |
 
 **设计理念：**
 - **状态机驱动** - 不是事件驱动，而是显式的阶段流转
@@ -814,7 +815,7 @@ API 是承诺。
 | 包 | 是什么 |
 |---|---|
 | `github.com/Zereker/werewolf` | 狼人杀规则：角色、阶段、解析器、屠边屠城 |
-| `github.com/Zereker/werewolf/engine` | 内核：玩家、阶段环、四条状态原语、信息边界 |
+| `github.com/Zereker/werewolf/engine` | 内核：玩家、阶段环、两条状态原语、信息边界 |
 
 **「规则只用公开 API」由编译器保证**，不靠自觉——规则包在内核之外，它能用的
 入口使用者也能用。想验证的话看 [`engine/types.go`](engine/types.go)：内核的

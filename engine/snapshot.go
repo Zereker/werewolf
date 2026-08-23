@@ -41,7 +41,7 @@ type Snapshot struct {
 	Vars map[string]string `json:"vars,omitempty"`
 
 	// Actors 规则为各阶段指定的行动者。名单往往在更早的阶段算出来
-	// （阿瓦隆的任务队伍是提名阶段选的），因此必须随快照走，
+	// （missions 包的任务队伍是提名阶段选的），因此必须随快照走，
 	// 否则从提名与任务之间恢复出来的对局会丢掉队伍。
 	Actors map[PhaseType][]string `json:"actors,omitempty"`
 

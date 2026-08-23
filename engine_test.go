@@ -422,19 +422,19 @@ func TestEngine_GetAllowedSkills_NotFound(t *testing.T) {
 	}
 }
 
-// TestEngine_IsGameOver 看开局前与结束后的
-// IsGameOver=false，故保留显式风格。
-func TestEngine_IsGameOver(t *testing.T) {
+// TestEngine_GameOver 看开局前与结束后的
+// Status().Over=false，故保留显式风格。
+func TestEngine_GameOver(t *testing.T) {
 	eng := MustNew(DefaultRules())
 
 	if eng.Status().Over {
-		t.Error("expected IsGameOver=false initially")
+		t.Error("开局前不该已经结束")
 	}
 
 	endTheGame(t, eng)
 
 	if !eng.Status().Over {
-		t.Error("expected IsGameOver=true when Phase=END")
+		t.Error("Phase=END 时应当已经结束")
 	}
 }
 

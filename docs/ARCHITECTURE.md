@@ -124,7 +124,7 @@ SkillUse ──► Resolver ──► []*Effect ──► State.ApplyEffect ─�
   乘以有没有主人。有主的两格在 `playerState`（未导出）的 `Vars` 与
   `RoundVars` 上，无主的两格在 `gameState.Vars` 与 `RoundContext.Vars`
   上。键名由规则自己定，内核只管存——女巫的药剂、守卫上回合守了谁、
-  阿瓦隆的比分走的都是这一条路。写走 `NewSetVarEffect(scope, k, v)`，
+  missions 包的比分走的都是这一条路。写走 `NewSetVarEffect(scope, k, v)`，
   读走 `GameView.Var(scope, k)`；对外只给只读副本
 - `RoundContext`：回合内的无主状态（刀口）与待结算的绕道队列。队列只管三件事
   ——把阶段引到触发要去的地方、在排空之前拦住胜负判定与回合边界、按队首一条

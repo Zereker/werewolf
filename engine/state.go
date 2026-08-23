@@ -21,7 +21,7 @@ type RoundContext struct {
 	// 叫 KillTarget 的字段，与另外三张 map 一起，把「某一套规则有哪些
 	// 回合状态」写进了内核——换一套规则，那四样一个都用不上。
 	//
-	// 三种作用域：playerState.Vars 跟着玩家走一整局，这里每回合清零，
+	// 四格作用域（见 VarScope）：playerState.Vars 跟着玩家走一整局，这里每回合清零，
 	// playerState.RoundVars 是「某个玩家在本回合的标记」。
 	// 写走 NewSetVarEffect(ScopeRound, ...)，读走 GameView.Var(ScopeRound, ...)。
 	Vars map[string]string
@@ -107,7 +107,7 @@ type gameState struct {
 	//	  本回合有效   RoundCtx.Vars playerState.RoundVars
 	//
 	// 缺的那一格不是刻意留白，是漏了：狼人杀整局有效的状态恰好都挂在人身上
-	// （女巫的药、守卫上回合守了谁），所以一直没人撞到。阿瓦隆撞到了——
+	// （女巫的药、守卫上回合守了谁），所以一直没人撞到。任务制那一套撞到了——
 	// 「第几轮任务」「成功几次」「连续否决几次」「队长轮到谁」四样全是整局
 	// 有效且不属于任何玩家，只能挂到某个玩家的私有状态上当账本，
 	// 那个玩家的 PlayerView 里于是凭空多出四个与他无关的字段。
@@ -120,7 +120,7 @@ type gameState struct {
 	// 内核判定行动者此前只有一条路：拿 PhaseStep.Role 去比对玩家的角色。
 	// 而角色是入座时定死的——任何运行时才选出来的行动者集合都表达不了。
 	// 这个抽象已经被逃逸三次：狼人杀的猎人开枪（内核为它开了绕道队列这个
-	// 单人特例）、阿瓦隆的队长提名、阿瓦隆的任务队伍。后两处只能让所有人
+	// 单人特例）、missions 包的队长提名、missions 包的任务队伍。后两处只能让所有人
 	// 都提交、再由解析器丢掉不该算的，代价是 AllowedSkills 对没资格的玩家
 	// 说谎、PhaseReadiness 等一群不可能行动的人。
 	//
@@ -128,7 +128,7 @@ type gameState struct {
 	// NewSetActorsEffect，内核在 SubmitSkillUse 就拦，不是让规则事后过滤。
 	//
 	// 按阶段存而不是只存「当前阶段」，是因为集合往往在**更早的阶段**算出来
-	// ——阿瓦隆的任务队伍是提名阶段选的，到任务阶段才用。
+	// ——missions 包的任务队伍是提名阶段选的，到任务阶段才用。
 	// 某个阶段结算完，它的那一份就被消费掉。
 	Actors map[PhaseType][]string
 
@@ -442,7 +442,7 @@ func (s *gameState) leavePhase() {
 // 它为真即这一回合到此为止，回合数加一、回合级状态全部清空。
 //
 // 这件事此前是内核猜的——「绕回起始阶段就算新回合」。那个猜测对狼人杀
-// 成立（夜→昼→夜），对别的规则不成立：阿瓦隆每提名一次就绕一圈，
+// 成立（夜→昼→夜），对别的规则不成立：任务制那一套每提名一次就绕一圈，
 // 于是「回合」成了提名计数器。一局游戏的「一回合」是什么只有规则知道，
 // 内核不再替它决定。
 func (s *gameState) nextPhase(phase PhaseType, endsRound, clearVars bool) {

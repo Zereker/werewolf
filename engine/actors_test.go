@@ -19,7 +19,7 @@ func (r setActorsOnce) Resolve([]*SkillUse, GameView) []*Effect {
 
 // TestSetActors_IsConsumedAfterThePhaseResolves 名单用过就作废，不会沿用到下一次。
 //
-// 行动者名单几乎总是「这一轮算出来的」——阿瓦隆的任务队伍是本轮提名选的，
+// 行动者名单几乎总是「这一轮算出来的」——missions 包的任务队伍是本轮提名选的，
 // 队长是本轮轮转到的。沿用上一轮的名单几乎总是错的，而且错得很隐蔽：
 // 游戏照常推进，只是换了一批不该行动的人。
 //
@@ -116,7 +116,7 @@ func (r detourTwice) Resolve([]*SkillUse, GameView) []*Effect {
 	}
 }
 
-// TestPendingTriggers_QueuedForTheSamePhaseEachGetTheirTurn
+// TestDetours_QueuedForTheSamePhaseEachGetTheirTurn
 // 同一夜排进同一个阶段的两条触发，必须一人一次，不能只剩最后一个。
 //
 // 绕道队列现在不再自己回答「谁能行动」，它在**进入阶段时**按队首写一份
@@ -124,7 +124,7 @@ func (r detourTwice) Resolve([]*SkillUse, GameView) []*Effect {
 // ABILITY_TRIGGERED 的写入点，理由就是这个测试：两名猎人同一夜出局时队列
 // 里有两条指向同一个阶段的触发，在写入点各写一次会互相覆盖，只剩后一个人
 // 开得了枪，前一个人的那一枪凭空消失。
-func TestPendingTriggers_QueuedForTheSamePhaseEachGetTheirTurn(t *testing.T) {
+func TestDetours_QueuedForTheSamePhaseEachGetTheirTurn(t *testing.T) {
 	done := false
 	opts := append(withNoopResolvers(),
 		WithResolver(phaseNightResolve, detourTwice{
@@ -202,7 +202,7 @@ func assertOnlyActor(t *testing.T, e *Engine, want, when string) {
 	}
 }
 
-// TestNamePendingTriggerActor_OnlyNamesItsOwnPhase 触发只在它自己那个阶段点名。
+// TestNameDetourActor_OnlyNamesItsOwnPhase 绕道只在它自己那个阶段点名。
 //
 // 正常推进时这条越不过去：队列非空时 calculateNextPhase 永远把下一站定成
 // 队首那个阶段，所以走不到「带着待结算触发进了别的阶段」。但这一条正是
@@ -211,7 +211,7 @@ func assertOnlyActor(t *testing.T, e *Engine, want, when string) {
 // 一个毫不相干的阶段被点名，而所有集成测试照样是绿的。
 //
 // 因此这里绕开流转，直接对状态调用，验的是这个函数自己的契约。
-func TestNamePendingTriggerActor_OnlyNamesItsOwnPhase(t *testing.T) {
+func TestNameDetourActor_OnlyNamesItsOwnPhase(t *testing.T) {
 	s := newState()
 	mustAddTo(t, s, "h1", roleHunter)
 	s.startAt(phaseNight)

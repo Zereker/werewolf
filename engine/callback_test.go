@@ -15,7 +15,7 @@ import (
 // SendMessage）。这件事此前只写在代码注释里：谁要是把 dispatchEvent
 // 挪回锁内，netserver 会当场死锁，而整套测试一条都不会红。
 //
-// 与之相对的是七个扩展点（Resolver、VictoryChecker、三个信息边界
+// 与之相对的是八个扩展点（Resolver、VictoryChecker、三个信息边界
 // provider、RoleInfoProvider、RoleSetup）——它们在持锁期间被调用，
 // 回调 Engine 的后果是**挂住，不是报错**。那条禁令写在各自的接口文档上。
 //

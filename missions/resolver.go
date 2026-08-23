@@ -10,9 +10,12 @@ import (
 
 // proposeResolver 队长提名任务队伍。
 //
-// 一支队伍要几个人就提交几次 PROPOSE——SkillUse.TargetID 是单个字符串，
-// 表达不了「一次提名一支队伍」。只取队长本人的提交，按提交顺序去重，
-// 多于所需人数的部分丢掉。
+// **一次提交带整支队伍**：SkillUse.Targets 是一个切片，队伍有几个人就带
+// 几个 ID。按提交顺序去重，多于所需人数的部分丢掉。
+//
+// 此前 SkillUse 只能带一个目标，队长得提交 N 次——那让就绪判定说不清
+// 「还差几个人没提」（提名了 1 人、需要 2 人时就报 Ready=true）。
+// 见 SCARS.md 疤 5。
 type proposeResolver struct{}
 
 func (proposeResolver) Resolve(uses []*engine.SkillUse, view engine.GameView) []*engine.Effect {

@@ -320,7 +320,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	//    （回放那条路上 GAME_ENDED 走的是 nextPhase(PhaseEnd, false)）。
 	//    「回合数 +1」与「回合级变量清空」是两件事，分开算：绝大多数板子
 	//    把它们标在同一个阶段（EndsRound 蕴含清空），需要更细的变量寿命时
-	//    单独标 ClearsRoundVars——阿瓦隆的队伍标记活到下一次提名，
+	//    单独标 ClearsRoundVars——missions 包的队伍标记活到下一次提名，
 	//    而回合数要跟着第几轮任务走，两者不重合。
 	//    计数看**刚结束的**阶段，清空看**要进入的**阶段——前者说「我结束了
 	//    就是一回合」，后者说「我开始时是干净的」。
@@ -484,7 +484,7 @@ func (e *Engine) AlivePlayerIDs() []string {
 // Var 读某个作用域下的一项自定义状态，没有则为空串（见 VarScope）。
 //
 // 规则用它提供自己的便利读法：狼人杀的「今晚刀口」是
-// Var(ScopeRound, ...)，阿瓦隆的「第几轮任务」是 Var(ScopeGame, ...)，
+// Var(ScopeRound, ...)，missions 包的「第几轮任务」是 Var(ScopeGame, ...)，
 // 内核只知道有这么一个键。
 func (e *Engine) Var(scope VarScope, key string) string {
 	e.mu.RLock()

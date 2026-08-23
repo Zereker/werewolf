@@ -11,7 +11,7 @@ import (
 // TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa
 // 狼互认；爪牙看得见狼，狼看不见爪牙。
 //
-// 这是**单向**的不对称，与阿瓦隆的奥伯伦（双向隔离）是两个方向。
+// 这是**单向**的不对称，与missions 包的奥伯伦（双向隔离）是两个方向。
 // 内核允许不对称正是为了这一类。
 func TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa(t *testing.T) {
 	g := newGame(t,

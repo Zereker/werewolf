@@ -95,7 +95,7 @@ func DefaultConfig() *engine.Config {
 				ClearsRoundVars: true,
 				// 队长提名：一支队伍要几个人，就提交几次 PROPOSE。
 				//
-				// SkillUse.TargetID 是单个字符串，表达不了「一次提名一支队伍」。
+				// 一次提交带整支队伍（SkillUse.Targets 是切片）。
 				// 拆成多次提交是能走通的，但就绪判定因此说不清「还差几个人」
 				// ——它只知道「队长提交过没有」。见 SCARS.md 第 3 条。
 				Steps: []engine.PhaseStep{
