@@ -2,7 +2,7 @@ package hiddenrole
 
 import "testing"
 
-// setActorsOnce 只在第一次结算时点名，之后不再点
+// setActorsOnce names actors on the first resolution only, and never again.
 type setActorsOnce struct {
 	phase PhaseType
 	ids   []string
@@ -17,15 +17,19 @@ func (r setActorsOnce) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{NewSetActorsEffect(r.phase, r.ids...)}
 }
 
-// TestSetActors_IsConsumedAfterThePhaseResolves 名单用过就作废，不会沿用到下一次。
+// TestSetActors_IsConsumedAfterThePhaseResolves: a list is spent on use and
+// does not carry into the next visit.
 //
-// 行动者名单几乎总是「这一轮算出来的」——missions 包的任务队伍是本轮提名选的，
-// 队长是本轮轮转到的。沿用上一轮的名单几乎总是错的，而且错得很隐蔽：
-// 游戏照常推进，只是换了一批不该行动的人。
+// An actor list is nearly always "computed this round" -- the missions
+// package's team is chosen by this round's nomination, its leader is this
+// round's rotation. Inheriting the previous round's list is nearly always
+// wrong, and wrong in a well-hidden way: the game runs on as usual, only with
+// a different set of people acting who should not be.
 //
-// 这个测试是变异验证逼出来的：拆掉 consumeActors 之后**整套测试一条都不红**，
-// 因为两套规则包每次进那个阶段之前都会重新点名，陈旧名单永远被覆盖。
-// 没有测试的规矩只是一句注释。
+// This test was forced out by mutation testing: with consumeActors removed,
+// **not one test went red**, because both rules packages name actors again
+// before every visit to that phase, so a stale list was always overwritten. A
+// rule with no test is only a comment.
 func TestSetActors_IsConsumedAfterThePhaseResolves(t *testing.T) {
 	done := false
 	opts := append(withNoopResolvers(),
@@ -40,19 +44,20 @@ func TestSetActors_IsConsumedAfterThePhaseResolves(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	// 第一次进狼人阶段：名单点了 w1，w2 不该能行动
+	// First visit to the wolf phase: the list names w1, so w2 must not act.
 	if _, err := e.EndPhase(); err != nil { // NIGHT_GUARD -> NIGHT_WOLF
 		t.Fatalf("EndPhase: %v", err)
 	}
 	if e.Status().Phase != phaseNightWolf {
-		t.Fatalf("阶段 = %v，期望 %v", e.Status().Phase, phaseNightWolf)
+		t.Fatalf("phase = %v, want %v", e.Status().Phase, phaseNightWolf)
 	}
 	if got := e.AllowedSkills("w2"); len(got) != 0 {
-		t.Fatalf("w2 不在点名名单里，AllowedSkills 却给出 %v", got)
+		t.Fatalf("w2 is not on the named list, yet AllowedSkills gave %v", got)
 	}
 
-	// 绕一整圈回到狼人阶段。这一次没有人点名，应当退回按角色算——
-	// 两只狼都能行动。沿用上一轮那份名单的话 w2 会被继续挡在外面。
+	// Go all the way round back to the wolf phase. This time nobody names
+	// actors, so it should fall back to computing by role -- both wolves can
+	// act. Inheriting the previous round's list would keep w2 shut out.
 	for i := 0; i < 20 && e.Status().Phase != phaseNightWolf; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
@@ -67,17 +72,19 @@ func TestSetActors_IsConsumedAfterThePhaseResolves(t *testing.T) {
 		}
 	}
 	if e.Status().Phase != phaseNightWolf {
-		t.Fatalf("没能绕回狼人阶段，停在 %v", e.Status().Phase)
+		t.Fatalf("never got back round to the wolf phase, stopped at %v", e.Status().Phase)
 	}
 	if got := e.AllowedSkills("w2"); len(got) == 0 {
-		t.Error("这一轮没有人点名，w2 该按角色算能行动——上一轮的名单被沿用了")
+		t.Error("nobody named actors this round, so w2 should be able to act by role -- the previous round's list was inherited")
 	}
 }
 
-// TestSetActors_EmptyListIsNotTheSameAsUnset 点名空名单 ≠ 没点名。
+// TestSetActors_EmptyListIsNotTheSameAsUnset: naming an empty list is not the
+// same as naming nobody.
 //
-// 「规则说了，这个阶段没有人能行动」与「规则没说，按角色算」是两件事。
-// 用 nil 表示前者会让它退化成后者，全场突然都能行动。
+// "The rules said, and nobody can act in this phase" and "the rules did not
+// say, compute by role" are two different things. Representing the former as
+// nil collapses it into the latter, and suddenly the whole table can act.
 func TestSetActors_EmptyListIsNotTheSameAsUnset(t *testing.T) {
 	done := false
 	opts := append(withNoopResolvers(),
@@ -94,11 +101,12 @@ func TestSetActors_EmptyListIsNotTheSameAsUnset(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 	if got := e.AllowedSkills("w1"); len(got) != 0 {
-		t.Errorf("点名的是空名单，没有人能行动，w1 却拿到 %v", got)
+		t.Errorf("an empty list was named, so nobody can act, yet w1 got %v", got)
 	}
 }
 
-// detourTwice 第一次结算时把两名玩家一起排进同一个阶段。
+// detourTwice enqueues two players into the same phase on the first
+// resolution.
 type detourTwice struct {
 	phase PhaseType
 	a, b  string
@@ -117,13 +125,17 @@ func (r detourTwice) Resolve([]*SkillUse, GameView) []*Effect {
 }
 
 // TestDetours_QueuedForTheSamePhaseEachGetTheirTurn
-// 同一夜排进同一个阶段的两条触发，必须一人一次，不能只剩最后一个。
+// Two detours enqueued into the same phase on the same night must each get
+// their own turn; the last one must not be all that is left.
 //
-// 绕道队列现在不再自己回答「谁能行动」，它在**进入阶段时**按队首写一份
-// 行动者名单（gameState.nameDetourActor）。写在进入阶段而不是写在
-// ABILITY_TRIGGERED 的写入点，理由就是这个测试：两名猎人同一夜出局时队列
-// 里有两条指向同一个阶段的触发，在写入点各写一次会互相覆盖，只剩后一个人
-// 开得了枪，前一个人的那一枪凭空消失。
+// The detour queue no longer answers "who may act" itself: **on entering a
+// phase** it writes an actor list from the head of the queue
+// (gameState.nameDetourActor). It is written on entering the phase rather
+// than at the DETOUR write point precisely because of this test: with two
+// hunters eliminated on one night the queue holds two detours pointing at the
+// same phase, and writing at the enqueue point would have them overwrite each
+// other, leaving only the second able to shoot while the first one's shot
+// vanishes.
 func TestDetours_QueuedForTheSamePhaseEachGetTheirTurn(t *testing.T) {
 	done := false
 	opts := append(withNoopResolvers(),
@@ -138,7 +150,7 @@ func TestDetours_QueuedForTheSamePhaseEachGetTheirTurn(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	// 推到结算阶段结束，两条触发一起入队
+	// Advance to the end of the resolution phase, enqueueing both detours.
 	for i := 0; i < 20 && e.Status().Phase != phaseNightResolve; i++ {
 		if _, err := e.EndPhase(); err != nil {
 			t.Fatalf("EndPhase: %v", err)
@@ -148,85 +160,93 @@ func TestDetours_QueuedForTheSamePhaseEachGetTheirTurn(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 
-	// 第一趟：队首是 h1，只有他能行动
+	// First trip: the head is h1, and only h1 can act.
 	if e.Status().Phase != phaseNightHunter {
-		t.Fatalf("第一条触发没把阶段引到猎人阶段，实际 %v", e.Status().Phase)
+		t.Fatalf("the first detour did not route to the hunter phase, got %v", e.Status().Phase)
 	}
-	assertOnlyActor(t, e, "h1", "第一趟")
+	assertOnlyActor(t, e, "h1", "first trip")
 
-	if _, err := e.EndPhase(); err != nil { // 消费 h1，队列还剩 h2
+	if _, err := e.EndPhase(); err != nil { // consume h1, leaving h2 in the queue
 		t.Fatalf("EndPhase: %v", err)
 	}
 
-	// 第二趟：必须再回到同一个阶段，且这次轮到 h2
+	// Second trip: it must come back to the same phase, and this time it is
+	// h2's turn.
 	if e.Status().Phase != phaseNightHunter {
-		t.Fatalf("第二条触发没把阶段再引回猎人阶段，实际 %v——"+
-			"两条触发指向同一个阶段时，后一条覆盖了前一条", e.Status().Phase)
+		t.Fatalf("the second detour did not route back to the hunter phase, got %v -- "+
+			"with two detours pointing at one phase, the second overwrote the first", e.Status().Phase)
 	}
-	assertOnlyActor(t, e, "h2", "第二趟")
+	assertOnlyActor(t, e, "h2", "second trip")
 
-	if _, err := e.EndPhase(); err != nil { // 消费 h2，队列排空
+	if _, err := e.EndPhase(); err != nil { // consume h2, draining the queue
 		t.Fatalf("EndPhase: %v", err)
 	}
 	if e.Status().Phase == phaseNightHunter {
-		t.Error("队列已排空，不该再回到猎人阶段")
+		t.Error("the queue is drained and it should not return to the hunter phase")
 	}
 }
 
-// assertOnlyActor 这个阶段有且只有 want 一个人能行动，三条路答案一致。
+// assertOnlyActor: exactly one player, want, can act in this phase, and all
+// three paths agree.
 //
-// 三条路是 AllowedSkills、PhaseInfo 与 SubmitSkillUse 的校验。它们此前
-// 各有一份三层判断，现在共用 actorsForStep 这一个取数点——但共用与否要靠
-// 测试说话，光看代码看不出来。
+// The three paths are AllowedSkills, PhaseInfo and SubmitSkillUse's
+// validation. They each used to carry their own three-layer decision and now
+// share the single actorsForStep read point -- but whether they really share
+// it has to be said by a test; reading the code does not show it.
 func assertOnlyActor(t *testing.T, e *Engine, want, when string) {
 	t.Helper()
 
 	if got := e.AllowedSkills(want); len(got) == 0 {
-		t.Errorf("%s：%s 应当能行动，AllowedSkills 却是空的", when, want)
+		t.Errorf("%s: %s should be able to act, yet AllowedSkills is empty", when, want)
 	}
 	ids := e.PhaseInfo().RoleInfos[roleHunter].PlayerIDs
 	if len(ids) != 1 || ids[0] != want {
-		t.Errorf("%s：本阶段应由 %s 行动，PhaseInfo 给出 %v", when, want, ids)
+		t.Errorf("%s: %s should act in this phase, PhaseInfo gave %v", when, want, ids)
 	}
 	for _, other := range []string{"h1", "h2", "v1"} {
 		if other == want {
 			continue
 		}
 		if got := e.AllowedSkills(other); len(got) != 0 {
-			t.Errorf("%s：%s 不该能行动，AllowedSkills 却给出 %v", when, other, got)
+			t.Errorf("%s: %s should not be able to act, yet AllowedSkills gave %v", when, other, got)
 		}
 		err := e.SubmitSkillUse(&SkillUse{PlayerID: other, Skill: skillShoot, Targets: []string{"v1"}})
 		if err == nil {
-			t.Errorf("%s：%s 不该能行动，提交却被收下了", when, other)
+			t.Errorf("%s: %s should not be able to act, yet the submission was accepted", when, other)
 		}
 	}
 }
 
-// TestNameDetourActor_OnlyNamesItsOwnPhase 绕道只在它自己那个阶段点名。
+// TestNameDetourActor_OnlyNamesItsOwnPhase: a detour names actors only in its
+// own phase.
 //
-// 正常推进时这条越不过去：队列非空时 calculateNextPhase 永远把下一站定成
-// 队首那个阶段，所以走不到「带着待结算触发进了别的阶段」。但这一条正是
-// nameDetourActor 成立的前提，前提写在代码里就该有测试钉住——
-// 否则日后有人改了流转顺序（比如让 GOTO_PHASE 越过队列），触发者会在
-// 一个毫不相干的阶段被点名，而所有集成测试照样是绿的。
+// Normal progression cannot get past this: while the queue is non-empty,
+// calculateNextPhase always makes the next stop the head's phase, so
+// "entering some other phase with a detour still pending" is unreachable. But
+// that is precisely nameDetourActor's premise, and a premise written into the
+// code deserves a test pinning it -- otherwise somebody later changes the
+// transition order (letting GOTO_PHASE outrank the queue, say), the detour's
+// player gets named in a completely unrelated phase, and every integration
+// test stays green.
 //
-// 因此这里绕开流转，直接对状态调用，验的是这个函数自己的契约。
+// So this goes around the transition and calls the state directly, checking
+// the function's own contract.
 func TestNameDetourActor_OnlyNamesItsOwnPhase(t *testing.T) {
 	s := newState()
 	mustAddTo(t, s, "h1", roleHunter)
 	s.startAt(phaseNight)
 	s.applyEffect(NewDetourEffect("h1", phaseNightHunter))
 
-	// 进一个与触发无关的阶段：不该点任何人
+	// Enter a phase unrelated to the detour: nobody should be named.
 	s.nextPhase(phaseDay, false, false)
 	if ids, ok := s.actorsFor(phaseDay); ok {
-		t.Errorf("触发指向 %v，进 %v 时却点了名：%v", phaseNightHunter, phaseDay, ids)
+		t.Errorf("the detour points at %v, yet entering %v named actors: %v", phaseNightHunter, phaseDay, ids)
 	}
 
-	// 进触发要去的那个阶段：点触发者
+	// Enter the phase the detour is for: its player is named.
 	s.nextPhase(phaseNightHunter, false, false)
 	ids, ok := s.actorsFor(phaseNightHunter)
 	if !ok || len(ids) != 1 || ids[0] != "h1" {
-		t.Errorf("进 %v 时应当点名 h1，实际 %v（存在=%v）", phaseNightHunter, ids, ok)
+		t.Errorf("entering %v should name h1, got %v (present=%v)", phaseNightHunter, ids, ok)
 	}
 }

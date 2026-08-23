@@ -175,22 +175,22 @@ func TestEffect_ToEvent_WithData(t *testing.T) {
 
 	event := effect.ToEvent()
 
-	// 验证 Data 被正确转换
+	// Check that Data was converted correctly.
 	if event.Data == nil {
 		t.Fatal("expected Data to be initialized")
 	}
 
-	// Camp 应该被转换为字符串 (使用 Stringer 接口)
+	// A Camp should be rendered as a string (through the Stringer interface).
 	if event.Data["camp"] != "GOOD" {
 		t.Errorf("expected camp=GOOD, got %s", event.Data["camp"])
 	}
 
-	// bool 应该转换为 "true"
+	// A bool should become "true".
 	if event.Data["isGood"] != "true" {
 		t.Errorf("expected isGood=true, got %s", event.Data["isGood"])
 	}
 
-	// int 应该转换为 "5"
+	// An int should become "5".
 	if event.Data["votes"] != "5" {
 		t.Errorf("expected votes=5, got %s", event.Data["votes"])
 	}
@@ -204,12 +204,12 @@ func TestEffect_ToEvent_WithComplexData(t *testing.T) {
 
 	event := effect.ToEvent()
 
-	// 字符串应该保持不变
+	// A string should pass through unchanged.
 	if event.Data["result"] != "tied" {
 		t.Errorf("expected result=tied, got %s", event.Data["result"])
 	}
 
-	// 切片应该被 JSON 序列化
+	// A slice should be JSON-encoded.
 	if event.Data["voters"] != `["p1","p2","p3"]` {
 		t.Errorf("expected voters=[\"p1\",\"p2\",\"p3\"], got %s", event.Data["voters"])
 	}
@@ -241,59 +241,69 @@ func TestConvertToString(t *testing.T) {
 	}
 }
 
-// TestEventType_KernelPrimitivesAreTheOnlyInternalOnes 只有内核自己的状态原语算内部事件。
+// TestEventType_KernelPrimitivesAreTheOnlyInternalOnes: only the kernel's own
+// state primitives count as internal events.
 //
-// 这条判定此前按编号区间做：「>= 100 即内部」。它与另一条约定
-// 「第三方取值从 1000 起」直接打架——第三方定义的每一个事件类型都被判成
-// 内部事件，于是白痴翻牌、狼王自爆这类本该全场可见的事，扩展根本发不出去。
+// This decision used to be made by numeric range: ">= 100 is internal". That
+// collided head-on with the other convention, "third-party values start at
+// 1000" -- every event type a third party defined was judged internal, so
+// things that should be visible to the whole table (the idiot flipping a
+// card, the wolf king self-detonating) could not be emitted by an extension
+// at all.
 //
-// 枚举改成字符串之后不再有「区间」这回事，判定依据是内核自己那张表：
-// 表里的是记账，表外的一律是规则的事件，推给 OnEvent。
+// With the enums as strings there are no ranges any more, and what decides is
+// the kernel's own table: what is in it is bookkeeping, what is outside it is
+// the rules' event and gets pushed to OnEvent.
 func TestEventType_KernelPrimitivesAreTheOnlyInternalOnes(t *testing.T) {
 	cases := []struct {
 		typ      EventType
 		internal bool
 		why      string
 	}{
-		{eventKill, false, "规则给「发生了什么」起的名字"},
-		{eventVoteTied, false, "规则给「发生了什么」起的名字"},
-		{EventSetVar, true, "内核的状态原语"},
-		{EventSetAlive, true, "内核的状态原语"},
-		{EventPhaseChanged, true, "内核的记账"},
-		{EventType("IDIOT_REVEALED"), false, "第三方的事件"},
-		{EventType("SET_ALIVE_BUT_NOT_REALLY"), false, "名字像也不算，判的是表不是前缀"},
+		{eventKill, false, "the rules' name for something that happened"},
+		{eventVoteTied, false, "the rules' name for something that happened"},
+		{EventSetVar, true, "a kernel state primitive"},
+		{EventSetAlive, true, "a kernel state primitive"},
+		{EventPhaseChanged, true, "kernel bookkeeping"},
+		{EventType("IDIOT_REVEALED"), false, "a third party's event"},
+		{EventType("SET_ALIVE_BUT_NOT_REALLY"), false, "a lookalike name does not count; the table decides, not a prefix"},
 	}
 	for _, c := range cases {
 		if got := isInternalEvent(c.typ); got != c.internal {
-			t.Errorf("isInternalEvent(%v) = %v，期望 %v（%s）", c.typ, got, c.internal, c.why)
+			t.Errorf("isInternalEvent(%v) = %v, want %v (%s)", c.typ, got, c.internal, c.why)
 		}
 	}
 }
 
-// TestAudienceOf_CustomEventIsUnknownNotHidden 自定义事件的答案是「不知道」，不是「不给任何人看」。
+// TestAudienceOf_CustomEventIsUnknownNotHidden: the answer for a custom event
+// is "don't know", not "show it to nobody".
 //
-// 这两件事必须分得开：前者要求调用方自己路由，后者是引擎的明确判定。
-// 自定义事件此前落进了后者——因为编号 >= 100 就被当成内部事件了。
+// The two must stay distinguishable: the former asks the caller to route it
+// themselves, the latter is the engine's definite verdict. A custom event
+// used to land in the latter -- because a number >= 100 was taken as
+// internal.
 func TestAudienceOf_CustomEventIsUnknownNotHidden(t *testing.T) {
 	e := newViewGame(t)
 
 	custom := NewEffect(EventType("CUSTOM_EVENT"), "s", "v1")
 	audience, known := e.AudienceOf(custom.ToEvent())
 	if known {
-		t.Error("引擎不该声称认得第三方的事件类型")
+		t.Error("the engine should not claim to recognise a third party's event type")
 	}
 	if len(audience) != 0 {
-		t.Errorf("不认得的类型不该给出受众，实际 %v", audience)
+		t.Errorf("an unrecognised type should yield no audience, got %v", audience)
 	}
 
-	// 对照：引擎自己的内部事件是「明确不给任何人看」
+	// Control: the engine's own internal events are a definite "shown to
+	// nobody".
 	internal := NewSetAliveEffect("v1", false)
 	if _, known := e.AudienceOf(internal.ToEvent()); !known {
-		t.Error("引擎应当明确判定自己的内部事件不外发")
+		t.Error("the engine should definitively rule that its internal events are not sent out")
 	}
 }
 
-// TestCustomEventReachesOnEvent 第三方的事件要能真的推给订阅者。
+// TestCustomEventReachesOnEvent: a third party's event really does reach
+// subscribers.
 func TestCustomEventReachesOnEvent(t *testing.T) {
 	const customPhase = PhaseType("CUSTOM_PHASE")
 	const customEvent = EventType("CUSTOM_EVENT")
@@ -339,26 +349,30 @@ func TestCustomEventReachesOnEvent(t *testing.T) {
 			return
 		}
 	}
-	t.Errorf("第三方的事件应当推给 OnEvent 的订阅者，实际只收到 %v", seen)
+	t.Errorf("a third party's event should reach OnEvent subscribers, only got %v", seen)
 }
 
-// customEventResolver 产出一个第三方自定义类型的事件。
+// customEventResolver emits an event of a third-party custom type.
 type customEventResolver struct{ typ EventType }
 
 func (r customEventResolver) Resolve([]*SkillUse, GameView) []*Effect {
 	return []*Effect{NewEffect(r.typ, "v1", "")}
 }
 
-// TestEventKind_StateWritesActuallyWriteState 归到 kindStateWrite 的原语必须真的改得动状态。
+// TestEventKind_StateWritesActuallyWriteState: a primitive classified as
+// kindStateWrite must really be able to change state.
 //
-// 这条此前只是 kernelPrimitives 上的一句注释——「它们是状态机的记账」。
-// 那句话对 GOTO_PHASE 是假的：它在 applyEffect 里根本没有分支，一个状态
-// 都不改。分类只是注释，错了没有任何东西会响，于是错了很久。
+// This used to be one sentence of comment on kernelPrimitives -- "they are
+// the state machine's bookkeeping". That sentence was false for GOTO_PHASE:
+// it has no branch in applyEffect at all and changes no state. A
+// classification that lives only in a comment makes no sound when it is
+// wrong, and so it stayed wrong for a long time.
 //
-// 现在类别是一个值，这条性质就能断言：每一条 kindStateWrite 都拿一份
-// 干净状态试一遍，改不动就说明分错了类（或者写入点漏了分支）。
+// The class is a value now, so the property can be asserted: every
+// kindStateWrite is tried against a clean state, and one that cannot change
+// anything is misclassified (or the write point is missing its branch).
 func TestEventKind_StateWritesActuallyWriteState(t *testing.T) {
-	// 每一类原语的一个代表性样本，外加它的验证方式。
+	// One representative sample of each primitive, plus how to verify it.
 	probes := map[EventType]struct {
 		effect  func() *Effect
 		changed func(*gameState) bool
@@ -387,8 +401,8 @@ func TestEventKind_StateWritesActuallyWriteState(t *testing.T) {
 		}
 		probe, ok := probes[typ]
 		if !ok {
-			t.Errorf("%v 归在 kindStateWrite，但这个测试没有它的样本——"+
-				"补一条，否则「改状态的真的改得动」这句话对它是没验过的", typ)
+			t.Errorf("%v is classified kindStateWrite but this test has no sample for it -- "+
+				"add one, or \"a state write really can write state\" is unverified for it", typ)
 			continue
 		}
 		t.Run(string(typ), func(t *testing.T) {
@@ -396,19 +410,21 @@ func TestEventKind_StateWritesActuallyWriteState(t *testing.T) {
 			mustAddTo(t, state, "p1", roleVillager)
 			state.applyEffect(probe.effect())
 			if !probe.changed(state) {
-				t.Errorf("%v 归在 kindStateWrite 却什么都没改——"+
-					"要么分错了类，要么 applyEffect 漏了它的分支", typ)
+				t.Errorf("%v is classified kindStateWrite yet changed nothing -- "+
+					"either it is misclassified, or applyEffect is missing its branch", typ)
 			}
 		})
 	}
 }
 
-// TestEventKind_ControlAndReplayWriteNothing 控制指令与回放记账一个字节都不该动。
+// TestEventKind_ControlAndReplayWriteNothing: a control directive or a replay
+// bookkeeping entry must not move a single byte.
 //
-// 与上一条互为反面：GOTO_PHASE 的正确性恰恰在于它**不**改状态
-// （下一步去哪由 calculateNextPhase 读效果流决定），PLAYER_ADDED 与
-// PHASE_CHANGED 则只在 replayEffect 那条路上有意义。
-// 哪天有人给它们在 applyEffect 里加了分支，这条会先响。
+// The mirror of the previous test: GOTO_PHASE is correct precisely because it
+// does **not** change state (where to go next is decided by
+// calculateNextPhase reading the effect log), while PLAYER_ADDED and
+// PHASE_CHANGED only mean anything on the replayEffect path. The day somebody
+// gives them a branch in applyEffect, this is what goes red first.
 func TestEventKind_ControlAndReplayWriteNothing(t *testing.T) {
 	probes := map[EventType]*Effect{
 		EventGotoPhase:    NewGotoPhaseEffect(phaseDay),
@@ -422,7 +438,7 @@ func TestEventKind_ControlAndReplayWriteNothing(t *testing.T) {
 		}
 		probe, ok := probes[typ]
 		if !ok {
-			t.Errorf("%v 不是 kindStateWrite，但这个测试没有它的样本——补一条", typ)
+			t.Errorf("%v is not kindStateWrite but this test has no sample for it -- add one", typ)
 			continue
 		}
 		t.Run(string(typ), func(t *testing.T) {
@@ -436,13 +452,14 @@ func TestEventKind_ControlAndReplayWriteNothing(t *testing.T) {
 			after.applyEffect(probe)
 
 			if !sameState(before, after) {
-				t.Errorf("%v 归在 %v 却改动了状态——applyEffect 里不该有它的分支", typ, kind)
+				t.Errorf("%v is classified %v yet changed state -- applyEffect should have no branch for it", typ, kind)
 			}
 		})
 	}
 }
 
-// sameState 两份状态在写入点看得见的那些字段上是否一致。
+// sameState reports whether two states agree on the fields the write point
+// can see.
 func sameState(a, b *gameState) bool {
 	if a.Phase != b.Phase || a.Round != b.Round || len(a.players) != len(b.players) {
 		return false

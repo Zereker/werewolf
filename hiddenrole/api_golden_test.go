@@ -12,21 +12,25 @@ import (
 	"testing"
 )
 
-var updateAPIGolden = flag.Bool("update-api-golden", false, "重写 testdata/api.golden")
+var updateAPIGolden = flag.Bool("update-api-golden", false, "rewrite testdata/api.golden")
 
-// TestAPI_SurfaceIsPinned 内核的导出面与 docs/API.md 的附录 A 绑在一起。
+// TestAPI_SurfaceIsPinned ties the kernel's exported surface to Appendix A of
+// API.md.
 //
-// docs/API.md 声称自己是「冻结的对象」。而在这个测试之前，**没有任何东西
-// 钉住它**——加一个导出名、删一个、改个大小写，文档不会有任何反应，
-// 两边慢慢就对不上了。那与这个项目其他「规矩只写在注释里」的伤口是同一类
-// 问题：一条规矩没有测试守着，就只是一句话。
+// API.md declares itself frozen. Before this test **nothing pinned it** --
+// add an exported name, remove one, change its case, and the document would
+// not react, until the two slowly stopped agreeing. That is the same wound as
+// every other "rule that lives only in a comment" in this project: a rule
+// with no test guarding it is only a sentence.
 //
-// 它不判断 API 好不好，只保证**变更不会悄悄发生**：改了导出面就必须同时
-// 更新基准文件与 API.md，这一步是显式的。
+// It does not judge whether the API is good, only that **a change cannot
+// happen quietly**: changing the exported surface means updating the golden
+// file and API.md at the same time, and that step is explicit.
 //
-// 钉住的是**名字加签名**。只钉名字的话，「把 CheckVictory 的返回值从一个
-// Camp 改成一组」这种改动会溜过去——导出名一个都不增不减，而所有实现者
-// 都会编译不过。
+// What is pinned is **names plus signatures**. Pinning names alone would let
+// a change like "CheckVictory returns a set of Camps instead of one" slip
+// through -- not one exported name added or removed, and every implementer
+// fails to compile.
 //
 //	go test ./engine -run TestAPI_SurfaceIsPinned -update-api-golden
 func TestAPI_SurfaceIsPinned(t *testing.T) {
@@ -35,18 +39,19 @@ func TestAPI_SurfaceIsPinned(t *testing.T) {
 	path := filepath.Join("testdata", "api.golden")
 	if *updateAPIGolden {
 		if err := os.MkdirAll("testdata", 0o755); err != nil {
-			t.Fatalf("建 testdata: %v", err)
+			t.Fatalf("creating testdata: %v", err)
 		}
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatalf("写基准文件: %v", err)
+			t.Fatalf("writing the golden file: %v", err)
 		}
-		t.Logf("已更新 %s——记得同步 docs/API.md 附录 A", path)
+		t.Logf("updated %s -- remember to sync Appendix A of API.md", path)
 		return
 	}
 
 	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("读基准文件失败（首次生成跑 go test ./engine -run %s -update-api-golden）: %v",
+		t.Fatalf("could not read the golden file (to generate it the first time run "+
+			"go test . -run %s -update-api-golden): %v",
 			t.Name(), err)
 	}
 	if got == string(want) {
@@ -54,35 +59,40 @@ func TestAPI_SurfaceIsPinned(t *testing.T) {
 	}
 
 	added, removed := diffLines(string(want), got)
-	t.Errorf("内核的导出面变了。\n新增：%v\n删除：%v\n\n"+
-		"这不是错误，是提醒：导出面是 docs/API.md 声称冻结的东西。\n"+
-		"确认这次变更是有意的，然后一起做两件事——\n"+
+	t.Errorf("the kernel's exported surface changed.\nadded:   %v\nremoved: %v\n\n"+
+		"This is not an error, it is a reminder: the exported surface is what "+
+		"API.md declares frozen.\n"+
+		"Confirm the change is intended, then do two things together --\n"+
 		"  1. go test ./engine -run %s -update-api-golden\n"+
-		"  2. 更新 docs/API.md（正文与附录 A）",
+		"  2. update API.md (the body and Appendix A)",
 		added, removed, t.Name())
 }
 
-// exportedNames 解析模块里每个公开包的非测试源码，收集全部导出名。
+// exportedNames parses the non-test source of every public package in the
+// module and collects all exported names.
 //
-// 走 go/ast 而不是 shell 出去跑 go doc：测试要能在任何环境下跑，
-// 也不该依赖工具链的输出格式。同一个办法 boundary_test.go 已经用过一次
-// （它解析 event.go 取全部事件类型声明）。
+// It uses go/ast rather than shelling out to go doc: the test has to run in
+// any environment, and should not depend on a toolchain's output format.
+// boundary_test.go already uses the same approach (parsing event.go for every
+// event type declaration).
 func exportedNames(t *testing.T) []string {
 	t.Helper()
 
 	var names []string
 	fset := token.NewFileSet()
 
-	// 模块里每一个**公开**的包都算数，不只是 engine 自己。
+	// Every **public** package in the module counts, not just the root one.
 	//
-	// enginetest 是给规则包做随机对局用的公开子包（位置同
-	// net/http/httptest）。它此前叫 internal/gamefuzz——`internal/` 出了
-	// module 就 import 不了，而引擎要独立成库，所以它必须公开。
-	// 公开了就该被冻结守着：不然它会成为一个绕开纪律的后门。
+	// enginetest is the public sub-package rules packages use for random
+	// games (the same position as net/http/httptest). It used to be called
+	// internal/gamefuzz -- `internal/` cannot be imported from outside the
+	// module, and the engine had to become its own library, so it had to go
+	// public. Being public, it is guarded by the freeze: otherwise it would
+	// become a back door around that discipline.
 	for _, dir := range []string{".", "enginetest"} {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			t.Fatalf("读包目录 %s: %v", dir, err)
+			t.Fatalf("reading package directory %s: %v", dir, err)
 		}
 		prefix := ""
 		if dir != "." {
@@ -95,7 +105,7 @@ func exportedNames(t *testing.T) []string {
 			}
 			f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
 			if err != nil {
-				t.Fatalf("解析 %s: %v", name, err)
+				t.Fatalf("parsing %s: %v", name, err)
 			}
 			for _, n := range exportedIn(f) {
 				kind, rest, _ := strings.Cut(n, " ")
@@ -108,15 +118,20 @@ func exportedNames(t *testing.T) []string {
 	return names
 }
 
-// exportedIn 一个文件里的导出名**与签名**。方法记成 Receiver.Method。
+// exportedIn returns one file's exported names **and signatures**. A method
+// is recorded as Receiver.Method.
 //
-// 记签名而不只记名字，是因为「名字没变、参数或返回值变了」同样是一次
-// 破坏性变更——把 VictoryChecker.CheckVictory 的返回值从一个 Camp 改成
-// 一组，导出名一个都不增不减。只钉名字的话那种改动会**悄悄溜过去**，
-// 而这个测试的全部意义就是不让变更悄悄发生。
+// Signatures are recorded, not just names, because "the name is unchanged and
+// the parameters or results are not" is just as breaking a change -- turning
+// VictoryChecker.CheckVictory's result from one Camp into a set adds and
+// removes no exported name at all. Pinning names alone would let that
+// **slip through quietly**, and not letting changes happen quietly is this
+// test's entire point.
 //
-// 结构体字段不在这里记：字段的增删由快照 golden 与各自的测试守着。
-// 接口的方法集要记——接口是契约，加一个方法就是让所有实现者编译不过。
+// Struct fields are not recorded here: field changes are guarded by the
+// snapshot golden and by their own tests. Interface method sets are recorded
+// -- an interface is a contract, and adding a method makes every implementer
+// fail to compile.
 func exportedIn(f *ast.File) []string {
 	var out []string
 	for _, decl := range f.Decls {
@@ -131,7 +146,7 @@ func exportedIn(f *ast.File) []string {
 			}
 			recv := receiverName(d.Recv.List[0].Type)
 			if !ast.IsExported(recv) {
-				continue // 未导出类型的方法出不了包
+				continue // a method on an unexported type cannot leave the package
 			}
 			out = append(out, "method "+recv+"."+d.Name.Name+signatureOf(d.Type))
 
@@ -143,8 +158,9 @@ func exportedIn(f *ast.File) []string {
 						continue
 					}
 					out = append(out, "type "+s.Name.Name+typeShapeOf(s.Type))
-					// 接口的方法集也钉住：加一个方法就是让所有实现者
-					// 编译不过，那是最硬的一种破坏性变更。
+					// Interface method sets are pinned too: adding a method
+					// makes every implementer fail to compile, which is the
+					// hardest kind of breaking change there is.
 					if iface, ok := s.Type.(*ast.InterfaceType); ok {
 						for _, m := range iface.Methods.List {
 							fn, ok := m.Type.(*ast.FuncType)
@@ -172,18 +188,21 @@ func exportedIn(f *ast.File) []string {
 	return out
 }
 
-// signatureOf 把一个函数类型打成一行，只保留类型、不保留参数名。
+// signatureOf renders a function type as one line, keeping the types and
+// dropping the parameter names.
 //
-// 参数改名不是破坏性变更，参数**类型**改了才是。
+// Renaming a parameter is not a breaking change; changing its **type** is.
 func signatureOf(fn *ast.FuncType) string {
 	return "(" + fieldTypes(fn.Params) + ")" + resultTypes(fn.Results)
 }
 
-// typeShapeOf 类型声明的形状。
+// typeShapeOf gives the shape of a type declaration.
 //
-// 只对「本身就是一个函数类型」的那些有意义（ResolverFunc、VictoryFunc
-// 这类适配器）——它们的签名改了，导出名不会动。其余类型返回空串：
-// 结构体字段与接口方法各有各的记法。
+// It only means anything for types that are themselves function types
+// (ResolverFunc, VictoryFunc and the other adapters) -- change their
+// signature and no exported name moves. Everything else returns the empty
+// string: struct fields and interface methods are each recorded their own
+// way.
 func typeShapeOf(expr ast.Expr) string {
 	if fn, ok := expr.(*ast.FuncType); ok {
 		return " func" + signatureOf(fn)
@@ -191,7 +210,7 @@ func typeShapeOf(expr ast.Expr) string {
 	return ""
 }
 
-// fieldTypes 参数或返回值的类型列表。
+// fieldTypes lists the types of parameters or results.
 func fieldTypes(list *ast.FieldList) string {
 	if list == nil || len(list.List) == 0 {
 		return ""
@@ -210,7 +229,7 @@ func fieldTypes(list *ast.FieldList) string {
 	return strings.Join(out, ", ")
 }
 
-// resultTypes 返回值，零个不写，一个不加括号。
+// resultTypes renders results: none writes nothing, one takes no parentheses.
 func resultTypes(list *ast.FieldList) string {
 	s := fieldTypes(list)
 	switch {
@@ -223,10 +242,11 @@ func resultTypes(list *ast.FieldList) string {
 	}
 }
 
-// exprString 把一个类型表达式打成源码的样子。
+// exprString renders a type expression the way it looks in source.
 //
-// 手写而不是用 go/printer：这里要的是**稳定**的一行，不是好看的排版，
-// 而且不想让 golden 因为格式化器的版本而变。
+// Written by hand rather than using go/printer: what is wanted here is a
+// **stable** single line, not pretty formatting, and the golden should not
+// change with the formatter's version.
 func exprString(expr ast.Expr) string {
 	switch t := expr.(type) {
 	case *ast.Ident:
@@ -262,7 +282,7 @@ func exprString(expr ast.Expr) string {
 	}
 }
 
-// receiverName 取接收者的类型名，剥掉指针。
+// receiverName gives the receiver's type name, with the pointer stripped.
 func receiverName(expr ast.Expr) string {
 	if star, ok := expr.(*ast.StarExpr); ok {
 		expr = star.X
@@ -273,7 +293,8 @@ func receiverName(expr ast.Expr) string {
 	return ""
 }
 
-// diffLines 两份清单的增删，供失败信息用。
+// diffLines gives what was added and removed between two listings, for the
+// failure message.
 func diffLines(want, got string) (added, removed []string) {
 	inWant := map[string]bool{}
 	for _, l := range strings.Split(strings.TrimSpace(want), "\n") {

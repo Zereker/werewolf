@@ -5,21 +5,28 @@ import (
 	"testing"
 )
 
-// replay_test.go 效果流回放与宿主级写入，由**内核自己**验。
+// replay_test.go covers effect-log replay and host-level writes, verified by
+// **the kernel itself**.
 //
-// 这一批测试补的是一个真实的窟窿：拆包之后，`ReplayEngine` 在内核自己的
-// 测试里覆盖率是 **0%**——它整条路径只被下游的规则包驱动过。
+// This batch fills a real hole: after the split, ReplayEngine had **0%**
+// coverage in the kernel's own tests -- its entire path had only ever been
+// driven by the rules packages downstream.
 //
-// 这一轮修掉的三个回放 bug（不恢复赢家、结束那一步不消费行动者名单、
-// 不消费绕道队列）全都是规则包的随机对局抓到的。内核的正确性由下游证明，
-// 那是脆的：哪天规则包不跑了，这条路就没人守了。
+// The three replay bugs fixed this round (the winner not restored, the actor
+// list not consumed on ending, the detour queue not consumed) were all caught
+// by a rules package's random games. The kernel's correctness being proven
+// downstream is fragile: the day a rules package stops running, nobody is
+// watching this path.
 //
-// 下面每一条都只用内核自己的词汇表（见 vocab_test.go），不认识任何游戏。
+// Everything below uses the kernel's own vocabulary (see vocab_test.go) and
+// knows no game.
 
-// scoreResolver 在指定阶段写一笔整局状态，并点名下一阶段的行动者。
+// scoreResolver writes one piece of game-long state in a given phase and
+// names the next phase's actors.
 //
-// 用它造出一条**内容够丰富**的效果流：状态变更、行动者名单、规则自己的
-// 事件三样都有——只有全都有，回放才验得出「重建出来的是同一个局面」。
+// It is used to build an effect log with **enough in it**: a state change, an
+// actor list, and one of the rules' own events -- only with all three can
+// replay show that what was rebuilt is the same board.
 type scoreResolver struct {
 	phase PhaseType
 	key   string
@@ -38,7 +45,8 @@ func (r scoreResolver) Resolve(_ []*SkillUse, _ GameView) []*Effect {
 	return out
 }
 
-// replayFixture 造一台跑过几步的引擎，外加重建它所需的配置与选项。
+// replayFixture builds an engine that has run a few steps, together with the
+// config and options needed to rebuild it.
 func replayFixture(t *testing.T) (*Engine, *Config, []EngineOption) {
 	t.Helper()
 
@@ -65,10 +73,12 @@ func replayFixture(t *testing.T) (*Engine, *Config, []EngineOption) {
 	return e, cfg, opts
 }
 
-// TestReplayEngine_RebuildsTheSameBoard 回放出来的必须是同一个局面。
+// TestReplayEngine_RebuildsTheSameBoard: what replay produces must be the
+// same board.
 //
-// 逐字节比快照，不是只比阶段与回合：快照漏掉一个字段，两边照样能同步地
-// 走完一整局，只是规则判定不一样了。
+// Snapshots are compared byte for byte, not just phase and round: with a
+// field missing from the snapshot, both sides still walk a whole game in
+// lockstep, only the rules judge differently.
 func TestReplayEngine_RebuildsTheSameBoard(t *testing.T) {
 	e, cfg, opts := replayFixture(t)
 
@@ -78,19 +88,21 @@ func TestReplayEngine_RebuildsTheSameBoard(t *testing.T) {
 	}
 
 	if got, want := replayed.Status(), e.Status(); got != want {
-		t.Errorf("回放后 Status = %+v，原局 %+v", got, want)
+		t.Errorf("Status after replay = %+v, original %+v", got, want)
 	}
 	a, _ := json.Marshal(e.Snapshot())
 	b, _ := json.Marshal(replayed.Snapshot())
 	if string(a) != string(b) {
-		t.Errorf("回放后局面不一致:\n  原   %s\n  回放 %s", a, b)
+		t.Errorf("the board differs after replay:\n  original %s\n  replayed %s", a, b)
 	}
 }
 
-// TestReplayEngine_CarriesStateActorsAndBehaviour 状态、行动者名单、行为三样都要跟着走。
+// TestReplayEngine_CarriesStateActorsAndBehaviour: state, the actor list and
+// behaviour must all travel.
 //
-// 快照字节一样不等于行为一样——**行动者名单**是这条的重点：它决定「谁能
-// 行动」，漏了它，回放出来的引擎会对所有人说「你可以动」。
+// Matching snapshot bytes do not mean matching behaviour -- and the **actor
+// list** is the point here: it decides who may act, and without it the
+// replayed engine tells everyone "you may act".
 func TestReplayEngine_CarriesStateActorsAndBehaviour(t *testing.T) {
 	e, cfg, opts := replayFixture(t)
 
@@ -100,21 +112,22 @@ func TestReplayEngine_CarriesStateActorsAndBehaviour(t *testing.T) {
 	}
 
 	if got := replayed.Var(ScopeGame, "probe.score"); got != "7" {
-		t.Errorf("整局状态没跟着走，读到 %q", got)
+		t.Errorf("game-long state did not travel, read %q", got)
 	}
-	// 上一阶段点了名：只有 w1 能在狼人阶段行动，w2 不能。
+	// The previous phase named actors: only w1 can act in the wolf phase,
+	// not w2.
 	for _, id := range []string{"w1", "w2", "v"} {
 		x, y := len(e.AllowedSkills(id)), len(replayed.AllowedSkills(id))
 		if x != y {
-			t.Errorf("%s 能做的事不一样：原 %d，回放 %d", id, x, y)
+			t.Errorf("what %s may do differs: original %d, replayed %d", id, x, y)
 		}
 	}
 	if len(replayed.AllowedSkills("w2")) != 0 {
-		t.Error("名单里只点了 w1，w2 不该能行动——行动者名单没跟着回放走")
+		t.Error("the list names only w1, so w2 should not be able to act -- the actor list did not travel through replay")
 	}
 }
 
-// endedGame 造一台已经结束的引擎。
+// endedGame builds an engine whose game is already over.
 func endedGame(t *testing.T) (*Engine, *Config, []EngineOption) {
 	t.Helper()
 	cfg := testConfig()
@@ -137,16 +150,19 @@ func endedGame(t *testing.T) (*Engine, *Config, []EngineOption) {
 		}
 	}
 	if !e.Status().Over {
-		t.Fatal("这个测试要一局已经结束的对局")
+		t.Fatal("this test needs a game that is already over")
 	}
 	return e, cfg, opts
 }
 
-// TestReplayEngine_CarriesTheWinner 已经结束的一局，回放出来必须还知道谁赢了。
+// TestReplayEngine_CarriesTheWinner: replaying a finished game must still
+// know who won.
 //
-// **这是一个真出过的 bug。** 谁赢是结束那一刻由 VictoryChecker 定下的、
-// 此后不再变，而回放不会再跑一次判定——GAME_ENDED 效果里带着赢家，
-// 只是此前没人读。回放出来是 Over=true 而 Winner 为空，与原局分叉。
+// **This was a real bug.** Who won is settled by the VictoryChecker at the
+// moment the game ends and does not change afterwards, and replay does not
+// run the check again -- the GAME_ENDED effect carries the winner, only
+// nobody used to read it. Replay produced Over=true with an empty Winner, and
+// diverged from the original.
 func TestReplayEngine_CarriesTheWinner(t *testing.T) {
 	e, cfg, opts := endedGame(t)
 
@@ -155,44 +171,47 @@ func TestReplayEngine_CarriesTheWinner(t *testing.T) {
 		t.Fatalf("ReplayEngine: %v", err)
 	}
 	if got, want := replayed.Status(), e.Status(); got != want {
-		t.Errorf("回放后 Status = %+v，原局 %+v", got, want)
+		t.Errorf("Status after replay = %+v, original %+v", got, want)
 	}
 	if replayed.Status().Winner == CampUnspecified {
-		t.Error("赢家没跟着效果流走")
+		t.Error("the winner did not travel in the effect log")
 	}
 }
 
-// TestReplayEngine_RejectsABrokenLog 坏掉的效果流要被拒绝，不能悄悄重建出半局游戏。
+// TestReplayEngine_RejectsABrokenLog: a broken effect log must be rejected
+// rather than quietly rebuilding half a game.
 func TestReplayEngine_RejectsABrokenLog(t *testing.T) {
 	e, cfg, opts := replayFixture(t)
 	log := e.EffectLog()
 
-	t.Run("nil 条目", func(t *testing.T) {
+	t.Run("a nil entry", func(t *testing.T) {
 		broken := append([]*Effect{}, log...)
 		broken = append(broken, nil)
 		if _, err := ReplayEngine(cfg, broken, opts...); !HasCode(err, CodeInvalidEffectLog) {
-			t.Errorf("应当拒成 %v，实际 %v", CodeInvalidEffectLog, CodeOf(err))
+			t.Errorf("should be rejected as %v, got %v", CodeInvalidEffectLog, CodeOf(err))
 		}
 	})
 
-	t.Run("PHASE_CHANGED 不带阶段", func(t *testing.T) {
+	t.Run("a PHASE_CHANGED carrying no phase", func(t *testing.T) {
 		broken := append([]*Effect{}, log...)
 		broken = append(broken, NewEffect(EventPhaseChanged, "", ""))
 		if _, err := ReplayEngine(cfg, broken, opts...); !HasCode(err, CodeInvalidEffectLog) {
-			t.Errorf("应当拒成 %v，实际 %v", CodeInvalidEffectLog, CodeOf(err))
+			t.Errorf("should be rejected as %v, got %v", CodeInvalidEffectLog, CodeOf(err))
 		}
 	})
 
-	t.Run("配置本身不合法", func(t *testing.T) {
+	t.Run("an invalid configuration", func(t *testing.T) {
 		if _, err := ReplayEngine(&Config{}, log, opts...); err == nil {
-			t.Error("配置不合法时不该重建出引擎")
+			t.Error("an invalid configuration should not rebuild an engine")
 		}
 	})
 }
 
-// TestReplayEngine_LogIsPreserved 回放出来的引擎带着同一份历史。
+// TestReplayEngine_LogIsPreserved: the replayed engine carries the same
+// history.
 //
-// 否则「回放之后再存一次档」得到的东西与原局不同，链式回放会越走越偏。
+// Otherwise "save again after replaying" gives something different from the
+// original, and chained replays drift further with every hop.
 func TestReplayEngine_LogIsPreserved(t *testing.T) {
 	e, cfg, opts := replayFixture(t)
 
@@ -202,25 +221,28 @@ func TestReplayEngine_LogIsPreserved(t *testing.T) {
 	}
 	twice, err := ReplayEngine(cfg, once.EffectLog(), opts...)
 	if err != nil {
-		t.Fatalf("再回放一次: %v", err)
+		t.Fatalf("replaying again: %v", err)
 	}
 
 	if len(once.EffectLog()) != len(e.EffectLog()) {
-		t.Errorf("回放后历史长度 %d，原局 %d", len(once.EffectLog()), len(e.EffectLog()))
+		t.Errorf("history length after replay %d, original %d", len(once.EffectLog()), len(e.EffectLog()))
 	}
 	a, _ := json.Marshal(e.Snapshot())
 	b, _ := json.Marshal(twice.Snapshot())
 	if string(a) != string(b) {
-		t.Errorf("回放两次之后与原局分叉:\n  原 %s\n  两次 %s", a, b)
+		t.Errorf("replaying twice diverged from the original:\n  original %s\n  twice    %s", a, b)
 	}
 }
 
-// TestApply_GoesThroughTheSameWritePoint 宿主级写入走的是同一个写入点。
+// TestApply_GoesThroughTheSameWritePoint: a host-level write takes the same
+// write point.
 //
-// Engine.Apply 绕开阶段结算，是一把有刃的工具——宿主真的会遇到「玩家掉线
-// 判死」「管理员踢人」。它的价值全在「**仍然是同一个写入点**」这一句上：
-// 效果进历史、被否决的不生效、内核原语不外发。这三条此前在内核自己的
-// 测试里一条都没验过（Apply 覆盖率 0%）。
+// Engine.Apply bypasses phase resolution and is a tool with an edge -- a host
+// really does meet "the player disconnected, count them dead" and "an admin
+// kicked someone". Its whole value is in the phrase **still the same write
+// point**: effects enter the history, vetoed ones do not take hold, and
+// kernel primitives are not sent out. None of those three used to be checked
+// in the kernel's own tests (Apply had 0% coverage).
 func TestApply_GoesThroughTheSameWritePoint(t *testing.T) {
 	e := newTestEngine(t, withNoopResolvers()...)
 	mustAdd(t, e, "v", roleVillager)
@@ -230,73 +252,75 @@ func TestApply_GoesThroughTheSameWritePoint(t *testing.T) {
 	}
 	before := len(e.EffectLog())
 
-	t.Run("效果真的生效", func(t *testing.T) {
+	t.Run("the effect really takes hold", func(t *testing.T) {
 		e.Apply(NewSetAliveEffect("v", false))
 		if p, _ := e.PlayerInfo("v"); p.Alive {
-			t.Error("SET_ALIVE 应当让他出局")
+			t.Error("SET_ALIVE should eliminate them")
 		}
 	})
 
-	t.Run("进历史，因此回放得出来", func(t *testing.T) {
+	t.Run("it enters the history, so replay reproduces it", func(t *testing.T) {
 		if len(e.EffectLog()) <= before {
-			t.Fatal("Apply 的效果应当进效果流")
+			t.Fatal("an effect from Apply should enter the effect log")
 		}
 		replayed, err := ReplayEngine(testConfig(), e.EffectLog(), withNoopResolvers()...)
 		if err != nil {
 			t.Fatalf("ReplayEngine: %v", err)
 		}
 		if p, _ := replayed.PlayerInfo("v"); p.Alive {
-			t.Error("Apply 改的状态没能被回放重建")
+			t.Error("state changed by Apply was not rebuilt by replay")
 		}
 	})
 
-	t.Run("被否决的不生效", func(t *testing.T) {
+	t.Run("a vetoed effect does not take hold", func(t *testing.T) {
 		vetoed := NewSetAliveEffect("w", false)
-		vetoed.Cancel("测试：拦下这一次")
+		vetoed.Cancel("test: intercept this one")
 		e.Apply(vetoed)
 		if p, _ := e.PlayerInfo("w"); !p.Alive {
-			t.Error("被否决的效果不该改动状态")
+			t.Error("a vetoed effect should change no state")
 		}
 	})
 
-	t.Run("内核原语不外发", func(t *testing.T) {
+	t.Run("kernel primitives are not sent out", func(t *testing.T) {
 		var seen []EventType
 		e.OnEvent(func(ev *Event) { seen = append(seen, ev.Type) })
 		e.Apply(NewSetVarEffect(ScopeGame, "probe", "1"))
 		for _, typ := range seen {
 			if typ == EventSetVar {
-				t.Error("状态原语不该到达 OnEvent，Apply 这条路也不例外")
+				t.Error("a state primitive should not reach OnEvent, and the Apply path is no exception")
 			}
 		}
 	})
 }
 
-// TestSetsAlive_IsTheInterceptionPoint 拦一次死亡靠的是拦原语，与死因无关。
+// TestSetsAlive_IsTheInterceptionPoint: intercepting a death means
+// intercepting the primitive, independently of the cause.
 //
-// 白痴被投票放逐时翻牌不出局，走的就是这条：把那条致死的原语否决掉。
-// 拦原语而不是拦「放逐」这个说法，好处是同一段代码能挡住任何规则的死法。
-// 这条能力此前在内核自己的测试里覆盖率 0%。
+// The idiot surviving an exile by flipping their card takes this route:
+// vetoing the lethal primitive. Intercepting the primitive rather than the
+// word "exile" is what lets one piece of code stop any ruleset's way of
+// dying. This ability used to have 0% coverage in the kernel's own tests.
 func TestSetsAlive_IsTheInterceptionPoint(t *testing.T) {
 	kill := NewSetAliveEffect("v", false)
 	revive := NewSetAliveEffect("v", true)
 
 	if alive, ok := kill.SetsAlive(); !ok || alive {
-		t.Errorf("这是一条致死原语，SetsAlive 应当报 (false, true)，实际 (%v, %v)", alive, ok)
+		t.Errorf("this is a lethal primitive, SetsAlive should report (false, true), got (%v, %v)", alive, ok)
 	}
 	if alive, ok := revive.SetsAlive(); !ok || !alive {
-		t.Errorf("这是一条复活原语，SetsAlive 应当报 (true, true)，实际 (%v, %v)", alive, ok)
+		t.Errorf("this is a reviving primitive, SetsAlive should report (true, true), got (%v, %v)", alive, ok)
 	}
 
-	// 规则自己的事件不是原语——「放逐」不会让人死。
+	// The rules' own events are not primitives -- an "exile" kills nobody.
 	if _, ok := NewEffect(EventType("LYNCH"), "", "v").SetsAlive(); ok {
-		t.Error("规则自己命名的事件不该被当成致死原语")
+		t.Error("an event the rules named should not be taken for a lethal primitive")
 	}
 	var nilEffect *Effect
 	if _, ok := nilEffect.SetsAlive(); ok {
-		t.Error("nil 效果不该被认出来")
+		t.Error("a nil effect should not be recognised")
 	}
 
-	// 真拦一次：把致死原语 Cancel 掉，人就不死。
+	// Actually intercept one: cancel the lethal primitive and nobody dies.
 	e := newTestEngine(t, withNoopResolvers()...)
 	mustAdd(t, e, "v", roleVillager)
 	if err := e.Start(); err != nil {
@@ -304,28 +328,30 @@ func TestSetsAlive_IsTheInterceptionPoint(t *testing.T) {
 	}
 	blocked := NewSetAliveEffect("v", false)
 	if alive, ok := blocked.SetsAlive(); ok && !alive {
-		blocked.Cancel("白痴翻牌，不出局")
+		blocked.Cancel("the idiot flips their card and is not eliminated")
 	}
 	e.Apply(blocked)
 	if p, _ := e.PlayerInfo("v"); !p.Alive {
-		t.Error("致死原语被否决之后，人不该死")
+		t.Error("with the lethal primitive vetoed, nobody should die")
 	}
 }
 
-// TestMustNewEngine 配置合法就给引擎，不合法就 panic。
+// TestMustNewEngine: a valid configuration gives an engine, an invalid one
+// panics.
 //
-// 它存在的理由是「配置写错必须当场炸，不能拖到半局」。而这条此前没验过。
+// It exists because "a misconfiguration must blow up on the spot, not halfway
+// through a game". And that used to be unverified.
 func TestMustNewEngine(t *testing.T) {
-	t.Run("合法配置", func(t *testing.T) {
+	t.Run("a valid configuration", func(t *testing.T) {
 		if e := MustNewEngine(testConfig(), withNoopResolvers()...); e == nil {
-			t.Fatal("合法配置应当给出引擎")
+			t.Fatal("a valid configuration should give an engine")
 		}
 	})
 
-	t.Run("不合法就 panic", func(t *testing.T) {
+	t.Run("an invalid one panics", func(t *testing.T) {
 		defer func() {
 			if recover() == nil {
-				t.Error("配置不合法时应当 panic——这正是 Must 的含义")
+				t.Error("an invalid configuration should panic -- that is what Must means")
 			}
 		}()
 		MustNewEngine(&Config{})
@@ -333,11 +359,14 @@ func TestMustNewEngine(t *testing.T) {
 }
 
 // TestBoard_IsAFaithfulMiniatureOfTheEngine
-// Board 摆出来的局面，走的必须是与引擎完全相同的那个写入点。
+// A board laid out with Board must go through exactly the same write point as
+// the engine.
 //
-// Board / Seat / Mark 是内核给规则包做单测用的**公开 API**——它的价值全在
-// 「与引擎同一条路」这一句上：不然规则包的单测会绿，整局跑起来才发现效果
-// 没生效。而它此前在内核自己的测试里一次都没被调用过。
+// Board / Seat / Mark are the kernel's **public API** for a rules package's
+// unit tests -- their whole value is in the phrase "the same path as the
+// engine": otherwise a rules package's unit tests go green and only a full
+// game reveals that the effect never landed. And it used never to be called
+// once in the kernel's own tests.
 func TestBoard_IsAFaithfulMiniatureOfTheEngine(t *testing.T) {
 	b := Board{
 		Round: 2, Phase: phaseNightWolf,
@@ -348,47 +377,47 @@ func TestBoard_IsAFaithfulMiniatureOfTheEngine(t *testing.T) {
 		},
 	}
 
-	t.Run("摆出来的局面读得回来", func(t *testing.T) {
+	t.Run("the board laid out reads back", func(t *testing.T) {
 		view := b.View()
 		if got := view.Round(); got != 2 {
-			t.Errorf("回合 = %d，期望 2", got)
+			t.Errorf("round = %d, want 2", got)
 		}
 		if got := view.Var(ScopeGame, "probe.game"); got != "1" {
-			t.Errorf("整局状态读不回来：%q", got)
+			t.Errorf("game-long state does not read back: %q", got)
 		}
 		if got := view.Var(ScopeRound.Of("v"), testMarkA); got == "" {
-			t.Error("Mark 打上的本回合标记读不回来")
+			t.Error("a round marker set by Mark does not read back")
 		}
 		if p, ok := view.Player("w"); !ok || p.Vars[VarCamp] != string(campEvil) {
-			t.Errorf("Seat 发的初始状态读不回来：%+v", p)
+			t.Errorf("the initial state handed out by Seat does not read back: %+v", p)
 		}
 	})
 
-	t.Run("Apply 走的是引擎那个写入点", func(t *testing.T) {
+	t.Run("Apply takes the engine's write point", func(t *testing.T) {
 		after := b.Apply([]*Effect{
 			NewSetAliveEffect("v", false),
 			NewSetVarEffect(ScopeGame, "probe.game", "2"),
 		})
 		if p, _ := after.Player("v"); p.Alive {
-			t.Error("SET_ALIVE 在 Board 上也该生效")
+			t.Error("SET_ALIVE should take hold on a Board too")
 		}
 		if got := after.Var(ScopeGame, "probe.game"); got != "2" {
-			t.Errorf("SET_VAR 在 Board 上也该生效，读到 %q", got)
+			t.Errorf("SET_VAR should take hold on a Board too, read %q", got)
 		}
 	})
 
-	t.Run("被否决的效果什么都不改", func(t *testing.T) {
+	t.Run("a vetoed effect changes nothing", func(t *testing.T) {
 		vetoed := NewSetAliveEffect("w", false)
-		vetoed.Cancel("测试")
+		vetoed.Cancel("test")
 		if p, _ := b.Apply([]*Effect{vetoed}).Player("w"); !p.Alive {
-			t.Error("被否决的效果不该改动局面——这正是 Board 要验的东西")
+			t.Error("a vetoed effect should not change the board -- exactly what Board is meant to verify")
 		}
 	})
 
-	t.Run("内核不认得的类型什么都不改", func(t *testing.T) {
+	t.Run("a type the kernel does not recognise changes nothing", func(t *testing.T) {
 		unknown := NewEffect(EventType("SOMETHING_RULES_MADE_UP"), "", "w")
 		if p, _ := b.Apply([]*Effect{unknown}).Player("w"); !p.Alive {
-			t.Error("规则自己命名的事件不该改动状态")
+			t.Error("an event the rules named should change no state")
 		}
 	})
 }

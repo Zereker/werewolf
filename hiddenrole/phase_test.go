@@ -5,10 +5,11 @@ import (
 	"testing"
 )
 
-// TestNewPhase 内核造出来的阶段机不带任何解析器。
+// TestNewPhase: the phase machine the kernel builds carries no resolvers.
 //
-// 这是拆分的核心断言：内核不知道 NIGHT_WITCH 该由谁结算。此前这里装着
-// 一张九个阶段的默认表，也就是内核认得狼人杀的整套流程。
+// This is the split's central assertion: the kernel does not know who
+// resolves NIGHT_WITCH. There used to be a default table of nine phases here,
+// which is to say the kernel knew werewolf's entire flow.
 func TestNewPhase(t *testing.T) {
 	config := testConfig()
 	p := newPhaseManager(config)
@@ -17,7 +18,7 @@ func TestNewPhase(t *testing.T) {
 		t.Error("expected config to be set")
 	}
 	if len(p.resolvers) != 0 {
-		t.Errorf("内核不该自带解析器，实际 %d 个", len(p.resolvers))
+		t.Errorf("the kernel should ship no resolvers, got %d", len(p.resolvers))
 	}
 }
 
@@ -56,9 +57,10 @@ func TestGetPhaseConfig_Invalid(t *testing.T) {
 	}
 }
 
-// TestGetResolver 注册进去的解析器要能原样取回来。
+// TestGetResolver: a registered resolver comes back verbatim.
 //
-// 内核不认得任何具体解析器——这里取回的是测试自己注册的那个。
+// The kernel recognises no specific resolver -- what comes back here is the
+// one the test registered itself.
 func TestGetResolver(t *testing.T) {
 	marker := noopResolver{}
 	e := newTestEngine(t, append(withNoopResolvers(),
@@ -66,13 +68,13 @@ func TestGetResolver(t *testing.T) {
 
 	got := e.phase.resolver(phaseDay)
 	if got == nil {
-		t.Fatal("注册过的阶段应当取得到解析器")
+		t.Fatal("a registered phase should yield its resolver")
 	}
 	if got != Resolver(marker) {
-		t.Errorf("取回的不是注册进去的那个: %#v", got)
+		t.Errorf("what came back is not what was registered: %#v", got)
 	}
-	if e.phase.resolver(PhaseType("从未注册")) != nil {
-		t.Error("没注册过的阶段应当返回 nil")
+	if e.phase.resolver(PhaseType("NEVER_REGISTERED")) != nil {
+		t.Error("a phase that was never registered should give nil")
 	}
 }
 
@@ -173,8 +175,9 @@ func TestGetAllowedSkills_DayHasNoPlayerSkill(t *testing.T) {
 	config := testConfig()
 	p := newPhaseManager(config)
 
-	// 白天没有玩家技能——发言不是技能，走 SendMessage。
-	// 此前 DAY 阶段声明了 SPEAK，提交能通过但结算零效果，是个悬空概念。
+	// The day has no player skills -- speaking is not a skill, it goes
+	// through SendMessage. The DAY phase used to declare SPEAK, which could
+	// be submitted and resolved to nothing: a dangling concept.
 	roles := []RoleType{
 		roleWerewolf,
 		roleSeer,
@@ -184,7 +187,7 @@ func TestGetAllowedSkills_DayHasNoPlayerSkill(t *testing.T) {
 	}
 	for _, role := range roles {
 		if skills := p.allowedSkills(phaseDay, role); len(skills) != 0 {
-			t.Errorf("白天不应有可提交技能，%v 得到 %v", role, skills)
+			t.Errorf("the day should have no submittable skill, %v got %v", role, skills)
 		}
 	}
 }
@@ -472,25 +475,30 @@ func TestValidateSkillUse_NoTarget(t *testing.T) {
 	}
 }
 
-// TestWatchOnlyStep 技能留空的步骤：他该醒了，但他没有行动。
+// TestWatchOnlyStep covers a step with an empty skill: this role wakes, but
+// takes no action.
 //
-// 这一条是第三套规则包（一夜狼人）撞出来的：爪牙睁眼看谁是狼、守夜人互认、
-// 失眠者看自己的牌——只接收信息，不提交任何东西。此前表达不了，规则包只能
-// 挂一个 SKIP 当占位，而 SKIP 的意思是「主动放弃行动」，他不是放弃。
+// This one came out of the third rules package (One Night Ultimate
+// Werewolf): the minion opening their eyes to see the wolves, the masons
+// recognising each other, the insomniac looking at their own card -- they
+// only receive information and submit nothing. It used to be inexpressible,
+// so a rules package had to hang a SKIP on it as a placeholder, and SKIP
+// means "declining to act", which they are not doing.
 //
-// 三件事要同时成立，缺一件这个特性就没用：
+// Three things have to hold together, and the feature is useless without any
+// one of them:
 //
-//	不出现在 AllowedSkills 里    他没有可提交的东西
-//	不进入就绪判定               没有东西可满足，否则阶段永远不就绪
-//	**出现在 ActiveRoles 里**    主持人得知道该叫醒谁——全部意义所在
+//	absent from AllowedSkills     there is nothing they can submit
+//	out of the readiness check    there is nothing to satisfy, or the phase is never ready
+//	**present in ActiveRoles**    the host has to know who to wake -- the whole point
 func TestWatchOnlyStep(t *testing.T) {
 	const phaseWatch = PhaseType("WATCH")
 	cfg := testConfig()
 	cfg.Phases[phaseWatch] = &PhaseConfig{
 		Type: phaseWatch,
 		Steps: []PhaseStep{
-			{Role: roleSeer}, // 留空：醒过来看一眼
-			{Role: roleWitch, Skill: skillPoison, Required: true}, // 对照组
+			{Role: roleSeer}, // empty: wake up and look
+			{Role: roleWitch, Skill: skillPoison, Required: true}, // control
 		},
 		NextPhase: phaseDay,
 	}
@@ -511,39 +519,39 @@ func TestWatchOnlyStep(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 	if got := e.Status().Phase; got != phaseWatch {
-		t.Fatalf("阶段 = %v，期望 %v", got, phaseWatch)
+		t.Fatalf("phase = %v, want %v", got, phaseWatch)
 	}
 
-	t.Run("不出现在 AllowedSkills 里", func(t *testing.T) {
+	t.Run("absent from AllowedSkills", func(t *testing.T) {
 		if got := e.AllowedSkills("s"); len(got) != 0 {
-			t.Errorf("他没有可提交的技能，AllowedSkills 却给出 %v", got)
+			t.Errorf("there is nothing they can submit, yet AllowedSkills gave %v", got)
 		}
 		if got := e.PlayerView("s").AllowedSkills; len(got) != 0 {
-			t.Errorf("PlayerView 也不该给出，实际 %v", got)
+			t.Errorf("PlayerView should not give one either, got %v", got)
 		}
 	})
 
-	t.Run("提交不了", func(t *testing.T) {
+	t.Run("cannot be submitted", func(t *testing.T) {
 		err := e.SubmitSkillUse(&SkillUse{PlayerID: "s", Skill: SkillUnspecified})
 		if err == nil {
-			t.Error("留空的技能不是一次行动，提交该被拒")
+			t.Error("an empty skill is not an action, so the submission should be rejected")
 		}
 	})
 
-	t.Run("不进入就绪判定", func(t *testing.T) {
+	t.Run("out of the readiness check", func(t *testing.T) {
 		rd := e.PhaseReadiness()
 		for _, p := range append(append([]PendingAction{}, rd.Pending...), rd.Optional...) {
 			if p.Role == roleSeer {
-				t.Errorf("醒过来看一眼的人不该出现在就绪判定里：%+v", p)
+				t.Errorf("someone who only wakes and looks should not appear in the readiness check: %+v", p)
 			}
 		}
-		// 对照组：女巫那一步是必需的，阶段因此不就绪。
+		// Control: the witch's step is required, so the phase is not ready.
 		if rd.Ready {
-			t.Error("女巫那一步是必需的且没人提交，阶段不该就绪")
+			t.Error("the witch's step is required and nobody submitted, so the phase should not be ready")
 		}
 	})
 
-	t.Run("出现在 ActiveRoles 里", func(t *testing.T) {
+	t.Run("present in ActiveRoles", func(t *testing.T) {
 		var found bool
 		for _, role := range e.PhaseInfo().ActiveRoles {
 			if role == roleSeer {
@@ -551,31 +559,36 @@ func TestWatchOnlyStep(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Error("主持人得知道该叫醒谁——这正是留空步骤存在的全部理由")
+			t.Error("the host has to know who to wake -- the entire reason an empty step exists")
 		}
 	})
 
-	t.Run("阶段能推进", func(t *testing.T) {
-		// 留空的步骤不该把阶段卡住：女巫提交之后就该就绪。
+	t.Run("the phase can advance", func(t *testing.T) {
+		// An empty step must not wedge the phase: it should be ready once the
+		// witch submits.
 		if err := e.SubmitSkillUse(&SkillUse{
 			PlayerID: "wi", Skill: skillPoison, Targets: []string{"v"},
 		}); err != nil {
-			t.Fatalf("女巫提交: %v", err)
+			t.Fatalf("witch submission: %v", err)
 		}
 		if !e.PhaseReadiness().Ready {
-			t.Error("必需的那一步满足了，阶段就该就绪")
+			t.Error("the required step is satisfied, so the phase should be ready")
 		}
 	})
 }
 
-// TestSkip_HasNoKernelPrivilege 弃权在内核眼里不是特殊技能。
+// TestSkip_HasNoKernelPrivilege: to the kernel, declining is not a special
+// skill.
 //
-// 此前 validateSkillUse 里有一条「弃权不需要目标，直接放行」。那条是空的：
-// 不带目标的提交本来就过得了目标校验（循环一次都不跑），而带了目标的提交
-// **本该**被校验。它唯一的实际效果是让内核认得一个具体技能——
-// 而「内核不认得任何取值」是这个库的五条不变量之一。
+// validateSkillUse used to have a branch reading "skipping needs no target,
+// let it through". That branch was empty: a submission with no target already
+// passes target validation (the loop never runs), and a submission that does
+// carry a target **should** be validated. Its only real effect was to make
+// the kernel recognise one specific skill -- and "the kernel recognises no
+// value" is one of this library's five invariants.
 //
-// 删掉之后要保证两件事：不带目标照样能提交，带了坏目标会被拒。
+// With it gone, two things have to hold: a submission with no target still
+// goes through, and one with a bad target is rejected.
 func TestSkip_HasNoKernelPrivilege(t *testing.T) {
 	const phasePass = PhaseType("PASS")
 	cfg := testConfig()
@@ -603,22 +616,22 @@ func TestSkip_HasNoKernelPrivilege(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 	if got := e.Status().Phase; got != phasePass {
-		t.Fatalf("阶段 = %v，期望 %v", got, phasePass)
+		t.Fatalf("phase = %v, want %v", got, phasePass)
 	}
 
-	t.Run("不带目标能提交", func(t *testing.T) {
+	t.Run("a submission with no target goes through", func(t *testing.T) {
 		if err := e.SubmitSkillUse(&SkillUse{PlayerID: "v", Skill: SkillSkip}); err != nil {
-			t.Errorf("弃权不需要目标，提交却被拒：%v", err)
+			t.Errorf("declining needs no target, yet the submission was rejected: %v", err)
 		}
 	})
 
-	t.Run("带了不存在的目标会被拒", func(t *testing.T) {
+	t.Run("a target that does not exist is rejected", func(t *testing.T) {
 		err := e.SubmitSkillUse(&SkillUse{
 			PlayerID: "v", Skill: SkillSkip, Targets: []string{"ghost"},
 		})
 		if !errors.Is(err, ErrTargetNotFound) {
-			t.Errorf("目标不存在该拒成 %v，实际 %v——"+
-				"弃权在内核眼里不是特殊技能", ErrTargetNotFound, err)
+			t.Errorf("a missing target should be rejected as %v, got %v -- "+
+				"to the kernel, declining is not a special skill", ErrTargetNotFound, err)
 		}
 	})
 }
