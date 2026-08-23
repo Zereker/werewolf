@@ -1,51 +1,63 @@
-# 改这个内核之前
+# Before you change this kernel
 
-## API 已冻结
+## The API is frozen
 
-导出面由 [`API.md`](API.md) 与 [`testdata/api.golden`](testdata/api.golden)
-一起定住，`TestAPI_SurfaceIsPinned` 守着：**名字或签名变了，测试就红**，
-公开子包 `enginetest` 也在里面。
+The exported surface is pinned jointly by [`API.md`](API.md) and
+[`testdata/api.golden`](testdata/api.golden), guarded by
+`TestAPI_SurfaceIsPinned`: **change a name or a signature and the test goes
+red**. The public sub-package `enginetest` is in there too.
 
-改导出面要同时做三件事，缺一件不算数：
+Changing the exported surface means doing three things together; any one of
+them missing does not count:
 
-1. 有一条**具体的、撞到过的**理由——某套规则包因为它写不下去，或者绕法会
-   说谎。「觉得更好」不算。
-2. 更新 golden 基线：`go test . -run TestAPI_SurfaceIsPinned -update-api-golden`
-3. 更新 `API.md`（正文与附录 A）
+1. Have a **specific reason you actually ran into** -- some rules package
+   could not be written because of it, or the way around it would tell a lie.
+   "I think this is nicer" does not count.
+2. Update the golden baseline:
+   `go test . -run TestAPI_SurfaceIsPinned -update-api-golden`
+3. Update `API.md` (the body and Appendix A)
 
-什么情况下值得重开，[`API.md` §15](API.md) 列了四条触发条件。
+[`API.md` §15](API.md) lists the four conditions under which reopening the
+freeze is worth it.
 
-## 一条规矩不能只写在注释里
+## A rule cannot live only in a comment
 
-**测试通过不等于测试有用。** 每一个行为改动都要做**变异验证**：把改动反向
-去掉，跑测试，确认它真的会红。改不红的，说明那条规矩只是一句注释。
+**Tests passing is not the same as tests being useful.** Every behaviour
+change needs **mutation verification**: undo the change, run the tests, and
+confirm they really do go red. If they do not, that rule was only a comment.
 
-这个项目靠它抓到过的真问题：
+Real problems this has caught in this project:
 
-- 拆掉行动者名单的消费之后**整套测试一条都不红**——两套规则包每次都会重新
-  点名，陈旧名单永远被覆盖
-- 随机对局的第一版只比快照字节，而快照序列化器自己漏字段时两边一起漏——
-  「快照丢掉 `Actors`」那个变异当场存活了
+- Removing the consumption of the actor list turned **not one test red** --
+  both rules packages name actors again every time, so a stale list was always
+  overwritten.
+- The first version of the random games compared snapshot bytes only, and when
+  the snapshot serialiser itself drops a field it drops it on both sides --
+  the "snapshot loses `Actors`" mutation survived on the spot.
 
-变异的内容与结果写进提交信息。
+Write what you mutated and what happened into the commit message.
 
-## 内核不认得任何游戏
+## The kernel knows no game
 
-判据是一句话：**内核在不知道这是什么游戏的情况下，能独立判断这件事对不对吗？**
+The test is one sentence: **can the kernel judge this correctly without
+knowing what game it is?**
 
-不能，就归规则。详见 [`DESIGN.md` §1](DESIGN.md)。
+If it cannot, it belongs to the rules. See [`DESIGN.md` §1](DESIGN.md).
 
-内核自己拥有的取值只有那么几个，每一个都在 [`DESIGN.md` §7](DESIGN.md)
-里带着**三套规则包的实际使用数据**逐条辩护过。**那张表只能变短。**
+The kernel owns only a handful of values, and every one of them is defended
+individually in [`DESIGN.md` §7](DESIGN.md) with **usage data from three rules
+packages**. **That table may only get shorter.**
 
-## 改动要三套规则包一起验
+## A change has to be verified against all three rules packages
 
-引擎与规则包在两个 module 里。开发时用 `replace` 对着本地源码联调：
+The engine and the rules packages live in two modules. During development use
+`replace` to work against local sources:
 
 ```
 // werewolf/go.mod
 replace github.com/Zereker/hiddenrole => ../hiddenrole
 ```
 
-内核改动**必须**跑一遍三套规则包（那是通用性的唯一证据），以及它们各自的
-随机对局（`RunFuzz`，三套合计 5000 局）。
+A kernel change **must** be run against all three rules packages (they are the
+only evidence of generality), along with each of their random games
+(`RunFuzz`, 5000 games across the three).
