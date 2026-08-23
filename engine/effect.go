@@ -85,6 +85,13 @@ func NewDetourEffect(playerID string, phase PhaseType) *Effect {
 		WithData(detourPhaseKey, phase)
 }
 
+// winnerKey GAME_ENDED 效果里记录赢家的键。
+//
+// 两处用它：产出时写进去（endPhaseInternal），效果流回放时读回来
+// （replayEffect）。写成常量而不是两处各写一遍字面量——那两处写的必须
+// 是同一个键，而字面量不会告诉任何人这件事。
+const winnerKey = "winner"
+
 // gotoPhaseKey 改写下一阶段的效果里记录目标阶段的键
 const gotoPhaseKey = "goto_phase"
 

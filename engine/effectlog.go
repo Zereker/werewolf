@@ -135,14 +135,26 @@ func (e *Engine) replayEffect(effect *Effect) error {
 		// consumeActors）做同样的事。少了这一步，回放出来的引擎会带着
 		// 上一个阶段的名单，从下一步起与原引擎分叉——这条此前一直漏着，
 		// 只是狼人杀不用 SET_ACTORS、于是没有效果流走到过这里。
-		e.state.consumeActors(e.state.Phase)
-		e.state.consumeDetourFor(e.state.Phase)
+		e.state.leavePhase()
 		settled := !e.state.hasPendingDetour()
 		e.state.nextPhase(phase, endsRound && settled,
 			settled && e.config.clearsRoundVars(phase))
 
 	case EventGameEnded:
+		// 结束这一步同样要离开当前阶段——正常推进那条路上，leavePhase 在
+		// 判定胜负**之前**就做了，结不结束都一样。漏了它，回放出来的引擎
+		// 会带着最后那个阶段的行动者名单与没消费掉的绕道，与原局分叉。
+		e.state.leavePhase()
 		e.state.nextPhase(PhaseEnd, false, false) // 整局结束，不是新回合
+		// 赢家跟着效果流走。谁赢是结束那一刻由 VictoryChecker 定下的，
+		// 回放不会再跑一次判定——不读它的话，回放出来的引擎是
+		// Over=true 而 Winner 为空，与原局分叉。
+		//
+		// 与快照那条是同一个 bug 的两条路。上一轮只修了快照那条，
+		// 这一条是随机对局的不变量抓出来的（它比对回放与原局的快照字节）。
+		if winner, ok := effect.Data[winnerKey].(Camp); ok {
+			e.winner = winner
+		}
 
 	default:
 		e.state.applyEffect(effect)

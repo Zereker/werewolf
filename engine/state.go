@@ -415,6 +415,27 @@ func (s *gameState) startAt(phase PhaseType) {
 	s.resetRoundStateUnlocked()
 }
 
+// leavePhase 离开当前阶段时，把一次性的东西消费掉。
+//
+// 两样：这个阶段的行动者名单、以及队首那笔指向这个阶段的绕道欠账。
+// 两样都是「用过就作废」——不清的话，下一次进同一个阶段会沿用上一轮的
+// 名单，或者同一个人被反复拉回来再用一次技能。
+//
+// **收成一个函数，是因为它此前散在两条路上，而两条路漂移了三次。**
+// 正常推进（endPhaseInternal）与效果流回放（replayEffect）必须做得一模
+// 一样，否则回放出来的引擎从下一步起就与原局分叉。三次分叉全是随机对局
+// 的不变量抓出来的，每一次都是回放这条路少做了一样：
+//
+//	少消费行动者名单        —— 回放带着上一个阶段的名单
+//	结束那一步少消费名单     —— GAME_ENDED 分支没走 consumeActors
+//	结束那一步少消费绕道     —— 同上，没走 consumeDetourFor
+//
+// 打第三块补丁不如把它收成一处。
+func (s *gameState) leavePhase() {
+	s.consumeActors(s.Phase)
+	s.consumeDetourFor(s.Phase)
+}
+
 // nextPhase 切换到下一阶段。
 //
 // endsRound 由**刚结算完的那个阶段**声明（PhaseConfig.EndsRound）：

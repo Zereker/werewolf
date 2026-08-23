@@ -298,8 +298,8 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 	// 4. 计算下一阶段。
 	//    绕道可能改变胜负——被刀的猎人开枪带走最后一只狼，好人反而获胜——
 	//    因此只要绕道队列还没排空，就推迟胜负判定，先让它走完。
-	// 本阶段的行动者指定用掉了：不清的话下一次进同一个阶段会沿用上一轮的名单
-	e.state.consumeActors(currentPhase)
+	// 离开这个阶段：行动者名单与队首那笔绕道欠账都用掉了（见 leavePhase）。
+	e.state.leavePhase()
 
 	nextPhase := e.calculateNextPhase(currentPhase, out.effects)
 
@@ -337,7 +337,7 @@ func (e *Engine) advancePhase() (phaseOutcome, error) {
 		// 少了返回值那一条的话，照着 EndPhase -> AudienceOf 路由的调用方
 		// 会漏掉整局最重要的一件事——谁赢了。
 		endEffect := NewEffect(EventGameEnded, "", "").
-			WithData("winner", winner)
+			WithData(winnerKey, winner)
 		out.effects = append(out.effects, endEffect)
 		e.recordEffects(endEffect)
 		out.events = append(out.events, endEffect.ToEvent())
@@ -572,8 +572,8 @@ func (e *Engine) vetDetour(effect *Effect) {
 // calculateNextPhase 计算下一阶段，处理绕道带来的动态流转。
 // 调用前需持有 e.mu。
 func (e *Engine) calculateNextPhase(currentPhase PhaseType, effects []*Effect) PhaseType {
-	// 刚结束的正是队首触发要求的阶段，说明该技能已结算，出队
-	e.state.consumeDetourFor(currentPhase)
+	// 离开这个阶段的记账已经由 leavePhase 做过了：队首那笔指向刚结束的
+	// 阶段的绕道已经出队，这个阶段的行动者名单也已作废。
 
 	// 还有待结算的绕道，先去处理（可能有多个，逐个来）。
 	//
