@@ -1,133 +1,153 @@
-// vocab.go 一夜狼人的词汇表：十个阶段、十一个角色、十三个技能、十一个事件。
+// vocab.go is One Night's vocabulary: ten phases, eleven roles, thirteen
+// skills, eleven events.
 //
-// 这是**第三套**规则包。前两套是狼人杀（根包）与任务制（missions）（avalon/）。
-// 内核只有类型，取值全在这里——它不知道有「捣蛋鬼」这个角色，也不知道
-// 「NIGHT_ROBBER」这个阶段。
+// This is the **third** rules package. The first two are werewolf (the root
+// package) and the mission-based games (missions/). The kernel has types
+// only, and all the values live here -- it does not know there is a role
+// called the troublemaker, nor a phase called NIGHT_ROBBER.
 //
-// # 规则来源
+// # Where the rules come from
 //
-// 这一次不能照前两套的规矩走。狼人杀以维基「狼人殺」条目为基准、任务制那一套以
-// 英文维基 The Resistance (game) 条目为基准，而**一夜狼人在英文维基上没有
-// 独立条目**——它重定向到 Ultimate Werewolf，那篇只有两句带过，没有夜晚
-// 次序、没有角色能力、没有胜负细则。
+// This one could not follow the first two. Werewolf is based on the Chinese
+// Wikipedia article, the mission-based rules on the English Wikipedia article
+// for The Resistance (game), and **One Night has no article of its own on
+// English Wikipedia** -- it redirects to Ultimate Werewolf, which covers it in
+// two sentences with no night order, no role abilities and no victory
+// details.
 //
-// 因此本包以**出版方 Bezier Games 的官方规则书**为基准，并用
-// ultraboardgames.com 复述的官方规则交叉核对。逐条判定见 RULES 注释。
-// 与来源不一致的地方在下面写明理由。
+// So this package is based on **the publisher's official rulebook from Bezier
+// Games**, cross-checked against the official rules as restated by
+// ultraboardgames.com. The per-rule findings are in the RULES comments, and
+// anywhere this deviates from the source, the reason is written down below.
 //
-// # 为什么包名不叫 onuw
+// # Why the package is not called onuw
 //
-// 「One Night Ultimate Werewolf」是 Bezier Games 的商标。玩法规则本身一般
-// 不受著作权保护，受保护的是名称、美术与具体文字表述。本包实现的是玩法，
-// 因此用描述性的 onenight（一夜）而不是商标本身，与出版方无关。
+// "One Night Ultimate Werewolf" is a Bezier Games trademark. Game rules
+// themselves are generally not copyrightable; what is protected is the name,
+// the artwork and the specific wording. This package implements the play, so
+// it uses the descriptive name onenight rather than the trademark, and is
+// unaffiliated with the publisher.
 package onenight
 
 import "github.com/Zereker/hiddenrole"
 
-// 十个阶段：九个夜晚环节 + 白天讨论 + 投票。
+// Ten phases: nine night steps, plus the day discussion and the vote.
 //
-// 与前两套最大的不同：**这是一条直线，不是环**。整局只有一个夜晚、一次
-// 讨论、一次投票，走到 VOTE 就结束。Round 从头到尾是 1。
+// The biggest difference from the first two packages: **this is a straight
+// line, not a cycle**. The whole game is one night, one discussion and one
+// vote, ending at VOTE. Round is 1 from start to finish.
 //
-// 夜晚次序是规则的一部分而不是实现细节：抢劫者在捣蛋鬼之前动，所以捣蛋鬼
-// 能把抢劫者刚抢来的牌再换走；失眠者最后动，所以他看到的是所有交换之后的
-// 结果。次序错了，游戏就变成另一个游戏。
+// The night order is part of the rules rather than an implementation detail:
+// the robber acts before the troublemaker, so the troublemaker can move the
+// card the robber just stole; the insomniac acts last, so what they see is the
+// result of every swap. Get the order wrong and it becomes a different game.
 const (
-	PhaseNightWerewolf    hiddenrole.PhaseType = "NIGHT_WEREWOLF"     // 狼人互认；独狼可看一张中央牌
-	PhaseNightMinion      hiddenrole.PhaseType = "NIGHT_MINION"       // 爪牙看谁是狼（狼不知道爪牙是谁）
-	PhaseNightMason       hiddenrole.PhaseType = "NIGHT_MASON"        // 守夜人互认
-	PhaseNightSeer        hiddenrole.PhaseType = "NIGHT_SEER"         // 看一名玩家的牌，或两张中央牌
-	PhaseNightRobber      hiddenrole.PhaseType = "NIGHT_ROBBER"       // 与一名玩家换牌，并看新牌
-	PhaseNightTroublemake hiddenrole.PhaseType = "NIGHT_TROUBLEMAKER" // 交换另外两名玩家的牌，自己不看
-	PhaseNightDrunk       hiddenrole.PhaseType = "NIGHT_DRUNK"        // 与一张中央牌交换，不看
-	PhaseNightInsomniac   hiddenrole.PhaseType = "NIGHT_INSOMNIAC"    // 看自己现在的牌
-	PhaseDay              hiddenrole.PhaseType = "DAY"                // 讨论
-	PhaseVote             hiddenrole.PhaseType = "VOTE"               // 同时投票
+	PhaseNightWerewolf    hiddenrole.PhaseType = "NIGHT_WEREWOLF"     // wolves recognise each other; a lone wolf may peek at one centre card
+	PhaseNightMinion      hiddenrole.PhaseType = "NIGHT_MINION"       // the minion sees the wolves (who do not see the minion)
+	PhaseNightMason       hiddenrole.PhaseType = "NIGHT_MASON"        // the masons recognise each other
+	PhaseNightSeer        hiddenrole.PhaseType = "NIGHT_SEER"         // look at one player's card, or two centre cards
+	PhaseNightRobber      hiddenrole.PhaseType = "NIGHT_ROBBER"       // swap cards with one player, and look at the new one
+	PhaseNightTroublemake hiddenrole.PhaseType = "NIGHT_TROUBLEMAKER" // swap two other players' cards, without looking
+	PhaseNightDrunk       hiddenrole.PhaseType = "NIGHT_DRUNK"        // swap with a centre card, without looking
+	PhaseNightInsomniac   hiddenrole.PhaseType = "NIGHT_INSOMNIAC"    // look at your own card as it now stands
+	PhaseDay              hiddenrole.PhaseType = "DAY"                // discussion
+	PhaseVote             hiddenrole.PhaseType = "VOTE"               // everyone votes at once
 )
 
-// 十一个角色。
+// Eleven roles.
 //
-// 与前两套的根本不同：**角色分两层**。
+// The fundamental difference from the first two packages: **a role has two
+// layers**.
 //
-//	发到手的那张牌   决定夜里你做什么   一局之内不变
-//	现在手上那张牌   决定结算时你算哪边  夜里会被换来换去
+//	the card you were dealt   decides what you do at night   never changes
+//	the card in your hand now decides which side you score for   gets swapped around
 //
-// 抢劫者抢到狼人牌之后**不会**变成狼、不跟狼一起醒——他夜里做的事由发到手
-// 的牌决定；但天亮结算时他算狼队。这一条是整个游戏的支点，也是它与狼人杀、
-// 任务制那一套最不一样的地方：那两套里「你是什么角色」自始至终只有一个答案。
+// A robber who steals the werewolf card does **not** become a wolf and does
+// not wake with them -- what they do at night is decided by the card they were
+// dealt; but when the game is scored they count as the wolf team. This is the
+// whole game's pivot, and the thing that most sets it apart from werewolf and
+// the mission-based games: in those, "which role are you" has one answer from
+// beginning to end.
 //
-// 内核的 RoleType 承担第一层（入座时定死，正好对应发到手的牌），
-// 第二层是本包自己的一项整局状态（varCard），见 cards.go。
+// The kernel's RoleType carries the first layer (fixed at seating time, which
+// is exactly the card you were dealt); the second layer is a game-long piece
+// of this package's own state (varCard), see cards.go.
 const (
-	// 狼队
-	RoleWerewolf hiddenrole.RoleType = "WEREWOLF" // 夜里互认；场上只有一只时可看一张中央牌
-	RoleMinion   hiddenrole.RoleType = "MINION"   // 看得见狼，狼看不见他
+	// The wolf team.
+	RoleWerewolf hiddenrole.RoleType = "WEREWOLF" // recognise each other at night; a sole wolf may peek at one centre card
+	RoleMinion   hiddenrole.RoleType = "MINION"   // sees the wolves; the wolves do not see them
 
-	// 村民队
-	RoleMason        hiddenrole.RoleType = "MASON"        // 两名守夜人互认；只有一名时另一张在中央
-	RoleSeer         hiddenrole.RoleType = "SEER"         // 看一名玩家，或两张中央牌
-	RoleRobber       hiddenrole.RoleType = "ROBBER"       // 与一名玩家换牌并看新牌
-	RoleTroublemaker hiddenrole.RoleType = "TROUBLEMAKER" // 交换另外两名玩家的牌，自己不看
-	RoleDrunk        hiddenrole.RoleType = "DRUNK"        // 与一张中央牌交换，**不看**
-	RoleInsomniac    hiddenrole.RoleType = "INSOMNIAC"    // 看自己现在的牌
-	RoleVillager     hiddenrole.RoleType = "VILLAGER"     // 无能力
-	RoleHunter       hiddenrole.RoleType = "HUNTER"       // 他出局时，他投的那个人也出局
+	// The village team.
+	RoleMason        hiddenrole.RoleType = "MASON"        // the two masons recognise each other; with only one, the other card is in the centre
+	RoleSeer         hiddenrole.RoleType = "SEER"         // look at one player, or two centre cards
+	RoleRobber       hiddenrole.RoleType = "ROBBER"       // swap cards with one player and look at the new one
+	RoleTroublemaker hiddenrole.RoleType = "TROUBLEMAKER" // swap two other players' cards, without looking
+	RoleDrunk        hiddenrole.RoleType = "DRUNK"        // swap with a centre card, **without looking**
+	RoleInsomniac    hiddenrole.RoleType = "INSOMNIAC"    // look at your own card as it now stands
+	RoleVillager     hiddenrole.RoleType = "VILLAGER"     // no ability
+	RoleHunter       hiddenrole.RoleType = "HUNTER"       // if they are eliminated, so is whoever they voted for
 
-	// 独立
-	RoleTanner hiddenrole.RoleType = "TANNER" // 只有自己出局才赢
+	// Independent.
+	RoleTanner hiddenrole.RoleType = "TANNER" // wins only by being eliminated
 )
 
-// 十三个技能。
+// Thirteen skills.
 //
-// 「看两张中央牌」「与某张中央牌交换」这类动作**指向的不是玩家**，而内核的
-// 目标校验只认玩家 ID（SkillUse.Targets 会被逐个拿去 getPlayer）。于是中央
-// 牌的下标只能编进技能名里——三张牌两两组合三种，单张三种，一共六个技能
-// 干的其实是两件事。这是本包记下的第一条疤，见 SCARS.md。
+// Actions like "look at two centre cards" and "swap with a given centre card"
+// **do not point at a player**, and the kernel's target validation only knows
+// player IDs (every entry of SkillUse.Targets is passed to getPlayer). So a
+// centre card's index can only be encoded into the skill name -- three pairs
+// out of three cards, three singles, and six skills doing what is really two
+// things. This is the first scar this package recorded; see SCARS.md.
 const (
-	SkillPeekCenter0 hiddenrole.SkillType = "PEEK_CENTER_0" // 独狼看中央第 0 张
+	SkillPeekCenter0 hiddenrole.SkillType = "PEEK_CENTER_0" // a lone wolf peeks at centre card 0
 	SkillPeekCenter1 hiddenrole.SkillType = "PEEK_CENTER_1"
 	SkillPeekCenter2 hiddenrole.SkillType = "PEEK_CENTER_2"
 
-	SkillSeerPlayer   hiddenrole.SkillType = "SEER_PLAYER"    // 预言家看一名玩家
-	SkillSeerCenter01 hiddenrole.SkillType = "SEER_CENTER_01" // 预言家看中央第 0、1 张
+	SkillSeerPlayer   hiddenrole.SkillType = "SEER_PLAYER"    // the seer looks at one player
+	SkillSeerCenter01 hiddenrole.SkillType = "SEER_CENTER_01" // the seer looks at centre cards 0 and 1
 	SkillSeerCenter02 hiddenrole.SkillType = "SEER_CENTER_02"
 	SkillSeerCenter12 hiddenrole.SkillType = "SEER_CENTER_12"
 
-	SkillRob hiddenrole.SkillType = "ROB" // 抢劫者与一名玩家换牌
+	SkillRob hiddenrole.SkillType = "ROB" // the robber swaps cards with one player
 
-	SkillMeddle hiddenrole.SkillType = "MEDDLE" // 捣蛋鬼交换另外两名玩家的牌
+	SkillMeddle hiddenrole.SkillType = "MEDDLE" // the troublemaker swaps two other players' cards
 
-	SkillDrinkCenter0 hiddenrole.SkillType = "DRINK_CENTER_0" // 酒鬼与中央第 0 张交换
+	SkillDrinkCenter0 hiddenrole.SkillType = "DRINK_CENTER_0" // the drunk swaps with centre card 0
 	SkillDrinkCenter1 hiddenrole.SkillType = "DRINK_CENTER_1"
 	SkillDrinkCenter2 hiddenrole.SkillType = "DRINK_CENTER_2"
 
-	SkillVote hiddenrole.SkillType = "VOTE" // 指认一人
+	SkillVote hiddenrole.SkillType = "VOTE" // point at one person
 )
 
-// 十一个事件：规则给「发生了什么」起的名字。内核一个都不认得。
+// Eleven events: the rules' names for what happened. The kernel recognises
+// none of them.
 //
-// 与前两套同一条规矩：一条 SWAPPED 单独发出去，谁的牌都不会动；真正改状态
-// 的是旁边那条 SET_VAR。两个效果，两件事。
+// Same rule as the first two packages: a lone SWAPPED moves nobody's card;
+// what actually changes state is the SET_VAR alongside it. Two effects, two
+// things.
 const (
-	EventLoneWolf  hiddenrole.EventType = "LONE_WOLF"   // 场上只有一只狼
-	EventPeeked    hiddenrole.EventType = "PEEKED"      // 看了一张中央牌
-	EventSeerLook  hiddenrole.EventType = "SEER_LOOK"   // 预言家看了牌
-	EventRobbed    hiddenrole.EventType = "ROBBED"      // 抢劫者换了牌
-	EventMeddled   hiddenrole.EventType = "MEDDLED"     // 捣蛋鬼交换了两人的牌
-	EventDrunkSwap hiddenrole.EventType = "DRUNK_SWAP"  // 酒鬼与中央换了牌
-	EventInsomnia  hiddenrole.EventType = "INSOMNIA"    // 失眠者看了自己的牌
-	EventVoted     hiddenrole.EventType = "VOTED"       // 一票投出
-	EventNoOneDies hiddenrole.EventType = "NO_ONE_DIES" // 每人各得一票，无人出局
-	EventLynched   hiddenrole.EventType = "LYNCHED"     // 被票出局
-	EventHunterHit hiddenrole.EventType = "HUNTER_HIT"  // 猎人带走了他投的那个人
+	EventLoneWolf  hiddenrole.EventType = "LONE_WOLF"   // there is only one wolf in play
+	EventPeeked    hiddenrole.EventType = "PEEKED"      // a centre card was looked at
+	EventSeerLook  hiddenrole.EventType = "SEER_LOOK"   // the seer looked at cards
+	EventRobbed    hiddenrole.EventType = "ROBBED"      // the robber swapped cards
+	EventMeddled   hiddenrole.EventType = "MEDDLED"     // the troublemaker swapped two players' cards
+	EventDrunkSwap hiddenrole.EventType = "DRUNK_SWAP"  // the drunk swapped with the centre
+	EventInsomnia  hiddenrole.EventType = "INSOMNIA"    // the insomniac looked at their own card
+	EventVoted     hiddenrole.EventType = "VOTED"       // one vote was cast
+	EventNoOneDies hiddenrole.EventType = "NO_ONE_DIES" // one vote each, so nobody is eliminated
+	EventLynched   hiddenrole.EventType = "LYNCHED"     // voted out
+	EventHunterHit hiddenrole.EventType = "HUNTER_HIT"  // the hunter took down whoever they voted for
 )
 
-// 两个阵营。取值与狼人杀、任务制同名，含义与判定完全不同——
-// 这一点本身就是内核不解释取值的证据。
+// Two camps. The values share their names with werewolf's and the
+// mission-based games', and mean and resolve entirely differently -- which is
+// itself evidence that the kernel does not interpret values.
 const (
 	CampVillage hiddenrole.Camp = "VILLAGE"
 	CampWolf    hiddenrole.Camp = "WOLF"
 
-	// CampTanner 皮匠自成一边：他既不帮村民也不帮狼，只想自己死。
+	// CampTanner is a side of its own: the tanner helps neither the villagers
+	// nor the wolves, and only wants to die.
 	CampTanner hiddenrole.Camp = "TANNER"
 )

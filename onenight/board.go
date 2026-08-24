@@ -1,45 +1,54 @@
-// board.go 一夜狼人的阶段图。
+// board.go is One Night's phase graph.
 
 package onenight
 
 import "github.com/Zereker/hiddenrole"
 
-// CenterCount 中央牌的张数。规则固定为 3——发牌时永远比人数多三张。
+// CenterCount is how many cards sit in the centre. The rules fix it at 3 --
+// dealing always leaves three more cards than there are players.
 const CenterCount = 3
 
-// GameConfig 一夜狼人的阶段图：九个夜晚环节，然后讨论，然后投票。
+// GameConfig is One Night's phase graph: nine night steps, then discussion,
+// then the vote.
 //
-// # 这是一条直线
+// # This is a straight line
 //
-// 前两套规则包的阶段图都是环：狼人杀绕回守卫、任务制那一套绕回提名。这一套走到
-// VOTE 就结束，一个回合都不需要。Round 从头到尾是 1，回合级变量一次都不清。
+// Both earlier rules packages have cyclic graphs: werewolf loops back to the
+// guard, the mission-based games back to nomination. This one ends at VOTE and
+// needs no rounds at all. Round is 1 from start to finish, and round-scoped
+// variables are never cleared.
 //
-// 因此这副图**一个回合边界都不声明**：没有 EndsRound，也没有
-// ClearsRoundVars。内核的 Config.Validate 只对**会转圈**的阶段图要求它们
-// ——不转圈的图里每个阶段只经过一次，第二个回合根本不存在。
+// So this graph **declares no round boundary at all**: no EndsRound, no
+// ClearsRoundVars. The kernel's Config.Validate only requires them of a graph
+// that **loops** -- in a graph that does not, each phase is visited once and
+// there is no second round.
 //
-// 这一条是本包撞出来的（SCARS.md 疤 2）：那两道检查此前是无条件的，
-// 于是内核为了防一类配置错误，逼这份正确的配置去撒谎——只好把 EndsRound
-// 挂在 VOTE 上，虽然它之后没有下一个回合。现在不必了。
+// This package is what ran into that (SCARS.md, scar 2): those two checks used
+// to be unconditional, so the kernel, guarding against one class of
+// misconfiguration, forced this correct configuration to lie -- EndsRound had
+// to be hung on VOTE even though no round follows it. Not any more.
 //
-// # 夜晚次序是规则的一部分
+// # The night order is part of the rules
 //
-// 抢劫者在捣蛋鬼之前动，捣蛋鬼因此能把刚被抢走的牌再换掉；失眠者最后动，
-// 因此他看到的是所有交换之后的结果。把次序调换，游戏就变成另一个游戏。
-// 这份次序取自官方规则书的叫醒顺序。
+// The robber acts before the troublemaker, so the troublemaker can move the
+// card that was just stolen; the insomniac acts last, so what they see is the
+// result of every swap. Reorder them and it becomes a different game. This
+// order is taken from the wake-up order in the official rulebook.
 func GameConfig() *hiddenrole.Config {
-	// step 一个只有单一动作的步骤。夜晚能力全是可选的（规则允许「你可以…」），
-	// 因此 Required 一律为 false——某个角色不动是合法的。
+	// step is a step with a single action. Night abilities are all optional
+	// (the rules say "you may..."), so Required is always false -- a role not
+	// acting is legal.
 	step := func(role hiddenrole.RoleType, skill hiddenrole.SkillType) []hiddenrole.PhaseStep {
 		return []hiddenrole.PhaseStep{{Role: role, Skill: skill}}
 	}
 
-	// watch 「这个角色该醒了，但他没有行动」——技能留空。
+	// watch is "this role wakes, but takes no action" -- an empty skill.
 	watch := func(role hiddenrole.RoleType) []hiddenrole.PhaseStep {
 		return []hiddenrole.PhaseStep{{Role: role}}
 	}
 
-	// group 一组几选一的动作：提交其中任意一个即算这个角色动过了。
+	// group is a pick-one-of set: submitting any member counts as this role
+	// having acted.
 	group := func(role hiddenrole.RoleType, name string, skills ...hiddenrole.SkillType) []hiddenrole.PhaseStep {
 		out := make([]hiddenrole.PhaseStep, 0, len(skills))
 		for _, s := range skills {
@@ -51,21 +60,24 @@ func GameConfig() *hiddenrole.Config {
 	return &hiddenrole.Config{
 		StartPhase: PhaseNightWerewolf,
 		Phases: map[hiddenrole.PhaseType]*hiddenrole.PhaseConfig{
-			// 狼人互认是纯信息（走 RoleInfo），只有「场上仅一只狼」时才有
-			// 动作可提交——看一张中央牌。
+			// Wolves recognising each other is pure information (it goes
+			// through RoleInfo); there is only something to submit when a
+			// single wolf is in play -- peeking at one centre card.
 			PhaseNightWerewolf: {
 				Type:      PhaseNightWerewolf,
 				Steps:     group(RoleWerewolf, "peek", SkillPeekCenter0, SkillPeekCenter1, SkillPeekCenter2),
 				NextPhase: PhaseNightMinion,
 			},
 
-			// 爪牙、守夜人、失眠者都只接收信息、不做任何动作：
-			// 睁眼看一眼，然后闭眼。技能留空就是这个意思——他该醒了，
-			// 但他没有行动（见 hiddenrole.PhaseStep.Skill）。
+			// The minion, the masons and the insomniac only receive
+			// information and take no action: open your eyes, look, close
+			// them. An empty skill means exactly that -- this role wakes, but
+			// takes no action (see hiddenrole.PhaseStep.Skill).
 			//
-			// 此前表达不了这件事，只好挂一个 SKIP 当占位，而 SKIP 的意思是
-			// 「主动放弃行动」——他不是放弃，他本来就没有行动可放弃。
-			// 见 SCARS.md 疤 3。
+			// This used to be inexpressible, so a SKIP was hung on it as a
+			// placeholder -- and SKIP means "declining to act", which they are
+			// not doing: there was never an action to decline. See SCARS.md,
+			// scar 3.
 			PhaseNightMinion: {
 				Type:      PhaseNightMinion,
 				Steps:     watch(RoleMinion),
@@ -109,22 +121,25 @@ func GameConfig() *hiddenrole.Config {
 				NextPhase: PhaseDay,
 			},
 
-			// 讨论：没有任何提交，主持人看够了就推进。
+			// Discussion: nothing is submitted; the host advances when they
+			// have seen enough.
 			PhaseDay: {
 				Type:      PhaseDay,
 				NextPhase: PhaseVote,
 			},
 
-			// 投票：全员必须投，同时揭晓。
+			// The vote: everyone must vote, and all votes are revealed at once.
 			PhaseVote: {
 				Type: PhaseVote,
 				Steps: []hiddenrole.PhaseStep{{
 					Role: hiddenrole.RoleUnspecified, Skill: SkillVote,
 					Required: true, Multiple: true,
-					// 投票指向的是活人，这一局里所有人都活着，
-					// 但写明白比依赖默认好。
+					// A vote points at a living player, and in this game
+					// everyone is alive, but saying so beats relying on the
+					// default.
 				}},
-				// 不标 EndsRound / ClearsRoundVars：这一套规则没有第二个回合。
+				// No EndsRound / ClearsRoundVars: this ruleset has no second
+				// round.
 				NextPhase: hiddenrole.PhaseEnd,
 			},
 		},

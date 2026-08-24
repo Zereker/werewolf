@@ -1,404 +1,506 @@
-# 一夜狼人给内核留下的疤
+# The scars One Night left on the kernel
 
-> 这是[实现方案](../docs/ROADMAP.md)阶段一的产物。协议是硬的：**写规则包时
-> 内核一行不许改**，撞到什么就记在这里，四栏齐全——撞到了什么、绕法、
-> 猜想的修法、归类。
+> This is a product of phase 1 of the
+> [implementation plan](../docs/ROADMAP.md). The protocol is strict: **while
+> writing a rules package, not one line of the kernel may change**. Whatever
+> it runs into gets recorded here, with all four columns -- what it hit, the
+> way around it, the guessed fix, and the classification.
 >
-> 「绕法」那一栏是关键：**能绕过去的，说明它是人机工程问题，不是抽象问题。**
-> 阿瓦隆七条疤里有两条最后判定为「绕法可以接受」，没有动内核。
+> The "way around it" column is the important one: **if you can work around
+> it, it is an ergonomics problem, not an abstraction problem.** Two of the
+> missions package's seven scars were ultimately judged "the workaround is
+> acceptable", and the kernel was not touched.
 
-**结论先放这里**：内核 `git diff` 为空，1176 行非测试代码，四条结局路径全部
-跑通。**五条疤，其中一条是「我们猜错了」**——而那一条比另外四条都重要。
+**The conclusion up front**: the kernel's `git diff` is empty, 1176 lines of
+non-test code, and all four outcome paths work. **Five scars, one of which is
+"we got it wrong"** -- and that one matters more than the other four.
 
-| # | 撞到什么 | 归类 | 事先猜到了吗 |
+| # | What it hit | Classification | Anticipated? |
 |---|---|---|---|
-| 1 | 目标必须是玩家，「看一张牌」表达不了 | 缺能力 | ✅ [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 猜到了 |
-| 2 | `Validate` 强制要有回合边界，而这套规则没有回合 | 多余的强制 | ❌ 没想到 |
-| 3 | 「醒过来看一眼」没有对应物 | 概念缺口 | ❌ 没想到 |
-| 4 | `VarCamp` 自动外发，而这套规则里阵营是秘密 | 多余的特权 | ❌ 没想到 |
-| 5 | 胜负只能有一个赢家 | 缺能力 | ✅ [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 猜到了 |
-| 6 | 快照不带赢家 | **bug** | ❌ 查疤 5 时顺手撞出来的 |
-| — | **「身份入座定死」挡不住换牌类游戏** | **猜错了** | ❌ 反了 |
+| 1 | a target must be a player, so "look at a card" is inexpressible | missing capability | ✅ [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) called it |
+| 2 | `Validate` demands a round boundary, and this ruleset has no rounds | needless enforcement | ❌ not foreseen |
+| 3 | "wake up and look" has no counterpart | conceptual gap | ❌ not foreseen |
+| 4 | `VarCamp` projects automatically, and here the camp is a secret | needless privilege | ❌ not foreseen |
+| 5 | victory can only have one winner | missing capability | ✅ [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) called it |
+| 6 | the snapshot does not carry the winner | **bug** | ❌ turned up while investigating scar 5 |
+| — | **"identity is fixed at seating" blocks card-swapping games** | **wrong call** | ❌ backwards |
 
-**处置**：疤 2、3、6 已修，**三条加起来零导出名变更**。疤 1、4、5 判定为
-暂不修，各自写了触发条件。
+**Disposition**: scars 2, 3 and 6 are fixed, and **the three together changed
+zero exported names**. Scars 1, 4 and 5 were judged not-for-now, each with its
+trigger condition written down.
 
-疤 3 确实就是 `RoleSystem` 的镜像——修法是让 `PhaseStep.Skill` 的零值有语义，
-一个新名字都不用加。
+Scar 3 really was just the mirror of `RoleSystem` -- the fix was giving
+`PhaseStep.Skill`'s zero value a meaning, with no new name added at all.
 
-> 判据是本文件开头那条：**能绕过去的，说明它是人机工程问题，不是抽象问题。**
-> 上一轮我建议「三条都做」，是没拿这把尺子去量。量完只剩一条。
+> The test is the one at the top of this file: **if you can work around it, it
+> is an ergonomics problem, not an abstraction problem.** In the previous round
+> I recommended doing all three; that was without holding this ruler up to
+> them. Held up, only one was left.
 
 ---
 
-## 疤 0：我们把「身份入座定死」判成了缺口，判错了
+## Scar 0: we judged "identity is fixed at seating" a gap, and we were wrong
 
-[DESIGN.md §8.1](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 把「`playerState.Role` 没有写入路径」
-列进**有证据的抽象缺口**，猜想它挡掉换牌类游戏，还点名了一夜狼人。
-选这套规则做第三套，一半理由就是去验证这一条。
+[DESIGN.md §8.1](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)
+listed "`playerState.Role` has no write path" among the **abstraction gaps
+with evidence**, guessed it would block card-swapping games, and named One
+Night specifically. Half the reason for picking this ruleset as the third one
+was to test that claim.
 
-**验证结果是反的：不但没挡住，而且真去加「可写的 RoleType」会把游戏改坏。**
+**The test came back backwards: not only does it not block them, actually
+adding a writable RoleType would break the game.**
 
-一夜狼人的身份**本来就有两层**：
+Identity in One Night **already has two layers**:
 
 ```
-发到手的那张牌   决定夜里你做什么    一局之内不变
-现在手上那张牌   决定结算时你算哪边   夜里被换来换去
+the card you were dealt    decides what you do at night     never changes
+the card in your hand now  decides which side you score for gets swapped around
 ```
 
-抢劫者抢到狼人牌之后**不会**变成狼、不跟狼一起醒——他夜里做的事由发到手的
-那张决定；但天亮结算时他算狼队。这不是实现细节，是这个游戏的支点。
+A robber who steals the werewolf card does **not** become a wolf and does not
+wake with them -- what they do at night is decided by the card they were
+dealt; but when the game is scored they count as the wolf team. That is not an
+implementation detail, it is the game's pivot.
 
-内核给一层（`RoleType`，入座定死），规则给一层（一项整局有效、属于某个
-玩家的状态），**正好够用**。要是内核真让 `RoleType` 可写，规则包就会顺手
-用它表示「现在手上那张」，于是两层压成一层，抢劫者立刻跟狼一起醒，
-游戏当场垮掉。
+The kernel provides one layer (`RoleType`, fixed at seating) and the rules
+provide the other (a piece of game-long state owned by one player), which is
+**exactly enough**. Had the kernel made `RoleType` writable, a rules package
+would reach for it to mean "the card in hand now", the two layers would
+collapse into one, the robber would immediately wake with the wolves, and the
+game would fall apart on the spot.
 
-> **不可变反而是这里的价值。** 「身份定死」不是缺陷，它承担的正是「你被发到
-> 了什么」这一层——而那一层本来就不该变。
+> **Immutability is the value here.** "Identity is fixed" is not a defect; it
+> carries exactly the layer of "what you were dealt" -- and that layer was
+> never supposed to change.
 
-### 这条疤真正的教训
+### What this scar actually teaches
 
-它印证了[实现方案 §0](../docs/ROADMAP.md) 那套方法论的后半句：
+It confirms the second half of the methodology in
+[the implementation plan §0](../docs/ROADMAP.md):
 
-| 检验 | 能告诉你 |
+| The test | What it can tell you |
 |---|---|
-| 对照别人的实现 | 你**缺**什么 |
-| 写第三套规则包 | 你**需不需要**，以及**你以为缺的那个其实不该有** |
+| comparing against someone else's implementation | what you are **missing** |
+| writing a third rules package | whether you **need it**, and **that the gap you thought you had should not be filled** |
 
-`Rand` 是「补了不需要的」，这一条是「差点改坏对的」。两次学费的方向不同，
-但根源同一个：**在没有一局真的撞上之前动内核**。
+`Rand` was "we added something we did not need"; this one was "we nearly broke
+something that was right". The two lessons point different ways, and have the
+same root: **changing the kernel before a real game has run into it**.
 
-**处置**：`DESIGN.md §8.1` 那一行要改写——不是「缺口」，是「刻意的，
-而且刚被验证过」。
+**Disposition**: that line in `DESIGN.md §8.1` needs rewriting -- not a gap,
+but deliberate, and just validated.
 
 ---
 
-## 疤 1：技能目标必须是玩家，「看一张牌」表达不了 —— **暂不修**
+## Scar 1: a skill's target must be a player, so "look at a card" is inexpressible -- **not for now**
 
-**撞到什么。** 预言家可以「看两张中央牌」，酒鬼「与一张中央牌交换」，
-独狼「看一张中央牌」。这些动作指向的是**牌**，不是人。
+**What it hit.** The seer may "look at two centre cards", the drunk "swaps
+with a centre card", and a lone wolf "looks at one centre card". These actions
+point at **cards**, not people.
 
-而内核的目标校验只认玩家：`SkillUse.Targets` 里的每一项都会被拿去
-`getPlayer`，对不上就是 `ErrTargetNotFound`。提交 `Targets: ["center-0"]`
-会被内核当场拒掉。
+And the kernel's target validation only knows players: every entry of
+`SkillUse.Targets` is passed to `getPlayer`, and anything that does not match
+is `ErrTargetNotFound`. Submitting `Targets: ["center-0"]` is rejected on the
+spot.
 
-**绕法。** 把下标编进技能名里：
+**The way around it.** Encode the index into the skill name:
 
 ```go
-SkillPeekCenter0  SkillPeekCenter1  SkillPeekCenter2      // 独狼看一张
-SkillSeerCenter01 SkillSeerCenter02 SkillSeerCenter12     // 预言家看两张
-SkillDrinkCenter0 SkillDrinkCenter1 SkillDrinkCenter2     // 酒鬼换一张
+SkillPeekCenter0  SkillPeekCenter1  SkillPeekCenter2      // a lone wolf looks at one
+SkillSeerCenter01 SkillSeerCenter02 SkillSeerCenter12     // the seer looks at two
+SkillDrinkCenter0 SkillDrinkCenter1 SkillDrinkCenter2     // the drunk swaps one
 ```
 
-九个技能干的其实是三件事，再在 `centerIndexes()` 里把下标从名字末尾读回来。
+Nine skills doing what is really three things, with the index read back off
+the end of the name in `centerIndexes()`.
 
-**这个绕法能用，但它有代价**，而且代价随牌数**组合爆炸**：三张牌看两张是
-三种组合；换成《Daybreak》扩展里更多的公共牌，或者「看任意两张」的角色，
-这一列会长到写不动。
+**The workaround works, but it has a cost**, and the cost grows
+**combinatorially** with the number of cards: two of three cards is three
+combinations; with more public cards, as in the Daybreak expansion, or a role
+that looks at any two, this column would grow beyond writing.
 
-**猜想的修法。** 让步骤声明目标的种类：
+**The guessed fix.** Let a step declare what kind of target it takes:
 
 ```go
 type PhaseStep struct {
     // ...
-    TargetKind TargetKind  // 默认 TargetPlayer；TargetFree 时内核不做玩家校验
+    TargetKind TargetKind  // TargetPlayer by default; TargetFree skips the player check
 }
 ```
 
-内核只多一个判断：`TargetFree` 时跳过 `getPlayer`。目标字符串的意思由规则
-自己解释，与 `Var` 的键名一样——内核只管搬运。
+The kernel gains one branch: skip `getPlayer` when `TargetFree`. What the
+target string means is the rules' to interpret, exactly like a `Var` key --
+the kernel only carries it.
 
-**归类：缺能力。** [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 事先列过这一条（「目标
-只能是玩家 ID」），当时标的是「推测的，没有任何一局撞到过」。**现在撞到了。**
+**Classification: missing capability.**
+[DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)
+listed this in advance ("a target can only be a player ID"), marked
+"speculative, no game has run into it". **Now one has.**
 
-### 但判定为暂不修
+### But judged not-for-now
 
-拿本文件开头那条判据卡一遍：**能绕过去的，说明它是人机工程问题。**
+Hold it up against the test at the top of this file: **if you can work around
+it, it is an ergonomics problem.**
 
-第一版的疤文里我写过一句更重的话——「`AllowedSkills` 会对预言家列出四个
-技能，而他其实只有两个选择」。**那句话是错的**：三张中央牌选两张就是三种
-组合，加上「看一名玩家」，他**确实**有四个选择。编码丑，但**不说谎**。
+An earlier draft of this scar said something stronger: "`AllowedSkills` lists
+four skills for the seer, when they really have two choices". **That sentence
+was wrong**: two out of three centre cards really is three combinations, and
+with "look at one player" that makes four. The encoding is ugly, but it
+**tells no lie**.
 
-至于「组合爆炸」，那是假想的第四套（Daybreak 扩展、「看任意两张」的角色）。
-用这个项目自己的话说：**样本量为 2 的泛化不是泛化，是猜**——这里连 2 都不到。
-实际代价是 9 个常量代替 3 个，加 15 行解析。
+As for the combinatorial explosion, that is a hypothetical fourth ruleset (the
+Daybreak expansion, a role that looks at any two). In this project's own
+words: **a generalisation from a sample of two is not a generalisation, it is
+a guess** -- and here there is not even a two. The actual cost is 9 constants
+instead of 3, plus 15 lines of parsing.
 
-**触发条件**：哪一套规则包里这个编码真的爆炸了，或者真的开始说谎
-（`AllowedSkills` 列出的选项与玩家实际有的选项对不上），就改。
+**Trigger**: whenever the encoding really does explode in some rules package,
+or really does start lying (the options `AllowedSkills` lists stop matching the
+options a player actually has), change it.
 
 ---
 
-## 疤 2：`Validate` 强制要有回合边界，而这套规则根本没有回合 —— **已修**
+## Scar 2: `Validate` demands a round boundary, and this ruleset has no rounds at all -- **fixed**
 
-**撞到什么。** `Config.Validate()` 要求**至少有一个阶段标 `EndsRound`、
-至少有一个标 `ClearsRoundVars`**。那两条检查是有来历的：防「回合永远是 1、
-回合级变量永远不清」这类配置错误——那是真出过的 bug。
+**What it hit.** `Config.Validate()` required **at least one phase marked
+`EndsRound` and at least one marked `ClearsRoundVars`**. Those two checks have
+a history: they guard against "the round stays at 1 forever and round-scoped
+variables are never cleared", which was a real bug.
 
-可这一套规则**整局只有一个回合**。一个夜晚、一次讨论、一次投票，走到 VOTE
-就结束。`Round` 从头到尾是 1，**这恰恰是对的**。
+But this ruleset has **exactly one round in the whole game**. One night, one
+discussion, one vote, ending at VOTE. `Round` is 1 from start to finish, and
+**that is exactly right**.
 
-于是内核为了防一类配置错误，逼着一个正确的配置去撒谎。
+So the kernel, guarding against one class of misconfiguration, was forcing a
+correct configuration to lie.
 
-**绕法。** 把两个标记都挂在 VOTE 上，虽然它之后没有下一个回合：
+**The way around it.** Hang both markers on VOTE, even though no round follows
+it:
 
 ```go
 PhaseVote: {
     Type: PhaseVote, NextPhase: hiddenrole.PhaseEnd,
-    EndsRound:       true,  // 之后没有下一回合，标它只为过 Validate
-    ClearsRoundVars: true,  // 同上
+    EndsRound:       true,  // no round follows; marked only to satisfy Validate
+    ClearsRoundVars: true,  // likewise
 },
 ```
 
-跑起来没有任何问题——`EndsRound` 在游戏结束时本来就不生效（内核有
-`!endNow` 那一条）。但**配置在说谎**：读代码的人会以为这一套有回合循环。
+It runs without any problem -- `EndsRound` does not take effect when the game
+ends anyway (the kernel has the `!endNow` guard). But **the configuration is
+lying**: anyone reading it would assume this ruleset has a round cycle.
 
-**猜想的修法。** 这两条检查的真正意图是「别让回合状态永远不清」。而**没有
-回合循环的游戏根本没有这个风险**——阶段图是不是有环，内核自己看得出来
-（从 `StartPhase` 走 `NextPhase`，能不能回到走过的阶段）。检查改成：
-**只有当阶段图有环时才要求回合边界。**
+**The guessed fix.** What those two checks really mean is "do not let round
+state go uncleared forever". And **a game with no round cycle has no such
+risk** -- whether the phase graph has a cycle is something the kernel can see
+for itself (walk `NextPhase` from `StartPhase` and ask whether it returns to a
+phase already visited). Change the check to: **require a round boundary only
+when the phase graph loops.**
 
-或者更简单：`Config` 上加一个显式的 `SingleRound bool`,规则自己说
-「我没有回合」。前者内核能自己判断，更符合[判据](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)第一问。
+Or, more simply: add an explicit `SingleRound bool` to `Config` and let the
+rules say "I have no rounds". The former is something the kernel can judge on
+its own, which fits the first question of
+[the test](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) better.
 
-**归类：多余的强制。** 与阿瓦隆的疤 6（`Alive` 的特权）同一类——内核在替
-规则做一个它做不了的判断。**事先没想到。**
+**Classification: needless enforcement.** The same class as the missions
+package's scar 6 (`Alive`'s privilege) -- the kernel making a judgement on the
+rules' behalf that it is not equipped to make. **Not foreseen.**
 
-**已修，而且是三条候选里唯一一条零 API 变更的。** `Config.Validate()` 现在
-只对**会转圈**的阶段图要求回合边界（`Config.loops()`：沿 `NextPhase` 从
-`StartPhase` 走，`len(Phases)` 步之内走不到 `PhaseEnd` 就是在转圈）。
-导出面一个字节没动，校验只变松——以前能过的现在照样过。
+**Fixed, and the only one of the three candidates with zero API change.**
+`Config.Validate()` now requires a round boundary only of a phase graph that
+**loops** (`Config.loops()`: walk `NextPhase` from `StartPhase`, and failing
+to reach `PhaseEnd` within `len(Phases)` steps means it loops). Not one byte
+of the exported surface moved, and the validation only got looser -- anything
+that passed before still passes.
 
-本包因此删掉了那两个假标记：这副阶段图现在**一个回合边界都不声明**，
-因为它真的不需要。
+This package therefore dropped the two fake markers: its phase graph now
+**declares no round boundary at all**, because it genuinely needs none.
 
-判断为什么落在内核而不是规则：「阶段图会不会转圈」是内核**不知道这是什么
-游戏也算得出来**的事，正好落在[判据](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)第一问。
+Why the judgement belongs to the kernel rather than the rules: "does the phase
+graph loop" is something the kernel can compute **without knowing what game
+this is**, which is exactly the first question of
+[the test](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md).
 
 ---
 
-## 疤 3：「醒过来看一眼」在内核里没有对应物 —— **已修**
+## Scar 3: "wake up and look" has no counterpart in the kernel -- **fixed**
 
-**撞到什么。** 爪牙、守夜人、失眠者这三个环节，玩家**只接收信息，不做任何
-动作**。爪牙睁眼看谁是狼，然后闭眼——没有提交，没有目标，没有状态变更。
+**What it hit.** In the minion, mason and insomniac steps, the player **only
+receives information and takes no action**. The minion opens their eyes, sees
+who the wolves are, and closes them -- no submission, no target, no state
+change.
 
-内核的阶段由 `Steps []PhaseStep` 描述，而 `PhaseStep` 是
-`{Role, Skill, ...}`——**一次行动**。「这个角色该醒了，但他没有行动」写不出来。
+The kernel describes a phase with `Steps []PhaseStep`, and a `PhaseStep` is
+`{Role, Skill, ...}` -- **one action**. "This role wakes, but takes no action"
+is inexpressible.
 
-没有步骤的阶段（像白天那样）也不行：`PhaseInfo.ActiveRoles` 会是空的，
-主持人不知道该叫醒谁。
+A phase with no steps at all (like the day) does not work either:
+`PhaseInfo.ActiveRoles` would be empty and the host would not know who to wake.
 
-**绕法。** 挂一个 `SkillSkip` 步骤当占位：
+**The way around it.** Hang a `SkillSkip` step on it as a placeholder:
 
 ```go
 PhaseNightMinion: {
     Type:  PhaseNightMinion,
-    Steps: step(RoleMinion, hiddenrole.SkillSkip),  // 只为让主持人知道叫谁
+    Steps: step(RoleMinion, hiddenrole.SkillSkip),  // only so the host knows who to call
     ...
 },
 ```
 
-跑得通，但语义是错的——`SKIP` 的意思是「主动放弃行动」，而爪牙不是放弃，
-他**本来就没有行动可放弃**。`AllowedSkills` 因此对他说「你可以 SKIP」，
-而正确的答案是「你什么都不用做，睁眼看一眼就行」。
+It works, but the meaning is wrong -- `SKIP` means "declining to act", and the
+minion is not declining, they **never had an action to decline**.
+`AllowedSkills` therefore tells them "you may SKIP" when the correct answer is
+"you need do nothing; open your eyes and look".
 
-**猜想的修法。** `PhaseStep` 上加一个「这一步是接收信息，不是行动」的标记，
-或者让 `Skill` 为空的步骤合法（零值本来就是「未指定」）。就绪判定跳过它，
-`AllowedSkills` 不列它，但 `ActiveRoles` 要有它。
+**The guessed fix.** Add a marker to `PhaseStep` for "this step receives
+information, it is not an action", or make a step with an empty `Skill` legal
+(the zero value already means "unspecified"). Readiness skips it,
+`AllowedSkills` does not list it, but `ActiveRoles` includes it.
 
-**这条也许不该改内核。** 它有一个更小的解释：内核已经有
-`RoleSystem` + `SkillAnnounce`（「这一步没有玩家承担」），而这里要的是
-它的镜像——「这一步有玩家，但他不行动」。两个加起来才是完整的一对。
+**This one may not need a kernel change at all.** There is a smaller reading:
+the kernel already has `RoleSystem` + `SkillAnnounce` ("no player carries this
+step"), and what is wanted here is its mirror -- "this step has a player, who
+does not act". Together the two make a complete pair.
 
-**归类：概念缺口。** 事先没想到，而且它是这五条里最便宜的一条。
+**Classification: conceptual gap.** Not foreseen, and the cheapest of the
+five.
 
-### 已修，零导出名变更
+### Fixed, zero exported names changed
 
-修法正是上面猜的那个「更小的解释」：**让 `PhaseStep.Skill` 留空合法**。
-零值本来就是「未指定」，现在它有了语义——「这个角色该醒了，但他没有行动」。
+The fix is exactly the smaller reading guessed above: **an empty
+`PhaseStep.Skill` is legal**. The zero value already meant "unspecified", and
+now it has a meaning -- "this role wakes, but takes no action".
 
-它与 `RoleSystem` 是一对镜像：那个是「这一步没有玩家」，这个是「这一步有
-玩家，但他不行动」。两个加起来，「阶段里的一步」这四种组合才齐全。
+It mirrors `RoleSystem`: that one is "this step has no player", this one is
+"this step has a player, who does not act". Together they complete the four
+combinations of what a step in a phase can be.
 
-留空的步骤：
+An empty step:
 
 | | |
 |---|---|
-| 不出现在 `AllowedSkills` 里 | 他没有可提交的东西 |
-| 提交不了 | `SkillUnspecified` 被 `stepFor` 明确挡掉，否则它会正好匹配上留空的步骤 |
-| 不进入就绪判定 | 没有东西可满足，否则阶段永远不就绪 |
-| **出现在 `PhaseInfo.ActiveRoles` 里** | 主持人得知道该叫醒谁——**全部意义所在** |
+| does not appear in `AllowedSkills` | there is nothing they can submit |
+| cannot be submitted | `SkillUnspecified` is explicitly blocked by `stepFor`, or it would match the empty step exactly |
+| does not enter readiness | there is nothing to satisfy, or the phase would never be ready |
+| **appears in `PhaseInfo.ActiveRoles`** | the host has to know who to wake -- **the whole point** |
 
-本包因此把三个占位的 `SkillSkip` 换成了留空（`board.go` 里的 `watch()`）。
+This package therefore replaced its three placeholder `SkillSkip`s with empty
+skills (`watch()` in `board.go`).
 
-四条性质各有一个变异验证过会变红，尤其是最后那条：跳过 `ActiveRoles` 的话
-特性就白加了，而前三条照样绿。
-
----
-
-## 疤 4：`VarCamp` 会自动外发，而这套规则里阵营是秘密
-
-**撞到什么。** 内核认得一个标准键 `VarCamp`，会把它的值搬进
-`PlayerInfo.Camp` 与 `SelfInfo.Camp`——让「这名玩家站哪一边」不必每个使用者
-自己去 `Vars` 里翻。前两套规则包都用它，都很好用。
-
-这一套**用不了**。酒鬼把自己的牌与中央牌交换，而且**不看**；被捣蛋鬼换过牌
-的两个人也不知道。他们现在算哪边是**对他们自己保密的**——那正是这些角色的
-全部内容。而 `SelfInfo.Camp` 是玩家自己视角里的字段，写了就等于直接告诉他。
-
-**绕法。** 整局不写 `VarCamp`，阵营在翻牌那一刻由宿主自己算
-（本包导出 `CampOf(role)`）。代价是 `SelfInfo.Camp` 整局是空的——一个内核
-提供的便利，这套规则一次都用不上。
-
-**这个绕法我认为是可接受的**，而且它暴露的问题比看起来小：`VarCamp` 是
-**规则自己决定写不写**的，不写就不外发。内核没有强制任何人写它。
-
-**但有一条真问题**：`VarCamp` 是一个**单向的自动投射**——规则一旦写了，
-就没有办法只让上帝视角看到而不让玩家自己看到。「谁知道自己的阵营」在这一类
-游戏里是一个真实的设计维度（狼人杀：所有人都知道；一夜狼人：交换之后没人
-确定；血染钟楼：中毒的人得到假信息）。
-
-**猜想的修法。** 不改。这一条记下来，等第四套规则包再撞一次——**只有一套
-规则用不上某个便利，不构成改它的理由**。真要改，方向是把「填进 SelfInfo」
-从内核的自动行为变成规则的显式选择，但那会让前两套都多写一行，得不偿失。
-
-**归类：多余的特权，但判定为可接受的绕法。** 与阿瓦隆那两条同样处理。
+Each of the four properties has a mutation verified to turn it red, the last
+one especially: skipping `ActiveRoles` would make the feature pointless while
+the other three stayed green.
 
 ---
 
-## 疤 5：胜负只能有一个赢家 —— **暂不修，等第二次撞上**
+## Scar 4: `VarCamp` projects automatically, and in this ruleset the camp is a secret
 
-**撞到什么。** `VictoryChecker` 的签名是：
+**What it hit.** The kernel recognises a canonical key `VarCamp` and carries
+its value into `PlayerInfo.Camp` and `SelfInfo.Camp`, so that "which side is
+this player on" need not be dug out of `Vars` by every caller. Both earlier
+rules packages use it, and it serves them well.
+
+This one **cannot use it**. The drunk swaps their own card with a centre card
+**without looking**; the two players the troublemaker swapped do not know
+either. Which side they now count for is **a secret from themselves** -- which
+is the whole of what those roles are. And `SelfInfo.Camp` is a field in the
+player's own view, so writing it simply tells them.
+
+**The way around it.** Never write `VarCamp`, and compute the camp in the host
+at the moment cards are revealed (this package exports `CampOf(role)`). The
+cost is that `SelfInfo.Camp` is empty all game -- a convenience the kernel
+offers that this ruleset never once uses.
+
+**I consider this workaround acceptable**, and what it exposes is smaller than
+it looks: whether to write `VarCamp` is **the rules' own decision**, and not
+writing it means nothing is projected. The kernel forces nobody to write it.
+
+**But there is one real problem**: `VarCamp` is a **one-way automatic
+projection** -- once the rules write it, there is no way to let only the god's
+view see it while keeping it from the player. "Who knows their own camp" is a
+real design dimension in this class of game (werewolf: everyone; One Night:
+nobody is sure after the swaps; Blood on the Clocktower: the poisoned get
+false information).
+
+**The guessed fix.** None. This is recorded and waits for a fourth rules
+package to hit it again -- **one ruleset not being able to use a convenience
+is not a reason to change it**. If it were to change, the direction would be
+turning "fill it into SelfInfo" from the kernel's automatic behaviour into the
+rules' explicit choice, but that would cost both earlier packages an extra
+line for no gain.
+
+**Classification: needless privilege, but judged an acceptable workaround.**
+Handled the same way as the missions package's two such scars.
+
+---
+
+## Scar 5: victory can only have one winner -- **not for now, wait for a second collision**
+
+**What it hit.** `VictoryChecker`'s signature is:
 
 ```go
 CheckVictory(view GameView) (over bool, winner Camp)
 ```
 
-**一个** `Camp`。而这套规则可以有**两个赢家**——官方规则原文：
+**One** `Camp`. And this ruleset can have **two winners** -- the official
+rules verbatim:
 
-> 皮匠只有他自己出局才赢。他出局且无狼出局 → 狼不赢；
-> **他出局且有狼出局 → 村民也赢。**
+> The tanner wins only by being eliminated themselves. Eliminated with no wolf
+> eliminated -> the wolves do not win; **eliminated with a wolf also
+> eliminated -> the village wins too.**
 
-皮匠和村民同时赢，是这个游戏里一个常见的结局。
+The tanner and the village winning together is a common outcome of this game.
 
-**绕法。** `Camp` 的底层是字符串、内核不解释取值，所以把几个拼成一个能跑：
+**The way around it.** `Camp` is a string underneath and the kernel does not
+interpret values, so packing several into one works:
 
 ```go
 "TANNER+VILLAGE"
 ```
 
-按字典序拼，结果因此是确定的；再由本包导出 `Winners(camp) []Camp` 与
-`Won(camp, want) bool` 把它拆回去。
+Joined in lexicographic order, so the result is deterministic, with this
+package exporting `Winners(camp) []Camp` and `Won(camp, want) bool` to take it
+apart again.
 
-**这个绕法能用，但它是一个字符串编码，不是一个类型。** 编码与解码的规矩
-只能由规则包自己带着——内核不知道 `+` 是分隔符，`Engine.Status().Winner`
-拿到的是一个调用方看不懂的复合字符串，`AudienceOf` 也无从对它表态。
+**The workaround works, but it is a string encoding, not a type.** The
+encoding and decoding rules can only be carried by the rules package -- the
+kernel does not know `+` is a separator, `Engine.Status().Winner` hands the
+caller a compound string they cannot read, and `AudienceOf` has no way to
+speak on it.
 
-**猜想的修法。** `Camp` 改成一组：
+**The guessed fix.** Make `Camp` a set:
 
 ```go
 CheckVictory(view GameView) (over bool, winners []Camp)
 ```
 
-内核仍然不解释取值，只是把「一个」改成「一组」。`Status.Winner` 跟着变成
-`Winners []Camp`，单赢家就是长度为 1 的切片。改动很小，影响面是三套规则包
-各一处。
+The kernel still does not interpret values; "one" simply becomes "a set".
+`Status.Winner` follows into `Winners []Camp`, and a single winner is a slice
+of length 1. The change is small, and it touches one place in each of the
+three rules packages.
 
-**归类：缺能力。** [DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md) 事先列过这一条（「胜负只有
-一个 Camp」），当时标的是「推测的」，理由写的是「血染钟楼的旅行者单独结算」。
-**现在有一套真正的规则撞上了**，而且是基础游戏的常规结局，不是扩展的边角。
+**Classification: missing capability.**
+[DESIGN §8.2](https://github.com/Zereker/hiddenrole/blob/master/DESIGN.md)
+listed this in advance ("victory has a single Camp"), marked "speculative",
+with the reason given as "Blood on the Clocktower's travellers score
+separately". **Now a real ruleset has hit it**, and as a routine outcome of the
+base game, not an expansion corner case.
 
-### 但判定为暂不修，等第二次撞上
+### But judged not-for-now, waiting for a second collision
 
-这一条的证据是三条里**最强**的：不只撞到了，绕法还**确实说谎**——`Camp` 的
-文档是「一个『边』的标签」，而 `"TANNER+VILLAGE"` 不是一个边，是两个。
-疤 1 的编码丑而不假，这一条是假的。
+The evidence here is the **strongest** of the three: it was not only hit, the
+workaround **genuinely lies** -- `Camp` is documented as "the label of one
+side", and `"TANNER+VILLAGE"` is not one side, it is two. Scar 1's encoding is
+ugly without being false; this one is false.
 
-不修的理由只有一个，但够硬：**它是三条候选里唯一一条破坏性签名变更**
-（`VictoryChecker` 接口、`VictoryFunc`、`Status.Winner` 字段一起动），
-而改完之后 99% 只有一个赢家的游戏要**永久**多付一个切片、每个宿主多写一次
-`[0]`。**一套规则撞上，不足以动一个刚冻结的接口签名**——与疤 4 的口径一致
-（「只有一套规则用不上某个便利，不构成改它的理由」）。
+There is only one reason not to fix it, and it is hard enough: **it is the
+only breaking signature change among the three candidates** (the
+`VictoryChecker` interface, `VictoryFunc` and the `Status.Winner` field all
+move together), and afterwards the 99% of games with exactly one winner would
+**permanently** pay for a slice, and every host would write `[0]` one more
+time. **One ruleset hitting it is not enough to move a signature that was just
+frozen** -- consistent with scar 4 ("one ruleset not being able to use a
+convenience is not a reason to change it").
 
-**触发条件**：第二套规则包撞上同一件事。血染钟楼的旅行者单独结算大概率
-就是第二次。到那时一起改成 `winners []Camp`，改动很小，影响面是每套规则包
-各一处。
+**Trigger**: a second rules package hitting the same thing. Blood on the
+Clocktower's travellers scoring separately is most likely the second. At that
+point change it to `winners []Camp` together; the change is small and touches
+one place per rules package.
 
 ---
 
-## 疤 6：快照不带赢家 —— **已修**
+## Scar 6: the snapshot does not carry the winner -- **fixed**
 
-**不是这套规则撞出来的，是在判定要不要修疤 5 的时候顺手查出来的。**
+**Not something this ruleset hit; it turned up while deciding whether to fix
+scar 5.**
 
-**撞到什么。** 存一局**已经结束**的对局再恢复：
+**What it hit.** Save a game that has **already ended** and restore it:
 
 ```
-原引擎: Over=true  Winner="VILLAGE"
-恢复后: Over=true  Winner="UNSPECIFIED"
+original: Over=true  Winner="VILLAGE"
+restored: Over=true  Winner="UNSPECIFIED"
 ```
 
-`Snapshot` 不带赢家。而谁赢是**结束那一刻**由 `VictoryChecker` 定下的、
-此后不再变，恢复出来的引擎不会再跑一次判定——于是那个答案就丢了。
+`Snapshot` does not carry the winner. And who won is settled by the
+`VictoryChecker` **at the moment the game ends** and does not change
+afterwards, and a restored engine does not run the check again -- so the answer
+is simply lost.
 
-上一轮刚把 `Phase` / `Round` / `Over` / `Winner` 四项合成 `Status`，理由正是
-「它们必须来自同一个瞬间」，还写了 `TestStatus_IsAtomic`。而那个测试只断言了
-**「没结束却有赢家」**这一个方向，反方向**「结束了却没有赢家」**一直没人管
-——恢复这条路上它一直是错的。
+The previous round had just merged `Phase` / `Round` / `Over` / `Winner` into
+`Status`, on the grounds that "they have to come from one instant", and wrote
+`TestStatus_IsAtomic` for it. But that test only asserted **one** direction,
+"not over yet has a winner"; the reverse, **"over with no winner"**, was
+nobody's job -- and on the restore path it had been wrong all along.
 
-**这条疤的教训**：一个不变量有两个方向时，只测一个方向等于只守了一半。
+**What this scar teaches**: when an invariant has two directions, testing one
+guards half of it.
 
-**已修。** `Snapshot` 加一个 `Winner` 字段（`SnapshotVersion` 12 → 13），
-恢复时写回。`TestStatus_IsAtomic` 补上反方向断言，另加
-`TestStatus_SurvivesSnapshot` 专门盯存档往返。两个变异（快照不写、恢复不读）
-逐个验证过会变红。
-
----
-
-## 内核立住了的地方
-
-疤要记，立住的同样要记。这一套规则与前两套**处处相反**，而下面这些一次
-摩擦都没有：
-
-**变量作用域那张 2×2 表，四格用了三格。** 每个人手上的牌是「整局·某人」，
-中央三张是「整局·无主」，谁看到了什么是「整局·某人」。**「整局·无主」那一格
-正是阿瓦隆撞出来补上的**——补上不到一个规则包的时间，第三套就又用上了。
-回合级那两格一次都没用到，而那**正好证明作用域该是两个轴，不是一个列表**。
-
-**信息边界一次都没漏。** 这一套的不对称比前两套都密：狼互认、爪牙单向看狼、
-守夜人互认、预言家看到的会过期、抢劫者知道自己抢到什么而被抢的人不知道、
-捣蛋鬼换了两个人而三方都不知道、酒鬼连自己都不知道。**全部一次写通。**
-
-尤其是这一条：内核**刻意不把 `Vars` 交给玩家**（要给玩家的东西必须经
-`RoleInfoProvider` 显式投射）。若内核默认把 `Vars` 交出去，**酒鬼这个角色
-当场就不成立了**——他手上的牌就是一项 `Vars`。那条规矩上一轮刚补上测试
-（`TestPlayerView_CarriesNoFreeFormState`），这一轮就救了一个角色。
-
-**「状态原语永不外发」这条不可配置的地板也一样。** 「三号现在手上是狼人牌」
-就是一条 `SET_VAR`。本包的 `AudienceProvider` 写不写它都拦得住。
-
-**两个效果、两件事那条分法照样成立。** `ROBBED` 是说法，旁边那条 `SET_VAR`
-才真的换牌。一条 `ROBBED` 单独发出去，谁的牌都不会动。
-
-**`SetActors` 一次都没用到。** 这一套的行动者全部按角色算——而角色是发到手
-的那张牌，一局不变。上一轮花了一次重构把「谁能行动」从三层降到两层，
-这一套只用到了最下面那一层，一点都不别扭。
+**Fixed.** `Snapshot` gained a `Winner` field (`SnapshotVersion` 12 -> 13),
+written back on restore. `TestStatus_IsAtomic` gained the reverse assertion,
+and `TestStatus_SurvivesSnapshot` was added to watch the save round trip
+specifically. Two mutations (not writing it to the snapshot, not reading it on
+restore) were each verified to turn them red.
 
 ---
 
-## 与前两套的对照
+## Where the kernel held
 
-内核不认得下面任何一个词。
+Scars get recorded, and so does what held. This ruleset is **the opposite of
+the first two in every respect**, and the following cost no friction at all:
 
-| | 狼人杀 | 阿瓦隆 | 一夜狼人 |
+**The variable-scope 2x2 table: three cells out of four used.** The card in
+each hand is "whole game, one player", the three centre cards are "whole game,
+unowned", and who saw what is "whole game, one player". **The "whole game,
+unowned" cell is the one the missions package ran into and had added** -- less
+than one rules package later, the third one used it again. The two
+round-scoped cells went unused, and that is precisely the evidence that a
+scope should be two axes rather than a list.
+
+**The information boundary never leaked once.** The asymmetry here is denser
+than in either earlier package: wolves recognise each other, the minion sees
+the wolves one-way, the masons recognise each other, what the seer saw goes
+stale, the robber knows what they took while the player robbed does not, the
+troublemaker swaps two people with all three left in the dark, and the drunk
+does not even know their own card. **All of it worked first time.**
+
+This one especially: the kernel **deliberately does not hand `Vars` to
+players** (what a player should see has to be projected explicitly through a
+`RoleInfoProvider`). Had the kernel handed `Vars` over by default, **the drunk
+as a role would not work at all** -- the card in their hand is a `Vars` entry.
+That rule had only just gained a test the previous round
+(`TestPlayerView_CarriesNoFreeFormState`), and this round it saved a role.
+
+**The non-configurable floor, "state primitives never leave the building",
+held too.** "Player 3 now holds the werewolf card" is a `SET_VAR`. This
+package's `AudienceProvider` blocks it whether or not it says anything about
+it.
+
+**The "two effects, two things" split held as well.** `ROBBED` is the account
+of what happened, and the `SET_VAR` beside it is what actually swaps the
+cards. A lone `ROBBED` moves nobody's card.
+
+**`SetActors` was never used.** Every actor in this ruleset is computed by
+role -- and a role is the card you were dealt, which never changes. The
+previous round spent a refactor bringing "who may act" from three layers down
+to two, and this ruleset only ever touched the bottom layer, without any
+awkwardness.
+
+---
+
+## Against the first two
+
+The kernel recognises not one word below.
+
+| | Werewolf | The missions package | One Night |
 |---|---|---|---|
-| 阶段图 | 8 个，环 | 3 个循环 + 1 个条件进入 | **10 个，直线** |
-| 回合 | 每晚一个 | 每轮任务一个 | **整局就一个** |
-| 谁能行动 | 按角色 | 运行时算（`SetActors`） | 按角色 |
-| 出局 | 核心机制 | 完全不用 | **只在最后一刻，一次** |
-| 身份 | 一层，不变 | 一层，不变 | **两层，一层变一层不变** |
-| 信息的时效 | 查验结果永久有效 | 名单整局不变 | **看到的会过期，而且你不知道** |
-| 胜负 | 屠边 | 三次任务 + 刺杀 | **可以有两个赢家** |
-| 随机 | 建局前发牌 | 建局前发牌 | 建局前发牌 |
+| phase graph | 8, a cycle | 3 in a loop + 1 entered conditionally | **10, a straight line** |
+| rounds | one per night | one per mission | **one for the whole game** |
+| who may act | by role | computed at runtime (`SetActors`) | by role |
+| elimination | the core mechanic | never used | **once, at the very last moment** |
+| identity | one layer, fixed | one layer, fixed | **two layers, one fixed and one not** |
+| how long information stays true | a check result holds forever | the list holds all game | **what you saw goes stale, and you do not know it** |
+| victory | wipe out one side | three missions + the assassination | **there can be two winners** |
+| randomness | dealt before the game | dealt before the game | dealt before the game |
 
-最后一行值得单独说：**三套规则包，没有一套在局中需要随机。** 上一轮删掉
-`Rand` 的决定，第三套又确认了一次。
+That last row is worth calling out on its own: **three rules packages, and not
+one of them needs randomness during play.** The previous round's decision to
+delete `Rand` was confirmed once more by the third.

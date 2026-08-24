@@ -1,17 +1,22 @@
-// knowledge.go 谁在夜里看到了什么。
+// knowledge.go records who saw what during the night.
 //
-// # 为什么要记下来，而不是要用的时候再算一遍
+// # Why it is recorded rather than recomputed on demand
 //
-// 这一套规则里的信息是**有时效的**。预言家在第 5 环节看了三号的牌，而抢劫者
-// 在第 6 环节把三号的牌换走了——预言家看到的仍然是他当时看到的那一张，
-// 不是现在那一张。要用的时候再从局面算，算出来的一律是「现在」，全错。
+// Information in this ruleset has a **timestamp**. The seer looked at
+// player 3's card in step 5, and the robber swapped player 3's card away in
+// step 6 -- what the seer saw is still the card they saw then, not the one
+// there now. Recomputing from the board on demand always produces "now",
+// which is always wrong.
 //
-// 前两套规则包没有这个问题：狼人杀的预言家查验结果当场就有意义（查的是
-// 阵营，阵营不变），missions 包的梅林看到的坏人名单整局不变。到了这一套，
-// 「他知道什么」与「现在是什么」第一次分了家。
+// The first two rules packages do not have this problem: werewolf's seer gets
+// a result that stays meaningful (it is a camp, and camps do not change), and
+// the missions package's Merlin sees a list of bad guys that holds all game.
+// Here, for the first time, "what they know" and "what is true now" come
+// apart.
 //
-// 于是每一次「看」都在看的人身上留一条记录，事后只读记录。记录是整局有效、
-// 属于某个玩家的状态——正好是变量作用域那张 2×2 表的一格。
+// So every look leaves a record on the looker, and afterwards only the record
+// is read. A record is game-long state owned by one player -- exactly one
+// cell of the variable-scope 2x2 table.
 
 package onenight
 
@@ -24,38 +29,44 @@ import (
 )
 
 const (
-	// learnSelfKey 「我看到自己现在是什么」。抢劫者与失眠者会写它。
+	// learnSelfKey is "what I saw my own card to be". The robber and the
+	// insomniac write it.
 	learnSelfKey = "learn.self"
 
-	// learnPlayerPrefix 「我看到某个人当时是什么」，后面接被看的人的 ID。
+	// learnPlayerPrefix is "what I saw someone's card to be at the time",
+	// followed by the ID of the player looked at.
 	learnPlayerPrefix = "learn.player."
 
-	// learnCenterPrefix 「我看到中央第几张当时是什么」，后面接下标。
+	// learnCenterPrefix is "what I saw a centre card to be at the time",
+	// followed by its index.
 	learnCenterPrefix = "learn.center."
 )
 
-// learnSelf 记下「我看到自己现在是什么」。
+// learnSelf records what the viewer saw their own card to be.
 func learnSelf(viewerID string, role hiddenrole.RoleType) *hiddenrole.Effect {
 	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of(viewerID), learnSelfKey, string(role))
 }
 
-// learnPlayer 记下「我看到某个人当时是什么」。
+// learnPlayer records what the viewer saw another player's card to be.
 func learnPlayer(viewerID, targetID string, role hiddenrole.RoleType) *hiddenrole.Effect {
 	return hiddenrole.NewSetVarEffect(
 		hiddenrole.ScopeGame.Of(viewerID), learnPlayerPrefix+targetID, string(role))
 }
 
-// learnCenter 记下「我看到中央第几张当时是什么」。
+// learnCenter records what the viewer saw a centre card to be.
 func learnCenter(viewerID string, i int, role hiddenrole.RoleType) *hiddenrole.Effect {
 	return hiddenrole.NewSetVarEffect(
 		hiddenrole.ScopeGame.Of(viewerID), learnCenterPrefix+strconv.Itoa(i), string(role))
 }
 
-// knowledgeOf 这名玩家夜里看到的一切，键与 learn* 写进去的一致。
+// knowledgeOf is everything this player saw during the night, under the same
+// keys the learn* functions wrote.
 //
-// 它读的是玩家自己的整局状态，因此**必须**由 RoleInfoProvider 显式投射才能
-// 到达玩家——内核刻意不把 Vars 交给玩家（见 hiddenrole.PlayerInfo 的说明），
-// 那正是这个库要替调用方收掉的那类判断。
+// It reads the player's own game-long state, so it **has** to be projected
+// explicitly by a RoleInfoProvider to reach the player -- the kernel
+// deliberately does not hand Vars to players (see hiddenrole.PlayerInfo),
+// which is exactly the class of judgement this library takes off a caller's
+// hands.
 func knowledgeOf(view hiddenrole.GameView, playerID string) map[string]string {
 	p, ok := view.Player(playerID)
 	if !ok {
@@ -74,11 +85,13 @@ func knowledgeOf(view hiddenrole.GameView, playerID string) map[string]string {
 	return out
 }
 
-// teammatesByDealt 发到手的牌属于同一伙的其他人，按 ID 排序。
+// teammatesByDealt returns the other players whose dealt card puts them on
+// the same side, sorted by ID.
 //
-// 「同一伙」按**发到手**的牌算，不按现在手上那张：狼人在第一个环节互认，
-// 那时候一次交换都还没发生。抢劫者后来抢走了狼人牌也不会被认出来——
-// 他不在场上那一刻的名单里。
+// "The same side" is decided by the card they were **dealt**, not the card in
+// their hand now: the wolves recognise each other in the very first step, when
+// no swap has happened yet. A robber who later steals the werewolf card is not
+// recognised either -- they were not on the list at that moment.
 func teammatesByDealt(view hiddenrole.GameView, playerID string, roles ...hiddenrole.RoleType) []string {
 	want := make(map[hiddenrole.RoleType]bool, len(roles))
 	for _, r := range roles {

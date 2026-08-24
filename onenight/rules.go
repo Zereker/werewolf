@@ -1,8 +1,10 @@
-// rules.go 把一夜狼人装进内核。
+// rules.go plugs One Night into the kernel.
 //
-// 这个文件是「加一套规则不该改引擎」这条标准的直接检验：下面每一个入口都是
-// 内核的公开构造选项，与第三方注册自定义角色走的是同一批门。内核为这一套
-// 规则**一行都没改**。
+// This file is the direct test of the standard "adding a ruleset must not
+// require changing the engine": every entry point below is a public
+// construction option of the kernel, the same doors a third party registering
+// a custom role goes through. The kernel needed **not one line changed** for
+// this ruleset.
 
 package onenight
 
@@ -10,19 +12,21 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// MinPlayers 最少人数。规则要求发牌比人数多三张，三人局是最小的一桌。
+// MinPlayers is the smallest table. The rules deal three cards more than
+// there are players, and three is the minimum.
 const MinPlayers = 3
 
-// Options 一夜狼人的全套装配。
+// Options is One Night's full assembly.
 //
-// center 是留在中央的三张牌——由调用方发牌时定下。发牌发生在**建局之前**，
-// 与前两套规则包一致：内核里没有随机，也不需要有。
+// center is the three cards left in the middle -- decided by the caller when
+// dealing. Dealing happens **before the game is created**, as in the first two
+// rules packages: there is no randomness in the kernel, and none is needed.
 //
 //	e := hiddenrole.MustNewEngine(onenight.GameConfig(),
 //		onenight.Options([3]hiddenrole.RoleType{...})...)
 func Options(center [CenterCount]hiddenrole.RoleType) []hiddenrole.EngineOption {
 	opts := []hiddenrole.EngineOption{
-		// 十个阶段各自的结算。
+		// One resolver per phase, ten in all.
 		hiddenrole.WithResolver(PhaseNightWerewolf, werewolfResolver{}),
 		hiddenrole.WithResolver(PhaseNightMinion, noopResolver{}),
 		hiddenrole.WithResolver(PhaseNightMason, noopResolver{}),
@@ -36,7 +40,7 @@ func Options(center [CenterCount]hiddenrole.RoleType) []hiddenrole.EngineOption 
 
 		hiddenrole.WithVictoryChecker(hiddenrole.VictoryFunc(checkVictory)),
 
-		// 开局那一刻把三张中央牌铺好。
+		// Lay out the three centre cards at the moment play begins.
 		hiddenrole.WithGameSetup(hiddenrole.GameSetupFunc(func(hiddenrole.GameView) []*hiddenrole.Effect {
 			out := make([]*hiddenrole.Effect, 0, CenterCount)
 			for i, role := range center {
@@ -50,11 +54,14 @@ func Options(center [CenterCount]hiddenrole.RoleType) []hiddenrole.EngineOption 
 		hiddenrole.WithSpeech(speech()),
 	}
 
-	// 每个角色入座时都带着「我现在手上是这张牌」——起始值等于发到手的那张。
+	// Every role sits down carrying "the card in my hand right now", whose
+	// starting value is the card they were dealt.
 	//
-	// **不写 VarCamp**。内核会把它搬进 SelfInfo.Camp，而这一套规则里
-	// 「我现在算哪边」是秘密：酒鬼把自己的牌与中央换掉且不看，被捣蛋鬼换过
-	// 的两个人也不知道。填进他自己的视图等于直接告诉他。见 SCARS.md 疤 4。
+	// **VarCamp is deliberately not written.** The kernel would carry it into
+	// SelfInfo.Camp, and in this ruleset "which side do I count for now" is a
+	// secret: the drunk swaps their own card with the centre without looking,
+	// and two players the troublemaker swapped do not know either. Filling it
+	// into their own view would simply tell them. See SCARS.md, scar 4.
 	for _, role := range AllRoles {
 		r := role
 		opts = append(opts,
@@ -68,10 +75,10 @@ func Options(center [CenterCount]hiddenrole.RoleType) []hiddenrole.EngineOption 
 	return opts
 }
 
-// AllRoles 这一套规则的全部角色。
+// AllRoles is every role in this ruleset.
 //
-// 内核不知道有哪些角色——它只在 AddPlayer 时收下一个 RoleType 字符串。
-// 这份清单是本包自己的。
+// The kernel does not know which roles exist -- it accepts a RoleType string
+// at AddPlayer and nothing more. This list belongs to this package.
 var AllRoles = []hiddenrole.RoleType{
 	RoleWerewolf, RoleMinion, RoleMason, RoleSeer, RoleRobber,
 	RoleTroublemaker, RoleDrunk, RoleInsomniac, RoleVillager,

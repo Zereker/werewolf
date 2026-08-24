@@ -6,13 +6,14 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// game 一局测试用的对局，外加几个断言辅助。
+// game is one game for tests, plus a few assertion helpers.
 type game struct {
 	t *testing.T
 	e *hiddenrole.Engine
 }
 
-// newGame 开一局：seats 是「玩家 ID -> 发到手的牌」，center 是中央三张。
+// newGame starts a game: seats maps player ID to the card they were dealt,
+// and center is the three centre cards.
 func newGame(t *testing.T, center [CenterCount]hiddenrole.RoleType, seats ...seat) *game {
 	t.Helper()
 
@@ -38,31 +39,32 @@ type seat struct {
 
 func at(id string, role hiddenrole.RoleType) seat { return seat{id, role} }
 
-// use 提交一次技能，失败即终止。
+// use submits a skill, failing the test on error.
 func (g *game) use(playerID string, skill hiddenrole.SkillType, targets ...string) {
 	g.t.Helper()
 	err := g.e.SubmitSkillUse(&hiddenrole.SkillUse{
 		PlayerID: playerID, Skill: skill, Targets: targets,
 	})
 	if err != nil {
-		g.t.Fatalf("%s 提交 %v 失败: %v", playerID, skill, err)
+		g.t.Fatalf("%s submitting %v: %v", playerID, skill, err)
 	}
 }
 
-// end 结束当前阶段，并断言走到了 want。
+// end ends the current phase and asserts it landed on want.
 func (g *game) end(want hiddenrole.PhaseType) {
 	g.t.Helper()
 	if _, err := g.e.EndPhase(); err != nil {
 		g.t.Fatalf("EndPhase: %v", err)
 	}
 	if got := g.e.Status().Phase; got != want {
-		g.t.Fatalf("阶段 = %v，期望 %v", got, want)
+		g.t.Fatalf("phase = %v, want %v", got, want)
 	}
 }
 
-// advance 一直推进到某个阶段为止。
+// advance keeps going until it reaches a given phase.
 //
-// 比 end 好数：end 是「结束当前阶段，落到 want」，写一串的时候很容易差一格。
+// Easier to count than end: end means "end the current phase and land on
+// want", and chaining several is easy to get off by one.
 func (g *game) advance(to hiddenrole.PhaseType) {
 	g.t.Helper()
 	for i := 0; i < 20; i++ {
@@ -70,13 +72,13 @@ func (g *game) advance(to hiddenrole.PhaseType) {
 			return
 		}
 		if _, err := g.e.EndPhase(); err != nil {
-			g.t.Fatalf("推进到 %v: %v", to, err)
+			g.t.Fatalf("advancing to %v: %v", to, err)
 		}
 	}
-	g.t.Fatalf("推了 20 步还没到 %v，现在在 %v", to, g.e.Status().Phase)
+	g.t.Fatalf("20 steps and still not at %v, currently at %v", to, g.e.Status().Phase)
 }
 
-// toVote 一路推到投票，中途不做任何夜晚动作。
+// toVote runs all the way to the vote, taking no night actions on the way.
 func (g *game) toVote() {
 	g.t.Helper()
 	for _, p := range []hiddenrole.PhaseType{
@@ -88,68 +90,75 @@ func (g *game) toVote() {
 	}
 }
 
-// card 这名玩家现在手上是什么牌。
+// card is the card this player now holds.
 func (g *game) card(playerID string) hiddenrole.RoleType {
 	g.t.Helper()
 	return card(g.e.View(), playerID)
 }
 
-// info 这名玩家的视角里，角色专属信息是什么。
+// info is the role information in this player's view.
 func (g *game) info(playerID string) map[string]string {
 	g.t.Helper()
 	v := g.e.PlayerView(playerID)
 	if v == nil {
-		g.t.Fatalf("%s 没有视角", playerID)
+		g.t.Fatalf("%s has no view", playerID)
 	}
 	return v.RoleInfo
 }
 
-// TestGame_FullNightAndVote 跑通一整局：夜里换牌，白天投票，判出胜负。
+// TestGame_FullNightAndVote plays one whole game: cards swap at night, the
+// table votes in the day, and an outcome is decided.
 //
-// 这是这一套规则包的第一条测试，验的是「它到底能不能在这个内核上跑起来」。
+// This was this rules package's first test, and what it checks is whether the
+// thing can run on this kernel at all.
 func TestGame_FullNightAndVote(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleWerewolf, RoleVillager},
 		at("w", RoleWerewolf), at("s", RoleSeer), at("r", RoleRobber),
 		at("t", RoleTroublemaker), at("v", RoleVillager))
 
-	// 狼：场上有两只吗？只有一只（另一张在中央），所以可以看中央第 0 张。
+	// The wolf: is there a second one? No -- the other card is in the centre,
+	// so this one may look at centre card 0.
 	g.use("w", SkillPeekCenter0)
 	g.end(PhaseNightMinion)
 	g.end(PhaseNightMason)
 	g.end(PhaseNightSeer)
 
-	// 预言家看狼。
+	// The seer looks at the wolf.
 	g.use("s", SkillSeerPlayer, "w")
 	g.end(PhaseNightRobber)
 
-	// 抢劫者抢狼的牌——他因此变成狼队，但**夜里已经不会再做狼的事**。
+	// The robber steals the wolf's card -- which puts them on the wolf team,
+	// but they will **not** do anything wolfish for the rest of the night.
 	g.use("r", SkillRob, "w")
 	g.end(PhaseNightTroublemake)
 
 	if g.card("r") != RoleWerewolf {
-		t.Fatalf("抢劫者抢了狼的牌，现在应当拿着 WEREWOLF，实际 %v", g.card("r"))
+		t.Fatalf("the robber stole the wolf's card and should now hold WEREWOLF, got %v", g.card("r"))
 	}
 	if g.card("w") != RoleRobber {
-		t.Fatalf("狼的牌被抢走，现在应当拿着 ROBBER，实际 %v", g.card("w"))
+		t.Fatalf("the wolf's card was stolen, so they should now hold ROBBER, got %v", g.card("w"))
 	}
 
-	// 捣蛋鬼交换村民与预言家的牌，两人都不知道。
+	// The troublemaker swaps the villager's and the seer's cards; neither
+	// knows.
 	g.use("t", SkillMeddle, "v", "s")
 	g.end(PhaseNightDrunk)
 	g.end(PhaseNightInsomniac)
 	g.end(PhaseDay)
 	g.end(PhaseVote)
 
-	// 预言家看到的仍然是**当时**的那一张，不是现在的。
+	// What the seer saw is still the card at **that moment**, not the one
+	// there now.
 	if got := g.info("s")["learn.player.w"]; got != string(RoleWerewolf) {
-		t.Errorf("预言家当时看到的是 WEREWOLF，现在读到 %q", got)
+		t.Errorf("the seer saw WEREWOLF at the time, now reading %q", got)
 	}
 	if g.card("w") == RoleWerewolf {
-		t.Error("狼的牌已经被抢走了，这条测试没测到「信息会过期」")
+		t.Error("the wolf's card was already stolen; this test did not exercise information going stale")
 	}
 
-	// 全票投抢劫者——他现在拿着狼人牌，村民赢。
+	// Everyone votes for the robber -- who now holds the werewolf card, so the
+	// village wins.
 	for _, id := range []string{"w", "s", "t", "v"} {
 		g.use(id, SkillVote, "r")
 	}
@@ -158,23 +167,23 @@ func TestGame_FullNightAndVote(t *testing.T) {
 
 	st := g.e.Status()
 	if !st.Over {
-		t.Fatal("投票结束游戏就该结束")
+		t.Fatal("the game should end once the vote resolves")
 	}
 	if !Won(st.Winner, CampVillage) {
-		t.Errorf("出局的人拿着狼人牌，村民队应当赢，实际 %v", st.Winner)
+		t.Errorf("the eliminated player held the werewolf card, so the village should win, got %v", st.Winner)
 	}
 	if p, _ := g.e.PlayerInfo("r"); p.Alive {
-		t.Error("被票最多的人应当出局")
+		t.Error("whoever got the most votes should be eliminated")
 	}
 }
 
-// voteAll 全员投同一个人。
+// voteAll has everyone vote for the same person.
 func (g *game) voteAll(target string) {
 	g.t.Helper()
 	for _, p := range g.e.View().AllPlayers() {
 		want := target
 		if p.ID == target {
-			// 不能投自己，随便换一个别人。
+			// You may not vote for yourself; pick anyone else.
 			for _, q := range g.e.View().AllPlayers() {
 				if q.ID != target {
 					want = q.ID
@@ -186,7 +195,7 @@ func (g *game) voteAll(target string) {
 	}
 }
 
-// TestVictory_WolfDies 至少一名狼人出局 → 村民队赢。
+// TestVictory_WolfDies: at least one werewolf eliminated -> the village wins.
 func TestVictory_WolfDies(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -197,14 +206,15 @@ func TestVictory_WolfDies(t *testing.T) {
 	g.end(hiddenrole.PhaseEnd)
 
 	if got := g.e.Status().Winner; !Won(got, CampVillage) {
-		t.Errorf("狼出局，村民队应当赢，实际 %v", got)
+		t.Errorf("a wolf was eliminated, so the village should win, got %v", got)
 	}
 	if Won(g.e.Status().Winner, CampWolf) {
-		t.Error("狼出局了，狼队不该赢")
+		t.Error("a wolf was eliminated, so the wolves should not win")
 	}
 }
 
-// TestVictory_NoWolfDies 场上有狼且没有狼出局 → 狼队赢。
+// TestVictory_NoWolfDies: a wolf in play and no wolf eliminated -> the wolves
+// win.
 func TestVictory_NoWolfDies(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -215,14 +225,16 @@ func TestVictory_NoWolfDies(t *testing.T) {
 	g.end(hiddenrole.PhaseEnd)
 
 	if got := g.e.Status().Winner; !Won(got, CampWolf) {
-		t.Errorf("没有狼出局，狼队应当赢，实际 %v", got)
+		t.Errorf("no wolf was eliminated, so the wolves should win, got %v", got)
 	}
 }
 
-// TestVictory_NoWolfInPlayAndNobodyDies 场上没有狼且无人出局 → 村民队赢。
+// TestVictory_NoWolfInPlayAndNobodyDies: no wolf in play and nobody eliminated
+// -> the village wins.
 //
-// 「无人出局」由「每人恰好各得一票」达成——这是官方规则明写的一条，
-// 不是平票的特例。三个人各投下一个，正好一人一票。
+// "Nobody is eliminated" is reached by everyone getting exactly one vote --
+// written in the official rules, not a special case of a tie. Three players
+// each voting for a different person gives exactly one vote each.
 func TestVictory_NoWolfInPlayAndNobodyDies(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
@@ -236,15 +248,16 @@ func TestVictory_NoWolfInPlayAndNobodyDies(t *testing.T) {
 
 	for _, p := range g.e.View().AllPlayers() {
 		if !p.Alive {
-			t.Fatalf("每人各得一票时不该有人出局，%s 却出局了", p.ID)
+			t.Fatalf("with one vote each nobody should be eliminated, yet %s was", p.ID)
 		}
 	}
 	if got := g.e.Status().Winner; !Won(got, CampVillage) {
-		t.Errorf("场上没有狼且无人出局，村民队应当赢，实际 %v", got)
+		t.Errorf("no wolf in play and nobody eliminated, so the village should win, got %v", got)
 	}
 }
 
-// TestVictory_TannerDiesAlone 皮匠出局且无狼出局 → 皮匠独赢，狼不赢。
+// TestVictory_TannerDiesAlone: the tanner eliminated with no wolf eliminated
+// -> the tanner wins alone and the wolves do not.
 func TestVictory_TannerDiesAlone(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -256,21 +269,23 @@ func TestVictory_TannerDiesAlone(t *testing.T) {
 
 	got := g.e.Status().Winner
 	if !Won(got, CampTanner) {
-		t.Errorf("皮匠出局，他应当赢，实际 %v", got)
+		t.Errorf("the tanner was eliminated and should win, got %v", got)
 	}
 	if Won(got, CampWolf) {
-		t.Errorf("皮匠出局时狼不该赢，实际 %v", got)
+		t.Errorf("with the tanner eliminated the wolves should not win, got %v", got)
 	}
 	if Won(got, CampVillage) {
-		t.Errorf("没有狼出局，村民队不该赢，实际 %v", got)
+		t.Errorf("no wolf was eliminated, so the village should not win, got %v", got)
 	}
 }
 
-// TestVictory_TannerAndWolfBothDie 皮匠与狼同时出局 → 皮匠与村民都赢。
+// TestVictory_TannerAndWolfBothDie: the tanner and a wolf both eliminated ->
+// the tanner and the village both win.
 //
-// **这是内核给不出的答案**：VictoryChecker 返回一个 Camp，而这里有两个
-// 赢家。本包把它们拼成一个字符串（"TANNER+VILLAGE"），编码与解码的规矩
-// 只能由规则包自己带着。见 SCARS.md 疤 5。
+// **This is an answer the kernel cannot give**: VictoryChecker returns one
+// Camp, and here there are two winners. This package packs them into one
+// string ("TANNER+VILLAGE"), and the encoding and decoding rules have to be
+// carried by the rules package. See SCARS.md, scar 5.
 func TestVictory_TannerAndWolfBothDie(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -278,36 +293,39 @@ func TestVictory_TannerAndWolfBothDie(t *testing.T) {
 		at("v1", RoleVillager), at("v2", RoleVillager))
 
 	g.toVote()
-	// 狼与皮匠各得两票，并列最高 → 两人一起出局。
-	// 谁也不能投自己，所以票要这么绕：
+	// The wolf and the tanner each get two votes and tie at the top, so both
+	// are eliminated. Nobody may vote for themselves, hence the routing:
 	g.use("v1", SkillVote, "w")
-	g.use("tn", SkillVote, "w") // 狼 2 票
+	g.use("tn", SkillVote, "w") // wolf: 2 votes
 	g.use("v2", SkillVote, "tn")
-	g.use("w", SkillVote, "tn") // 皮匠 2 票
+	g.use("w", SkillVote, "tn") // tanner: 2 votes
 	g.end(hiddenrole.PhaseEnd)
 
 	for _, id := range []string{"w", "tn"} {
 		if p, _ := g.e.PlayerInfo(id); p.Alive {
-			t.Fatalf("平票时并列最高的都该出局，%s 却活着", id)
+			t.Fatalf("on a tie everyone at the top should be eliminated, yet %s is alive", id)
 		}
 	}
 
 	got := g.e.Status().Winner
 	if !Won(got, CampTanner) {
-		t.Errorf("皮匠出局，他应当赢，实际 %v", got)
+		t.Errorf("the tanner was eliminated and should win, got %v", got)
 	}
 	if !Won(got, CampVillage) {
-		t.Errorf("有狼出局，村民队也应当赢，实际 %v", got)
+		t.Errorf("a wolf was eliminated, so the village should also win, got %v", got)
 	}
 	if len(Winners(got)) != 2 {
-		t.Errorf("应当有两个赢家，实际 %v", Winners(got))
+		t.Errorf("there should be two winners, got %v", Winners(got))
 	}
 }
 
-// TestHunter_TakesHisVoteWithHim 猎人出局时，他投的那个人也出局。
+// TestHunter_TakesHisVoteWithHim: when the hunter is eliminated, so is
+// whoever they voted for.
 //
-// 「猎人」按**现在手上那张牌**算：天亮翻的是手上的牌，抢到猎人牌的人就是
-// 猎人，而发到手是猎人、后来被换走的那个人不是。
+// "The hunter" is decided by **the card in their hand now**: what is revealed
+// in the morning is the card in hand, so whoever holds the hunter card is the
+// hunter, and the player dealt the hunter card who had it swapped away is
+// not.
 func TestHunter_TakesHisVoteWithHim(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -317,67 +335,75 @@ func TestHunter_TakesHisVoteWithHim(t *testing.T) {
 	g.toVote()
 	g.use("v1", SkillVote, "h")
 	g.use("v2", SkillVote, "h")
-	g.use("w", SkillVote, "h") // 猎人三票，出局
-	g.use("h", SkillVote, "w") // 他投的是狼 —— 狼被带走
+	g.use("w", SkillVote, "h") // the hunter takes three votes and is eliminated
+	g.use("h", SkillVote, "w") // they voted for the wolf, who goes down with them
 	g.end(hiddenrole.PhaseEnd)
 
 	if p, _ := g.e.PlayerInfo("h"); p.Alive {
-		t.Fatal("猎人得票最多，应当出局")
+		t.Fatal("the hunter got the most votes and should be eliminated")
 	}
 	if p, _ := g.e.PlayerInfo("w"); p.Alive {
-		t.Fatal("猎人出局时应当带走他投的那个人")
+		t.Fatal("an eliminated hunter should take whoever they voted for with them")
 	}
 	if got := g.e.Status().Winner; !Won(got, CampVillage) {
-		t.Errorf("狼被猎人带走了，村民队应当赢，实际 %v", got)
+		t.Errorf("the hunter took the wolf down, so the village should win, got %v", got)
 	}
 }
 
 // TestNightAbilityFollowsDealtCard_NotHeldCard
-// 夜里做什么由**发到手**的那张牌决定，不由现在手上那张决定。
+// What you do at night is decided by the card you were **dealt**, not the one
+// in your hand now.
 //
-// 这是这一套规则的支点，也是它与前两套最不一样的地方。抢劫者抢走狼人牌
-// 之后不会变成狼、不会跟狼一起醒；而狼的牌被抢走之后，他那一夜**已经动过了**。
+// This is the ruleset's pivot and what most sets it apart from the first two.
+// A robber who steals the werewolf card does not become a wolf and does not
+// wake with them; and the wolf whose card was stolen **had already acted**
+// that night.
 func TestNightAbilityFollowsDealtCard_NotHeldCard(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
 		at("w", RoleWerewolf), at("r", RoleRobber),
 		at("i", RoleInsomniac), at("v", RoleVillager))
 
-	// 狼阶段：场上只有一只狼，他能看中央牌。
+	// The wolf phase: a single wolf in play, so they may look at a centre card.
 	g.use("w", SkillPeekCenter1)
 
-	// 抢劫者抢狼的牌。提交要等这个阶段结束才结算，所以先推过去。
+	// The robber steals the wolf's card. A submission only resolves when the
+	// phase ends, so advance past it first.
 	g.advance(PhaseNightRobber)
 	g.use("r", SkillRob, "w")
 	g.advance(PhaseNightTroublemake)
 
 	if g.card("r") != RoleWerewolf {
-		t.Fatalf("抢劫者现在应当拿着狼人牌，实际 %v", g.card("r"))
+		t.Fatalf("the robber should now hold the werewolf card, got %v", g.card("r"))
 	}
 
-	// 抢劫者现在拿着狼人牌，但他的**队友名单**是空的——
-	// 互认发生在他抢牌之前，而且按发到手的牌算。
+	// The robber now holds the werewolf card, and their **teammate list** is
+	// empty -- recognition happened before the theft, and goes by the card
+	// dealt.
 	if mates := g.e.Teammates("r"); len(mates) != 0 {
-		t.Errorf("抢劫者不该出现在狼的队友关系里，实际 %v", mates)
+		t.Errorf("the robber should not appear in the wolves' teammate relation, got %v", mates)
 	}
-	// 反过来，狼的牌被抢走了，他自己仍然知道自己发到手是狼。
+	// The other way round: the wolf's card was stolen and they still know they
+	// were dealt the wolf.
 	if got := g.e.PlayerView("w").Self.Role; got != RoleWerewolf {
-		t.Errorf("发到手的牌不该变，实际 %v", got)
+		t.Errorf("the card dealt should not change, got %v", got)
 	}
 
 	g.advance(PhaseDay)
 
-	// 失眠者最后动，看到的是所有交换之后的结果。
+	// The insomniac acts last and sees the result of every swap.
 	if got := g.info("i")["learn.self"]; got != string(RoleInsomniac) {
-		t.Errorf("没人动失眠者的牌，他应当看到 INSOMNIAC，实际 %q", got)
+		t.Errorf("nobody touched the insomniac's card, so they should see INSOMNIAC, got %q", got)
 	}
 }
 
-// TestDrunk_DoesNotKnowWhatHeHolds 酒鬼换了牌，而且不知道换到了什么。
+// TestDrunk_DoesNotKnowWhatHeHolds: the drunk swapped a card and does not know
+// what they got.
 //
-// 这是内核那条「不给玩家自由格式状态口袋」的规矩在这一套规则里的价值：
-// 酒鬼手上的牌是一项整局状态，若内核默认把 Vars 交给玩家，这个角色
-// 当场就不成立了。
+// This is what the kernel's "no free-form state bag in a player-facing struct"
+// rule is worth in this ruleset: the drunk's card is a piece of game-long
+// state, and if the kernel handed Vars to players by default, this role would
+// not work at all.
 func TestDrunk_DoesNotKnowWhatHeHolds(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
@@ -388,22 +414,23 @@ func TestDrunk_DoesNotKnowWhatHeHolds(t *testing.T) {
 	g.advance(PhaseNightInsomniac)
 
 	if g.card("d") != RoleWerewolf {
-		t.Fatalf("酒鬼应当拿到中央第 0 张（狼人牌），实际 %v", g.card("d"))
+		t.Fatalf("the drunk should have taken centre card 0 (the werewolf card), got %v", g.card("d"))
 	}
 
 	view := g.e.PlayerView("d")
 	for k, v := range view.RoleInfo {
-		t.Errorf("酒鬼不该知道任何东西，却看到 %s=%s", k, v)
+		t.Errorf("the drunk should know nothing, yet sees %s=%s", k, v)
 	}
 	if view.Self.Camp != hiddenrole.CampUnspecified {
-		t.Errorf("酒鬼不该知道自己现在算哪边，Self.Camp = %v", view.Self.Camp)
+		t.Errorf("the drunk should not know which side they now count for, Self.Camp = %v", view.Self.Camp)
 	}
 	if view.Self.Role != RoleDrunk {
-		t.Errorf("他知道的只有「我发到手是酒鬼」，实际 %v", view.Self.Role)
+		t.Errorf("all they know is \"I was dealt the drunk\", got %v", view.Self.Role)
 	}
 }
 
-// TestTroublemaker_VictimsAreNotTold 被捣蛋鬼换过牌的两个人不知道。
+// TestTroublemaker_VictimsAreNotTold: the two players the troublemaker swapped
+// are not told.
 func TestTroublemaker_VictimsAreNotTold(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -415,11 +442,11 @@ func TestTroublemaker_VictimsAreNotTold(t *testing.T) {
 	g.advance(PhaseNightDrunk)
 
 	if g.card("w") != RoleVillager || g.card("v1") != RoleWerewolf {
-		t.Fatalf("两人的牌应当已经交换，实际 w=%v v1=%v", g.card("w"), g.card("v1"))
+		t.Fatalf("the two cards should have been swapped, got w=%v v1=%v", g.card("w"), g.card("v1"))
 	}
 	for _, id := range []string{"w", "v1", "t"} {
 		if got := g.info(id)["learn.self"]; got != "" {
-			t.Errorf("%s 不该知道自己现在拿的是什么，却看到 %q", id, got)
+			t.Errorf("%s should not know what they now hold, yet sees %q", id, got)
 		}
 	}
 }

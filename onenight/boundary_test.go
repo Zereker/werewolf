@@ -9,10 +9,12 @@ import (
 )
 
 // TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa
-// 狼互认；爪牙看得见狼，狼看不见爪牙。
+// The wolves recognise each other; the minion sees the wolves and the wolves
+// do not see the minion.
 //
-// 这是**单向**的不对称，与missions 包的奥伯伦（双向隔离）是两个方向。
-// 内核允许不对称正是为了这一类。
+// This is a **one-way** asymmetry, the opposite direction from the missions
+// package's Oberon (isolated both ways). The kernel allows asymmetry precisely
+// for cases like these.
 func TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -20,30 +22,31 @@ func TestBoundary_WolvesRecogniseEachOtherMinionSeesThemNotViceVersa(t *testing.
 		at("m", RoleMinion), at("v", RoleVillager))
 
 	if got := g.info("w1")["wolves"]; got != "w2" {
-		t.Errorf("w1 应当认得 w2，实际 %q", got)
+		t.Errorf("w1 should recognise w2, got %q", got)
 	}
 	if got := g.info("m")["wolves"]; got != "w1,w2" {
-		t.Errorf("爪牙应当看见两只狼，实际 %q", got)
+		t.Errorf("the minion should see both wolves, got %q", got)
 	}
-	// 狼的信息里没有爪牙——单向。
+	// The wolves' information does not include the minion -- one-way.
 	for _, id := range []string{"w1", "w2"} {
 		if strings.Contains(g.info(id)["wolves"], "m") {
-			t.Errorf("%s 不该看见爪牙", id)
+			t.Errorf("%s should not see the minion", id)
 		}
 	}
-	// 队友关系同样只在狼之间。
+	// The teammate relation likewise holds between wolves only.
 	if mates := g.e.Teammates("m"); len(mates) != 0 {
-		t.Errorf("爪牙不是任何人的队友，实际 %v", mates)
+		t.Errorf("the minion is nobody's teammate, got %v", mates)
 	}
 	if got := g.info("v")["wolves"]; got != "" {
-		t.Errorf("村民什么都不该看到，实际 %q", got)
+		t.Errorf("a villager should see nothing, got %q", got)
 	}
 }
 
-// TestBoundary_LoneWolfSeesEmptyList 独狼看到的是一份空名单。
+// TestBoundary_LoneWolfSeesEmptyList: a lone wolf sees an empty list.
 //
-// 「名单是空的」本身就是信息：它等于「我是独狼」，可以去看一张中央牌。
-// 因此空名单也要送到，不能因为空就不给。
+// "The list is empty" is itself information: it means "I am the lone wolf" and
+// may go and look at a centre card. So an empty list still has to be
+// delivered, not withheld for being empty.
 func TestBoundary_LoneWolfSeesEmptyList(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleVillager},
@@ -52,27 +55,30 @@ func TestBoundary_LoneWolfSeesEmptyList(t *testing.T) {
 	info := g.info("w")
 	got, ok := info["wolves"]
 	if !ok {
-		t.Fatal("独狼也该收到 wolves 这一项——空名单是信息")
+		t.Fatal("a lone wolf should still get the wolves entry -- an empty list is information")
 	}
 	if got != "" {
-		t.Errorf("场上只有一只狼，名单应当是空的，实际 %q", got)
+		t.Errorf("with a single wolf in play the list should be empty, got %q", got)
 	}
 }
 
-// TestBoundary_LoneMasonKnowsTheOtherIsInCenter 只有一名守夜人时名单是空的。
+// TestBoundary_LoneMasonKnowsTheOtherIsInCenter: with a single mason the list
+// is empty.
 func TestBoundary_LoneMasonKnowsTheOtherIsInCenter(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleMason, RoleVillager, RoleVillager},
 		at("m", RoleMason), at("v1", RoleVillager), at("v2", RoleVillager))
 
 	if got, ok := g.info("m")["masons"]; !ok || got != "" {
-		t.Errorf("另一名守夜人在中央，名单应当是空的，实际 %q（存在=%v）", got, ok)
+		t.Errorf("the other mason is in the centre, so the list should be empty, got %q (present=%v)", got, ok)
 	}
 }
 
-// TestBoundary_NightEventsGoOnlyToTheActor 夜里的事只告诉当事人。
+// TestBoundary_NightEventsGoOnlyToTheActor: what happens at night is told only
+// to the person it happened to.
 //
-// 捣蛋鬼那条尤其要紧：被换的两个人也不能知道。
+// The troublemaker's case matters most: the two players swapped must not know
+// either.
 func TestBoundary_NightEventsGoOnlyToTheActor(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -84,36 +90,39 @@ func TestBoundary_NightEventsGoOnlyToTheActor(t *testing.T) {
 		want  []string
 		why   string
 	}{
-		{hiddenrole.NewEffect(EventMeddled, "t", "").ToEvent(), []string{"t"}, "只有捣蛋鬼自己知道"},
-		{hiddenrole.NewEffect(EventSeerLook, "v1", "w").ToEvent(), []string{"v1"}, "只有预言家自己知道"},
-		{hiddenrole.NewEffect(EventDrunkSwap, "v2", "").ToEvent(), []string{"v2"}, "酒鬼自己也只知道他换了"},
-		{hiddenrole.NewEffect(EventLynched, "", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "出局是公开的"},
-		{hiddenrole.NewEffect(EventVoted, "v1", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "投票是公开的"},
-		{hiddenrole.NewEffect(EventNoOneDies, "", "").ToEvent(), []string{"t", "v1", "v2", "w"}, "无人出局是公开的"},
+		{hiddenrole.NewEffect(EventMeddled, "t", "").ToEvent(), []string{"t"}, "only the troublemaker knows"},
+		{hiddenrole.NewEffect(EventSeerLook, "v1", "w").ToEvent(), []string{"v1"}, "only the seer knows"},
+		{hiddenrole.NewEffect(EventDrunkSwap, "v2", "").ToEvent(), []string{"v2"}, "even the drunk only knows that they swapped"},
+		{hiddenrole.NewEffect(EventLynched, "", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "elimination is public"},
+		{hiddenrole.NewEffect(EventVoted, "v1", "w").ToEvent(), []string{"t", "v1", "v2", "w"}, "the vote is public"},
+		{hiddenrole.NewEffect(EventNoOneDies, "", "").ToEvent(), []string{"t", "v1", "v2", "w"}, "nobody being eliminated is public"},
 	}
 
 	for _, c := range cases {
 		got, known := g.e.AudienceOf(c.event)
 		if !known {
-			t.Errorf("%v 应当有明确的受众判定（%s）", c.event.Type, c.why)
+			t.Errorf("%v should have a definite audience verdict (%s)", c.event.Type, c.why)
 			continue
 		}
 		sort.Strings(got)
 		if strings.Join(got, ",") != strings.Join(c.want, ",") {
-			t.Errorf("%v 的受众 = %v，期望 %v（%s）", c.event.Type, got, c.want, c.why)
+			t.Errorf("audience of %v = %v, want %v (%s)", c.event.Type, got, c.want, c.why)
 		}
 	}
 
-	// 规则没管的事件交回「不知道」，由调用方自己路由。
+	// An event the rules did not speak on comes back as "don't know", for the
+	// caller to route.
 	if _, known := g.e.AudienceOf(hiddenrole.NewEffect(hiddenrole.EventType("SOMETHING_ELSE"), "t", "").ToEvent()); known {
-		t.Error("本包没有为这个事件表态，答案该是「不知道」")
+		t.Error("this package did not speak on this event, so the answer should be \"don't know\"")
 	}
 }
 
-// TestBoundary_StatePrimitivesNeverReachPlayers 状态原语一条都不外发。
+// TestBoundary_StatePrimitivesNeverReachPlayers: not one state primitive is
+// sent out.
 //
-// 这一套规则里这条格外要紧：「三号现在手上是狼人牌」就是一条 SET_VAR。
-// 它是内核不可配置的那一条，本包写不写 AudienceProvider 都拦得住。
+// It matters especially in this ruleset: "player 3 now holds the werewolf card"
+// is a SET_VAR. It is the kernel's one non-configurable rule, and it holds
+// whether or not this package installs an AudienceProvider.
 func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -128,15 +137,16 @@ func TestBoundary_StatePrimitivesNeverReachPlayers(t *testing.T) {
 	for _, ef := range primitives {
 		got, known := g.e.AudienceOf(ef.ToEvent())
 		if !known {
-			t.Errorf("%v 应当是明确的判定，不是「不知道」", ef.Type)
+			t.Errorf("%v should be a definite verdict, not an \"I don't know\"", ef.Type)
 		}
 		if len(got) != 0 {
-			t.Errorf("%v 是状态原语，不该发给任何人，实际 %v", ef.Type, got)
+			t.Errorf("%v is a state primitive and should go to nobody, got %v", ef.Type, got)
 		}
 	}
 }
 
-// TestBoundary_SpeechIsPublicAllGame 发言全场可听，全程。
+// TestBoundary_SpeechIsPublicAllGame: speech is audible to everyone,
+// throughout.
 func TestBoundary_SpeechIsPublicAllGame(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -146,11 +156,12 @@ func TestBoundary_SpeechIsPublicAllGame(t *testing.T) {
 	got := g.e.MessageReceivers("w")
 	sort.Strings(got)
 	if strings.Join(got, ",") != "v1,v2,w" {
-		t.Errorf("发言应当全场可听，实际 %v", got)
+		t.Errorf("speech should be audible to everyone, got %v", got)
 	}
 }
 
-// TestCampOf 翻牌时算阵营。爪牙属狼队但他不是狼牌。
+// TestCampOf: the camp computed when cards are revealed. The minion is on the
+// wolf team but is not a werewolf card.
 func TestCampOf(t *testing.T) {
 	cases := []struct {
 		role hiddenrole.RoleType
@@ -165,14 +176,15 @@ func TestCampOf(t *testing.T) {
 	}
 	for _, c := range cases {
 		if got := CampOf(c.role); got != c.want {
-			t.Errorf("CampOf(%v) = %v，期望 %v", c.role, got, c.want)
+			t.Errorf("CampOf(%v) = %v, want %v", c.role, got, c.want)
 		}
 	}
-	// 「狼人出局」数的是狼人牌，不是狼队——爪牙出局不算。
+	// "A werewolf was eliminated" counts werewolf cards, not the wolf team --
+	// the minion does not count.
 	if isWolfCard(RoleMinion) {
-		t.Error("爪牙属狼队，但他不是狼人牌")
+		t.Error("the minion is on the wolf team but is not a werewolf card")
 	}
 	if !isWolfCard(RoleWerewolf) {
-		t.Error("狼人牌就是狼人牌")
+		t.Error("the werewolf card is a werewolf card")
 	}
 }

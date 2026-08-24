@@ -8,31 +8,35 @@ import (
 	"github.com/Zereker/hiddenrole/enginetest"
 )
 
-// TestFuzz_Invariants 随机对局，核对通用不变量。
+// TestFuzz_Invariants runs random games against the general invariants.
 //
-// 不变量在 engine/enginetest 里，一条都不认识这套规则——它们问的全是内核
-// 层面的事：存了再读回来一样吗、回放走到同一个局面吗、说不能行动的人是不是
-// 真的不能行动。这里只负责摆局面与出招。
+// The invariants live in hiddenrole/enginetest and none of them knows this
+// ruleset -- they ask kernel-level questions only: does what was stored read
+// back the same, does replay arrive at the same board, is somebody the engine
+// says cannot act really unable to act. This file only lays out boards and
+// takes turns.
 //
-// 随机的不只是打法，还有**牌的分配**：谁拿到什么、哪三张留在中央。
-// 这一套规则的分歧几乎全由发牌决定（场上有几只狼、皮匠在不在场、
-// 狼牌是不是全在中央），只随机打法的话搜索空间会塌成一条线。
+// What is randomised is not only play but **the deal**: who gets what, and
+// which three cards stay in the centre. Almost every branch in this ruleset is
+// decided by the deal (how many wolves are in play, whether the tanner is in,
+// whether all the wolf cards are in the centre), and randomising play alone
+// would collapse the search space into a line.
 func TestFuzz_Invariants(t *testing.T) {
 	enginetest.RunFuzz(t, enginetest.FuzzSpec{
-		Games:    2000, // 三套合计 5000 局；这一套单局最短，多跑一些
+		Games:    2000, // 5000 games across the three packages; this one has the shortest games, so it runs more
 		MaxSteps: 40,
 		WantEnd:  true,
 		Setup:    setupRandom,
 		Act:      actRandom,
 		MustSee: []string{
-			"场上有狼", "狼全在中央", "有皮匠", "有猎人", "三人局", "多人局",
+			"wolf in play", "all wolves in centre", "tanner in", "hunter in", "three players", "more players",
 		},
 	})
 }
 
-// deck 随机摆一副牌：人数 + 3 张。
+// deck lays out a random deal: one card per player, plus three.
 func setupRandom(rng *rand.Rand) enginetest.Game {
-	n := MinPlayers + rng.Intn(4) // 3~6 人
+	n := MinPlayers + rng.Intn(4) // 3 to 6 players
 	pool := []hiddenrole.RoleType{
 		RoleWerewolf, RoleWerewolf, RoleMinion, RoleMason, RoleMason,
 		RoleSeer, RoleRobber, RoleTroublemaker, RoleDrunk, RoleInsomniac,
@@ -47,7 +51,8 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 	var center [CenterCount]hiddenrole.RoleType
 	copy(center[:], pool[n:n+CenterCount])
 
-	// 标签：盯住随机化有没有退化。这套规则最要紧的分歧全在发牌上。
+	// Labels, to watch for the randomisation degenerating. Every branch that
+	// matters in this ruleset comes from the deal.
 	var labels []string
 	wolvesInPlay := 0
 	for _, s := range seats {
@@ -55,20 +60,20 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 		case RoleWerewolf:
 			wolvesInPlay++
 		case RoleTanner:
-			labels = append(labels, "有皮匠")
+			labels = append(labels, "tanner in")
 		case RoleHunter:
-			labels = append(labels, "有猎人")
+			labels = append(labels, "hunter in")
 		}
 	}
 	if wolvesInPlay > 0 {
-		labels = append(labels, "场上有狼")
+		labels = append(labels, "wolf in play")
 	} else {
-		labels = append(labels, "狼全在中央")
+		labels = append(labels, "all wolves in centre")
 	}
 	if n == MinPlayers {
-		labels = append(labels, "三人局")
+		labels = append(labels, "three players")
 	} else {
-		labels = append(labels, "多人局")
+		labels = append(labels, "more players")
 	}
 
 	return enginetest.Game{
@@ -81,11 +86,12 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 
 func playerID(i int) string { return string(rune('a' + i)) }
 
-// actRandom 这一步随便出一招。
+// actRandom takes one random turn.
 //
-// 泛泛地随机提交在多目标技能上几乎必然被拒（捣蛋鬼要正好两个人），
-// 所以按技能挑目标个数。提交被拒不算错——规则本来就会丢掉不合法的提交，
-// 那也是被测的行为之一。
+// A generically random submission is nearly always rejected on a multi-target
+// skill (the troublemaker needs exactly two players), so the number of targets
+// is chosen per skill. A rejected submission is not a failure -- the rules drop
+// illegal submissions by design, and that is one of the behaviours under test.
 func actRandom(e *hiddenrole.Engine, rng *rand.Rand) {
 	players := e.View().AllPlayers()
 	ids := make([]string, 0, len(players))
@@ -96,14 +102,14 @@ func actRandom(e *hiddenrole.Engine, rng *rand.Rand) {
 	for _, p := range players {
 		skills := e.AllowedSkills(p.ID)
 		if len(skills) == 0 || rng.Intn(4) == 0 {
-			continue // 四分之一的机会不动——夜晚能力本来就是可选的
+			continue // a one-in-four chance of doing nothing -- night abilities are optional anyway
 		}
 		skill := skills[rng.Intn(len(skills))]
 
 		var targets []string
 		switch skill {
 		case SkillMeddle:
-			// 「另外两名」：不含自己，且两人不同
+			// "two other players": not themselves, and not the same person twice
 			others := without(ids, p.ID)
 			if len(others) < 2 {
 				continue
@@ -124,7 +130,7 @@ func actRandom(e *hiddenrole.Engine, rng *rand.Rand) {
 	}
 }
 
-// without 名单里去掉某个人。
+// without removes one player from a list.
 func without(ids []string, drop string) []string {
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {

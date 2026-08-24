@@ -1,8 +1,9 @@
-// resolver.go 十个阶段各自的结算。
+// resolver.go is one resolver per phase, ten in all.
 //
-// 夜晚的每一条能力都由**发到手的那张牌**决定谁能用（见 cards.go）——
-// 抢劫者抢到狼人牌之后不会跟狼一起醒。内核的行动者判定正好是按 RoleType
-// 算的，而 RoleType 就是发到手的那张牌，因此这一条不需要规则做任何事。
+// Who may use each night ability is decided by **the card they were dealt**
+// (see cards.go) -- a robber who steals the werewolf card does not wake with
+// the wolves. The kernel decides actors by RoleType, and RoleType is exactly
+// the card they were dealt, so this costs the rules nothing at all.
 
 package onenight
 
@@ -13,20 +14,22 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// noopResolver 这个阶段不产生任何状态变更。
+// noopResolver produces no state change at all.
 //
-// 白天只是讨论，主持人看够了就推进。爪牙、守夜人、失眠者那三个阶段也走
-// 这一条：他们只接收信息、不做任何动作，信息由 RoleInfoProvider 送达
-// （见 boundary.go）。
+// The day is only discussion, and the host advances when they have seen
+// enough. The minion, mason and insomniac phases take this path too: they only
+// receive information and take no action, and the information is delivered by
+// a RoleInfoProvider (see boundary.go).
 type noopResolver struct{}
 
 func (noopResolver) Resolve([]*hiddenrole.SkillUse, hiddenrole.GameView) []*hiddenrole.Effect {
 	return nil
 }
 
-// firstUse 取某个技能集合里第一条有效提交，没有则返回 nil。
+// firstUse returns the first valid submission from a set of skills, or nil.
 //
-// 夜晚能力全是「至多一次」：内核允许重复提交，取第一条是本包的口径。
+// Night abilities are all "at most once": the kernel permits repeated
+// submissions, and taking the first is this package's convention.
 func firstUse(uses []*hiddenrole.SkillUse, skills ...hiddenrole.SkillType) *hiddenrole.SkillUse {
 	want := make(map[hiddenrole.SkillType]bool, len(skills))
 	for _, s := range skills {
@@ -40,12 +43,14 @@ func firstUse(uses []*hiddenrole.SkillUse, skills ...hiddenrole.SkillType) *hidd
 	return nil
 }
 
-// centerIndexes 从技能名末尾读出中央牌的下标。
+// centerIndexes reads a centre card's index off the end of a skill name.
 //
-// 「看两张中央牌」「与某张中央牌交换」指向的不是玩家，而内核的目标校验只认
-// 玩家 ID——SkillUse.Targets 里的每一项都会被拿去 getPlayer，对不上就是
-// ErrTargetNotFound。于是下标只能编进技能名里，再在这里读回来。
-// 这是本包的第一条疤，见 SCARS.md 疤 1。
+// "Look at two centre cards" and "swap with a given centre card" do not point
+// at a player, and the kernel's target validation only knows player IDs --
+// every entry of SkillUse.Targets is passed to getPlayer, and anything that
+// does not match is ErrTargetNotFound. So the index can only be encoded into
+// the skill name and read back here. This is this package's first scar; see
+// SCARS.md, scar 1.
 func centerIndexes(skill hiddenrole.SkillType) []int {
 	name := string(skill)
 	i := strings.LastIndex(name, "_")
@@ -62,13 +67,15 @@ func centerIndexes(skill hiddenrole.SkillType) []int {
 	return out
 }
 
-// ==================== 夜晚 ====================
+// ==================== Night ====================
 
-// werewolfResolver 狼人阶段。
+// werewolfResolver is the werewolf phase.
 //
-// 狼互认是纯信息，走 RoleInfoProvider。这里只处理**独狼**那一条：场上只有
-// 一只狼时，他可以看一张中央牌。规则没说「必须只有一只才能看」是内核该管
-// 的事——所以由这里判断，不是内核。
+// Wolves recognising each other is pure information and goes through a
+// RoleInfoProvider. Only the **lone wolf** case is handled here: with a single
+// wolf in play, they may look at one centre card. Whether "only one wolf may
+// look" is not something the kernel should judge -- so it is judged here, not
+// there.
 type werewolfResolver struct{}
 
 func (werewolfResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -77,8 +84,9 @@ func (werewolfResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Gam
 		return nil
 	}
 	if len(dealtWith(view, RoleWerewolf)) != 1 {
-		// 不止一只狼，看牌这个选项根本不存在。内核拦不住这一条——
-		// 「场上有几只狼」是规则的判断。
+		// With more than one wolf the option does not exist at all. The kernel
+		// cannot block this -- "how many wolves are in play" is the rules'
+		// judgement.
 		return nil
 	}
 	idx := centerIndexes(use.Skill)
@@ -91,7 +99,8 @@ func (werewolfResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Gam
 	}
 }
 
-// seerResolver 预言家阶段：看一名玩家的牌，或者两张中央牌。
+// seerResolver is the seer phase: look at one player's card, or two centre
+// cards.
 type seerResolver struct{}
 
 func (seerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -103,7 +112,7 @@ func (seerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameVie
 	if use.Skill == SkillSeerPlayer {
 		target := use.Target()
 		if target == "" || target == use.PlayerID {
-			return nil // 看自己没有意义，规则也不允许
+			return nil // looking at yourself is pointless, and the rules forbid it
 		}
 		return []*hiddenrole.Effect{
 			hiddenrole.NewEffect(EventSeerLook, use.PlayerID, target),
@@ -118,9 +127,11 @@ func (seerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameVie
 	return out
 }
 
-// robberResolver 抢劫者阶段：与一名玩家换牌，并看新牌。
+// robberResolver is the robber phase: swap cards with one player and look at
+// the new one.
 //
-// 「换完之后看」这个次序是规则的一部分：他知道自己现在是什么，但对方不知道。
+// The order -- swap, then look -- is part of the rules: they know what they
+// now hold, and the other player does not.
 type robberResolver struct{}
 
 func (robberResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -139,10 +150,12 @@ func (robberResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameV
 	return append(out, learnSelf(use.PlayerID, got))
 }
 
-// troublemakerResolver 捣蛋鬼阶段：交换另外两名玩家的牌，自己不看。
+// troublemakerResolver is the troublemaker phase: swap two other players'
+// cards, without looking.
 //
-// 三个人都不知道发生了什么——捣蛋鬼没看，被换的两个人也没被告知。
-// 这是这个游戏里信息最不对称的一手。
+// None of the three knows what happened -- the troublemaker did not look, and
+// the two who were swapped are not told. It is the most asymmetric move in the
+// game.
 type troublemakerResolver struct{}
 
 func (troublemakerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -151,11 +164,11 @@ func (troublemakerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole
 		return nil
 	}
 	if len(use.Targets) != 2 {
-		return nil // 必须正好两个人
+		return nil // exactly two players, no more, no fewer
 	}
 	a, b := use.Targets[0], use.Targets[1]
 	if a == b || a == use.PlayerID || b == use.PlayerID {
-		return nil // 「另外两名」——不含自己，且两人不同
+		return nil // "two other players" -- not themselves, and not the same person twice
 	}
 
 	out := []*hiddenrole.Effect{hiddenrole.NewEffect(EventMeddled, use.PlayerID, "").
@@ -163,9 +176,11 @@ func (troublemakerResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole
 	return append(out, swapCards(view, a, b)...)
 }
 
-// drunkResolver 酒鬼阶段：与一张中央牌交换，**不看**。
+// drunkResolver is the drunk phase: swap with a centre card, **without
+// looking**.
 //
-// 他因此不知道自己现在算哪边——这正是这个角色的全部内容。
+// So they do not know which side they now count for -- which is the whole of
+// what this role is.
 type drunkResolver struct{}
 
 func (drunkResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -180,14 +195,16 @@ func (drunkResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameVi
 
 	out := []*hiddenrole.Effect{hiddenrole.NewEffect(EventDrunkSwap, use.PlayerID, "").
 		WithData("center", idx[0])}
-	// 注意：只换，不 learn。
+	// Note: swap only, and record nothing -- no learn* call.
 	return append(out, swapWithCenter(view, use.PlayerID, idx[0])...)
 }
 
-// insomniacResolver 失眠者阶段：看自己现在的牌。
+// insomniacResolver is the insomniac phase: look at your own card as it now
+// stands.
 //
-// 他最后一个动，因此看到的是所有交换之后的结果。这条能力没有任何状态变更，
-// 只有一条记录——而记录是必须的，见 learnSelf 的说明。
+// They act last, so what they see is the result of every swap. The ability
+// changes no state and leaves only a record -- and the record is necessary,
+// see learnSelf.
 type insomniacResolver struct{}
 
 func (insomniacResolver) Resolve(_ []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -200,24 +217,26 @@ func (insomniacResolver) Resolve(_ []*hiddenrole.SkillUse, view hiddenrole.GameV
 	return out
 }
 
-// ==================== 投票 ====================
+// ==================== The vote ====================
 
-// voteResolver 全员同时投票。
+// voteResolver is everyone voting at once.
 //
-// 规则（官方规则书）：
-//   - 得票最多的人出局并翻牌
-//   - 平票时并列最高的**全部**出局
-//   - **每人恰好各得一票时无人出局**——这一条是规则明写的，不是平票的特例
-//   - 猎人若出局，他投的那个人也出局
+// The rules (the official rulebook):
+//   - whoever gets the most votes is eliminated and their card is revealed
+//   - on a tie, **all** those tied at the top are eliminated
+//   - **when everyone gets exactly one vote, nobody is eliminated** -- this is
+//     written in the rules, not a special case of a tie
+//   - if the hunter is eliminated, so is whoever they voted for
 //
-// 「猎人」按**现在手上那张牌**算，不按发到手的那张：天亮翻的是手上的牌，
-// 抢到猎人牌的人就是猎人。
+// "The hunter" is decided by **the card in their hand now**, not the one they
+// were dealt: what is revealed in the morning is the card in hand, and whoever
+// holds the hunter card is the hunter.
 type voteResolver struct{}
 
 func (voteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	players := view.AllPlayers()
 
-	// 一人一票，重复提交取第一条。
+	// One vote each; a repeated submission keeps the first.
 	votedBy := make(map[string]string, len(players))
 	tally := make(map[string]int, len(players))
 	var out []*hiddenrole.Effect
@@ -227,7 +246,7 @@ func (voteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameVie
 		}
 		target := u.Target()
 		if target == "" || target == u.PlayerID {
-			continue // 不能投自己
+			continue // you may not vote for yourself
 		}
 		if _, ok := view.Player(target); !ok {
 			continue
@@ -237,11 +256,13 @@ func (voteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameVie
 		out = append(out, hiddenrole.NewEffect(EventVoted, u.PlayerID, target))
 	}
 
-	// 投票结算过了。这一笔是给胜负判定用的：「无人出局」是一个合法结局，
-	// 它与「还没投票」在局面上长得一模一样。
+	// The vote has resolved. This record is for the victory check: "nobody is
+	// eliminated" is a legal outcome, and on the board it looks exactly like
+	// "the vote has not happened".
 	out = append(out, markVoteSettled())
 
-	// 每人恰好各得一票：无人出局。规则明写的一条，不是平票的特例。
+	// Everyone got exactly one vote: nobody is eliminated. Written in the
+	// rules, not a special case of a tie.
 	if allTiedAtOne(players, tally) {
 		return append(out, hiddenrole.NewEffect(EventNoOneDies, "", ""))
 	}
@@ -251,9 +272,10 @@ func (voteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameVie
 		return append(out, hiddenrole.NewEffect(EventNoOneDies, "", ""))
 	}
 
-	// 猎人带人：先把猎人的目标收进来，再一起结算。
-	// 猎人自己也可能是被猎人带走的（两个猎人互相投），因此只走一轮——
-	// 规则没有连锁开枪，这一点与狼人杀不同。
+	// The hunter takes someone with them: collect the hunter's target first,
+	// then resolve them together. The hunter may themselves be the one a
+	// hunter took down (two hunters voting for each other), so this runs a
+	// single pass -- the rules have no chained shots, unlike werewolf.
 	dead := make(map[string]bool, len(doomed))
 	for _, id := range doomed {
 		dead[id] = true
@@ -278,7 +300,7 @@ func (voteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameVie
 	return out
 }
 
-// allTiedAtOne 是不是每一名玩家都恰好得了一票。
+// allTiedAtOne reports whether every player got exactly one vote.
 func allTiedAtOne(players []hiddenrole.PlayerInfo, tally map[string]int) bool {
 	if len(players) == 0 {
 		return false
@@ -291,7 +313,8 @@ func allTiedAtOne(players []hiddenrole.PlayerInfo, tally map[string]int) bool {
 	return true
 }
 
-// topVoted 得票最多的那些人，按 ID 排序。零票不算。
+// topVoted is whoever got the most votes, sorted by ID. Zero votes do not
+// count.
 func topVoted(tally map[string]int) []string {
 	best := 0
 	for _, n := range tally {
@@ -312,7 +335,8 @@ func topVoted(tally map[string]int) []string {
 	return out
 }
 
-// sortedKeys 一张集合的键，按字典序——效果流因此是确定的。
+// sortedKeys returns a set's keys in lexicographic order, which is what keeps
+// the effect log deterministic.
 func sortedKeys(set map[string]bool) []string {
 	out := make([]string, 0, len(set))
 	for k := range set {
@@ -322,10 +346,11 @@ func sortedKeys(set map[string]bool) []string {
 	return out
 }
 
-// dealtWith 发到手的牌是某个角色的那些玩家，按 ID 排序。
+// dealtWith is the players whose dealt card is a given role, sorted by ID.
 //
-// 用 AllPlayers 而不是 AlivePlayers：这一局到投票之前没有人会出局，
-// 而「谁能用某个能力」在这套规则里与生死无关。
+// It uses AllPlayers rather than AlivePlayers: nobody is eliminated before the
+// vote in this game, and "who may use an ability" has nothing to do with life
+// and death in this ruleset.
 func dealtWith(view hiddenrole.GameView, role hiddenrole.RoleType) []string {
 	var out []string
 	for _, p := range view.AllPlayers() {

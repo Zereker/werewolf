@@ -6,10 +6,12 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// TestSnapshot_RoundTrip 存档往返之后局面一致，接着打完结局相同。
+// TestSnapshot_RoundTrip: the board matches after a save round trip, and
+// playing on from either side reaches the same outcome.
 //
-// 这一套规则的状态几乎全在「整局有效」那两格里（每个人手上的牌、中央三张、
-// 谁看到了什么）。快照要是漏了它们，恢复出来的对局会从头错到尾。
+// Almost all of this ruleset's state lives in the two game-long cells (the
+// card in each hand, the three centre cards, who saw what). A snapshot that
+// dropped them would give a restored game that is wrong from the first move.
 func TestSnapshot_RoundTrip(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleWerewolf, RoleVillager, RoleTanner},
@@ -29,29 +31,29 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 		t.Fatalf("RestoreEngine: %v", err)
 	}
 
-	// 手上的牌
+	// The card in each hand.
 	for _, id := range []string{"s", "r", "w", "v"} {
 		want := card(g.e.View(), id)
 		if got := card(restored.View(), id); got != want {
-			t.Errorf("%s 手上的牌恢复错了：%v，期望 %v", id, got, want)
+			t.Errorf("%s: the card in hand restored wrongly: %v, want %v", id, got, want)
 		}
 	}
-	// 中央三张
+	// The three centre cards.
 	for i := 0; i < CenterCount; i++ {
 		want := centerCard(g.e.View(), i)
 		if got := centerCard(restored.View(), i); got != want {
-			t.Errorf("中央第 %d 张恢复错了：%v，期望 %v", i, got, want)
+			t.Errorf("centre card %d restored wrongly: %v, want %v", i, got, want)
 		}
 	}
-	// 谁看到了什么
+	// Who saw what.
 	if got := restored.PlayerView("s").RoleInfo["learn.center.0"]; got != string(RoleWerewolf) {
-		t.Errorf("预言家看到的东西没随快照走，读到 %q", got)
+		t.Errorf("what the seer saw did not travel with the snapshot, read %q", got)
 	}
 	if got := restored.PlayerView("r").RoleInfo["learn.self"]; got != string(RoleWerewolf) {
-		t.Errorf("抢劫者看到的东西没随快照走，读到 %q", got)
+		t.Errorf("what the robber saw did not travel with the snapshot, read %q", got)
 	}
 
-	// 接着打完，两边结局相同。
+	// Play on from both, and the outcomes match.
 	finish := func(e *hiddenrole.Engine) hiddenrole.Camp {
 		t.Helper()
 		for _, id := range []string{"s", "r", "w", "v"} {
@@ -62,7 +64,7 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 			if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 				PlayerID: id, Skill: SkillVote, Targets: []string{target},
 			}); err != nil {
-				t.Fatalf("%s 投票: %v", id, err)
+				t.Fatalf("%s voting: %v", id, err)
 			}
 		}
 		if _, err := e.EndPhase(); err != nil {
@@ -78,11 +80,11 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 		t.Fatalf("EndPhase: %v", err)
 	}
 	if a, b := finish(g.e), finish(restored); a != b {
-		t.Errorf("恢复出来的对局结局不同：%v vs %v", a, b)
+		t.Errorf("the restored game reached a different outcome: %v vs %v", a, b)
 	}
 }
 
-// TestReplay_RebuildsGame 效果流回放出同一个局面。
+// TestReplay_RebuildsGame: replaying the effect log reaches the same board.
 func TestReplay_RebuildsGame(t *testing.T) {
 	center := [CenterCount]hiddenrole.RoleType{RoleVillager, RoleWerewolf, RoleVillager}
 	g := newGame(t, center,
@@ -101,33 +103,35 @@ func TestReplay_RebuildsGame(t *testing.T) {
 	}
 
 	if got, want := replayed.Status().Phase, g.e.Status().Phase; got != want {
-		t.Errorf("回放后阶段 = %v，期望 %v", got, want)
+		t.Errorf("phase after replay = %v, want %v", got, want)
 	}
 	for _, id := range []string{"t", "w", "d", "v"} {
 		want := card(g.e.View(), id)
 		if got := card(replayed.View(), id); got != want {
-			t.Errorf("%s 手上的牌回放错了：%v，期望 %v", id, got, want)
+			t.Errorf("%s: the card in hand replayed wrongly: %v, want %v", id, got, want)
 		}
 	}
 	for i := 0; i < CenterCount; i++ {
 		want := centerCard(g.e.View(), i)
 		if got := centerCard(replayed.View(), i); got != want {
-			t.Errorf("中央第 %d 张回放错了：%v，期望 %v", i, got, want)
+			t.Errorf("centre card %d replayed wrongly: %v, want %v", i, got, want)
 		}
 	}
 }
 
-// TestConfig_IsValid 阶段图自洽。
+// TestConfig_IsValid: the phase graph is internally consistent.
 func TestConfig_IsValid(t *testing.T) {
 	if err := GameConfig().Validate(); err != nil {
-		t.Fatalf("阶段图不合法: %v", err)
+		t.Fatalf("the phase graph is invalid: %v", err)
 	}
 }
 
-// TestRoundNeverAdvances 这一套规则整局只有一个回合。
+// TestRoundNeverAdvances: this ruleset has exactly one round.
 //
-// 前两套的阶段图都是环，回合数会一路涨。这一套是直线，Round 从头到尾是 1
-// ——而这份配置一个回合边界都没声明，正因为它不需要（SCARS.md 疤 2）。
+// Both earlier packages have cyclic phase graphs and their round numbers climb.
+// This one is a straight line and Round is 1 from start to finish -- and this
+// configuration declares no round boundary at all, precisely because it does
+// not need one (SCARS.md, scar 2).
 func TestRoundNeverAdvances(t *testing.T) {
 	g := newGame(t,
 		[CenterCount]hiddenrole.RoleType{RoleVillager, RoleVillager, RoleVillager},
@@ -140,7 +144,7 @@ func TestRoundNeverAdvances(t *testing.T) {
 	} {
 		g.advance(phase)
 		if got := g.e.Status().Round; got != 1 {
-			t.Fatalf("走到 %v 时回合数 = %d，这一套规则整局只有一个回合", phase, got)
+			t.Fatalf("round = %d on reaching %v; this ruleset has exactly one round", got, phase)
 		}
 	}
 }

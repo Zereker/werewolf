@@ -1,7 +1,8 @@
-// victory.go 谁赢了。
+// victory.go decides who won.
 //
-// 这一节是本包撞得最狠的一处，见 SCARS.md 疤 5：**这套规则可以有不止一个
-// 赢家**，而内核的 VictoryChecker 只能返回一个 Camp。
+// This is where this package ran into the kernel hardest; see SCARS.md,
+// scar 5: **this ruleset can have more than one winner**, and the kernel's
+// VictoryChecker can only return one Camp.
 
 package onenight
 
@@ -12,31 +13,35 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// 胜负条件，取自官方规则书：
+// The victory conditions, from the official rulebook:
 //
-//	村民队赢   至少一名狼人出局（同时有非狼出局也不影响）
-//	           或者：场上根本没有狼人（三张狼牌都在中央）且无人出局
-//	狼队赢     场上至少有一名狼人，且没有狼人出局
-//	皮匠赢     只有他自己出局才赢。他出局且无狼出局 → 狼不赢；
-//	           他出局且有狼出局 → 村民也赢
+//	village wins   at least one werewolf is eliminated (a non-wolf also being eliminated does not matter)
+//	               or: there are no werewolves in play at all (all three wolf cards are in the centre) and nobody is eliminated
+//	wolves win     at least one werewolf is in play and no werewolf is eliminated
+//	tanner wins    only by being eliminated themselves. Eliminated with no wolf eliminated -> the wolves do not win;
+//	               eliminated with a wolf also eliminated -> the village wins too
 //
-// 「狼人出局」数的是**狼人牌**，不是狼队：爪牙属狼队，但他不是狼，
-// 他出局不算「狼人出局」。
+// "A werewolf was eliminated" counts **werewolf cards**, not the wolf team:
+// the minion is on the wolf team but is not a wolf, and their elimination does
+// not count.
 //
-// # 与来源的一处分歧
+// # One disagreement with the source
 //
-// 广为流传的一条爪牙细则是「场上没有狼人时，爪牙只要自己不死、且至少死了
-// 一名村民就赢」。它在出版方的规则引文里**找不到**，只出现在二手复述里。
-// 本包从官方引文，不实现那一条——与missions 包在梅林那条上的做法一致：
-// 来源打架时说明理由，从更权威的那一份。
+// A widely repeated minion clause says "with no werewolf in play, the minion
+// wins as long as they survive and at least one villager dies". It is **not
+// found** in the publisher's own rules text and appears only in second-hand
+// restatements. This package follows the official text and does not implement
+// it -- the same approach the missions package took on Merlin: when sources
+// disagree, state the reason and follow the more authoritative one.
 //
-// 后果是一个边角局面没有赢家：狼牌全在中央、爪牙在场、且有人出局。
-// 这一条有测试钉住（TestVictory_NoWolfInPlayAndSomeoneDies），
-// 换来源时会立刻看见。
-
-// checkVictory 判定胜负。
+// The consequence is one corner case with no winner: all wolf cards in the
+// centre, a minion in play, and somebody eliminated. It is pinned by a test
+// (TestVictory_NoWolfInPlayAndSomeoneDies), so changing sources shows up
+// immediately.
+// checkVictory decides the outcome.
 //
-// 只在投票结束之后才有答案——这一套规则里，**中途永远不结束**。
+// There is only an answer once the vote has resolved -- in this ruleset the
+// game **never ends early**.
 func checkVictory(view hiddenrole.GameView) (bool, hiddenrole.Camp) {
 	if view.Phase() != PhaseVote {
 		return false, hiddenrole.CampUnspecified
@@ -61,7 +66,8 @@ func checkVictory(view hiddenrole.GameView) (bool, hiddenrole.Camp) {
 		}
 	}
 
-	// 投票还没结算完（没人死也没有「无人出局」的结论）时不下判断。
+	// Do not decide while the vote is unresolved (nobody dead and no "nobody
+	// is eliminated" conclusion yet).
 	if !anyDied && !votingSettled(view) {
 		return false, hiddenrole.CampUnspecified
 	}
@@ -80,32 +86,37 @@ func checkVictory(view hiddenrole.GameView) (bool, hiddenrole.Camp) {
 	return true, joinCamps(winners)
 }
 
-// votingSettled 投票阶段是不是已经结算过了。
+// votingSettled reports whether the vote phase has already resolved.
 //
-// 「无人出局」是一个合法结局（每人各得一票），它与「还没投票」在局面上
-// 长得一模一样——两种情况都是没有人出局。用一项整局状态把它们分开。
+// "Nobody is eliminated" is a legal outcome (one vote each), and on the board
+// it looks exactly like "the vote has not happened" -- in both cases nobody is
+// eliminated. A piece of game-long state tells them apart.
 func votingSettled(view hiddenrole.GameView) bool {
 	return view.Var(hiddenrole.ScopeGame, varVoteSettled) != ""
 }
 
-// varVoteSettled 投票已结算的标记。
+// varVoteSettled marks the vote as resolved.
 const varVoteSettled = "vote.settled"
 
-// markVoteSettled 投票结算完就记一笔，供胜负判定区分「无人出局」与「还没投」。
+// markVoteSettled records that the vote resolved, so the victory check can
+// tell "nobody was eliminated" from "nobody has voted yet".
 func markVoteSettled() *hiddenrole.Effect {
 	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varVoteSettled, hiddenrole.VarPresent)
 }
 
-// joinCamps 把若干个赢家拼成一个 Camp。
+// joinCamps packs several winners into one Camp.
 //
-// 内核的 VictoryChecker 返回 (bool, Camp) ——**一个** Camp。而这套规则里
-// 皮匠可以和村民一起赢：他出局、同时也有狼出局，两边都赢。
+// The kernel's VictoryChecker returns (bool, Camp) -- **one** Camp. And in
+// this ruleset the tanner can win alongside the village: they are eliminated
+// and so is a wolf, and both sides win.
 //
-// Camp 的底层是字符串、内核不解释取值，所以把几个拼成一个是能跑的：
-// "TANNER+VILLAGE"。但那是一个**字符串编码**，不是一个类型——调用方要知道
-// 拆开的规矩，而那条规矩内核不知道、也没地方写。见 SCARS.md 疤 5。
+// Camp is a string underneath and the kernel does not interpret values, so
+// packing several into one works: "TANNER+VILLAGE". But that is a **string
+// encoding**, not a type -- the caller has to know the rule for taking it
+// apart, and that rule is something the kernel neither knows nor has anywhere
+// to record. See SCARS.md, scar 5.
 //
-// 按字典序拼，结果因此是确定的。
+// They are joined in lexicographic order, so the result is deterministic.
 func joinCamps(winners []hiddenrole.Camp) hiddenrole.Camp {
 	if len(winners) == 0 {
 		return CampNobody
@@ -118,16 +129,18 @@ func joinCamps(winners []hiddenrole.Camp) hiddenrole.Camp {
 	return hiddenrole.Camp(strings.Join(out, "+"))
 }
 
-// CampNobody 没有任何一边达成胜利条件。
+// CampNobody means no side met its victory condition.
 //
-// 这不是「还没结束」（那是 hiddenrole.CampUnspecified），是「结束了，没人赢」。
-// 一个真实存在的边角局面：狼牌全在中央、爪牙在场、且有人出局。
+// This is not "not decided yet" (that is hiddenrole.CampUnspecified), it is
+// "the game ended and nobody won". A real corner case: all wolf cards in the
+// centre, a minion in play, and somebody eliminated.
 const CampNobody hiddenrole.Camp = "NOBODY"
 
-// Winners 把 checkVictory 拼出来的 Camp 拆回一组。
+// Winners unpacks the Camp that checkVictory packed back into a set.
 //
-// 这个函数的存在本身就是疤 5 的证据：内核给不出「一组赢家」，于是编码与
-// 解码的规矩只能由规则包自己带着。
+// This function existing is itself evidence of scar 5: the kernel cannot
+// express "a set of winners", so the encoding and decoding rules have to be
+// carried by the rules package.
 func Winners(c hiddenrole.Camp) []hiddenrole.Camp {
 	if c == hiddenrole.CampUnspecified || c == CampNobody {
 		return nil
@@ -140,7 +153,7 @@ func Winners(c hiddenrole.Camp) []hiddenrole.Camp {
 	return out
 }
 
-// Won 某一边是不是赢家之一。
+// Won reports whether a given side is among the winners.
 func Won(c hiddenrole.Camp, want hiddenrole.Camp) bool {
 	for _, w := range Winners(c) {
 		if w == want {

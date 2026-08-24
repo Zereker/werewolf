@@ -1,52 +1,62 @@
-// cards.go 「发到手的那张牌」与「现在手上那张牌」。
+// cards.go covers "the card you were dealt" and "the card in your hand now".
 //
-// 这是一夜狼人与前两套规则包最根本的差别，也是这一整个包存在的理由：
-// 前两套里「你是什么角色」自始至终只有一个答案，这一套里有两个。
+// This is the deepest difference between One Night and the first two rules
+// packages, and the reason this package exists at all: in the first two,
+// "which role are you" has one answer from beginning to end; here it has two.
 //
-//	发到手的那张牌   决定夜里你做什么   一局之内不变   ← 内核的 RoleType
-//	现在手上那张牌   决定结算时你算哪边  夜里被换来换去  ← 本包的一项整局状态
+//	the card you were dealt    decides what you do at night    never changes    <- the kernel's RoleType
+//	the card in your hand now  decides which side you score for gets swapped    <- this package's own game-long state
 //
-// 抢劫者抢到狼人牌之后不会变成狼、不跟狼一起醒——他夜里做的事由发到手的牌
-// 决定；但天亮结算时他算狼队。酒鬼把自己的牌与中央的换掉，而且**不看**，
-// 于是连他自己都不知道自己现在算哪边。
+// A robber who steals the werewolf card does not become a wolf and does not
+// wake with them -- what they do at night is decided by the card they were
+// dealt; but when the game is scored they count as the wolf team. The drunk
+// swaps their own card with one from the centre **without looking**, so not
+// even they know which side they now count for.
 //
-// 内核的 RoleType 入座时定死、没有写入路径，正好承担第一层。第二层是一项
-// 「整局有效、属于某个玩家」的状态，规则自己管。
+// The kernel's RoleType is fixed at seating time with no write path, which is
+// exactly the first layer. The second layer is a piece of "game-long, owned by
+// one player" state that the rules manage themselves.
 //
-// **这一条原本被列为内核的抽象缺口**（docs/DESIGN.md §8.1「身份入座定死」，
-// 猜想是挡掉换牌类游戏）。写下来才发现猜错了：换牌类游戏要的不是「可写的
-// RoleType」，而是**两层身份**——而内核给一层、规则给一层，正好够用。
-// 见 SCARS.md 疤 1。
+// **This was originally listed as an abstraction gap in the kernel**
+// (DESIGN.md §8.1, "identity is fixed at seating", guessed to block
+// card-swapping games). Writing it revealed the guess was wrong: what a
+// card-swapping game wants is not a writable RoleType but **two layers of
+// identity** -- and one layer from the kernel plus one from the rules is
+// exactly enough. See SCARS.md, scar 1.
 
 package onenight
 
 import "github.com/Zereker/hiddenrole"
 
 const (
-	// varCard 这名玩家现在手上是哪张牌。整局有效、属于某个玩家。
+	// varCard is which card this player holds now. Game-long, owned by one
+	// player.
 	//
-	// 入座时由 RoleSetup 发放，值等于发到手的牌；此后被抢劫者、捣蛋鬼、
-	// 酒鬼改写。
+	// Handed out by RoleSetup at seating time with the value of the card they
+	// were dealt; rewritten afterwards by the robber, the troublemaker and the
+	// drunk.
 	varCard = "card"
 
-	// varCenter0/1/2 中央三张牌。整局有效、不属于任何玩家。
+	// varCenter0/1/2 are the three centre cards. Game-long, owned by nobody.
 	//
-	// 任务制那一套撞出来的那一格（整局·无主）在这里又一次派上用场：中央牌不
-	// 属于任何人，也不该每回合清空。没有那一格的话，三张公共牌只能挂到
-	// 某个玩家名下当账本。
+	// The cell the mission-based rules ran into (whole game, unowned) earns its
+	// place again here: a centre card belongs to nobody and should not be
+	// cleared each round. Without that cell, three public cards could only be
+	// filed under some player as a ledger.
 	varCenter0 = "center.0"
 	varCenter1 = "center.1"
 	varCenter2 = "center.2"
 )
 
-// centerKeys 中央三张牌的键，按下标排列。
+// centerKeys are the keys of the three centre cards, in index order.
 var centerKeys = [CenterCount]string{varCenter0, varCenter1, varCenter2}
 
-// dealt 这名玩家**发到手**的那张牌，一局之内不变。
+// dealt is the card this player **was dealt**, unchanged for the whole game.
 //
-// 夜里谁做什么由它决定，不由 card 决定：抢劫者抢到狼人牌之后不会跟狼一起
-// 醒。内核的 RoleType 就是它，这个函数只是把「为什么读 Role 而不读 card」
-// 这件事写在名字里。
+// What they do at night is decided by it, not by card: a robber who steals the
+// werewolf card does not wake with the wolves. The kernel's RoleType is
+// exactly this, and the function only writes "why Role and not card" into a
+// name.
 func dealt(view hiddenrole.GameView, playerID string) hiddenrole.RoleType {
 	p, ok := view.Player(playerID)
 	if !ok {
@@ -55,9 +65,11 @@ func dealt(view hiddenrole.GameView, playerID string) hiddenrole.RoleType {
 	return p.Role
 }
 
-// card 这名玩家**现在手上**的那张牌。结算时算哪边由它决定。
+// card is the card this player **holds now**. It decides which side they
+// score for.
 //
-// 没写过则退回发到手的那张——RoleSetup 会在入座时发放，这一路只是兜底。
+// If it was never written, it falls back to the card they were dealt --
+// RoleSetup hands it out at seating time, so this path is only a backstop.
 func card(view hiddenrole.GameView, playerID string) hiddenrole.RoleType {
 	if v := view.Var(hiddenrole.ScopeGame.Of(playerID), varCard); v != "" {
 		return hiddenrole.RoleType(v)
@@ -65,12 +77,12 @@ func card(view hiddenrole.GameView, playerID string) hiddenrole.RoleType {
 	return dealt(view, playerID)
 }
 
-// setCard 把某人手上的牌改成某张。
+// setCard changes the card in someone's hand.
 func setCard(playerID string, role hiddenrole.RoleType) *hiddenrole.Effect {
 	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame.Of(playerID), varCard, string(role))
 }
 
-// centerCard 中央第 i 张牌，下标越界则为空。
+// centerCard is centre card i, or empty if the index is out of range.
 func centerCard(view hiddenrole.GameView, i int) hiddenrole.RoleType {
 	if i < 0 || i >= CenterCount {
 		return hiddenrole.RoleUnspecified
@@ -78,7 +90,7 @@ func centerCard(view hiddenrole.GameView, i int) hiddenrole.RoleType {
 	return hiddenrole.RoleType(view.Var(hiddenrole.ScopeGame, centerKeys[i]))
 }
 
-// setCenterCard 把中央第 i 张牌改成某张。
+// setCenterCard changes centre card i.
 func setCenterCard(i int, role hiddenrole.RoleType) *hiddenrole.Effect {
 	if i < 0 || i >= CenterCount {
 		return nil
@@ -86,10 +98,11 @@ func setCenterCard(i int, role hiddenrole.RoleType) *hiddenrole.Effect {
 	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, centerKeys[i], string(role))
 }
 
-// swapCards 交换两名玩家手上的牌。
+// swapCards swaps the cards in two players' hands.
 //
-// 捣蛋鬼与抢劫者都走这一条，区别只在谁看得到结果——那是信息边界的事，
-// 不是状态的事。
+// The troublemaker and the robber both take this path; the only difference is
+// who gets to see the result, which is the information boundary's business,
+// not the state's.
 func swapCards(view hiddenrole.GameView, a, b string) []*hiddenrole.Effect {
 	return []*hiddenrole.Effect{
 		setCard(a, card(view, b)),
@@ -97,7 +110,7 @@ func swapCards(view hiddenrole.GameView, a, b string) []*hiddenrole.Effect {
 	}
 }
 
-// swapWithCenter 把某人手上的牌与中央第 i 张交换。
+// swapWithCenter swaps someone's card with centre card i.
 func swapWithCenter(view hiddenrole.GameView, playerID string, i int) []*hiddenrole.Effect {
 	held := card(view, playerID)
 	return []*hiddenrole.Effect{
@@ -106,13 +119,15 @@ func swapWithCenter(view hiddenrole.GameView, playerID string, i int) []*hiddenr
 	}
 }
 
-// CampOf 一张牌属于哪一边。
+// CampOf says which side a card belongs to.
 //
-// 它是**给宿主翻牌用的**，不是给内核用的：内核认得一个标准键 VarCamp，
-// 会把它的值搬进 SelfInfo.Camp——而这一套规则**不能让它搬**。酒鬼不知道
-// 自己现在拿的是什么牌，把当前阵营填进他自己的视图等于直接告诉他。
-// 所以本包整局都不写 VarCamp，阵营在翻牌那一刻由宿主自己算。
-// 见 SCARS.md 疤 4。
+// It is **for the host revealing cards**, not for the kernel: the kernel
+// recognises the canonical key VarCamp and would carry its value into
+// SelfInfo.Camp -- and this ruleset **must not let it**. The drunk does not
+// know which card they now hold, and filling their current camp into their own
+// view would simply tell them. So this package never writes VarCamp, and the
+// camp is computed by the host at the moment cards are revealed. See
+// SCARS.md, scar 4.
 func CampOf(role hiddenrole.RoleType) hiddenrole.Camp {
 	switch role {
 	case RoleWerewolf, RoleMinion:
@@ -124,8 +139,9 @@ func CampOf(role hiddenrole.RoleType) hiddenrole.Camp {
 	}
 }
 
-// isWolfCard 这张牌是不是狼人牌。
+// isWolfCard reports whether a card is the werewolf card.
 //
-// 只认 WEREWOLF：爪牙属狼队，但他**不是狼**——「有没有狼人出局」这条
-// 胜负判定数的是狼人牌，不是狼队。
+// Only WEREWOLF counts: the minion is on the wolf team but **is not a wolf**
+// -- the victory check for "was a werewolf eliminated" counts werewolf cards,
+// not the wolf team.
 func isWolfCard(role hiddenrole.RoleType) bool { return role == RoleWerewolf }
