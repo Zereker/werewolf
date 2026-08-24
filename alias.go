@@ -8,7 +8,7 @@
 // 因此这份清单不是内核的目录，恰恰相反：它短到能一眼看完，是想让边界在
 // 代码里看得见。开一局狼人杀、读它的状态，只 import 本包就够；一旦要
 // **改**规则——自己写解析器、换胜负判定、接日志与指标、按错误码分支、
-// 拆快照——那是内核的事，import github.com/Zereker/werewolf/engine，
+// 拆快照——那是内核的事，import github.com/Zereker/hiddenrole，
 // 在调用点上写出 hiddenrole. 这个前缀。本包自己的 resolver.go、rolesetup.go
 // 就是这么写的。
 //

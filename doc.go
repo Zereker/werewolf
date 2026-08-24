@@ -22,10 +22,10 @@
 // 扩展性就被证明了；如果不能，缺什么当场暴露。这几版补上的
 // WithRoleSetup、WithAudience、WithTeammates 都是这么找出来的。
 //
-// 两层是两个包：
+// 两层是两个 module：
 //
-//	github.com/Zereker/werewolf         这个包，狼人杀规则
-//	github.com/Zereker/werewolf/engine  内核
+//	github.com/Zereker/werewolf    这个包，狼人杀规则
+//	github.com/Zereker/hiddenrole  内核，独立仓库、独立版本、API 已冻结
 //
 // 接线的方向是「规则组装内核」，不是「内核认得规则」：hiddenrole.NewEngine
 // 造出来的是一台什么都不认识的状态机——没有解析器、不会判出胜负、
@@ -33,7 +33,7 @@
 // 装上去，与第三方注册自定义角色走的是同一批入口。
 //
 // 这件事由**编译器**保证，不靠自觉：本包在内核之外，它能用的东西
-// 使用者也能用。想验证的话，看 engine/types.go——内核的词汇表只有五个
+// 使用者也能用。想验证的话，看内核的 types.go——它的词汇表只有五个
 // 非空取值：START、END、GOD、SKIP、ANNOUNCE，外加各类型的空零值。
 // 「女巫」「狼人」一个都没有。
 //
