@@ -17,11 +17,12 @@ build:
 test:
 	go test ./...
 
-# -coverpkg 只指三套规则包：内核在另一个 module 里，算不进来，
-# 它的覆盖率由它自己的 CI 统计。
-# 不含 example/：示例是使用者，不是被测对象，算进去只会稀释数字。
+# -coverpkg 只指三套规则包：根包，加 example/ 下的 missions 与 onenight。
+# 内核在另一个 module 里，算不进来，它的覆盖率由它自己的 CI 统计。
+# example/ 下另外三个（cli、netserver、extension）不算——那三个是使用者，
+# 不是被测对象，算进去只会稀释数字。
 test-cover:
-	go test -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/missions,github.com/Zereker/werewolf/onenight \
+	go test -coverpkg=github.com/Zereker/werewolf,github.com/Zereker/werewolf/example/missions,github.com/Zereker/werewolf/example/onenight \
 		-coverprofile=coverage.out ./... && go tool cover -func=coverage.out | tail -1
 
 race:

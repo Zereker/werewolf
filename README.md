@@ -23,11 +23,16 @@
 | 包 | 玩的是什么 | 它证明了什么 |
 |---|---|---|
 | 根包 | 狼人杀 | 出局是核心机制，八个阶段成环 |
-| [`missions/`](missions/) | 任务制（提名 / 表决 / 任务 / 刺杀） | **一个人都不出局**也能跑；阶段流转由结算结果决定 |
-| [`onenight/`](onenight/) | 单夜换牌制 | 身份**分两层**：发到手的那张定夜里做什么，手上那张定结算算哪边 |
+| [`example/missions/`](example/missions/) | 任务制（提名 / 表决 / 任务 / 刺杀） | **一个人都不出局**也能跑；阶段流转由结算结果决定 |
+| [`example/onenight/`](example/onenight/) | 单夜换牌制 | 身份**分两层**：发到手的那张定夜里做什么，手上那张定结算算哪边 |
 
 三套没有一个取值相同（阶段、角色、技能、事件全不一样），而内核不用改。
 第三套写下来只逼出**零个破坏性 API 变更**——[API 已冻结](https://github.com/Zereker/hiddenrole/blob/master/API.md)。
+
+**后两套放在 `example/` 下是有意的。** 这个仓库对外提供的玩法只有根包那一套
+狼人杀；missions 与 onenight 是**例子**——写出来是为了证明内核不认得狼人杀，
+留下来是当回归测试跑（随机对局与覆盖率都算它们）。它们的注释是英文，根包是
+中文，判据见 [CONTRIBUTING](CONTRIBUTING.md#用什么语言写)。
 
 ## 特性
 
@@ -676,15 +681,15 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 ├── alias.go                 # 内核名字的小集合再导出（收录规则见文件头）
 ├── doc.go                   # 包文档
 │
-├── missions/                # 第二套规则包：任务制（提名 / 表决 / 任务 / 刺杀）
-│   └── SCARS.md             # 它撞到了内核的哪些地方
-├── onenight/                # 第三套规则包：单夜换牌制（两层身份）
-│   └── SCARS.md             # 同上
-│
 ├── example/                 # 可运行示例
 │   ├── cli/                 # 命令行主持台（真实使用者）
 │   ├── netserver/           # TCP 服务端（推送、并发、断线重连）
-│   └── extension/           # 自定义角色（白痴）
+│   ├── extension/           # 自定义角色（白痴）
+│   │
+│   ├── missions/            # 第二套规则包：任务制（提名 / 表决 / 任务 / 刺杀）
+│   │   └── SCARS.md         # 它撞到了内核的哪些地方
+│   └── onenight/            # 第三套规则包：单夜换牌制（两层身份）
+│       └── SCARS.md         # 同上
 └── docs/
     └── ROADMAP.md           # 四个阶段的记录（已归档）
 ```
@@ -698,8 +703,8 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 | 走到这一步的次序与判断过程 | [ROADMAP.md](docs/ROADMAP.md)（已归档） |
 | 现在的代码是怎么组织的 | [ARCHITECTURE.md](https://github.com/Zereker/hiddenrole/blob/master/ARCHITECTURE.md) |
 | 别人怎么做的，我们哪里强、哪里欠 | [PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md) |
-| 第二套规则包撞到了什么 | [missions/SCARS.md](missions/SCARS.md) |
-| 第三套规则包撞到了什么 | [onenight/SCARS.md](onenight/SCARS.md) |
+| 第二套规则包撞到了什么 | [example/missions/SCARS.md](example/missions/SCARS.md) |
+| 第三套规则包撞到了什么 | [example/onenight/SCARS.md](example/onenight/SCARS.md) |
 
 **设计理念：**
 - **状态机驱动** - 不是事件驱动，而是显式的阶段流转
@@ -713,8 +718,8 @@ werewolf/                    # 规则包：狼人杀这一套怎么玩
 | 规则包 | 实现的是什么 | 基准 |
 |---|---|---|
 | 根包 | 狼人杀 | 中文维基[「狼人殺」条目](https://zh.wikipedia.org/wiki/狼人殺) |
-| [`missions/`](missions/) | 任务制社会推理（The Resistance 及其 Avalon 变体的玩法） | 英文维基 [The Resistance (game)](https://en.wikipedia.org/wiki/The_Resistance_(game)) |
-| [`onenight/`](onenight/) | 单夜换牌制（One Night Ultimate Werewolf 的玩法） | 出版方 Bezier Games 的官方规则书 |
+| [`example/missions/`](example/missions/) | 任务制社会推理（The Resistance 及其 Avalon 变体的玩法） | 英文维基 [The Resistance (game)](https://en.wikipedia.org/wiki/The_Resistance_(game)) |
+| [`example/onenight/`](example/onenight/) | 单夜换牌制（One Night Ultimate Werewolf 的玩法） | 出版方 Bezier Games 的官方规则书 |
 
 ### 关于名称
 

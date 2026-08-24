@@ -1,7 +1,7 @@
 # The scars One Night left on the kernel
 
 > This is a product of phase 1 of the
-> [implementation plan](../docs/ROADMAP.md). The protocol is strict: **while
+> [implementation plan](../../docs/ROADMAP.md). The protocol is strict: **while
 > writing a rules package, not one line of the kernel may change**. Whatever
 > it runs into gets recorded here, with all four columns -- what it hit, the
 > way around it, the guessed fix, and the classification.
@@ -76,7 +76,7 @@ game would fall apart on the spot.
 ### What this scar actually teaches
 
 It confirms the second half of the methodology in
-[the implementation plan §0](../docs/ROADMAP.md):
+[the implementation plan §0](../../docs/ROADMAP.md):
 
 | The test | What it can tell you |
 |---|---|

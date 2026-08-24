@@ -32,8 +32,8 @@ go mod edit -replace github.com/Zereker/hiddenrole=../hiddenrole
 | 包 | 语言 | 实现的是 |
 |---|---|---|
 | 根包 | **中文** | 狼人杀的中文规则 |
-| [`missions/`](missions) | **英文** | The Resistance 与它的 Avalon 变体 |
-| [`onenight/`](onenight) | **英文** | One Night Ultimate Werewolf |
+| [`example/missions/`](example/missions) | **英文** | The Resistance 与它的 Avalon 变体 |
+| [`example/onenight/`](example/onenight) | **英文** | One Night Ultimate Werewolf |
 
 理由不是偏好，是**规则原文是什么语言**。根包实现的是中文桌上那一套：
 屠边屠城、同守同救、守卫不能连守、上帝、12 人标准板——这些概念的准确

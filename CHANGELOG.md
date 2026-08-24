@@ -15,6 +15,43 @@
 
 ## 未发布
 
+### 破坏性：`missions/` 与 `onenight/` 移到 `example/` 下
+
+| 旧 import 路径 | 新 import 路径 |
+|---|---|
+| `github.com/Zereker/werewolf/missions` | `github.com/Zereker/werewolf/example/missions` |
+| `github.com/Zereker/werewolf/onenight` | `github.com/Zereker/werewolf/example/onenight` |
+
+根包不受影响。
+
+**为什么。** 这两套规则包从来不是这个仓库对外提供的玩法，它们是**例子**：
+写出来是为了证明内核不认得狼人杀（三套规则包没有一个取值相同，而内核一行
+没改），留下来是当回归测试跑。此前它们与根包平级，读目录的人会以为
+`werewolf` 这个仓库同时提供三种游戏；挪进 `example/` 之后，结构自己说清楚了
+这件事。
+
+`-coverpkg` 仍然算它们两个——`example/` 下另外三个（`cli`、`netserver`、
+`extension`）是使用者、不是被测对象，照旧不算。Makefile 与 CI 里那句
+「不含 example/」的注释因此一并改掉，它现在是错的。
+
+### 规则包的注释语言按规则出身分
+
+`example/missions/` 与 `example/onenight/` 的注释改成英文，根包保持中文。
+
+判据不是偏好，是**规则原文是什么语言**。根包实现的是中文桌上那一套（屠边
+屠城、同守同救、上帝、12 人标准板），这些概念的准确表述本来就是中文的；另
+两套实现的是 The Resistance / Avalon 与 One Night Ultimate Werewolf，梅林、
+派西维尔、莫德雷德、盗贼、皮匠这些名字的原文就是英文，中文全是译名而且不止
+一种。写 `Merlin` 是写规则书上那个词，写「梅林」反而要求读者先回译一次才能
+对上英文规则书与社区讨论。
+
+`CONTRIBUTING.md` 的语言约定一节改成按包分的表，此前那句「本仓库注释一律
+中文」对根包成立、对另两个包不成立。
+
+顺带修掉几处过期内容：`example/missions/SCARS.md` 里的测试命令还写着
+`./avalon/`（包早已更名）、`NewSetGameVarEffect` / `GameVar` 已并入统一的
+`VarScope`、非测试代码行数与内核入口数按当前实际重新数过。
+
 ### 引擎独立成 module：`github.com/Zereker/hiddenrole`
 
 内核从 `engine/` 变成 `hiddenrole/`，有自己的 `go.mod`、`LICENSE`、
@@ -493,7 +530,7 @@ kindReplay       PLAYER_ADDED / PHASE_CHANGED  —— 只在效果流回放那�
 对第二个用例的想象固化成承诺。
 
 六条疤全部钉成**可跑的证据**（`go test -run TestScar -v ./avalon/`），
-完整记录见 [`missions/SCARS.md`](missions/SCARS.md)。分三类：
+完整记录见 [`missions/SCARS.md`](example/missions/SCARS.md)。分三类：
 
 - **缺能力**：行动者只能按角色划、变量作用域的 2×2 表缺「整局+无主」一格、
   `SkillUse` 假设一次行动只有一个目标。补法清楚，代价可算。
@@ -525,7 +562,7 @@ Makefile 与 CI 都补上，README 的数字从 94.5% 改成 **93.9%**（内核�
 
 ### 内核不再替规则做那两个决定：出口与回合边界
 
-阿瓦隆撞出来的疤 2、3（见 [`missions/SCARS.md`](missions/SCARS.md)）是同一个根因：
+阿瓦隆撞出来的疤 2、3（见 [`missions/SCARS.md`](example/missions/SCARS.md)）是同一个根因：
 **内核替规则做了两个只有规则知道答案的决定**。
 
 |  | 此前 | 现在 |
@@ -626,7 +663,7 @@ Makefile 与 CI 都补上，README 的数字从 94.5% 改成 **93.9%**（内核�
 
 ### 七条疤全部关闭：内核不再替规则做只有规则知道的决定
 
-阿瓦隆撞出六条疤、对照 boardgame.io 又添一条（[`missions/SCARS.md`](missions/SCARS.md)、
+阿瓦隆撞出六条疤、对照 boardgame.io 又添一条（[`missions/SCARS.md`](example/missions/SCARS.md)、
 [`docs/PRIOR-ART.md`](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md)）。这一批把它们全部关掉。
 
 判据始终是同一句：**内核能不能在不知道这是什么游戏的情况下，独立判断这件事

@@ -15,7 +15,7 @@ by exactly one ruleset, and with a sample size of one the easiest mistake to
 make is freezing your imagination of the second use case into a promise.
 
 ```
-go test -run TestScar -v ./missions/
+go test -run TestScar -v ./example/missions/
 ```
 
 ---
