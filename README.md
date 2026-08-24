@@ -8,16 +8,16 @@
 
 | 原来 | 现在 |
 |---|---|
-| `github.com/Zereker/werewolf` | [`github.com/Zereker/hiddenrole/games/werewolf`](https://github.com/Zereker/hiddenrole/tree/master/games/werewolf) |
-| `github.com/Zereker/werewolf/missions` | [`github.com/Zereker/hiddenrole/games/missions`](https://github.com/Zereker/hiddenrole/tree/master/games/missions) |
-| `github.com/Zereker/werewolf/onenight` | [`github.com/Zereker/hiddenrole/games/onenight`](https://github.com/Zereker/hiddenrole/tree/master/games/onenight) |
+| `github.com/Zereker/werewolf` | [`github.com/Zereker/hiddenrole/example/werewolf`](https://github.com/Zereker/hiddenrole/tree/master/example/werewolf) |
+| `github.com/Zereker/werewolf/missions` | [`github.com/Zereker/hiddenrole/example/missions`](https://github.com/Zereker/hiddenrole/tree/master/example/missions) |
+| `github.com/Zereker/werewolf/onenight` | [`github.com/Zereker/hiddenrole/example/onenight`](https://github.com/Zereker/hiddenrole/tree/master/example/onenight) |
 
 ```sh
 go get github.com/Zereker/hiddenrole
 ```
 
 ```go
-import "github.com/Zereker/hiddenrole/games/werewolf"
+import "github.com/Zereker/hiddenrole/example/werewolf"
 ```
 
 ## 为什么搬
