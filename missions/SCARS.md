@@ -1,396 +1,511 @@
-# 疤：阿瓦隆撞到内核的地方
+# The scars the missions package left on the kernel
 
-这份文件记录**用现有内核 API 硬写阿瓦隆时，每一处绕不过去的别扭**。
+This file records **every awkwardness that could not be sidestepped while
+forcing the mission-based rules onto the kernel's existing API**.
 
-写它的规矩：**每一条都要有可跑的证据**。`scars_test.go` 里对应的测试断言的是
-「当前实现的不对之处」，不是期望行为——内核补上对应能力之后它们会变红，
-那时就该改写成正面断言。
+The rule for writing it: **every entry needs runnable evidence**. The matching
+tests in `scars_test.go` assert *what the current implementation gets wrong*,
+not the desired behaviour -- once the kernel grows the missing capability they
+go red, and that is the moment to rewrite them as positive assertions.
 
-一行内核代码都没改。这是刻意的：先让绕法留下疤，再看疤的形状决定补什么。
-在此之前任何 API 提议都只是猜测——内核此前只被一套规则验证过，
-样本量为一的时候，最容易犯的错就是把自己对第二个用例的想象固化成承诺。
+Not one line of the kernel was changed. That was deliberate: let the
+workarounds leave scars first, then let the shape of the scars decide what to
+add. Before that, any API proposal is a guess -- the kernel had been validated
+by exactly one ruleset, and with a sample size of one the easiest mistake to
+make is freezing your imagination of the second use case into a promise.
 
 ```
-go test -run TestScar -v ./avalon/
+go test -run TestScar -v ./missions/
 ```
 
 ---
 
-## 疤 1：行动者只能按角色划，不能按运行时名单划 —— **已关闭**
+## Scar 1: actors can only be picked by role, never by a runtime list -- **closed**
 
-**症状。** 阿瓦隆的任务阶段只有被选中的队员能投成功/失败，而队伍是提名阶段
-才定下来的。内核判定「谁能提交这个技能」走的是 `(阶段, 角色, 技能)` 三元组
-（`engine/phase.go` 的 `stepFor`），没有任何办法表达「这几个人」。
+**Symptom.** Only the players on the team may vote success or failure in the
+mission phase, and the team is not settled until the nomination phase. The
+kernel decides "who may submit this skill" from the triple
+*(phase, role, skill)* (`stepFor` in the kernel's `phase.go`), which has no way
+to say "these particular people".
 
-**绕法（已废弃）。** 任务阶段对所有角色开放，由 `missionResolver` 把非队员的
-提交丢掉。队长提名同理。
+**The workaround (now retired).** Open the mission phase to every role and have
+`missionResolver` drop submissions from non-members. Same for the leader's
+nomination.
 
-**修法。** 内核新增 `NewSetActorsEffect(phase, playerIDs...)`：规则直接说
-「这几个人，在那个阶段行动」。三个问题（技能校验、`AllowedSkills`、
-`PhaseReadiness`）改从同一处取数——`actorsForStep`，三层优先级：
+**The fix.** The kernel grew `NewSetActorsEffect(phase, playerIDs...)`: the
+rules say directly "these people act in that phase". All three questions
+(skill validation, `AllowedSkills`, `PhaseReadiness`) now read from one place
+-- `actorsForStep`, with three levels of priority:
 
-	待结算的绕道    队列必须排空
-	规则点名的名单  NewSetActorsEffect
-	PhaseStep.Role  默认：按角色算
+	pending detours     the queue has to drain first
+	the named list      NewSetActorsEffect
+	PhaseStep.Role      the default: work it out from roles
 
-**后来降成两层。** 最上面那层与点名回答的是同一个问题，实现也几乎逐字相同
-（`triggerActorFor` 与 `namedActorsFor` 都是「点到的人里，谁承担这个角色的
-步骤」）——一个概念两份实现，两处都要记得对齐。现在绕道队列不再回答
-「谁能行动」，它在**进入阶段时**按队首写一份名单，之后一切照点名走：
+**Later cut down to two.** The top level answered the same question naming
+does, and the implementations were nearly word-for-word identical
+(`triggerActorFor` and `namedActorsFor` both mean "of the people picked out,
+who carries this role's step") -- one concept, two implementations, both to be
+kept in step by hand. The detour queue no longer answers "who may act"; it
+writes a list from the head of the queue **on entering the phase**, and
+everything after that goes through naming:
 
-	规则点名的名单  NewSetActorsEffect，或触发在进入阶段时写下的那一份
-	PhaseStep.Role  默认：按角色算
+	the named list      NewSetActorsEffect, or the one a detour wrote on entry
+	PhaseStep.Role      the default: work it out from roles
 
-队列剩下的三件事没有别的机制能替代：把阶段引到触发要去的地方、在排空之前
-拦住胜负判定与回合边界、按队首一条一条来。
+The three things the queue still does have no substitute: steer the phase to
+where the detour wants to go, hold off the victory check and the round boundary
+until it has drained, and take entries one at a time from the head.
 
-**内核自己在 `SubmitSkillUse` 就拦**，不是收下来再让规则事后丢掉——这一条抄的是
-boardgame.io（`master.ts` 里 `if (!isPlayerActive(...)) return`），理由见
-[docs/PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md)。阿瓦隆的解析器因此删掉了两处过滤，
-现在**一处都不剩**。
+**The kernel blocks it in `SubmitSkillUse` itself**, rather than accepting the
+submission and letting the rules discard it afterwards -- that part is lifted
+from boardgame.io (`if (!isPlayerActive(...)) return` in `master.ts`), reasoning
+in [PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md).
+This package's resolvers dropped two filters as a result, and **none are left**.
 
-名单要指定阶段而不是只作用于当前阶段，是因为它往往在**更早的阶段**算出来
-（任务队伍是提名阶段选的）。阶段结算完，那一份就被消费掉。
+The list names a phase rather than just applying to the current one because it
+is usually computed in **an earlier phase** (the mission team is chosen during
+nomination). Once the phase resolves, that list is consumed.
 
-**顺带补了一个扩展点 `GameSetup`。** 第一个阶段前面没有阶段，谁来点名它的
-行动者？`WithGameSetup` 在 `Start()` 里跑一次，产出的效果走同一个写入点。
-它与 `RoleSetup` 是一对：那个管一名玩家入座带什么，这个管整局开局的局面。
-阿瓦隆用它点名第一个队长、显式初始化整局计数器。
+**A second extension point came along with it: `GameSetup`.** There is no phase
+before the first phase, so who names its actors? `WithGameSetup` runs once
+inside `Start()`, and its effects go through the same single write path. It
+pairs with `RoleSetup`: that one covers what a player brings when they sit
+down, this one covers the state the whole game opens with. This package uses it
+to name the first leader and to initialise the game-long counters explicitly.
 
-这个需求是实现到一半才撞出来的——设计时没想到，写下去才发现「第一次提名
-会退回按角色算，也就是全场都能提名」，正是这条疤要消灭的东西。
+That need only turned up halfway through the implementation -- it was not
+foreseen in the design; writing it revealed that "the first nomination falls
+back to role-based resolution, i.e. the whole table may nominate", which is
+exactly what this scar exists to kill.
 
-**代价。** 这是四条里最贵的一条，因为**代价直接落在给玩家看的东西上**：
+**The cost.** This was the most expensive of the four, because **the cost lands
+directly on what players are shown**:
 
 ```
-疤 1：c 没上任务，AllowedSkills 却给出 [MISSION_SUCCESS MISSION_FAIL]
-疤 1：c 的失败票被内核收下了，只能靠解析器丢弃
-疤 1：PhaseReadiness 认为还差 [a b d e]（队伍其实只有 a、b）
+scar 1: c is not on the mission, yet AllowedSkills offers [MISSION_SUCCESS MISSION_FAIL]
+scar 1: c's fail vote was accepted by the kernel; only the resolver can discard it
+scar 1: PhaseReadiness thinks it is still waiting on [a b d e] (the team is only a and b)
 ```
 
-`AllowedSkills` 与 `PlayerView` 会告诉没上任务的玩家「你可以投票」，
-`PhaseReadiness` 会等一群不可能行动的人。而「谁此刻能做什么」「还差谁」
-正是这个库对外卖的东西。
+`AllowedSkills` and `PlayerView` tell a player who is not on the mission "you
+may vote", and `PhaseReadiness` waits for a crowd who cannot possibly act. And
+"what can this player do right now" and "who are we still waiting on" are
+exactly what this library sells.
 
-**这个抽象已经被逃逸两次。** 第一次是狼人杀的猎人开枪——内核为它开了
-`peekTrigger` 这个特例，把某个阶段锁定给一名玩家；第二次就是这里。
-同一个抽象被绕过两次，通常说明它不够力，而不是使用者不会用。
+**This abstraction has now been escaped twice.** The first time was the
+werewolf hunter's shot -- the kernel opened `peekTrigger` as a special case for
+it, pinning a phase to a single player; the second is here. An abstraction
+routed around twice is usually not strong enough, rather than being misused.
 
 ---
 
-## 疤 2：阶段流转是静态的，没有条件分支 —— **已关闭**
+## Scar 2: phase transitions are static, with no conditional branch -- **closed**
 
-**症状。** 阿瓦隆需要「表决通过就去任务，否则回提名」。`PhaseConfig.NextPhase`
-是一个死值，唯一的动态跳转是绕道队列。
+**Symptom.** These rules need "go to the mission if the vote passes, otherwise
+back to nomination". `PhaseConfig.NextPhase` is a fixed value, and the only
+dynamic jump is the detour queue.
 
-**绕法（已废弃）。** 表决阶段无条件流向任务阶段；没通过时任务阶段什么都不做。
-代价是每一次被否决的提名都要空转一次任务阶段，玩家会被带进一个什么都不会
-发生的阶段。
+**The workaround (now retired).** Have the vote phase flow unconditionally into
+the mission phase, and have the mission phase do nothing when the vote failed.
+The cost is that every rejected nomination spins the mission phase for nothing,
+walking players into a phase where nothing can happen.
 
-**修法。** 内核新增 `NewGotoPhaseEffect(phase)`：规则可以在结算时说出口是哪。
-`PhaseConfig.NextPhase` 从「法律」降级成「默认值」。表决解析器现在自己算
-出口——通过就去任务、否则回提名。见 `TestRejectedProposalGoesStraightBackToPropose`
-与 `TestApprovedProposalGoesToMission`。
+**The fix.** The kernel grew `NewGotoPhaseEffect(phase)`: the rules can name the
+exit at resolution time. `PhaseConfig.NextPhase` is demoted from law to
+default. The vote resolver now computes its own exit -- the mission on success,
+back to nomination otherwise. See
+`TestRejectedProposalGoesStraightBackToPropose` and
+`TestApprovedProposalGoesToMission`.
 
-优先级：**待结算的绕道队列 > GOTO > NextPhase**。触发排最前是因为队列必须
-排空——胜负判定与回合边界都等着它，中途跳走会把还没结算的那笔欠账丢掉。
-这条规矩一开始只写在文档里，是变异验证发现「把 GOTO 挪到触发前面整套测试
-一条都不红」，才补上 `TestGotoPhase_TriggerQueueWins` 守住的。
+Priority: **pending detours > GOTO > NextPhase**. Detours come first because
+the queue has to drain -- the victory check and the round boundary are both
+waiting on it, and jumping away midway would drop a debt that has not been
+settled. That rule started out written only in the docs; mutation testing found
+that "moving GOTO ahead of detours turns not a single test red", which is what
+prompted adding `TestGotoPhase_TriggerQueueWins` to guard it.
 
-**顺带一个观察。** 那个绕道队列文档里叫「绕道」，实际语义是
-「**谁、去哪个阶段**」——阿瓦隆用它把刺杀阶段排进来，严丝合缝，而且顺带
-拿到了「胜负判定推迟到它结算之后」这个正好需要的性质。名字和真正的
-通用性对不上，本身就是一处设计味道。
-
----
-
-## 疤 3：`Round` 数的是「阶段环转了几圈」，不是游戏意义上的回合 —— **已关闭**
-
-**症状。** 内核把「回合数加一、回合变量清零」与「阶段环绕回起始阶段」焊成
-同一件事（`engine/state.go` 的 `nextPhase`）。狼人杀里这两者恰好重合
-（夜→昼→夜），所以看不出问题。
-
-**代价。** 阿瓦隆每提名一次就绕一圈：
-
-```
-疤 3：引擎说第 3 回合，阿瓦隆说还在第 1 轮任务
-疤 3：而 PlayerView.Round 把 3 这个数原样发给了玩家
-```
-
-一次任务可以经历最多五次提名，于是这两个数最多差五倍。`PlayerView.Round`
-把这个对玩家毫无意义的数直接发出去。
-
-**注意这条与前两条性质不同。** 前两条是「缺一个能力」，这条是
-「**内核发明了一个游戏概念，而它其实只是实现细节**」。回合变量的生命周期
-本身没问题，问题是它被绑死在环的一圈上，还起了个带游戏语义的名字。
-
-**修法。** `PhaseConfig.EndsRound bool`：哪个阶段结算完算一回合，由板子自己
-声明，内核不再猜。阿瓦隆声明在任务阶段，`Round` 从此等于第几轮任务。
-
-**两条疤是耦合的，这本身是个发现。** 只加 `EndsRound` 的话这条只关掉一半：
-被否决的提名仍然要空转一次任务阶段（疤 2），而任务阶段声明了 `EndsRound`，
-于是空转那一次照样推进回合。**必须等疤 2 的 `GOTO_PHASE` 一起，才彻底关掉。**
-我之前说这两条同根是推理，现在是实测——只修一条，另一条只好一半。
-
-**交出决定权换回了可检查性。** 内核**自己猜**回合边界的时候没办法检查猜得
-对不对；规则**声明**出来之后，`Config.Validate` 反而查得动了——「一个阶段都
-没声明 `EndsRound`」现在是建局时就被拒的非法配置。这类配置的后果是回合状态
-永不重置（狼人杀里女巫用掉的解药会一夜又一夜把同一个人救回来），过去只能
-等跑到半局才发现。这是判断抽象有没有变好的硬指标，不是感觉。
+**An observation on the side.** The queue is called "detour" in the docs, but
+what it actually means is "**who, and to which phase**" -- this package uses it
+to schedule the assassination phase, a perfect fit, and gets "hold the victory
+check until it resolves" thrown in, which is precisely what is needed. A name
+that does not match the real generality is itself a design smell.
 
 ---
 
-## 疤 4：变量作用域的 2×2 表缺了一格 —— **已关闭**
+## Scar 3: `Round` counts laps around the phase loop, not rounds in the game's sense -- **closed**
 
-**症状。** 内核有三种作用域：
+**Symptom.** The kernel welds "bump the round counter and clear the round
+variables" onto "the phase ring wrapped back to the starting phase" (`nextPhase`
+in the kernel's `state.go`). In werewolf the two happen to coincide (night ->
+day -> night), so nothing looks wrong.
 
-|              | 无主        | 属于某个玩家     |
-|--------------|-------------|------------------|
-| **整局有效** | **（没有）**| `PlayerVar`      |
-| **本回合有效**| `RoundVar` | `PlayerRoundVar` |
-
-阿瓦隆要记五样整局有效、不属于任何玩家的东西：第几轮任务、成功几次、
-失败几次、连续否决几次、队长轮到谁。唯一的「无主」作用域是 `RoundVar`，
-而它跨回合会被清空。
-
-**绕法（已废弃）。** 全部挂到 ID 字典序最小的那名玩家的 `PlayerVar` 上当账本。
-
-**修法。** 内核补上第四格：`NewSetGameVarEffect(key, value)` 写、
-`GameView.GameVar(key)` / `Engine.GameVar(key)` 读，进快照、能回放。
-阿瓦隆的账本整个删掉了，`gamestate.go` 少了三个函数。
-
-这一格不是为阿瓦隆开的后门，是把那张 2×2 的表补完整——四个格子对应
-「时间尺度 × 有没有主人」的全部组合，少一格是漏了，不是刻意留白。
-狼人杀一直没撞到，是因为它整局有效的状态恰好都挂在人身上。
-
-**代价。**
+**The cost.** These rules go round the ring once per nomination:
 
 ```
-疤 4：玩家 a 的私有状态里多出 4 个与他无关的字段：
+scar 3: the engine says round 3, the rules say we are still on mission 1
+scar 3: and PlayerView.Round hands that 3 to the player unchanged
+```
+
+One mission can take up to five nominations, so the two numbers can differ by a
+factor of five. `PlayerView.Round` ships that meaningless number straight out
+to players.
+
+**Note that this one differs in kind from the previous two.** Those were "a
+missing capability"; this one is "**the kernel invented a game concept when it
+was really an implementation detail**". There is nothing wrong with the
+lifetime of round variables; the problem is that it was welded to one lap of
+the ring and then given a name with game semantics.
+
+**The fix.** `PhaseConfig.EndsRound bool`: which phase's resolution counts as a
+round is declared by the board itself, and the kernel stops guessing. This
+package declares it on the mission phase, and `Round` becomes "which mission we
+are on".
+
+**The two scars are coupled, and that is itself a finding.** Adding `EndsRound`
+alone closes this one only halfway: a rejected nomination still spins the
+mission phase (scar 2), and the mission phase declares `EndsRound`, so that
+empty lap advances the round anyway. **It only closes properly together with
+scar 2's `GOTO_PHASE`.** That the two shared a root was reasoning before; now it
+is measured -- fix one and the other stays half-broken.
+
+**Handing over the decision bought back checkability.** While the kernel was
+**guessing** the round boundary there was no way to check the guess; once the
+rules **declare** it, `Config.Validate` can check -- "no phase declares
+`EndsRound`" is now an illegal configuration, rejected when the game is built.
+The consequence of that configuration is round state that never resets (in
+werewolf, the witch's spent antidote would revive the same player night after
+night), and previously it only showed up half a game in. That is a hard measure
+of whether an abstraction got better, not a feeling.
+
+---
+
+## Scar 4: the 2x2 table of variable scopes was missing a cell -- **closed**
+
+**Symptom.** The kernel had three scopes:
+
+|                    | unowned      | owned by a player |
+|--------------------|--------------|-------------------|
+| **the whole game** | **(missing)**| `PlayerVar`       |
+| **this round**     | `RoundVar`   | `PlayerRoundVar`  |
+
+These rules have five things to remember that last the whole game and belong to
+nobody: which mission we are on, how many succeeded, how many failed, how many
+consecutive rejections, and whose turn it is to lead. The only unowned scope was
+`RoundVar`, and that gets cleared between rounds.
+
+**The workaround (now retired).** Hang all of it on the `PlayerVar` of whichever
+player has the lexicographically smallest ID, as a ledger.
+
+**The fix.** The kernel filled in the fourth cell -- written with
+`NewSetVarEffect(ScopeGame, key, value)`, read with `GameView.Var(ScopeGame, key)`
+/ `Engine.Var(ScopeGame, key)`, carried in the snapshot, replayable. (At the
+time these were named `NewSetGameVarEffect` / `GameVar`; once all four cells
+existed the four separate names collapsed into the single `VarScope` grid,
+which is what the kernel exports today.) This package's ledger went away
+entirely, and `gamestate.go` lost three functions.
+
+That cell is not a back door opened for this ruleset; it completes the table --
+the four cells are every combination of "time scale x has an owner", and
+missing one was an oversight, not a deliberate blank. Werewolf never ran into
+it because its game-long state all happens to hang off people.
+
+**The cost.**
+
+```
+scar 4: player a's private state carries 4 fields that have nothing to do with them:
      [missions.success missions.mission missions.leader missions.rejects]
 ```
 
-全局事实记在某个人的私有状态里；那个玩家的 `PlayerView` 里凭空多出几个
-跟他无关的字段；「谁是账本」靠约定维持，第三方扩展一不小心就会覆盖它。
+Global facts recorded in one person's private state; that player's `PlayerView`
+sprouting fields unrelated to them; "who is the ledger" held together by
+convention, so a third-party extension can overwrite it by accident.
 
 ---
 
-## 疤 5：`SkillUse` 假设一次行动只有一个目标 —— **已关闭**
+## Scar 5: `SkillUse` assumes one action has one target -- **closed**
 
-**症状。** `SkillUse.TargetID` 是单个字符串。阿瓦隆的提名一次要指定 2-5 个人。
+**Symptom.** `SkillUse.TargetID` was a single string. A nomination here names
+2-5 people at once.
 
-**绕法。** 队长提交 N 次 `PROPOSE`，解析器按提交顺序去重取前 N 个。
+**The workaround.** The leader submits `PROPOSE` N times, and the resolver
+dedupes by submission order and takes the first N.
 
-**代价。** 就绪判定说不清「还差几个人没提」——它只知道队长提交过没有。
-7 人局第一轮要 2 个人，队长只提名 1 个，`PhaseReadiness` 就报 `Ready=true`。
+**The cost.** Readiness cannot say how many nominations are still owed -- it
+only knows whether the leader has submitted at all. A 7-player game needs 2 on
+the first mission; if the leader names only 1, `PhaseReadiness` reports
+`Ready=true`.
 
-**这与疤 1 是同一类问题**：内核对玩家说了不实的话。一开始我把它评为「最轻的
-一条」、打算不修——直到把探针跑出来看见 `Ready=true`。既然疤 1 按「对玩家说谎
-最贵」这个标准修了，这条就得按同一个标准修，否则标准是假的。
+**This is the same class of problem as scar 1**: the kernel telling players
+something untrue. I first rated it "the lightest of the lot" and meant to leave
+it -- until the probe ran and printed `Ready=true`. Since scar 1 was fixed on
+the standard "lying to players is the most expensive thing", this one has to be
+fixed on the same standard, or the standard is fake.
 
-**修法。** `SkillUse.TargetID string` 改成 `Targets []string`，单目标的读法是
-`Target()`。一次提交带整支队伍，提名与就绪从此是同一件事。
+**The fix.** `SkillUse.TargetID string` became `Targets []string`, with
+`Target()` as the single-target reading. One submission carries the whole team,
+and nomination and readiness become the same thing.
 
-改动波及 212 处调用点，全部由编译器指出。代价确实不小，但它买回的是标准的
-一致性——而标准一旦有例外就不再是标准。
+The change touched 212 call sites, every one of them pointed out by the
+compiler. The cost really was not small, but what it buys is consistency of the
+standard -- and a standard with an exception stops being a standard.
 
 ---
 
-## 疤 6：`Alive` 是被特权化的概念，而这一局用不到 —— **已关闭（但不是靠删掉它）**
+## Scar 6: `Alive` is a privileged concept, and this ruleset has no use for it -- **closed (but not by deleting it)**
 
-**症状。** 阿瓦隆整局**没有一个人出局**。内核的四条状态原语里有一条是
-`SET_ALIVE`，`GameView` 有 `AlivePlayers()` / `AlivePlayerIDsByRole()`，
-技能校验会先拒绝死人，`PhaseStep` 专门有一个 `AllowDeadTarget` 字段，
-外加一整套绕道队列。
+**Symptom.** **Nobody is ever eliminated** in this ruleset. One of the kernel's
+four state primitives is `SET_ALIVE`, `GameView` has `AlivePlayers()` /
+`AlivePlayerIDsByRole()`, skill validation rejects dead players up front,
+`PhaseStep` has a dedicated `AllowDeadTarget` field, and there is a whole detour
+queue on top.
 
-**证据。** 数一下这个包用到的内核入口：
+**The evidence.** Count the kernel entry points this package uses:
 
 ```
-四条状态原语，阿瓦隆用了三条：
-  NewSetPlayerVarEffect       ✓
-  NewSetRoundVarEffect        ✓
-  NewSetPlayerRoundVarEffect  ✓
-  NewSetAliveEffect           ✗  一次都没有
+of the four state primitives, this package uses three:
+  NewSetPlayerVarEffect       yes
+  NewSetRoundVarEffect        yes
+  NewSetPlayerRoundVarEffect  yes
+  NewSetAliveEffect           no   not once
 ```
 
-**这不算「缺能力」，是一个提问。** 如果内核真是「社会推理游戏」的内核，
-存活位凭什么比「女巫的解药」更有资格被硬编码成原语？两者都是规则概念。
-把它降成一个普通的 `PlayerVar`、由规则自己解释，内核会少掉一条原语、
-一个 `AllowDeadTarget`、以及技能校验里的一段特判。
+(Those three were later unified into `NewSetVarEffect` plus a `VarScope`; see
+scar 4. The count is what it was at the time.)
 
-代价也是真的：出局几乎是所有社会推理游戏的共同概念，给它一个类型化的位置
-确实方便，而且绕道队列（见疤 2 的观察）是个好东西。
+**This is not a missing capability, it is a question.** If the kernel really is
+a kernel for social deduction games, what makes the alive bit more entitled to
+be hard-coded as a primitive than the witch's antidote? Both are rules
+concepts. Demote it to an ordinary `PlayerVar` interpreted by the rules and the
+kernel loses one primitive, one `AllowDeadTarget`, and a special case in skill
+validation.
 
-**去查了别人怎么做，结果分歧，而分歧有规律：**
+The cost is real too: elimination is a concept nearly every social deduction
+game shares, a typed home for it genuinely is convenient, and the detour queue
+(see the observation under scar 2) is a good thing.
 
-| | 有没有一等的「出局」 |
+**Went and looked at how others do it. They disagree, and the disagreement has
+a pattern:**
+
+| | first-class "eliminated"? |
 |---|---|
-| boardgame.io | **没有**。游戏自己在 `G` 里记，在轮转里跳过 |
-| OpenSpiel | **没有**。`current_player()` 由 state 算，死人自然轮不到 |
-| PettingZoo AEC | **有**。`terminations` 每个 agent 一份，`agents` 列表会缩短 |
+| boardgame.io | **no**. The game tracks it in `G` and skips them in the turn order |
+| OpenSpiel | **no**. `current_player()` is computed from state, so the dead never come up |
+| PettingZoo AEC | **yes**. `terminations` has one entry per agent, and the `agents` list shrinks |
 
-分歧对应的是「框架需要它干什么」：PettingZoo 的 API 是**循环问每个 agent**，
-框架必须知道什么时候不再问；另两个不需要，因为「谁能行动」本来就从状态算。
+The split maps onto "what does the framework need it for": PettingZoo's API is
+**a loop that asks each agent in turn**, so the framework has to know when to
+stop asking; the other two do not need it, because "who may act" is computed
+from state anyway.
 
-**而我们一小时前刚变成后者**（`SetActors`）。所以问题从来不是「要不要 `Alive`」，
-是**它还该不该说了算**。
+**And we had become the latter an hour earlier** (`SetActors`). So the question
+was never "should `Alive` exist", it is **should it still get the final word**.
 
-**真正的问题找到了，而且是自相矛盾的：**
+**That found the real problem, and it is self-contradictory:**
 
-	绕道队列那条路   死人可以行动（猎人被刀之后开枪）—— 内核自己的机制，让路
-	规则点名那条路   死人被内核过滤掉 —— 规则的机制，不让路
+	via the detour queue   the dead may act (the hunter shoots after being killed) -- the kernel's own mechanism, let through
+	via the rules' naming  the dead are filtered out by the kernel -- the rules' mechanism, blocked
 
-同一个内核，允许**自己的**机制越过 `Alive`，不允许**规则的**机制越过。
-那不是「概念不纯」，是内核在替规则判断「死了还能不能动」——而那是规则的事。
+One kernel, permitting **its own** mechanism to step over `Alive` and refusing
+the **rules'**. That is not "conceptually impure", that is the kernel deciding
+on the rules' behalf whether the dead can act -- and that is the rules'
+business.
 
-挡掉的是真实存在的玩法：**血染钟楼的死人保留一张「幽灵票」**，狼人杀有遗言阶段。
+What it blocks is play that really exists: **in Blood on the Clocktower the
+dead keep a ghost vote**, and werewolf has a last-words phase.
 
-**修法：把 `Alive` 从「法律」降成「默认」。** 三处判定（提交校验、
-`AllowedSkills`、`PhaseReadiness`）改成同一套三层，与 `actorsForStep` 逐条对齐：
+**The fix: demote `Alive` from law to default.** The three decision points
+(submission validation, `AllowedSkills`, `PhaseReadiness`) now share one
+three-level scheme, lined up entry for entry with `actorsForStep`:
 
-	待结算的绕道   只有触发者，即便已出局
-	规则点名       名单里的人，存活与否由规则负责
-	默认           活着的人
+	pending detours   only the triggering player, even if eliminated
+	the rules' list   whoever is named; whether they are alive is the rules' problem
+	the default       the living
 
-（这三层后来降成两层，见疤 1：触发者现在也走「规则点名」那一层。）
+(Those three levels were later cut to two, see scar 1: the triggering player
+now goes through the "named" level as well.)
 
-发言那条同理：`SendMessage` 此前直接拒掉出局玩家，`SpeechProvider` 无从否决；
-现在装了 provider 就由它说了算，没装才退回「死人不说话」。
+Speech went the same way: `SendMessage` used to reject eliminated players
+outright, leaving `SpeechProvider` no say; now, with a provider installed the
+provider decides, and only without one does it fall back to "the dead do not
+speak".
 
-`Alive` 一个字段都没删——它作为**默认**是对的，而且是好用的默认。删掉它等于
-把「出局的人默认不能行动」这条推给每一套规则重写一遍。
+Not one field of `Alive` was deleted -- as a **default** it is right, and it is
+a useful one. Deleting it would mean pushing "the eliminated cannot act by
+default" out to be rewritten by every ruleset.
 
-## 疤 7：内核没有随机，而随机是可回放性的一部分 —— **已关闭**
+## Scar 7: the kernel has no randomness, and randomness is part of replayability -- **closed**
 
-**这一条不是阿瓦隆撞出来的，是对照 boardgame.io 才看出来的**，记在这里是因为
-它与其他几条同类：内核缺一样只有它能提供的东西。
+**This one was not hit by these rules; it only became visible against the prior
+art**, and it is recorded here because it is the same kind as the others: the
+kernel missing something only it can provide.
 
-`Resolver` 必须是局面的纯函数——这条约束本身是对的（可回放的前提）。但内核
-**完全没有随机**：要摇骰子只能宿主在引擎外面摇，摇完的结果不进效果流，
-于是**那一部分回放不出来**。
+A `Resolver` has to be a pure function of the board -- that constraint is
+correct in itself (it is the premise of replay). But the kernel had **no
+randomness at all**: rolling dice meant the host rolling outside the engine,
+with the result never entering the effect stream, so **that part could not be
+replayed**.
 
-boardgame.io 的做法是把 PRNG 状态存进游戏状态（`seed` 与 `prngstate` 两个字段），
-每次取数之后把新状态写回去。回放因此能重现完全相同的随机序列，而 move 仍然是纯的。
+boardgame.io's answer is to store the PRNG state in the game state (a `seed`
+and a `prngstate` field), writing the new state back after every draw. Replay
+can therefore reproduce exactly the same random sequence while moves stay pure.
 
-狼人杀与阿瓦隆都躲过了这个问题——两者的随机都发生在建局之前（发牌），局中不需要。
-但任何局中带随机的规则（掷骰、摸牌、随机事件）在这个内核上要么建不起来，
-要么建起来就失去可回放性，而那是这个库的招牌之一。
+Both werewolf and this ruleset dodge the problem -- the randomness in both
+happens before the game is built (dealing), and none is needed during play. But
+any ruleset with randomness mid-game (dice, drawing cards, random events)
+either cannot be built on this kernel or, if it is, loses replayability, which
+is one of this library's headline properties.
 
-**这条证明了「写第二套规则包」和「看别人怎么做」是两种不同的检验，都不能省。**
-第二套规则包只能告诉你它自己撞到了什么；对照才能告诉你**你们俩都没想到**的东西。
+**This one proves that "write a second rules package" and "read what others
+did" are two different tests, and neither can be skipped.** The second rules
+package can only tell you what it ran into itself; the comparison is what tells
+you about the thing **neither of you thought of**.
 
-**修法，而且做得比对照实现小。** `GameView.Rand()` 返回一条由
-**(种子, 当前回合, 当前阶段)** 唯一决定的随机流，种子在 `Config.Seed` 给出、
-随快照走。
+**The fix, and smaller than the prior art's.** `GameView.Rand()` returned a
+random stream determined uniquely by **(seed, current round, current phase)**,
+with the seed given in `Config.Seed` and carried in the snapshot.
 
-对照实现把 PRNG 的内部状态存进游戏状态、每次取数后写回——那是被它的形态逼的：
-它的 move 是任意代码，一局之内可以在任何地方取任意多次随机数，不记住进度就
-重现不了。
+The prior art stores the PRNG's internal state in the game state and writes it
+back after each draw -- forced on it by its own shape: its moves are arbitrary
+code and can draw any number of random values anywhere within a game, so
+without remembering the position it cannot reproduce them.
 
-我们不需要。这里的约束更强：**结算是局面的纯函数**，同一个局面进去必须同样的
-效果出来（早就有测试守着）。于是只要流本身由局面唯一决定，重现就是自然结果
-——回放走到同一个局面，摇出来的就是同一串数。**因此不必存任何 PRNG 进度**，
-快照也不必为随机多一个可变字段。
+We did not need that. The constraint here is stronger: **resolution is a pure
+function of the board**, and the same board in must produce the same effects out
+(there have long been tests holding that). So as long as the stream itself is
+determined by the board, reproduction follows for free -- replay reaching the
+same board rolls the same numbers. **No PRNG position needs storing**, and the
+snapshot needs no extra mutable field for randomness.
 
-代价说清楚：同一个回合的同一个阶段被结算两次，摇出来的是同一串数。
-对这个引擎来说那正是要的。
+The cost, stated plainly: resolving the same phase of the same round twice rolls
+the same numbers. For this engine that is exactly what is wanted.
 
-详见 [docs/PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md)。
+See [PRIOR-ART.md](https://github.com/Zereker/hiddenrole/blob/master/PRIOR-ART.md).
 
-**后来又撤掉了。** `GameView.Rand` 与 `Config.Seed` 已从内核删除。撤的理由
-不是设计错了——上面那套推导仍然成立——而是**它一个使用者都没有**：狼人杀与
-阿瓦隆的随机都发生在建局之前，两套规则包都不摇。它是对着别人的对照表补上的，
-不是被哪一局撞出来的。
+**And then it was taken back out.** `GameView.Rand` and `Config.Seed` have been
+removed from the kernel. Not because the design was wrong -- the reasoning above
+still holds -- but because **it had not one user**: the randomness in both
+werewolf and these rules happens before the game is built, and neither package
+rolls anything. It was filled in against somebody else's comparison table, not
+hit by any actual game.
 
-这一条因此要连着记两次：**对照能告诉你缺什么，但告诉不了你需不需要。**
-第三套规则包如果局中真的要摇，再把它加回来——设计已经写在这里，重写一遍
-不到五十行；而在那之前，一个没有使用者的公开 API 是负债，尤其在冻结之前。
+So this entry has to be recorded twice over: **a comparison can tell you what
+you are missing, but not whether you need it.** If a third rules package really
+does need to roll mid-game, add it back -- the design is written down here and
+rewriting it is under fifty lines; until then, a public API with no users is a
+liability, especially before a freeze.
 
-## 内核立住了的地方
+## Where the kernel held up
 
-疤要记，立住的同样要记，否则这份文件会给人「内核到处是洞」的错误印象。
+Scars get recorded, and so does what held up, or this file leaves the false
+impression of a kernel full of holes.
 
-**「谁知道什么」这半边零摩擦。** 阿瓦隆的三处信息不对称，全部一次写通、
-一次测过：
+**The "who knows what" half had zero friction.** All three of this ruleset's
+information asymmetries were written once and passed once:
 
-- **梅林**认得每一个坏人（莫德雷德除外），但那不是「同一边」——这份知识走
-  `RoleInfoProvider`，而不是 `TeammateProvider`。两个扩展点各司其职。
-- **奥伯伦**既不认识同伙也不被同伙认识——`TeammateProvider` 明确支持不对称，
-  文档里拿血染钟楼举的例，阿瓦隆直接受益。
-- **派西维尔**看到梅林与莫甘娜但分不清谁是谁——「分不清」的实现就是把两个 ID
-  排序后一并给出，不带任何区分标记。内核不需要知道这件事。
+- **Merlin** knows every bad guy (except Mordred), but that is not "same
+  side" -- that knowledge goes through `RoleInfoProvider`, not
+  `TeammateProvider`. Two extension points, each doing its own job.
+- **Oberon** neither knows his fellows nor is known to them -- `TeammateProvider`
+  explicitly supports asymmetry, with Blood on the Clocktower as the example in
+  its docs, and this ruleset benefits directly.
+- **Percival** sees Merlin and Morgana without telling them apart -- the
+  implementation of "without telling them apart" is handing over both IDs
+  sorted, with no distinguishing mark. The kernel does not need to know about
+  this.
 
-**任务失败票的匿名性不需要内核帮忙。** 全场只能知道「有几张失败票」，
-不能知道是谁投的——实现方式是**根本不为每一票产出事件**，只产出一条带票数的
-聚合事件。解析器决定产出什么，内核照发，边界自然成立。
+**The anonymity of fail votes needs no help from the kernel.** The table may
+learn only "how many fail votes there were", never who cast them -- implemented
+by **not producing an event per vote at all**, only one aggregate event carrying
+the count. The resolver decides what to produce, the kernel ships it, and the
+boundary holds by construction.
 
-**胜负判定不假设「赢是因为把谁杀光了」。** 阿瓦隆整局没有一个人出局，
-`VictoryChecker` 只拿 `GameView`、只返回 `(是否结束, 赢家)`，一处都不用绕。
+**The victory check does not assume winning means wiping somebody out.** Nobody
+is ever eliminated here; `VictoryChecker` takes only a `GameView` and returns
+only *(finished, winner)*, with not one place needing a workaround.
 
-**绕道队列泛化得比它的名字好。** 好人凑满三次成功之后要进刺杀阶段，
-而阶段流转是静态的（疤 2）。用 `NewDetourEffect(assassinID, PhaseAssassin)`
-排一个「谁、去哪个阶段」，内核就把游戏带过去了——**并且把胜负判定推迟到
-它结算之后**，这正是阿瓦隆需要的（好人赢下三轮还不算赢，得先过刺杀那一关）。
-实测：
+**The detour queue generalises better than its name.** Once the good side has
+three successes the game must enter the assassination phase, and phase
+transitions are static (scar 2). `NewDetourEffect(assassinID, PhaseAssassin)`
+schedules a "who, to which phase" and the kernel takes the game there -- **and
+holds the victory check until it resolves**, which is exactly what these rules
+need (three won missions is not yet a win; the assassination comes first).
+Measured:
 
 ```
-三轮成功之后：阶段=ASSASSIN 结束=false 效果=[MISSION_SUCCEEDED ... DETOUR]
+after three successes: phase=ASSASSIN finished=false effects=[MISSION_SUCCEEDED ... DETOUR]
 ```
 
-一行内核代码没改。这套机制文档里叫「绕道」，实际能力比这个名字大得多。
+Not one line of kernel code changed. The docs call this mechanism "detour"; what
+it can actually do is much larger than that name.
 
-**单一写入点、效果流、快照回放**同样原样可用，而且**扛住了疤 4 那条绕法**：
-整局进度挂在某个玩家的 `PlayerVar` 上虽然难看，但快照带得走、效果流回放得出，
-恢复出来的引擎继续打，结果与原局一致（`TestSnapshotAndReplay`）。
-绕法难看，但没有破坏内核的任何承诺。
+**The single write path, the effect stream and snapshot replay** were equally
+usable as-is, and **survived scar 4's workaround**: hanging the game-long
+progress off some player's `PlayerVar` was ugly, but the snapshot carried it and
+the effect stream replayed it, and a restored engine plays on to the same result
+as the original game (`TestSnapshotAndReplay`). The workaround was ugly, but it
+broke none of the kernel's promises.
 
-## 这一版跑通了什么
+## What this version got working
 
-一局阿瓦隆的四条结局路径全部跑通，共 841 行非测试代码：
+All four outcome paths of a game work, in 996 lines of non-test code:
 
-| 路径 | 测试 |
+| Path | Test |
 |---|---|
-| 好人连赢三轮，刺客指错人 → 好人胜 | `TestFullGame_GoodWinsThreeThenSurvivesAssassination` |
-| 好人连赢三轮，刺客指中梅林 → 坏人反败为胜 | `TestFullGame_AssassinFindsMerlin` |
-| 坏人破坏三轮 → 坏人胜，不经刺杀 | `TestFullGame_EvilWinsThreeMissions` |
-| 连续五次组队被否决 → 坏人胜 | `TestHammer_FiveRejectionsEndTheGame` |
+| good wins three, the assassin points at the wrong player -> good wins | `TestFullGame_GoodWinsThreeThenSurvivesAssassination` |
+| good wins three, the assassin finds Merlin -> evil steals it | `TestFullGame_AssassinFindsMerlin` |
+| evil sabotages three -> evil wins, no assassination | `TestFullGame_EvilWinsThreeMissions` |
+| five nominations rejected in a row -> evil wins | `TestHammer_FiveRejectionsEndTheGame` |
 
-这个包用到内核 41 个入口，**全部是公开的**；与狼人杀包零耦合
-（`grep werewolf\.` 只命中一句注释）。「规则只用公开 API」这件事
-现在有两套独立的规则包同时印证。
+This package uses 45 kernel entry points, **all of them exported**, and has zero
+coupling to the werewolf package (`grep werewolf\.` hits two comments). "Rules
+use only the public API" now has two independent rules packages attesting to it
+at once.
 
 ---
 
-## 结论：疤的形状说明了什么
+## Conclusion: what the shape of the scars says
 
-七条疤分成四类。**七条全部关闭**，这个分类比条数重要。**疤 2、3 已经关闭**，方法记在下面。
+The seven scars fall into four classes. **All seven are closed**, and the
+classification matters more than the count.
 
-**缺能力（疤 1、4、5，全部已关闭）** —— 内核该有而没有的东西。补法是加东西：
-按运行时名单划行动者、补上第四格作用域、让一次行动能有多个目标。
-形状清楚，代价可算（第四格会动快照格式，要 bump `SnapshotVersion`）。
+**Missing capability (scars 1, 4, 5, all closed)** -- something the kernel
+should have had and did not. The fix is adding: pick actors by a runtime list,
+fill in the fourth scope cell, let one action have several targets. The shape is
+clear and the cost is calculable (the fourth cell moves the snapshot format, so
+`SnapshotVersion` has to be bumped).
 
-**概念错位（疤 2、3，已关闭）** —— 内核**发明了游戏概念，而它其实只是实现细节**。
-`Round` 只是「环转了一圈」却起了个游戏名字；阶段流转被做成一张静态图，
-于是所有条件分支都得从「绕道」这个后门走——而那个后门的真实语义
-根本不是死亡（它泛化得很好，只是名字骗人）。
+**Conceptual mismatch (scars 2, 3, closed)** -- the kernel **invented a game
+concept where it really had an implementation detail**. `Round` was only "the
+ring went round once" wearing a game's name; phase transitions were built as a
+static graph, so every conditional branch had to go out through the "detour"
+back door -- and that door's real meaning has nothing to do with death (it
+generalises well, the name just lies).
 
-修法不是补字段，是**把决定权交回规则**，而且两处都用「已有语言里的一个新词」
-表达：回合边界是静态事实，所以是一个配置字段（`EndsRound`）；改变出口是运行时
-决定，所以是一条效果（`GOTO_PHASE`）。没有发明第三种语言——需要发明新机制
-通常说明想错了。
+The fix was not adding fields, it was **handing the decision back to the
+rules**, and both places said it with **a new word in the existing language**: a
+round boundary is a static fact, so it is a configuration field (`EndsRound`);
+changing the exit is a runtime decision, so it is an effect (`GOTO_PHASE`). No
+third language was invented -- needing to invent a new mechanism usually means
+the thinking went wrong.
 
-**多余的特权（疤 6，已关闭）** —— 不是靠删掉 `Alive`，是靠**把它降成默认**。
-问题从来不是这个概念不该存在，是它在替规则做判断。判据还是那一句：内核能不能
-在不知道这是什么游戏的情况下独立判断「死了还能不能动」——不能，所以交出去。
+**Needless privilege (scar 6, closed)** -- not by deleting `Alive` but by
+**demoting it to a default**. The problem was never that the concept should not
+exist, it is that it was deciding on the rules' behalf. The test is the same
+line as always: can the kernel decide "may the dead act" on its own, without
+knowing what game this is -- it cannot, so it hands it over.
 
-**对照才看得见的（疤 7，已关闭）** —— 内核没有随机。两套规则都恰好躲过了它，
-只有拿同类项目一比才现形。它说明检验内核需要两条腿：写第二套规则包，
-以及读别人的实现。
+**Only visible against prior art (scar 7, closed)** -- the kernel had no
+randomness. Both rulesets happened to dodge it, and it only shows up when held
+against comparable projects. It says that testing a kernel needs two legs:
+writing a second rules package, and reading other people's implementations.
 
-一句话：**我们把狼人杀的「词汇」从内核里清干净了，并且证明了；
-但没清过狼人杀的「形状」。** `grep -r WEREWOLF engine/` 是空的，
-这只证明内核不认得「女巫」这个**词**；它认不认得「夜晚接白天、每轮死几个人」
-这个**结构**，在阿瓦隆写出来之前没有人验证过。
+In one sentence: **we cleaned werewolf's vocabulary out of the kernel, and
+proved it; we never cleaned out werewolf's shape.** `grep -r WEREWOLF` over the
+kernel comes back empty, and all that proves is that the kernel does not
+recognise the **word** "witch"; whether it recognised the **structure** of
+"night follows day, a few players die each round" was unverified by anyone until
+this package was written.
 
-答案是：**半边认得，半边不认得。** 「谁知道什么」那半边是真通用的，
-「一局游戏怎么推进」那半边还是狼人杀形状。
+The answer is: **half of it did, half of it did not.** The "who knows what" half
+is genuinely general; the "how does a game make progress" half was still
+werewolf-shaped.
