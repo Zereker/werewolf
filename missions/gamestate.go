@@ -6,40 +6,47 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// gamestate.go 本包的整局进度存在哪。
+// gamestate.go is where this package keeps the game's progress.
 //
-// 五样东西：现在第几轮任务、成功了几次、失败了几次、连续否决了几次、
-// 队长轮到谁。它们全都**整局有效、且不属于任何玩家**——正好是内核第四种
-// 变量作用域（GameVar）。
+// Five things: which mission it is, how many succeeded, how many failed, how
+// many consecutive rejections there have been, and whose turn it is to lead.
+// All five are **game-long and owned by nobody** -- exactly the kernel's
+// fourth variable scope (whole game, unowned).
 //
-// # 这个文件曾经是一处绕法
+// # This file used to be a workaround
 //
-// 内核此前只有三种作用域，缺「整局有效 + 无主」这一格（SCARS.md 疤 4）。
-// 于是这五个数只能挂到「ID 字典序最小的那名玩家」的 PlayerVar 上当账本：
-// 全局事实记在某个人名下，那个玩家的 PlayerView 里凭空多出五个与他无关的
-// 字段，「谁是账本」还得靠约定维持。
+// The kernel used to have only three scopes and was missing the "whole game,
+// unowned" cell (SCARS.md, scar 4). So these five numbers could only be filed
+// under the lexicographically smallest player's own state as a ledger: global
+// facts recorded under one person's name, five fields appearing out of nowhere
+// in that player's PlayerView with nothing to do with them, and "who holds the
+// ledger" upheld by convention.
 //
-// 内核补上第四格之后，账本整个删掉了——现在是 GameVar，读写各一行。
+// Once the kernel gained the fourth cell, the ledger was deleted outright --
+// it is a game-scoped variable now, one line to read and one to write.
 const (
-	varMission = "missions.mission" // 现在第几轮任务，1-5
-	varSuccess = "missions.success" // 已经成功几次
-	varFail    = "missions.fail"    // 已经失败几次
-	varRejects = "missions.rejects" // 连续被否决几次
-	varLeader  = "missions.leader"  // 队长是第几号座位（AllPlayers 的下标）
+	varMission = "missions.mission" // which mission this is, 1-5
+	varSuccess = "missions.success" // how many have succeeded
+	varFail    = "missions.fail"    // how many have failed
+	varRejects = "missions.rejects" // how many consecutive rejections
+	varLeader  = "missions.leader"  // the leader's seat number (an index into AllPlayers)
 
-	// varAssassinated 刺杀结果："hit" 指中了梅林，"miss" 指没中。
-	// 空串表示刺杀还没发生——胜负判定靠它区分「好人赢了」与「好人
-	// 凑满三次、但还没过刺杀这一关」。
+	// varAssassinated is the assassination's result: "hit" means Merlin was
+	// named, "miss" means he was not. An empty string means the assassination
+	// has not happened -- the victory check uses it to tell "the good side
+	// won" from "the good side has three successes but has not yet survived
+	// the assassination".
 	varAssassinated = "missions.assassinated"
 )
 
-// 回合级的状态：这些恰好每提名一轮就该清零，用得上内核现成的作用域。
+// Round-scoped state: these happen to want clearing once per nomination,
+// which the kernel's existing scope covers.
 const (
-	varOnTeam   = "missions.on_team"  // 玩家级：这一轮被提名上任务
-	varApproved = "missions.approved" // 回合级：这一轮的队伍表决通过了
+	varOnTeam   = "missions.on_team"  // per player: nominated for this round's mission
+	varApproved = "missions.approved" // per round: this round's team was accepted
 )
 
-// gameNum 读一个整局计数，没有则为 0。
+// gameNum reads a game-long counter, or 0 if it was never written.
 func gameNum(view hiddenrole.GameView, key string) int {
 	n, err := strconv.Atoi(view.Var(hiddenrole.ScopeGame, key))
 	if err != nil {
@@ -48,12 +55,13 @@ func gameNum(view hiddenrole.GameView, key string) int {
 	return n
 }
 
-// setGameNum 写一个整局计数。
+// setGameNum writes a game-long counter.
 func setGameNum(_ hiddenrole.GameView, key string, n int) *hiddenrole.Effect {
 	return hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, key, strconv.Itoa(n))
 }
 
-// mission 当前是第几轮任务，1-5。开局还没写过时算第 1 轮。
+// mission is which mission this is, 1-5. Before it is first written it counts
+// as mission 1.
 func mission(view hiddenrole.GameView) int {
 	if n := gameNum(view, varMission); n > 0 {
 		return n
@@ -65,10 +73,11 @@ func successes(view hiddenrole.GameView) int { return gameNum(view, varSuccess) 
 func failures(view hiddenrole.GameView) int  { return gameNum(view, varFail) }
 func rejects(view hiddenrole.GameView) int   { return gameNum(view, varRejects) }
 
-// leaderID 当前队长。
+// leaderID is the current leader.
 //
-// 队长按座位顺序轮转，无论组队是否通过——条目里的 leader token 每轮
-// 都往下传一位。下标存在账本里，取模玩家数。
+// Leadership rotates by seat whether or not a team is approved -- the
+// article's leader token passes on every round. The index is stored in the
+// ledger and taken modulo the player count.
 func leaderID(view hiddenrole.GameView) string {
 	all := view.AllPlayers()
 	if len(all) == 0 {
@@ -77,7 +86,7 @@ func leaderID(view hiddenrole.GameView) string {
 	return all[gameNum(view, varLeader)%len(all)].ID
 }
 
-// leaderAt 第 n 顺位的队长是谁。
+// leaderAt is who leads at position n.
 func leaderAt(view hiddenrole.GameView, n int) string {
 	all := view.AllPlayers()
 	if len(all) == 0 {
@@ -86,15 +95,16 @@ func leaderAt(view hiddenrole.GameView, n int) string {
 	return all[n%len(all)].ID
 }
 
-// onTeam 这名玩家这一轮在不在任务队伍里。
+// onTeam reports whether this player is on this round's mission team.
 func onTeam(view hiddenrole.GameView, playerID string) bool {
 	return view.Var(hiddenrole.ScopeRound.Of(playerID), varOnTeam) != ""
 }
 
-// teamIDs 这一轮的任务队伍，按 ID 排序。
+// teamIDs is this round's mission team, sorted by ID.
 //
-// 有序是规则必须保证的：产出的效果顺序要由局面唯一决定，
-// 否则回放与快照比对失去确定性。AllPlayers() 已经排好序。
+// The ordering is something the rules have to guarantee: the order of the
+// effects produced must be uniquely determined by the board, or replay and
+// snapshot comparison lose their determinism. AllPlayers() is already sorted.
 func teamIDs(view hiddenrole.GameView) []string {
 	var out []string
 	for _, p := range view.AllPlayers() {
@@ -105,20 +115,23 @@ func teamIDs(view hiddenrole.GameView) []string {
 	return out
 }
 
-// approved 这一轮的队伍表决通过了没有。
+// approved reports whether this round's team was accepted.
 func approved(view hiddenrole.GameView) bool {
 	return view.Var(hiddenrole.ScopeRound, varApproved) != ""
 }
 
-// gameSetup 开局那一刻把局面铺好。
+// gameSetup lays out the board at the moment play begins.
 //
-// 两件事：把整局计数器显式初始化（而不是靠「读不到就当 0」），
-// 以及**点名第一个提名阶段的行动者**——第一个队长。
+// Two things: initialise the game-long counters explicitly (rather than
+// relying on "unreadable means 0"), and **name the actors of the first
+// nomination phase** -- the first leader.
 //
-// 后者是 GameSetup 这个扩展点存在的直接原因：行动者名单通常由上一个阶段的
-// 解析器算出来（表决之后点名下一任队长，提名之后点名任务队伍），
-// 而第一个阶段前面没有阶段。没有它的话，开局第一次提名会退回按角色算
-// ——也就是全场都被告知可以提名，正是这条疤要消灭的东西。
+// The latter is the direct reason the GameSetup extension point exists: an
+// actor list is normally computed by the previous phase's resolver (the vote
+// names the next leader, the nomination names the mission team), and the first
+// phase has no previous phase. Without it, the opening nomination would fall
+// back to computing by role -- that is, the whole table being told they may
+// nominate, which is exactly what this scar set out to eliminate.
 func gameSetup(view hiddenrole.GameView) []*hiddenrole.Effect {
 	return []*hiddenrole.Effect{
 		hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varMission, "1"),

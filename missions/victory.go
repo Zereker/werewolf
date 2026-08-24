@@ -2,23 +2,25 @@ package missions
 
 import "github.com/Zereker/hiddenrole"
 
-// victory.go 怎么算赢。
+// victory.go decides how winning works.
 //
-// 本包的胜负与狼人杀完全不是一回事：**它不数人头**。没有屠边、没有屠城，
-// 没有任何人出局。胜负只看三样——任务成败的比分、连续否决的次数、
-// 以及好人凑满三次之后那一刀。
+// The outcome here is nothing like werewolf's: **it counts nobody**. No
+// wipe-out of either kind, and nobody is ever eliminated. Only three things
+// matter -- the mission score, the number of consecutive rejections, and the
+// single strike once the good side reaches three.
 //
-// 这一点对内核是个正面证据：VictoryChecker 只拿到 GameView、只返回
-// (是否结束, 赢家)，没有任何地方假设「赢是因为把谁杀光了」。
+// That is a point in the kernel's favour: a VictoryChecker is handed a
+// GameView and returns (over, winner), and nothing anywhere assumes that
+// winning means having killed everyone off.
 type victoryChecker struct{}
 
 func (victoryChecker) CheckVictory(view hiddenrole.GameView) (bool, hiddenrole.Camp) {
-	// 连续五次组队被否决，坏人直接获胜
+	// Five consecutive team rejections: the evil side wins outright.
 	if rejects(view) >= HammerRejections {
 		return true, CampEvil
 	}
 
-	// 三次任务失败
+	// Three failed missions.
 	if failures(view) >= 3 {
 		return true, CampEvil
 	}
@@ -27,15 +29,19 @@ func (victoryChecker) CheckVictory(view hiddenrole.GameView) (bool, hiddenrole.C
 		return false, hiddenrole.CampUnspecified
 	}
 
-	// 好人凑满三次成功，但还得过刺杀这一关。
+	// The good side has three successes, but still has to survive the
+	// assassination.
 	//
-	// 场上没有刺客时（最小板子）直接判好人赢；有刺客而还没动手时
-	// 必须回「还没结束」——否则引擎会在刺杀阶段之前就把这局判掉。
-	// 刺杀阶段由任务解析器用绕道队列排进来，内核会把胜负判定推迟到
-	// 那之后，这里只要如实报「还没完」即可。
+	// With no assassin in play (the smallest board) the good side wins
+	// outright; with an assassin who has not yet struck, this must answer
+	// "not over" -- otherwise the engine would decide the game before the
+	// assassination phase. That phase is queued by the mission resolver
+	// through the detour queue, and the kernel defers the victory check until
+	// afterwards, so reporting "not over" truthfully is all that is needed
+	// here.
 	switch view.Var(hiddenrole.ScopeGame, varAssassinated) {
 	case "hit":
-		return true, CampEvil // 刺中梅林，坏人反败为胜
+		return true, CampEvil // Merlin was hit; the evil side snatches the win
 	case "miss":
 		return true, CampGood
 	}

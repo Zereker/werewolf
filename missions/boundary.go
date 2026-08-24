@@ -2,18 +2,22 @@ package missions
 
 import "github.com/Zereker/hiddenrole"
 
-// boundary.go 一件事该告诉谁、谁能听到谁说话。
+// boundary.go covers who should be told about something, and who hears whom
+// speak.
 //
-// 本包的信息边界比狼人杀简单得多：**桌面上发生的事几乎全是公开的**。
-// 谁被提名、谁投了赞成还是反对、任务成了没成、有几张失败票——全场都看得到。
-// 私密的只有两样：开局发的身份信息（走 RoleInfo 与 Teammates，不走事件），
-// 以及「谁投了失败票」——而后者的实现方式是**根本不产出那条事件**。
+// The information boundary here is far simpler than werewolf's: **almost
+// everything that happens on the table is public**. Who was nominated, who
+// voted for or against, whether a mission succeeded, how many fail votes there
+// were -- the whole table sees all of it. Only two things are private: the
+// identity information dealt at the start (which goes through RoleInfo and
+// Teammates, not through events), and "who voted failure" -- and the latter is
+// implemented by **not producing that event at all**.
 func audience(event *hiddenrole.Event, view hiddenrole.GameView) ([]string, bool) {
-	// 被否决的行动只有行动者本人需要知道。
+	// A vetoed action is only the actor's business.
 	//
-	// 这一条必须**先于**类型划分：好人误投失败被驳回，那条事件的类型
-	// 是规则自己的 FAIL_REJECTED，只按类型分桶会把它广播出去，
-	// 等于当场点名。
+	// This has to come **before** the type-based split: a good player's
+	// mistaken fail vote is rejected as the rules' own FAIL_REJECTED type, and
+	// bucketing by type alone would broadcast it -- naming them on the spot.
 	if event.Canceled || event.Type == EventFailRejected {
 		return actorOnly(event.SourceID, view), true
 	}
@@ -45,9 +49,11 @@ func allIDs(view hiddenrole.GameView) []string {
 	return out
 }
 
-// speech 谁能听到谁说话。
+// speech is who hears whom speak.
 //
-// 这套规则整局都是公开讨论——没有狼人夜间私聊那种分频道的场面。
-// 这也是内核的一处正面证据：SpeechProvider 换成「全场都听得到」
-// 只是一个函数，不需要内核知道有没有「夜晚」这回事。
+// Discussion is public throughout this ruleset -- there is nothing like
+// werewolf's separate night channel for the wolves. This is also a point in
+// the kernel's favour: swapping the SpeechProvider for "everyone hears
+// everything" is one function, and the kernel need not know that a "night"
+// exists at all.
 func speech(_ string, view hiddenrole.GameView) []string { return allIDs(view) }

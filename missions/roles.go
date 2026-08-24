@@ -7,12 +7,13 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// roles.go 谁是好人、谁看得见谁。
+// roles.go covers who is good and who can see whom.
 //
-// 这套规则整局没有一个人出局——这是它与狼人杀最大的结构差异。
-// 内核的存活位在这一局里从头到尾没被写过，`SET_ALIVE` 一次都不产出。
+// Nobody is eliminated in this ruleset for the whole game -- the biggest
+// structural difference from werewolf. The kernel's alive bit is never written
+// here, and not one SET_ALIVE is ever produced.
 
-// evilRoles 坏人阵营的全部角色。
+// evilRoles is every role on the evil side.
 var evilRoles = map[hiddenrole.RoleType]bool{
 	RoleMinion:   true,
 	RoleAssassin: true,
@@ -30,11 +31,12 @@ func campOf(role hiddenrole.RoleType) hiddenrole.Camp {
 	return CampGood
 }
 
-// builtinRoleSetup 入座时发放阵营。
+// builtinRoleSetup hands out the camp at seating time.
 //
-// 内核只认 VarCamp 这一个键（胜负判定数阵营用），别的都是规则自己的事。
-// 这套规则不需要「神职/平民」那种细分——它的胜负只看任务成败与刺杀，
-// 不数人头。
+// The kernel recognises one key, VarCamp (the victory check reads camps); the
+// rest is the rules' business. This ruleset needs no "special role vs plain
+// villager" sub-division -- its outcome depends on missions and the
+// assassination, and it counts nobody.
 var builtinRoleSetup = func() map[hiddenrole.RoleType]hiddenrole.RoleSetup {
 	out := map[hiddenrole.RoleType]hiddenrole.RoleSetup{}
 	for _, r := range []hiddenrole.RoleType{
@@ -49,7 +51,7 @@ var builtinRoleSetup = func() map[hiddenrole.RoleType]hiddenrole.RoleSetup {
 	return out
 }()
 
-// idsWithRole 场上担任这些角色的玩家，按 ID 排序。
+// idsWithRole is the players holding any of these roles, sorted by ID.
 func idsWithRole(view hiddenrole.GameView, roles ...hiddenrole.RoleType) []string {
 	want := map[hiddenrole.RoleType]bool{}
 	for _, r := range roles {
@@ -65,14 +67,16 @@ func idsWithRole(view hiddenrole.GameView, roles ...hiddenrole.RoleType) []strin
 	return out
 }
 
-// teammates 「谁和我是一边的」。
+// teammates answers "who is on my side".
 //
-// 只有坏人之间才是真正的同伙，而且**奥伯伦不在其中**：条目原文
-// 「Oberon: Unknown to other evil players」——他既不认识同伙，
-// 也不被同伙认识。这是一处天然不对称，内核明确支持。
+// Only the evil players are truly each other's fellows, and **Oberon is not
+// among them**: the article's wording is "Oberon: Unknown to other evil
+// players" -- he neither knows his fellows nor is known to them. A natural
+// asymmetry, and one the kernel supports explicitly.
 //
-// 梅林看得见坏人，但那不是「同一边」——他和他们是死敌。那份知识
-// 属于角色专属信息，走 RoleInfo，见下面的 merlinInfo。
+// Merlin can see the bad guys, but that is not "the same side" -- he is their
+// mortal enemy. That knowledge is role information and goes through RoleInfo;
+// see merlinInfo below.
 func teammates(playerID string, view hiddenrole.GameView) []string {
 	self, ok := view.Player(playerID)
 	if !ok || !isEvil(self.Role) || self.Role == RoleOberon {
@@ -88,17 +92,19 @@ func teammates(playerID string, view hiddenrole.GameView) []string {
 	return out
 }
 
-// RoleInfo 的键名。键名由角色自己定，内核不认得。
+// The RoleInfo keys. The keys are the role's own and the kernel does not
+// recognise them.
 const (
-	RoleInfoMerlinEvil        = "merlin.evil"                // 梅林看到的坏人名单
-	RoleInfoPercivalCandidate = "percival.merlin_or_morgana" // 派西维尔看到的两个人
+	RoleInfoMerlinEvil        = "merlin.evil"                // the bad guys Merlin sees
+	RoleInfoPercivalCandidate = "percival.merlin_or_morgana" // the two people Percival sees
 )
 
-// merlinInfo 梅林认得每一个坏人——**除了莫德雷德**。
+// merlinInfo: Merlin knows every bad guy -- **except Mordred**.
 //
-// 条目原文「Mordred: Unknown to Merlin」。注意梅林是能逐个认出他们是谁的，
-// 不是只知道有几个（中文条目此处有误，见 vocab.go 的说明）。奥伯伦虽然
-// 不被同伙认识，梅林照样看得见他。
+// The article's wording is "Mordred: Unknown to Merlin". Note that Merlin can
+// identify them individually, not merely count them (the Chinese article is
+// wrong here; see vocab.go). Oberon, though unknown to his own side, is still
+// visible to Merlin.
 func merlinInfo(_ string, view hiddenrole.GameView) map[string]string {
 	var out []string
 	for _, p := range view.AllPlayers() {
@@ -110,12 +116,14 @@ func merlinInfo(_ string, view hiddenrole.GameView) map[string]string {
 	return map[string]string{RoleInfoMerlinEvil: strings.Join(out, ",")}
 }
 
-// percivalInfo 派西维尔看到梅林与莫甘娜两个人，但分不清谁是谁。
+// percivalInfo: Percival sees Merlin and Morgana as two people without
+// telling them apart.
 //
-// 条目原文「Percival secretly learns that two players are Merlin and Morgana,
-// but does not know which player is which」。「分不清」这件事在实现上就是
-// **把两个 ID 排序后一并给出**——不带任何区分标记。莫甘娜不在场时
-// 只有梅林一个人，那一局派西维尔等于直接认出了梅林。
+// The article's wording is "Percival secretly learns that two players are
+// Merlin and Morgana, but does not know which player is which". "Cannot tell
+// them apart" in implementation terms means **handing over both IDs sorted**,
+// with nothing distinguishing them. Without Morgana in play there is only
+// Merlin, and in that game Percival has effectively identified him outright.
 func percivalInfo(_ string, view hiddenrole.GameView) map[string]string {
 	ids := idsWithRole(view, RoleMerlin, RoleMorgana)
 	return map[string]string{RoleInfoPercivalCandidate: strings.Join(ids, ",")}

@@ -6,26 +6,30 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// 各阶段的建议超时。板子数据，引擎不据此计时。
+// Suggested timeouts per phase. Board data; the engine does not time by
+// them.
 const (
 	ProposeTimeout  = 60 * time.Second
 	TeamVoteTimeout = 30 * time.Second
 	MissionTimeout  = 30 * time.Second
-	AssassinTimeout = 90 * time.Second // 刺杀要复盘整局，给足时间
+	AssassinTimeout = 90 * time.Second // the assassination reviews the whole game, so allow time
 )
 
-// missionSizes 每种人数下五轮任务各需要几人。
+// missionSizes is how many players each of the five missions needs, per table
+// size.
 //
-// 取自英文维基条目的表格。列是人数 5-10，行是第 1-5 轮：
+// Taken from the table in the English Wikipedia article. Columns are player
+// counts 5-10, rows are missions 1-5:
 //
-//	轮次    5   6   7   8   9  10
+//	mission 5   6   7   8   9  10
 //	 1      2   2   2   3   3   3
 //	 2      3   3   3   4   4   4
 //	 3      2   4   3   4   4   4
 //	 4      3   3   4   5   5   5
 //	 5      3   4   4   5   5   5
 //
-// 6 人局第 3 轮要 4 人、第 4 轮反而只要 3 人，不是笔误——原表就是这样。
+// In a 6-player game mission 3 takes 4 and mission 4 takes only 3. That is not
+// a typo; the original table says so.
 var missionSizes = map[int][5]int{
 	5:  {2, 3, 2, 3, 3},
 	6:  {2, 3, 4, 3, 4},
@@ -35,11 +39,12 @@ var missionSizes = map[int][5]int{
 	10: {3, 4, 4, 5, 5},
 }
 
-// evilCounts 每种人数下有几个坏人。取自英文维基条目。
+// evilCounts is how many evil players there are per table size. From the
+// English Wikipedia article.
 var evilCounts = map[int]int{5: 2, 6: 2, 7: 3, 8: 3, 9: 3, 10: 4}
 
-// MissionSize 第 mission 轮任务（1-5）在 players 人局里需要几人上场。
-// 人数或轮次超出范围时返回 0。
+// MissionSize is how many players mission (1-5) needs in a game of players.
+// It returns 0 when the count or the mission number is out of range.
 func MissionSize(players, mission int) int {
 	sizes, ok := missionSizes[players]
 	if !ok || mission < 1 || mission > 5 {
@@ -48,14 +53,15 @@ func MissionSize(players, mission int) int {
 	return sizes[mission-1]
 }
 
-// EvilCount players 人局里有几个坏人。人数超出范围时返回 0。
+// EvilCount is how many evil players a game of players has. It returns 0 when
+// the count is out of range.
 func EvilCount(players int) int { return evilCounts[players] }
 
-// FailsNeeded 第 mission 轮任务需要几张失败票才算失败。
+// FailsNeeded is how many fail votes make mission fail.
 //
-// 条目原文：「If one (or two in Mission 4 when at least 7 players are playing)
-// Mission Fail cards were turned in, the Spies win a point for the active
-// mission.」——只有第四轮、且七人及以上，才要两张。
+// The article's wording: "If one (or two in Mission 4 when at least 7 players
+// are playing) or more players choose to fail the mission, the mission
+// fails." -- two are needed only on mission 4, and only with seven or more.
 func FailsNeeded(players, mission int) int {
 	if mission == 4 && players >= 7 {
 		return 2
@@ -63,21 +69,27 @@ func FailsNeeded(players, mission int) int {
 	return 1
 }
 
-// HammerRejections 连续这么多次组队被否决，坏人直接获胜。
+// HammerRejections is how many consecutive team rejections hand the evil side
+// an outright win.
 //
-// 条目原文：「After five successively rejected mission proposals in a single
+// The article's wording: "After five successively rejected mission proposals
+// in a single mission, the Spies immediately win the game."
 // mission, the Spies immediately win the game.」
 const HammerRejections = 5
 
-// DefaultConfig 本包的默认板子。
+// DefaultConfig is this package's default board.
 //
-// 阶段环是三个节点的循环：提名 -> 表决 -> 任务 -> 提名。表决没通过时
-// 任务阶段会空转一次（那一轮没有人被标记上场），这是绕法的代价之一，
-// 见 SCARS.md 第 2 条。
+// The phase cycle is a loop of three nodes: propose -> vote -> mission ->
+// propose. When a vote fails the mission phase idles through once (nobody is
+// marked as being on a team that round), which is one of the costs of the
+// workaround; see SCARS.md, item 2.
 //
-// 刺杀阶段不在环里：它由任务阶段在好人凑满三次成功时用绕道排进来。
-// 内核那套「谁、去哪个阶段」的排队机制原本是为出局技能做的，用在这里
-// 严丝合缝——它还顺带保证了胜负判定推迟到刺杀结算之后，正是规则要的。
+// The assassination phase is not in the loop: the mission phase queues it with
+// a detour once the good side reaches three successes. The kernel's "who, and
+// to which phase" queue was built for abilities triggered on elimination, and
+// it fits here exactly -- and it additionally guarantees that the victory
+// check is deferred until after the assassination resolves, which is what the
+// rules want.
 func DefaultConfig() *hiddenrole.Config {
 	return &hiddenrole.Config{
 		StartPhase: PhasePropose,
@@ -85,19 +97,25 @@ func DefaultConfig() *hiddenrole.Config {
 			PhasePropose: {
 				Type: PhasePropose,
 
-				// 队伍标记活到「下一次提名开始」，不是「下一轮任务」——
-				// 一轮任务里可能提名五次。此前内核只有「回合级」一档寿命，
-				// 而回合数要跟着第几轮任务走（EndsRound 标在任务阶段），
-				// 两者不重合，只能在提名解析器里手工清一遍。
+				// Team markers live until the next nomination begins, not
+				// until the next mission -- one mission may take five
+				// nominations. The kernel used to have only one lifetime, the
+				// round, and the round number has to track which mission it is
+				// (EndsRound is marked on the mission phase); the two do not
+				// coincide, so they had to be cleared by hand in the nomination
+				// resolver.
 				//
-				// 现在寿命与计数分开声明：这里说「我开始时是干净的」，
-				// 回合数由任务阶段的 EndsRound 管。
+				// Lifetime and counting are declared separately now: this says
+				// "I begin from a clean board", and the round number is the
+				// mission phase's EndsRound business.
 				ClearsRoundVars: true,
-				// 队长提名：一支队伍要几个人，就提交几次 PROPOSE。
+				// The leader nominates the team.
 				//
-				// 一次提交带整支队伍（SkillUse.Targets 是切片）。
-				// 拆成多次提交是能走通的，但就绪判定因此说不清「还差几个人」
-				// ——它只知道「队长提交过没有」。见 SCARS.md 第 3 条。
+				// One submission carries the whole team (SkillUse.Targets is a
+				// slice). Splitting it across several submissions did work,
+				// but readiness could then not say how many players were still
+				// missing -- it only knew whether the leader had submitted.
+				// See SCARS.md, item 3.
 				Steps: []hiddenrole.PhaseStep{
 					{Role: hiddenrole.RoleUnspecified, Skill: SkillPropose, Required: true},
 				},
@@ -106,7 +124,7 @@ func DefaultConfig() *hiddenrole.Config {
 			},
 			PhaseTeamVote: {
 				Type: PhaseTeamVote,
-				// 全员表决，一人一票，接受或否决二选一。
+				// Everyone votes, one vote each, accept or reject.
 				Steps: []hiddenrole.PhaseStep{
 					{Role: hiddenrole.RoleUnspecified, Skill: SkillApprove, Required: true, Multiple: true, Group: "vote"},
 					{Role: hiddenrole.RoleUnspecified, Skill: SkillReject, Required: true, Multiple: true, Group: "vote"},
@@ -116,10 +134,12 @@ func DefaultConfig() *hiddenrole.Config {
 			},
 			PhaseMission: {
 				Type: PhaseMission,
-				// 本该只有被选中的队员能提交，而内核判定行动者只看角色。
-				// 这里只能对所有人开放，再由解析器把不该算的丢掉——
-				// 代价是 AllowedSkills 会对没上任务的玩家说「你可以投」。
-				// 这是绕法最贵的一处，见 SCARS.md 第 1 条。
+				// Only the chosen team members should be able to submit, and
+				// the kernel decides actors by role alone. This can only be
+				// opened to everyone with the resolver throwing away what
+				// should not count -- at the cost of AllowedSkills telling a
+				// player who is not on the mission "you may vote". The most
+				// expensive part of the workaround; see SCARS.md, item 1.
 				Steps: []hiddenrole.PhaseStep{
 					{Role: hiddenrole.RoleUnspecified, Skill: SkillMissionSuccess, Required: true, Multiple: true, Group: "mission"},
 					{Role: hiddenrole.RoleUnspecified, Skill: SkillMissionFail, Required: true, Multiple: true, Group: "mission"},
@@ -127,13 +147,16 @@ func DefaultConfig() *hiddenrole.Config {
 				Timeout:   MissionTimeout,
 				NextPhase: PhasePropose,
 
-				// 任务结算完是新的一回合。
+				// A resolved mission is a new round.
 				//
-				// 这是「回合边界交给规则」之后立刻兑现的好处：本包的
-				// Round 从此等于**第几轮任务**，与它自己说的话对得上。
-				// 此前内核猜「绕回起始阶段就算新回合」，而这里每提名一次
-				// 就绕一圈，于是 Round 成了提名计数器，跟「第几轮任务」
-				// 最多差五倍，还被 PlayerView.Round 原样发给玩家。
+				// This is the benefit that arrived the moment the round
+				// boundary was handed to the rules: this package's Round now
+				// equals **which mission it is**, and agrees with what it says
+				// about itself. The kernel used to guess "looping back to the
+				// start phase counts as a new round", and here every nomination
+				// goes round the loop, so Round became a nomination counter,
+				// out by as much as a factor of five from "which mission", and
+				// it was handed to players verbatim in PlayerView.Round.
 				EndsRound: true,
 			},
 			PhaseAssassin: {

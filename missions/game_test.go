@@ -6,7 +6,8 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// 5 人局：梅林、派西维尔、忠臣 / 刺客、莫甘娜
+// A five-player game: Merlin, Percival, a loyal servant / the assassin,
+// Morgana.
 func fivePlayer(t *testing.T) *hiddenrole.Engine {
 	t.Helper()
 	e := MustNew()
@@ -24,49 +25,49 @@ func fivePlayer(t *testing.T) *hiddenrole.Engine {
 	return e
 }
 
-// TestFirstMission 走通一轮：提名 -> 表决通过 -> 任务成功
+// TestFirstMission plays one mission through: nominate -> approve -> succeed.
 func TestFirstMission(t *testing.T) {
 	e := fivePlayer(t)
 
 	if got := e.Status().Phase; got != PhasePropose {
-		t.Fatalf("开局阶段 = %v，期望 PROPOSE", got)
+		t.Fatalf("opening phase = %v, want PROPOSE", got)
 	}
 	if n := MissionSize(5, 1); n != 2 {
-		t.Fatalf("5 人局第一轮该 2 人，表里是 %d", n)
+		t.Fatalf("mission 1 of a five-player game takes 2, the table says %d", n)
 	}
 
-	// 队长（座位 0 = "a"）提名两人
+	// The leader (seat 0 = "a") nominates two players.
 	for _, target := range []string{"a", "b"} {
 		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: "a", Skill: SkillPropose, Targets: []string{target},
 		}); err != nil {
-			t.Fatalf("提名 %s: %v", target, err)
+			t.Fatalf("nominating %s: %v", target, err)
 		}
 	}
 	if _, err := e.EndPhase(); err != nil {
 		t.Fatalf("EndPhase(PROPOSE): %v", err)
 	}
 	if got := e.Status().Phase; got != PhaseTeamVote {
-		t.Fatalf("阶段 = %v，期望 TEAM_VOTE", got)
+		t.Fatalf("phase = %v, want TEAM_VOTE", got)
 	}
 
-	// 全员赞成
+	// Everyone approves.
 	for _, id := range []string{"a", "b", "c", "d", "e"} {
 		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{PlayerID: id, Skill: SkillApprove}); err != nil {
-			t.Fatalf("表决 %s: %v", id, err)
+			t.Fatalf("%s voting: %v", id, err)
 		}
 	}
 	if _, err := e.EndPhase(); err != nil {
 		t.Fatalf("EndPhase(TEAM_VOTE): %v", err)
 	}
 	if got := e.Status().Phase; got != PhaseMission {
-		t.Fatalf("阶段 = %v，期望 MISSION", got)
+		t.Fatalf("phase = %v, want MISSION", got)
 	}
 
-	// 队员投成功
+	// The team votes success.
 	for _, id := range []string{"a", "b"} {
 		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{PlayerID: id, Skill: SkillMissionSuccess}); err != nil {
-			t.Fatalf("任务票 %s: %v", id, err)
+			t.Fatalf("%s casting a mission vote: %v", id, err)
 		}
 	}
 	effects, err := e.EndPhase()
@@ -81,14 +82,14 @@ func TestFirstMission(t *testing.T) {
 		}
 	}
 	if !succeeded {
-		t.Fatalf("第一轮任务该成功，效果里没有 MISSION_SUCCEEDED：%v", typesOf(effects))
+		t.Fatalf("mission 1 should have succeeded, but there is no MISSION_SUCCEEDED among the effects: %v", typesOf(effects))
 	}
 	if e.Status().Over {
-		t.Fatal("才赢一轮就结束了")
+		t.Fatal("the game ended after a single win")
 	}
 }
 
-// TestMerlinSeesEvilExceptMordred 梅林认得每一个坏人，除了莫德雷德
+// TestMerlinSeesEvilExceptMordred: Merlin knows every bad guy except Mordred.
 func TestMerlinSeesEvilExceptMordred(t *testing.T) {
 	e := MustNew()
 	for id, role := range map[string]hiddenrole.RoleType{
@@ -105,13 +106,14 @@ func TestMerlinSeesEvilExceptMordred(t *testing.T) {
 
 	v := e.PlayerView("a")
 	got := v.RoleInfo[RoleInfoMerlinEvil]
-	// 刺客 e、奥伯伦 g 看得见；莫德雷德 f 看不见
+	// The assassin e and Oberon g are visible; Mordred f is not.
 	if want := "e,g"; got != want {
-		t.Errorf("梅林看到的坏人 = %q，期望 %q（莫德雷德不该在里面，奥伯伦该在）", got, want)
+		t.Errorf("the bad guys Merlin sees = %q, want %q (Mordred should be out, Oberon in)", got, want)
 	}
 }
 
-// TestOberonIsAloneOnBothSides 奥伯伦既不认识同伙，也不被同伙认识
+// TestOberonIsAloneOnBothSides: Oberon neither knows his fellows nor is known
+// to them.
 func TestOberonIsAloneOnBothSides(t *testing.T) {
 	e := MustNew()
 	for id, role := range map[string]hiddenrole.RoleType{
@@ -127,32 +129,34 @@ func TestOberonIsAloneOnBothSides(t *testing.T) {
 	}
 
 	if mates := e.Teammates("g"); len(mates) != 0 {
-		t.Errorf("奥伯伦不该认识任何同伙，实际 %v", mates)
+		t.Errorf("Oberon should know no fellows, got %v", mates)
 	}
 	for _, id := range []string{"e", "f"} {
 		for _, m := range e.Teammates(id) {
 			if m == "g" {
-				t.Errorf("%s 不该认识奥伯伦，实际同伙 %v", id, e.Teammates(id))
+				t.Errorf("%s should not know Oberon, their fellows are %v", id, e.Teammates(id))
 			}
 		}
 	}
-	// 刺客与莫甘娜互相认得
+	// The assassin and Morgana know each other.
 	if mates := e.Teammates("e"); len(mates) != 1 || mates[0] != "f" {
-		t.Errorf("刺客的同伙 = %v，期望 [f]", mates)
+		t.Errorf("the assassin's fellows = %v, want [f]", mates)
 	}
 }
 
-// TestPercivalCannotTellMerlinFromMorgana 派西维尔看到两个人，分不清谁是谁
+// TestPercivalCannotTellMerlinFromMorgana: Percival sees two people and cannot
+// tell which is which.
 func TestPercivalCannotTellMerlinFromMorgana(t *testing.T) {
-	e := fivePlayer(t) // a=梅林 e=莫甘娜
+	e := fivePlayer(t) // a=Merlin e=Morgana
 	v := e.PlayerView("b")
 	got := v.RoleInfo[RoleInfoPercivalCandidate]
 	if want := "a,e"; got != want {
-		t.Errorf("派西维尔看到 %q，期望 %q", got, want)
+		t.Errorf("Percival sees %q, want %q", got, want)
 	}
-	// 「分不清」的实现就是这一个字符串里没有任何区分标记
+	// "Cannot tell apart" is implemented as this one string carrying nothing
+	// that distinguishes them.
 	if len(v.RoleInfo) != 1 {
-		t.Errorf("派西维尔不该拿到别的信息：%v", v.RoleInfo)
+		t.Errorf("Percival should get nothing else: %v", v.RoleInfo)
 	}
 }
 
@@ -164,9 +168,10 @@ func typesOf(effects []*hiddenrole.Effect) []hiddenrole.EventType {
 	return out
 }
 
-// runMission 打完一整轮任务：提名 -> 全票通过 -> 队员按 fails 投失败票
+// runMission plays one whole mission: nominate -> unanimous approval -> the
+// team casting fails failure votes.
 //
-// members 里前 fails 个人投失败，其余投成功。
+// The first fails members vote failure and the rest vote success.
 func runMission(t *testing.T, e *hiddenrole.Engine, fails int, members ...string) []*hiddenrole.Effect {
 	t.Helper()
 	leader := leaderID(e.View())
@@ -189,37 +194,40 @@ func runMission(t *testing.T, e *hiddenrole.Engine, fails int, members ...string
 }
 
 // TestFullGame_GoodWinsThreeThenSurvivesAssassination
-// 好人连赢三轮，刺客指错人，好人获胜。
+// The good side wins three missions, the assassin names the wrong player, and
+// the good side wins.
 func TestFullGame_GoodWinsThreeThenSurvivesAssassination(t *testing.T) {
-	e := fivePlayer(t) // a=梅林 b=派西维尔 c=忠臣 d=刺客 e=莫甘娜
+	e := fivePlayer(t) // a=Merlin b=Percival c=loyal servant d=assassin e=Morgana
 
-	// 5 人局任务人数：2,3,2,3,3。三轮全成功，队伍里只放好人。
+	// Mission sizes in a five-player game: 2,3,2,3,3. Three successes, with
+	// only good players on the teams.
 	runMission(t, e, 0, "a", "b")
 	runMission(t, e, 0, "a", "b", "c")
 	last := runMission(t, e, 0, "a", "b")
 
-	t.Logf("三轮成功之后：阶段=%v 结束=%v 效果=%v", e.Status().Phase, e.Status().Over, typesOf(last))
+	t.Logf("after three successes: phase=%v over=%v effects=%v", e.Status().Phase, e.Status().Over, typesOf(last))
 
 	if e.Status().Over {
-		t.Fatal("刺杀还没进行，这局不该结束——胜负判定必须推迟到刺杀之后")
+		t.Fatal("the assassination has not happened, so the game should not be over -- the victory check has to wait for it")
 	}
 	if e.Status().Phase != PhaseAssassin {
-		t.Fatalf("阶段 = %v，期望被绕道队列带到 ASSASSIN", e.Status().Phase)
+		t.Fatalf("phase = %v, want the detour queue to have routed to ASSASSIN", e.Status().Phase)
 	}
 
-	// 刺客指错人（指了派西维尔，梅林是 a）
+	// The assassin names the wrong player (Percival; Merlin is a).
 	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"b"}})
 	mustEnd(t, e)
 
 	if !e.Status().Over {
-		t.Fatal("刺杀结束之后这局该结束了")
+		t.Fatal("the game should be over once the assassination resolves")
 	}
 	if got := e.Status().Winner; got != CampGood {
-		t.Errorf("赢家 = %v，期望 GOOD（刺客指错了）", got)
+		t.Errorf("winner = %v, want GOOD (the assassin missed)", got)
 	}
 }
 
-// TestFullGame_AssassinFindsMerlin 好人连赢三轮，但刺客指中梅林，坏人反败为胜。
+// TestFullGame_AssassinFindsMerlin: the good side wins three missions, the
+// assassin names Merlin, and the evil side snatches the win.
 func TestFullGame_AssassinFindsMerlin(t *testing.T) {
 	e := fivePlayer(t)
 
@@ -228,36 +236,38 @@ func TestFullGame_AssassinFindsMerlin(t *testing.T) {
 	runMission(t, e, 0, "a", "b")
 
 	if e.Status().Phase != PhaseAssassin {
-		t.Fatalf("阶段 = %v，期望 ASSASSIN", e.Status().Phase)
+		t.Fatalf("phase = %v, want ASSASSIN", e.Status().Phase)
 	}
 	mustSubmit(t, e, &hiddenrole.SkillUse{PlayerID: "d", Skill: SkillAssassinate, Targets: []string{"a"}})
 	mustEnd(t, e)
 
 	if !e.Status().Over {
-		t.Fatal("刺杀之后该结束")
+		t.Fatal("it should be over after the assassination")
 	}
 	if got := e.Status().Winner; got != CampEvil {
-		t.Errorf("赢家 = %v，期望 EVIL（刺中梅林反败为胜）", got)
+		t.Errorf("winner = %v, want EVIL (naming Merlin snatches the win)", got)
 	}
 }
 
-// TestFullGame_EvilWinsThreeMissions 坏人破坏三轮任务直接获胜，不经过刺杀。
+// TestFullGame_EvilWinsThreeMissions: the evil side fails three missions and
+// wins outright, with no assassination.
 func TestFullGame_EvilWinsThreeMissions(t *testing.T) {
-	e := fivePlayer(t) // d=刺客 e=莫甘娜 都是坏人
+	e := fivePlayer(t) // d=assassin e=Morgana, both evil
 
 	runMission(t, e, 1, "d", "e")
 	runMission(t, e, 1, "d", "e", "a")
 	runMission(t, e, 1, "d", "e")
 
 	if !e.Status().Over {
-		t.Fatal("三轮失败之后该结束")
+		t.Fatal("it should be over after three failures")
 	}
 	if got := e.Status().Winner; got != CampEvil {
-		t.Errorf("赢家 = %v，期望 EVIL", got)
+		t.Errorf("winner = %v, want EVIL", got)
 	}
 }
 
-// TestHammer_FiveRejectionsEndTheGame 连续五次组队被否决，坏人直接获胜。
+// TestHammer_FiveRejectionsEndTheGame: five consecutive team rejections hand
+// the evil side an outright win.
 func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
 	e := fivePlayer(t)
 
@@ -271,18 +281,18 @@ func TestHammer_FiveRejectionsEndTheGame(t *testing.T) {
 		mustEnd(t, e)
 		if i < HammerRejections {
 			if e.Status().Over {
-				t.Fatalf("才否决 %d 次就结束了，应当到 %d 次", i, HammerRejections)
+				t.Fatalf("it ended after only %d rejections, it should take %d", i, HammerRejections)
 			}
 			if got := e.Status().Phase; got != PhasePropose {
-				t.Fatalf("被否决之后该直接回 PROPOSE，实际 %v", got)
+				t.Fatalf("a rejection should go straight back to PROPOSE, got %v", got)
 			}
 		}
 	}
 
 	if !e.Status().Over {
-		t.Fatalf("连续 %d 次否决之后该结束", HammerRejections)
+		t.Fatalf("it should be over after %d consecutive rejections", HammerRejections)
 	}
 	if got := e.Status().Winner; got != CampEvil {
-		t.Errorf("赢家 = %v，期望 EVIL", got)
+		t.Errorf("winner = %v, want EVIL", got)
 	}
 }

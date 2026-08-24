@@ -6,30 +6,34 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// resolver.go 四个阶段各自的结算。
+// resolver.go is one resolver per phase, four in all.
 
-// proposeResolver 队长提名任务队伍。
+// proposeResolver: the leader nominates the mission team.
 //
-// **一次提交带整支队伍**：SkillUse.Targets 是一个切片，队伍有几个人就带
-// 几个 ID。按提交顺序去重，多于所需人数的部分丢掉。
+// **One submission carries the whole team**: SkillUse.Targets is a slice and
+// carries as many IDs as the team has members. Duplicates are dropped in
+// submission order, and anything beyond the required size is discarded.
 //
-// 此前 SkillUse 只能带一个目标，队长得提交 N 次——那让就绪判定说不清
-// 「还差几个人没提」（提名了 1 人、需要 2 人时就报 Ready=true）。
-// 见 SCARS.md 疤 5。
+// SkillUse used to carry a single target and the leader had to submit N times
+// -- which left readiness unable to say how many players were still missing
+// (it reported Ready=true after one nomination when two were needed). See
+// SCARS.md, scar 5.
 type proposeResolver struct{}
 
 func (proposeResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	leader := leaderID(view)
 	need := MissionSize(len(view.AllPlayers()), mission(view))
 
-	// 一次提交带整支队伍。
+	// One submission carries the whole team.
 	//
-	// SkillUse 此前只能带一个目标，队长得提交 N 次——就绪判定因此说不清
-	// 「还差几个人没提」，提名了 1 人（需要 2 人）之后就报 Ready=true。
-	// 现在一次提交就是一支完整的队伍，就绪判定跟着说对话。
+	// SkillUse used to carry a single target and the leader had to submit N
+	// times -- which left readiness unable to say how many players were still
+	// missing, reporting Ready=true after one nomination when two were needed.
+	// One submission is now a complete team, and readiness tells the truth.
 	//
-	// 不检查提交者是不是队长：内核已经在 SubmitSkillUse 就拦下了非队长的
-	// 提交（这个阶段的行动者由 SetActors 指定）。
+	// It does not check that the submitter is the leader: the kernel already
+	// blocked a non-leader at SubmitSkillUse (this phase's actors are named by
+	// SetActors).
 	seen := map[string]bool{}
 	var team []string
 	for _, u := range uses {
@@ -48,26 +52,31 @@ func (proposeResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Game
 		}
 	}
 
-	// 上一次提名留下的标记不用在这里清：提名阶段声明了 ClearsRoundVars，
-	// 内核在它结算完时清。此前内核只有「回合级」一档寿命，而这里要的是
-	// 「一次提名」，只好手工清一遍——那段代码现在删掉了。
+	// The markers left by the previous nomination need no clearing here: the
+	// nomination phase declares ClearsRoundVars and the kernel clears them when
+	// it resolves. The kernel used to have only the round lifetime while what
+	// was wanted here was "one nomination", so it had to be done by hand --
+	// that code is now deleted.
 	var effects []*hiddenrole.Effect
 	for _, id := range team {
 		effects = append(effects,
 			hiddenrole.NewEffect(EventProposed, leader, id),
 			hiddenrole.NewSetVarEffect(hiddenrole.ScopeRound.Of(id), varOnTeam, hiddenrole.VarPresent))
 	}
-	// 点名任务阶段的行动者：只有这几个人能投成败。
+	// Name the mission phase's actors: only these players may vote success or
+	// failure.
 	//
-	// 名单在这里算出来、到下一个阶段才用——这正是 SetActors 要指定阶段
-	// 而不是只作用于当前阶段的原因。
+	// The list is computed here and used in the next phase -- which is exactly
+	// why SetActors names a phase rather than applying to the current one.
 	return append(effects, hiddenrole.NewSetActorsEffect(PhaseMission, team...))
 }
 
-// teamVoteResolver 全员表决这支队伍。
+// teamVoteResolver: everyone votes on the team.
 //
-// 票是公开的：条目里表决牌同时揭晓，谁投了什么全场都看得到。因此每一票
-// 都产出一条公开事件——这与任务阶段正好相反，那里连谁投了失败都不能露。
+// The votes are public: in the article the voting cards are revealed together,
+// so the whole table sees who voted what. Every vote therefore produces a
+// public event -- the exact opposite of the mission phase, where not even who
+// voted failure may show.
 type teamVoteResolver struct{}
 
 func (teamVoteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -82,7 +91,7 @@ func (teamVoteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Gam
 			continue
 		}
 		if voted[u.PlayerID] {
-			continue // 一人一票，以第一次为准
+			continue // one vote each; the first one counts
 		}
 		voted[u.PlayerID] = true
 		if u.Skill == SkillApprove {
@@ -94,10 +103,11 @@ func (teamVoteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Gam
 			hiddenrole.NewEffect(EventVote, u.PlayerID, "").WithData("approve", u.Skill == SkillApprove))
 	}
 
-	// 队伍人数不对（队长没提够、或者根本没提）一律按否决处理
+	// A team of the wrong size (the leader under-nominated, or did not
+	// nominate at all) is treated as a rejection.
 	ok := len(team) == need && need > 0 && approve > reject
 
-	// 队长每一轮都往下传一位，无论通过与否
+	// Leadership passes on every round, approved or not.
 	next := gameNum(view, varLeader) + 1
 	effects = append(effects,
 		setGameNum(view, varLeader, next),
@@ -117,34 +127,43 @@ func (teamVoteResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Gam
 		hiddenrole.NewEffect(EventTeamRejected, "", "").WithData("consecutive", n),
 		setGameNum(view, varRejects, n))
 	if n >= HammerRejections {
-		// 连续五次否决，坏人直接获胜。胜负由 VictoryChecker 读这个数判定。
+		// Five consecutive rejections hand the evil side an outright win. The
+		// VictoryChecker reads this count to decide.
 		effects = append(effects, hiddenrole.NewEffect(EventHammerReached, "", ""))
 	}
-	// 被否决就直接回提名，不再空转一次任务阶段。
+	// A rejection goes straight back to nomination rather than idling through
+	// the mission phase.
 	//
-	// 这是内核把「下一步去哪」交给规则之后立刻兑现的：条件分支的结果由
-	// 本阶段的结算算出来，静态的 NextPhase 表达不了。顺带把回合数也修对了
-	// ——任务阶段声明了 EndsRound，空转一次就多推一个回合。
+	// This is the benefit that arrived the moment the kernel handed "where to
+	// go next" to the rules: the branch's outcome is computed by this phase's
+	// resolution, and a static NextPhase cannot express it. It fixed the round
+	// number along the way -- the mission phase declares EndsRound, so idling
+	// through it once advanced a round too many.
 	return append(effects, hiddenrole.NewGotoPhaseEffect(PhasePropose))
 }
 
-// missionResolver 任务结算。
+// missionResolver: the mission resolves.
 //
-// 这里有两处这套规则特有的信息约束：
+// Two information constraints specific to this ruleset live here:
 //
-//   - **只有队员能投**。内核判定行动者只看角色，队伍却是运行时定的，
-//     因此这一步只能由解析器自己把非队员的提交丢掉。代价见 SCARS.md 第 1 条。
-//   - **失败票不能记名**。全场只能知道「有几张失败票」，不能知道是谁投的。
-//     实现上就是**不为每一票产出事件**，只产出一条带票数的聚合事件。
-//     好人误投失败按成功计，且那条否决只有他自己看得到。
+//   - **Only team members may vote.** The kernel decides actors by role and
+//     the team is chosen at runtime, so this step can only have the resolver
+//     throw away submissions from non-members. The cost is in SCARS.md,
+//     item 1.
+//   - **Fail votes cannot be attributed.** The table may know only how many
+//     fail votes there were, never who cast them. In implementation terms that
+//     means **producing no event per vote**, only one aggregate event carrying
+//     the count. A good player's mistaken fail vote counts as a success, and
+//     the veto is visible to them alone.
 type missionResolver struct{}
 
 func (missionResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
 	if !approved(view) {
-		return nil // 上一轮表决没通过，这个阶段空转
+		return nil // the previous vote failed, so this phase idles through
 	}
 
-	// 不再检查「他在不在队伍里」：内核已经拦下了非队员的提交。
+	// No longer checks "are they on the team": the kernel already blocked
+	// submissions from non-members.
 	acted := map[string]bool{}
 	fails := 0
 	var effects []*hiddenrole.Effect
@@ -153,7 +172,7 @@ func (missionResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Game
 			continue
 		}
 		if acted[u.PlayerID] {
-			continue // 一人一票，以第一次为准
+			continue // one vote each; the first one counts
 		}
 		acted[u.PlayerID] = true
 		if u.Skill != SkillMissionFail {
@@ -161,10 +180,11 @@ func (missionResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Game
 		}
 		p, _ := view.Player(u.PlayerID)
 		if !isEvil(p.Role) {
-			// 好人不能投失败。这条否决只发给他本人——旁人连「有人试过」
-			// 都不该知道，否则等于点名。
+			// A good player may not vote failure. The veto goes to them
+			// alone -- nobody else should even learn that someone tried, or
+			// it amounts to naming them.
 			effects = append(effects, cancel(
-				hiddenrole.NewEffect(EventFailRejected, u.PlayerID, ""), "好人只能投成功"))
+				hiddenrole.NewEffect(EventFailRejected, u.PlayerID, ""), "the good side may only vote success"))
 			continue
 		}
 		fails++
@@ -186,10 +206,12 @@ func (missionResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Game
 	}
 	effects = append(effects, setGameNum(view, varMission, m+1))
 
-	// 好人凑满三次成功：把刺杀排进队列。
+	// The good side reaches three successes: queue the assassination.
 	//
-	// 用的是内核那套「谁、去哪个阶段」的绕道队列——它原本是为出局技能
-	// 做的，语义却正好是这里要的，还顺带把胜负判定推迟到刺杀结算之后。
+	// It uses the kernel's "who, and to which phase" detour queue -- built for
+	// abilities triggered on elimination, but its meaning is exactly what is
+	// wanted here, and it additionally defers the victory check until after
+	// the assassination resolves.
 	if !failed && successes(view)+1 >= 3 {
 		if ids := idsWithRole(view, RoleAssassin); len(ids) > 0 {
 			effects = append(effects, hiddenrole.NewDetourEffect(ids[0], PhaseAssassin))
@@ -198,7 +220,7 @@ func (missionResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Game
 	return effects
 }
 
-// assassinResolver 刺客指认梅林。
+// assassinResolver: the assassin names Merlin.
 type assassinResolver struct{}
 
 func (assassinResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.GameView) []*hiddenrole.Effect {
@@ -216,7 +238,7 @@ func (assassinResolver) Resolve(uses []*hiddenrole.SkillUse, view hiddenrole.Gam
 			hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varAssassinated, boolVar(hit)),
 		}
 	}
-	// 没有指认视为刺杀落空
+	// Naming nobody counts as a missed assassination.
 	return []*hiddenrole.Effect{
 		hiddenrole.NewEffect(EventAssassinated, "", "").WithData("hit", false),
 		hiddenrole.NewSetVarEffect(hiddenrole.ScopeGame, varAssassinated, "miss"),

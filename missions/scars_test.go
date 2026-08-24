@@ -6,83 +6,93 @@ import (
 	"github.com/Zereker/hiddenrole"
 )
 
-// scars_test.go 把绕法的代价钉成可跑的证据。
+// scars_test.go pins the cost of each workaround as runnable evidence.
 //
-// 这些测试断言的是**当前实现的不对之处**，不是期望的行为。它们存在的
-// 意义是：SCARS.md 里的每一条都能被验证，而不是我说了算。内核补上对应
-// 能力之后，它们会变红——那时候就该把它们改写成正面断言。
+// These tests assert **what the current implementation gets wrong**, not the
+// desired behaviour. They exist so that every item in SCARS.md can be
+// verified rather than taken on my word. Once the kernel gains the
+// corresponding capability they go red -- and that is when to rewrite them as
+// positive assertions.
 
-// TestOnlyNamedActorsMayAct 只有被点名的人能行动，内核自己拦。
+// TestOnlyNamedActorsMayAct: only the players named may act, and the kernel
+// enforces it.
 //
-// **这条曾经是疤 1**，而且是六条里最贵的一条——代价直接落在给玩家看的东西上：
-// 内核判定行动者只看 (阶段, 角色, 技能)，而角色是入座时定死的，任何运行时
-// 选出来的集合都表达不了。这套规则里它咬了两次（队长、任务队伍），
-// 狼人杀里咬了一次（猎人开枪，内核为它开了绕道队列这个单人特例）。
+// **This used to be scar 1**, and the most expensive of the six -- the cost
+// landed directly on what players are shown: the kernel decided actors from
+// (phase, role, skill) alone, a role is fixed at seating time, and any set
+// chosen at runtime was inexpressible. It bit this ruleset twice (the leader,
+// the mission team) and werewolf once (the hunter's shot, for which the kernel
+// opened the detour queue as a one-player special case).
 //
-// 后果是内核对没资格的玩家说谎：AllowedSkills 说他能动、PhaseReadiness
-// 等着他、SubmitSkillUse 收下他的提交再由解析器丢掉。
+// The consequence was the kernel lying to unqualified players: AllowedSkills
+// said they could act, PhaseReadiness waited on them, and SubmitSkillUse
+// accepted submissions for the resolver to throw away.
 //
-// 内核补上 NewSetActorsEffect 之后，三个问题（校验、AllowedSkills、
-// PhaseReadiness）改从同一处取数。这个测试把三处一起盯住。
+// Once the kernel gained NewSetActorsEffect, the three questions (validation,
+// AllowedSkills, PhaseReadiness) read from one place. This test watches all
+// three together.
 func TestOnlyNamedActorsMayAct(t *testing.T) {
 	e := fivePlayer(t)
 
-	// 一、提名阶段：只有队长
+	// 1. The nomination phase: the leader alone.
 	leader := leaderID(e.View())
 	for _, id := range allPlayerIDs(e) {
 		allowed := e.AllowedSkills(id)
 		if id == leader {
 			if len(allowed) == 0 {
-				t.Errorf("队长 %s 该能提名，AllowedSkills 是空的", id)
+				t.Errorf("the leader %s should be able to nominate, AllowedSkills is empty", id)
 			}
 			continue
 		}
 		if len(allowed) != 0 {
-			t.Errorf("%s 不是队长，AllowedSkills 却给出 %v", id, allowed)
+			t.Errorf("%s is not the leader, yet AllowedSkills gave %v", id, allowed)
 		}
 		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: id, Skill: SkillPropose, Targets: []string{"a"},
 		}); err == nil {
-			t.Errorf("%s 不是队长，内核却收下了他的提名", id)
+			t.Errorf("%s is not the leader, yet the kernel accepted their nomination", id)
 		}
 	}
 
-	// 二、任务阶段：只有队伍成员
+	// 2. The mission phase: team members alone.
 	proposeAndApprove(t, e, "a", "b")
 	team := map[string]bool{"a": true, "b": true}
 	for _, id := range allPlayerIDs(e) {
 		allowed := e.AllowedSkills(id)
 		if team[id] {
 			if len(allowed) == 0 {
-				t.Errorf("队员 %s 该能投票，AllowedSkills 是空的", id)
+				t.Errorf("the team member %s should be able to vote, AllowedSkills is empty", id)
 			}
 			continue
 		}
 		if len(allowed) != 0 {
-			t.Errorf("%s 没上任务，AllowedSkills 却给出 %v", id, allowed)
+			t.Errorf("%s is not on the mission, yet AllowedSkills gave %v", id, allowed)
 		}
 		if err := e.SubmitSkillUse(&hiddenrole.SkillUse{
 			PlayerID: id, Skill: SkillMissionFail,
 		}); err == nil {
-			t.Errorf("%s 没上任务，内核却收下了他的失败票", id)
+			t.Errorf("%s is not on the mission, yet the kernel accepted their fail vote", id)
 		}
 	}
 
-	// 三、就绪判定也只等队伍成员
+	// 3. Readiness waits on team members only.
 	for _, p := range e.PhaseReadiness().Pending {
 		if !team[p.PlayerID] {
-			t.Errorf("PhaseReadiness 在等 %s，可他没上任务", p.PlayerID)
+			t.Errorf("PhaseReadiness is waiting on %s, who is not on the mission", p.PlayerID)
 		}
 	}
 }
 
-// TestRejectedProposalGoesStraightBackToPropose 提名被否决，直接回提名，不空转任务阶段。
+// TestRejectedProposalGoesStraightBackToPropose: a rejected nomination goes
+// straight back to nomination without idling through the mission phase.
 //
-// **这条曾经是疤 2**：阶段流转是一张静态图，没有「表决通过就去任务、否则
-// 回提名」这种条件分支，于是被否决的提名也要空转一次任务阶段。
+// **This used to be scar 2**: phase transitions were a static graph with no
+// way to express "go to the mission if the vote passes, back to nomination
+// otherwise", so a rejected nomination had to idle through the mission phase.
 //
-// 内核把「下一步去哪」交给规则之后（NewGotoPhaseEffect），表决解析器自己
-// 说去哪，这条疤关掉了。这个测试从「断言缺陷」翻成了「断言修好」。
+// Once the kernel handed "where to go next" to the rules
+// (NewGotoPhaseEffect), the vote resolver says where to go and the scar
+// closed. This test flipped from asserting a defect to asserting a fix.
 func TestRejectedProposalGoesStraightBackToPropose(t *testing.T) {
 	e := fivePlayer(t)
 	propose(t, e, "a", "b")
@@ -92,13 +102,14 @@ func TestRejectedProposalGoesStraightBackToPropose(t *testing.T) {
 	mustEnd(t, e)
 
 	if got := e.Status().Phase; got != PhasePropose {
-		t.Fatalf("阶段 = %v，期望直接回到 PROPOSE（不再空转任务阶段）", got)
+		t.Fatalf("phase = %v, want a direct return to PROPOSE (no idle pass through the mission phase)", got)
 	}
 }
 
-// TestApprovedProposalGoesToMission 表决通过，进任务阶段。
+// TestApprovedProposalGoesToMission: an approved vote goes to the mission.
 //
-// 与上面一条成对：同一个解析器算出两个不同的出口，这正是静态图表达不了的。
+// A pair with the one above: the same resolver computes two different exits,
+// which is exactly what a static graph cannot express.
 func TestApprovedProposalGoesToMission(t *testing.T) {
 	e := fivePlayer(t)
 	propose(t, e, "a", "b")
@@ -108,27 +119,34 @@ func TestApprovedProposalGoesToMission(t *testing.T) {
 	mustEnd(t, e)
 
 	if got := e.Status().Phase; got != PhaseMission {
-		t.Fatalf("阶段 = %v，期望 MISSION", got)
+		t.Fatalf("phase = %v, want MISSION", got)
 	}
 }
 
-// TestRoundEqualsMissionNumber 引擎的「回合」等于本包的「第几轮任务」。
+// TestRoundEqualsMissionNumber: the engine's round equals this package's
+// mission number.
 //
-// **这条曾经是疤 3**：内核把「回合数加一」焊死在「阶段环绕回起始阶段」上，
-// 而这套规则每提名一次就绕一圈，于是 Round 成了提名计数器，与「第几轮任务」
-// 最多差五倍，还被 PlayerView.Round 原样发给玩家。
+// **This used to be scar 3**: the kernel welded "increment the round" onto
+// "the phase cycle returned to the start phase", and this ruleset goes round
+// the loop once per nomination, so Round became a nomination counter, out by
+// as much as a factor of five from "which mission", and it was handed to
+// players verbatim in PlayerView.Round.
 //
-// 两处改动合起来才关掉它，缺一不可：
-//   - PhaseConfig.EndsRound 让板子自己声明回合边界（这套规则声明在任务阶段）；
-//   - NewGotoPhaseEffect 让被否决的提名直接跳回提名阶段，不再空转任务阶段
-//     ——只改前者的话，空转那一次照样推进回合，这条疤只关掉一半。
+// Two changes together closed it, and neither alone would have:
+//   - PhaseConfig.EndsRound lets the board declare its own round boundary
+//     (this ruleset declares it on the mission phase);
+//   - NewGotoPhaseEffect sends a rejected nomination straight back to the
+//     nomination phase instead of idling through the mission phase -- with
+//     only the first, the idle pass would still advance the round and the scar
+//     would be half open.
 //
-// 两条疤耦合这件事本身是个发现：它们同根，都是内核替规则做了只有规则知道
-// 答案的决定。
+// That the two scars are coupled is itself a finding: they share a root, both
+// being the kernel making a decision only the rules can answer.
 func TestRoundEqualsMissionNumber(t *testing.T) {
 	e := fivePlayer(t)
 
-	// 先连续否决两次：一个任务都没打，回合数就不该动
+	// Two consecutive rejections first: no mission has been played, so the
+	// round number must not move.
 	for i := 0; i < 2; i++ {
 		propose(t, e, "a", "b")
 		for _, id := range allPlayerIDs(e) {
@@ -137,30 +155,35 @@ func TestRoundEqualsMissionNumber(t *testing.T) {
 		mustEnd(t, e)
 	}
 	if got, want := e.Status().Round, 1; got != want {
-		t.Errorf("否决两次之后 Round = %d，期望仍是 %d——一个任务都没打", got, want)
+		t.Errorf("Round = %d after two rejections, want still %d -- no mission has been played", got, want)
 	}
 
-	// 打完两轮任务，回合数跟着任务走
+	// Play two missions, and the round follows the missions.
 	runMission(t, e, 0, "a", "b")
 	runMission(t, e, 0, "a", "b", "c")
 
 	if got, want := e.Status().Round, missionOf(e); got != want {
-		t.Errorf("Round = %d，本包的第几轮 = %d，两者该相等", got, want)
+		t.Errorf("Round = %d and this package's mission number = %d; they should be equal", got, want)
 	}
 	if v := e.PlayerView("a"); v.Round != e.Status().Round {
-		t.Errorf("PlayerView.Round = %d，引擎 = %d", v.Round, e.Status().Round)
+		t.Errorf("PlayerView.Round = %d, the engine says %d", v.Round, e.Status().Round)
 	}
 }
 
-// TestGameProgressLivesInGameVars 整局进度住在整局作用域里，不挂在任何玩家身上。
+// TestGameProgressLivesInGameVars: the game's progress lives in the game scope
+// and hangs off no player.
 //
-// **这条曾经是疤 4**：内核的变量作用域是一张 2x2 的表，缺「整局有效 + 无主」
-// 这一格。本包的五个计数器（第几轮、成功几次、失败几次、连续否决几次、
-// 队长是谁）只能挂到 ID 字典序最小那名玩家的 PlayerVar 上当账本——全局事实
-// 记在某个人名下，那个玩家的视图里凭空多出五个与他无关的字段。
+// **This used to be scar 4**: the kernel's variable scopes are a 2x2 table and
+// the "whole game, unowned" cell was missing. This package's five counters
+// (which mission, how many succeeded, how many failed, how many consecutive
+// rejections, who leads) could only be filed under the lexicographically
+// smallest player's own state as a ledger -- global facts under one person's
+// name, with five fields appearing out of nowhere in that player's view with
+// nothing to do with them.
 //
-// 内核补上第四格（GameVar）之后账本整个删掉了。这个测试盯住两件事：
-// 进度确实在整局作用域里，且**没有任何玩家身上沾着它**。
+// Once the kernel gained the fourth cell, the ledger was deleted outright.
+// This test watches two things: that the progress really is in the game scope,
+// and that **no player has any of it stuck to them**.
 func TestGameProgressLivesInGameVars(t *testing.T) {
 	e := fivePlayer(t)
 	proposeAndApprove(t, e, "a", "b")
@@ -169,26 +192,26 @@ func TestGameProgressLivesInGameVars(t *testing.T) {
 	}
 	mustEnd(t, e)
 
-	// 一、进度读得到，而且在整局作用域里
+	// 1. The progress reads back, and it is in the game scope.
 	if got := successes(e.View()); got != 1 {
-		t.Fatalf("成功次数 = %d，期望 1", got)
+		t.Fatalf("successes = %d, want 1", got)
 	}
 	if e.Var(hiddenrole.ScopeGame, varSuccess) == "" {
-		t.Errorf("成功次数该住在 GameVar 里，%q 是空的", varSuccess)
+		t.Errorf("the success count should live in the game scope, %q is empty", varSuccess)
 	}
 
-	// 二、没有任何玩家身上沾着本包的整局计数
+	// 2. No player has any of this package's game-long counters stuck to them.
 	for _, id := range e.AlivePlayerIDs() {
 		p, _ := e.PlayerInfo(id)
 		for k := range p.Vars {
 			if k != hiddenrole.VarCamp {
-				t.Errorf("玩家 %s 身上不该有 %q——那是整局状态，不属于任何人", id, k)
+				t.Errorf("player %s should not carry %q -- that is game-long state and belongs to nobody", id, k)
 			}
 		}
 	}
 }
 
-// ==================== 测试辅助 ====================
+// ==================== Test helpers ====================
 
 func allPlayerIDs(e *hiddenrole.Engine) []string { return e.AlivePlayerIDs() }
 
@@ -197,7 +220,7 @@ func missionOf(e *hiddenrole.Engine) int { return mission(e.View()) }
 func mustSubmit(t *testing.T, e *hiddenrole.Engine, use *hiddenrole.SkillUse) {
 	t.Helper()
 	if err := e.SubmitSkillUse(use); err != nil {
-		t.Fatalf("提交 %s/%s: %v", use.PlayerID, use.Skill, err)
+		t.Fatalf("submitting %s/%s: %v", use.PlayerID, use.Skill, err)
 	}
 }
 
@@ -226,38 +249,43 @@ func proposeAndApprove(t *testing.T, e *hiddenrole.Engine, members ...string) {
 	mustEnd(t, e)
 }
 
-// TestReadinessKnowsTheWholeTeamIsProposed 就绪判定说得清「提名齐了没有」。
+// TestReadinessKnowsTheWholeTeamIsProposed: readiness can say whether the
+// nomination is complete.
 //
-// **这条曾经是疤 5**：`SkillUse` 只能带一个目标，队长得提交 N 次。那个形状是
-// 被样本量为一固定下来的——狼人杀九个技能恰好每个都只有一个目标。后果是就绪
-// 判定只知道「队长提交过没有」：7 人局第一轮要 2 个人，队长只提名 1 个，
-// 它就报 Ready=true。
+// **This used to be scar 5**: `SkillUse` carried a single target and the
+// leader had to submit N times. That shape was fixed by a sample size of one
+// -- werewolf's nine skills happen to have exactly one target each. The
+// consequence was readiness knowing only whether the leader had submitted: in
+// a seven-player game mission 1 takes 2, and nominating just 1 made it report
+// Ready=true.
 //
-// 那与「AllowedSkills 对没资格的人说他能行动」是同一类问题：内核对玩家说了
-// 不实的话。既然疤 1 按这个标准修了，这条也该按同一个标准修。
+// That is the same class of problem as "AllowedSkills telling an unqualified
+// player they may act": the kernel saying something untrue to a player. Since
+// scar 1 was fixed by that standard, this one should be too.
 //
-// 现在一次提交带整支队伍，提名与就绪是同一件事。
+// One submission now carries the whole team, and nomination and readiness are
+// the same thing.
 func TestReadinessKnowsTheWholeTeamIsProposed(t *testing.T) {
 	e := fivePlayer(t)
 	need := MissionSize(5, 1)
 	if need < 2 {
-		t.Fatalf("这个测试需要至少 2 人的任务，实际 %d", need)
+		t.Fatalf("this test needs a mission of at least 2, got %d", need)
 	}
 
 	if e.PhaseReadiness().Ready {
-		t.Fatal("还没提名就报就绪了")
+		t.Fatal("it reported ready before anything was nominated")
 	}
 	leader := leaderID(e.View())
 	mustSubmit(t, e, &hiddenrole.SkillUse{
 		PlayerID: leader, Skill: SkillPropose, Targets: []string{"a", "b"},
 	})
 	if !e.PhaseReadiness().Ready {
-		t.Error("整支队伍都提名了，还报没就绪")
+		t.Error("the whole team is nominated and it still reports not ready")
 	}
 
-	// 提名的确实是整支队伍
+	// And what was nominated really is the whole team.
 	mustEnd(t, e)
 	if got := len(teamIDs(e.View())); got != need {
-		t.Errorf("队伍人数 = %d，期望 %d", got, need)
+		t.Errorf("team size = %d, want %d", got, need)
 	}
 }

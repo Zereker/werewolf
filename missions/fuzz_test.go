@@ -8,37 +8,41 @@ import (
 	"github.com/Zereker/hiddenrole/enginetest"
 )
 
-// TestFuzz_Invariants 随机对局，核对通用不变量。
+// TestFuzz_Invariants runs random games against the general invariants.
 //
-// 不变量在 engine/enginetest 里，一条都不认识这套规则。这里只负责摆局面
-// 与出招。
+// The invariants live in hiddenrole/enginetest and none of them knows this
+// ruleset. This file only lays out boards and takes turns.
 //
-// 随机的是**人数与角色分配**：5~10 人，坏人数按 EvilCount 表定，
-// 具体给谁哪个特殊角色随机。这套规则的分歧几乎全在角色配置上
-// （有没有莫德雷德，梅林就看不看得见全部坏人；有没有奥伯伦，坏人之间
-// 就认不认得全）。
+// What is randomised is **the table size and the role assignment**: 5 to 10
+// players, the number of evil players from the EvilCount table, and who gets
+// which special role at random. Almost every branch in this ruleset comes from
+// the role configuration (whether Mordred is in decides whether Merlin sees
+// every bad guy; whether Oberon is in decides whether the evil side knows
+// itself).
 //
-// 本包的一局比另外两套长得多：一轮任务要走提名、表决、任务三个阶段，
-// 表决否决还会绕回提名，五轮任务加上刺杀——所以 MaxSteps 给得宽。
+// A game here is far longer than in the other two packages: one mission takes
+// nomination, vote and mission, a rejected vote loops back to nomination, and
+// there are five missions plus the assassination -- so MaxSteps is generous.
 func TestFuzz_Invariants(t *testing.T) {
 	enginetest.RunFuzz(t, enginetest.FuzzSpec{
-		Games:    1000, // 三套合计 5000 局；这一套的单局最长，给 1000
+		Games:    1000, // 5000 games across the three packages; this one has the longest games, so 1000
 		MaxSteps: 400,
 		WantEnd:  true,
 		Setup:    setupRandom,
 		Act:      actRandom,
 		MustSee: []string{
-			"五人局", "大局", "有莫德雷德", "无莫德雷德", "有奥伯伦",
+			"five players", "bigger table", "with Mordred", "without Mordred", "with Oberon",
 		},
 	})
 }
 
-// setupRandom 摆一副随机的板子。
+// setupRandom lays out a random board.
 func setupRandom(rng *rand.Rand) enginetest.Game {
-	n := 5 + rng.Intn(6) // 5~10 人
+	n := 5 + rng.Intn(6) // 5 to 10 players
 	evil := EvilCount(n)
 
-	// 坏人：刺客必有（没有他就没有刺杀阶段），其余从可选里挑。
+	// The evil side: the assassin is always in (without him there is no
+	// assassination phase), and the rest are picked from the optional ones.
 	evilPool := []hiddenrole.RoleType{RoleMorgana, RoleMordred, RoleOberon}
 	rng.Shuffle(len(evilPool), func(i, j int) { evilPool[i], evilPool[j] = evilPool[j], evilPool[i] })
 	roles := []hiddenrole.RoleType{RoleAssassin}
@@ -50,7 +54,8 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 		roles = append(roles, RoleMinion)
 	}
 
-	// 好人：梅林必有（没有他刺杀就没有意义），派西维尔一半机会。
+	// The good side: Merlin is always in (without him the assassination is
+	// pointless), and Percival half the time.
 	roles = append(roles, RoleMerlin)
 	if rng.Intn(2) == 0 {
 		roles = append(roles, RolePercival)
@@ -65,9 +70,9 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 		seats = append(seats, enginetest.Seat{ID: playerID(i), Role: roles[i]})
 	}
 
-	labels := []string{"大局"}
+	labels := []string{"bigger table"}
 	if n == 5 {
-		labels = []string{"五人局"}
+		labels = []string{"five players"}
 	}
 	has := func(want hiddenrole.RoleType) bool {
 		for _, r := range roles {
@@ -78,12 +83,12 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 		return false
 	}
 	if has(RoleMordred) {
-		labels = append(labels, "有莫德雷德")
+		labels = append(labels, "with Mordred")
 	} else {
-		labels = append(labels, "无莫德雷德")
+		labels = append(labels, "without Mordred")
 	}
 	if has(RoleOberon) {
-		labels = append(labels, "有奥伯伦")
+		labels = append(labels, "with Oberon")
 	}
 
 	return enginetest.Game{
@@ -96,10 +101,11 @@ func setupRandom(rng *rand.Rand) enginetest.Game {
 
 func playerID(i int) string { return string(rune('a' + i)) }
 
-// actRandom 这一步随便出一招。
+// actRandom takes one random turn.
 //
-// 提名要一次带一整支队伍，人数由 MissionSize 定——泛泛地随机单目标提交
-// 在这里几乎必然被丢掉，对局会一直卡在提名阶段直到 hammer。
+// A nomination carries a whole team at once, sized by MissionSize -- a
+// generically random single-target submission would nearly always be thrown
+// away here, and the game would sit in the nomination phase until the hammer.
 func actRandom(e *hiddenrole.Engine, rng *rand.Rand) {
 	view := e.View()
 	players := view.AllPlayers()
