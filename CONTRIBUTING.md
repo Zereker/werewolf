@@ -25,6 +25,34 @@ go mod edit -replace github.com/Zereker/hiddenrole=../hiddenrole
 改内核请读[它自己的 CONTRIBUTING](https://github.com/Zereker/hiddenrole/blob/master/CONTRIBUTING.md)
 ——那边的纪律更紧（API 冻结、变异验证、三套规则包一起验）。
 
+## 用什么语言写
+
+**这个仓库面向中文开发者，代码注释一律中文。**
+
+理由不是偏好，是这三套规则包实现的**就是中文规则**：屠边、同守同救、
+守卫不能连守、12 人标准板——这些概念的准确表述本来就是中文的。
+「屠边」译成 side-wipe 已经丢了「神职 / 平民」那层结构，注释里写
+「预言家验人」比 "the seer checks someone" 更贴规则原文。
+
+**内核那边相反，注释一律英文**（见
+[hiddenrole](https://github.com/Zereker/hiddenrole)）。它是给陌生人
+import 的库，注释承载的是判断过程——为什么内核不认得任何取值、
+为什么三副面孔不合并——那些论证只有中文的话，一半价值锁死在语言里。
+
+两层的读者不同，所以语言不同。这不是「一个翻了一个没翻」。
+
+### 两份 README
+
+| | 是什么 | 谁维护 |
+|---|---|---|
+| [`README.md`](README.md) | 完整参考，八百多行，本仓库的正本 | 改动跟着代码走 |
+| [`README.en.md`](README.en.md) | **独立的短英文简介**，两百行 | 只在「这是什么、怎么起步」变了时才动 |
+
+**后者不是前者的翻译，也不要把它补成翻译。** 它是给英文读者的门面：
+说清这是什么、能不能用、去哪看内核，然后指向
+[hiddenrole](https://github.com/Zereker/hiddenrole)（那边是英文的）。
+正因为它不追着中文版跑，它才不会漂移。
+
 ## 跑起来
 
 ```sh

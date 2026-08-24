@@ -8,6 +8,12 @@
 
 A rules engine for Werewolf / Mafia, written in Go with **zero dependencies**.
 
+> **This page is a short overview, not a translation.** The full reference is
+> [`README.md`](README.md), which is in Chinese and runs four times as long --
+> this repository's rule packs implement the Chinese ruleset, and its comments
+> are in Chinese for the same reason. The kernel underneath is a separate,
+> English-language library: [hiddenrole](https://github.com/Zereker/hiddenrole).
+
 It does exactly one thing: given a board and a rule set, decide what happened
 in each phase and **what each player is entitled to know**. Timers, networking,
 rooms, and persistence are deliberately out of scope — those belong to you.
@@ -185,7 +191,8 @@ make lint              # golangci-lint
 ## Documentation
 
 - [`doc.go`](doc.go) / [pkg.go.dev](https://pkg.go.dev/github.com/Zereker/werewolf) — package documentation
-- [`docs/ARCHITECTURE.md`](https://github.com/Zereker/hiddenrole/blob/master/ARCHITECTURE.md) — design decisions and their reasons
+- [hiddenrole](https://github.com/Zereker/hiddenrole) — the kernel this is built
+  on, with its own `API.md`, `DESIGN.md` and `ARCHITECTURE.md` (all in English)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to build, test, and what a good change looks like
 - [`CHANGELOG.md`](CHANGELOG.md) — every release, every breaking change, and why
 
